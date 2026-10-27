@@ -12,10 +12,13 @@ export function HealthConsentCheckbox({
   checked,
   onChange,
   disabled,
+  ariaLabel = "Consiento que Mimoia trate mis datos de salud",
 }: {
   checked: boolean
   onChange: (checked: boolean) => void
   disabled?: boolean
+  /** A second box on the same screen (the current text for a v1 consent) needs its own name. */
+  ariaLabel?: string
 }) {
   const [before] = HEALTH_CONSENT_TEXT.split("Más información en la política de privacidad.")
   return (
@@ -26,7 +29,7 @@ export function HealthConsentCheckbox({
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
-        aria-label="Consiento que Mimoia trate mis datos de salud"
+        aria-label={ariaLabel}
         className="mt-0.5 h-5 w-5 shrink-0 accent-[#1A1612]"
       />
       <span>

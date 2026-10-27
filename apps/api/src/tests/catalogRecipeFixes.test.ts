@@ -72,7 +72,7 @@ describe('«Arroz al caldero» in the catalogue', () => {
   it('the new ingredients carry the right allergen tags', () => {
     const tags = (n: string) => (ingredientByName.get(n) as { allergenTags?: string[] }).allergenTags
     expect(tags('lubina')).toEqual(['pescado'])
-    expect(tags('caldo de pescado')).toEqual(['pescado'])
+    expect(tags('caldo de pescado')).toEqual(['apio', 'pescado']) // PRO-363
     expect(tags('alioli')).toEqual(['huevo'])
     expect(tags('ñora')).toEqual([])
     expect(tags('tomate concentrado')).toEqual([])

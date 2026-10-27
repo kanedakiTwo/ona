@@ -12,6 +12,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 - On iOS Safari the bottom sheet shows visual instructions ("Toca compartir → Añadir a pantalla de inicio") since iOS doesn't fire `beforeinstallprompt`
 - If the user dismisses the prompt, it isn't shown again for 30 days; if the user installs the app, the prompt isn't shown again for 365 days
 - Once installed, the app launches in standalone mode (no browser chrome), with the OS static splash image (cream, see Asset Requirements), and the status bar tinted to match the active section
+- On Android there is also an app (Google Play and an internal build), a TWA of this same web: see [Android app](./android-app.md)
 - Each day the installed app is opened with a signed-in account, it tells the API once (`POST /usage/app-opened`, no body) so `/admin/metrics` can count households using the installed app per device — aggregate only, see [Metrics](./metrics.md) «App instalada y avisos»
 
 ### Offline behavior (hybrid)
@@ -136,6 +137,7 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 ## Related specs
 
 - [Design System](./design-system.md) — theme colors, fonts, safe-area conventions
+- [Android app](./android-app.md) — the TWA that wraps this web; `/.well-known/assetlinks.json` lives in `public/`
 - [Auth](./auth.md) — `start_url` behavior depends on auth state
 - [Recipes](./recipes.md) — cooking mode wake lock attaches to recipe detail; favorite toggle is queued offline
 - [Shopping](./shopping.md) — share via Web Share, offline mutation queue

@@ -18,6 +18,7 @@ import {
   planBatchPublish,
   reviewDecision,
   scaleToHouseServings,
+  strayDietWords,
   type BatchRecipe,
   type CatalogDraftInput,
   type CatalogImportDeps,
@@ -171,6 +172,53 @@ describe('import of three pages (PRO-154)', () => {
     const [out] = await importCatalogBatch([thin], 't', deps)
     expect(out).toMatchObject({ status: 'draft', auditIssues: ['pocos_ingredientes'] })
     expect(saved[0].catalogSource.auditIssues).toEqual(['pocos_ingredientes'])
+  })
+})
+
+/**
+ * 2026-10-25 («Jerusalem», 11 of 109 rejected): the house rewrite called the
+ * aubergine's flesh «la carne», a peach stone «el hueso», pressed with «la yema
+ * de los dedos» and named the cookies of a cookie recipe «galletas»; the
+ * reviewer read each as an unlisted meat, egg or gluten (PRO-268). Like a
+ * copied phrase, that is the rewrite's doing: one more try, told which words
+ * to avoid. A word the source steps already use is the source's, not retried.
+ */
+describe('words of the rewrite that read as unlisted ingredients', () => {
+  const AUBERGINE: CatalogDraftInput = {
+    name: 'Berenjena asada con yogur de la prueba',
+    servings: 4,
+    ingredients: [
+      { name: 'berenjena', quantity: 800, unit: 'g' },
+      { name: 'yogur natural', quantity: 200, unit: 'g' },
+      { name: 'aceite de oliva virgen extra', quantity: 3, unit: 'cda' },
+    ],
+    sourceSteps: ['Berenjenas en mitades. Horno fuerte hasta blandas.', 'Pulpa fuera con cuchara; yogur y aceite.'],
+    source: { origin: 'miguel', book: 'Cuaderno azul' },
+  }
+
+  it('strayDietWords: what the rewrite names and neither the ingredients nor the source do', () => {
+    const names = AUBERGINE.ingredients.map((i) => i.name)
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne con una cuchara y mézclala con el yogur.']), names)).toEqual(['carne'])
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne de la berenjena y mézclala con el yogur.']), names)).toEqual([])
+    // Already in the source: not the rewrite's doing.
+    expect(strayDietWords(['Añade el chorizo.'], rewriteFor(AUBERGINE, ['Incorpora el chorizo al final.']), names)).toEqual([])
+  })
+
+  it('rewrites once more, avoiding the word, and saves the second try', async () => {
+    const avoided: Array<string[] | undefined> = []
+    const { deps, saved } = fakeDeps({
+      rewrite: async (d, opts) => {
+        avoided.push(opts.avoidWords)
+        return rewriteFor(d, opts.avoidWords?.length
+          ? ['Asa las berenjenas en mitades hasta que estén blandas.', 'Vacía la pulpa y mézclala con el yogur y el aceite.']
+          : ['Asa las berenjenas en mitades hasta que estén blandas.', 'Saca la carne y mézclala con el yogur y el aceite.'])
+      },
+    })
+    const [out] = await importCatalogBatch([AUBERGINE], 't', deps)
+    expect(out.status).toBe('draft')
+    expect(avoided).toEqual([undefined, ['carne']])
+    expect(saved[0].steps.map((s) => s.text).join(' ')).toContain('pulpa')
+    expect(rewriteMessage(AUBERGINE, [], ['carne'])).toContain('«carne»')
   })
 })
 

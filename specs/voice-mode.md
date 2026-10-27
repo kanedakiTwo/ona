@@ -2,7 +2,7 @@
 
 Talking to Mimo, the assistant, from the floating companion on any signed-in page. Since decision D-023 (2026-10-09) voice is not a separate mode: spoken and typed turns go to the **same Claude assistant** (`POST /assistant/:userId/chat`), in the same panel, with the same conversation. The panel itself is described in [Advisor](./advisor.md).
 
-**Status: shipped (D-023, 2026-10-09).** Voice is record → transcribe → the same chat → read aloud; there is no realtime voice model. Transcription needs `OPENAI_API_KEY`; the ElevenLabs voice needs `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICES` (set in production and staging since 2026-10-09 with a single voice, Miguel's clone; unset → the browser voice reads replies). Mimo opens only by tapping its floating button: there is no spoken activation phrase (removed by D-032, 2026-10-10).
+**Status: shipped (D-023, 2026-10-09).** Voice is record → transcribe → the same chat → read aloud; there is no realtime voice model. Transcription needs at least one of `GROQ_API_KEY`, `AIKIT_API_KEY` or `OPENAI_API_KEY` (the chain in step 2); the ElevenLabs voice needs `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICES` (set in production and staging since 2026-10-09 with a single voice, Miguel's clone; unset → the browser voice reads replies). Mimo opens only by tapping its floating button: there is no spoken activation phrase (removed by D-032, 2026-10-10).
 
 ## User Capabilities
 
@@ -27,7 +27,12 @@ Card «Voz» on `/profile` (`data-testid="profile-mimo-voice"`, with a status li
 ## How a spoken turn works
 
 1. **Record** (`useRecorder`): MediaRecorder + an analyser on the mic stream (echo cancellation, noise suppression, auto gain). Voice = RMS above 0.025. The turn ends ~1.3 s after speech stops; nobody speaking within 8 s → nothing is sent; 30 s hard cap. Format: webm/opus, mp4 or ogg, whichever the browser supports.
-2. **Transcribe**: `POST /stt` (auth, 60 requests/min, monthly spend cap; multipart `audio` ≤ 10 MB, `audio/*` only) → OpenAI transcription (`OPENAI_TRANSCRIBE_MODEL`, Spanish prompt about menus and recipes) → `{ text }`. Cost feature `mimo_voice_transcription`. Empty text in hands-free → listen again.
+2. **Transcribe**: `POST /stt` (auth, 60 requests/min, monthly spend cap; multipart `audio` ≤ 10 MB, `audio/*` only) → the transcription chain of `services/stt.ts` (2026-10-25, also for WhatsApp voice notes) → `{ text }`. The first provider configured transcribes; when it fails or hears nothing, the next one tries:
+   1. **Groq** (`GROQ_API_KEY`, free plan): Whisper `GROQ_TRANSCRIBE_MODEL` (default `whisper-large-v3-turbo`), language `es`, the Spanish prompt about menus and recipes, `verbose_json`. A transcript whose every segment is silence by Whisper's rule (`no_speech_prob` > 0.6 and `avg_logprob` < −1) counts as nothing heard. Takes flac, mp3, mp4, m4a, ogg, wav and webm up to 25 MB.
+   2. **AiKit** (`AIKIT_API_KEY`; `AIKIT_TRANSCRIBE_MODEL`, default `google/gemini-3.8-flash`, empty = off): AiKit's chat API with the audio as an `image_url` data URI (its `input_audio` and `file` parts answer 400), temperature 0, literal-transcription instructions, `[SIN_VOZ]` when there is no voice. Takes ogg/opus, webm/opus, mp4, mp3, wav and flac as they come (no conversion: the API container has no ffmpeg). An answer with 0 tokens used (no text, or a cut-off one) is asked once more; notes over 10 MB skip it. **Reserve only:** given background noise and no voice it writes a plausible sentence nobody said («Un plátano», «Ponme para cenar el martes merluza…»), so it is not asked after Groq or OpenAI heard nothing.
+   3. **OpenAI** (`OPENAI_API_KEY`): `OPENAI_TRANSCRIBE_MODEL` (`gpt-4o-transcribe`), language `es` and the same prompt.
+
+   Each call is one cost row (feature `mimo_voice_transcription`) with the provider and model that transcribed. Everyone failing → 502; everyone hearing nothing → empty text. Empty text in hands-free → listen again.
 3. **Answer**: the text goes to `POST /assistant/:userId/chat` with `mode: 'voice'` and the page path, like any typed turn (same history, skills, budget).
 4. **Speak**: `POST /tts { text, voice }` (ElevenLabs). The API strips Markdown/links/emoji, says abbreviations in full (`spokenUnits`: «10 min» → «10 minutos», «1 cda» → «1 cucharada», «10-15 min» → «de 10 a 15 minutos», «180 °C» → «180 grados», «4,99 €», «%», «p. ej.», «aprox.»; the conjunction in «7 u 8» stays), cuts at ~1.200 characters on a sentence end, streams MP3 and records the characters (`chat_tts`, `elevenlabs/<model>`, per 1,000 chars). Since 2026-10-09 production and staging offer a single voice, Miguel's clone («Miguel»), so no picker shows (the picker only appears with several voices). Off or failing → the browser's built-in Spanish voice (`speechSynthesis`).
 5. **Hands-free**: once playback ends, back to step 1. A silent turn (nobody spoke) sends nothing; in cook mode it goes straight back to step 1, elsewhere it ends hands-free.
@@ -36,7 +41,7 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 
 ## Privacy and permissions
 
-- Audio is recorded only after a tap on the mic (or, in «Manos libres», after Mimo's previous reply) and only for one turn; it goes to the API and on to OpenAI for transcription, and is not stored.
+- Audio is recorded only after a tap on the mic (or, in «Manos libres», after Mimo's previous reply) and only for one turn; it goes to the API and on to the transcription provider (Groq; AiKit or OpenAI when Groq fails or isn't set up), and is not stored.
 - Nothing listens in the background: the mic is only open while Mimo's panel shows «Te escucho…».
 - Mic permission is asked by the browser on first use.
 - Spoken turns are not saved as transcripts. The `voice_transcripts` table holds only sessions from the old voice mode (before 2026-10-09) and is no longer written; the admin "Voz" tab only shows those.
@@ -47,7 +52,8 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 - If the mic is denied or missing, the recording ends without a message and Mimo goes back to idle.
 - Once you have spoken, the turn closes after 1.3 s of silence when you tapped the mic, 2.5 s in hands-free (PRO-87); one turn lasts 30 s at most.
 - Outside cook mode, hands-free gives up after 8 s of silence; tap the mic to resume. In cook mode it keeps listening (`handsFreeAfterSilence` in `lib/mimoHandsFree.ts`) until turned off or the user leaves `/cook`; a mic error (no permission, no device) always stops it.
-- Without `OPENAI_API_KEY`, `POST /stt` answers 503 `STT_DISABLED`; a transcription error is 502 «No te he entendido. Prueba otra vez.», shown in the panel.
+- With none of `GROQ_API_KEY`, `AIKIT_API_KEY` (+ `AIKIT_TRANSCRIBE_MODEL`) or `OPENAI_API_KEY`, `POST /stt` answers 503 `STT_DISABLED`; when every configured provider fails it is 502 «No te he entendido. Prueba otra vez.», shown in the panel.
+- Known limitation: when Groq is not set up or fails, AiKit (Gemini) transcribes, and a turn with only background noise (a loud kitchen in hands-free) can come back as a sentence nobody said. Groq's free plan allows about 2,000 requests and 8 h of audio a day; over it (429) the next provider takes over.
 - Library ElevenLabs voices need a paid plan (free → 402, so the browser voice is used).
 - No voice-minutes quota: spoken turns cost one transcription + one chat turn (+ TTS characters), all under the monthly € cap (`USER_MONTHLY_SPEND_CAP_EUR`) and the chat budget ([Advisor](./advisor.md) → Cost guardrail).
 - All prompts and speech are Spanish (`es-ES`).
@@ -75,5 +81,5 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 - [apps/web/src/app/onboarding/voz/page.tsx](../apps/web/src/app/onboarding/voz/page.tsx) — voice onboarding loop
 - [apps/api/src/routes/stt.ts](../apps/api/src/routes/stt.ts), [apps/api/src/services/stt.ts](../apps/api/src/services/stt.ts) — `POST /stt`
 - [apps/api/src/routes/tts.ts](../apps/api/src/routes/tts.ts), [apps/api/src/services/tts.ts](../apps/api/src/services/tts.ts) — `GET /tts/voices`, `POST /tts`
-- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICES`, `ELEVENLABS_MODEL`
-- Tests: `apps/api/src/tests/spendCap.test.ts` (stt/tts gated), `mimoHandsFreeCook.test.ts`; e2e `apps/web/e2e/cook-handsfree.spec.ts`, `voice-toggle.spec.ts` (read-aloud switch; no «Escuchar» switch on `/profile`), `chat-voice.spec.ts`, `mimo-companion.spec.ts`
+- [apps/api/src/config/env.ts](../apps/api/src/config/env.ts) — `GROQ_API_KEY`, `GROQ_TRANSCRIBE_MODEL`, `AIKIT_TRANSCRIBE_MODEL`, `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICES`, `ELEVENLABS_MODEL`
+- Tests: `apps/api/src/tests/sttChain.test.ts` (transcription chain), `spendCap.test.ts` (stt/tts gated), `mimoHandsFreeCook.test.ts`; e2e `apps/web/e2e/cook-handsfree.spec.ts`, `voice-toggle.spec.ts` (read-aloud switch; no «Escuchar» switch on `/profile`), `chat-voice.spec.ts`, `mimo-companion.spec.ts`

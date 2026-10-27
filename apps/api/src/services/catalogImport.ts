@@ -31,6 +31,7 @@ import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
 import { isCookingMediumNote, isFatName } from './nutrition/cookingMedium.js'
+import { unlistedDietMentions } from './stepDietMentions.js'
 import type { CatalogSourceInfo } from '../db/schema.js'
 
 export type CatalogOrigin = 'miguel' | 'cocina'
@@ -87,6 +88,14 @@ export interface RewrittenStep {
 }
 
 /** What the house rewrite returns. */
+/** What a second try of the house rewrite is told to avoid. */
+export interface RewriteOptions {
+  /** Runs of words the first try copied from the source. */
+  avoidPhrases?: string[]
+  /** Words the first try used that read as an ingredient the recipe doesn't have. */
+  avoidWords?: string[]
+}
+
 export interface CatalogRewrite {
   steps: RewrittenStep[]
   meals: string[]
@@ -139,7 +148,7 @@ export interface PersistDraftInput {
 export interface CatalogImportDeps {
   /** Names already in the catalogue (published and drafts). */
   catalogNames: () => Promise<string[]>
-  rewrite: (draft: CatalogDraftInput, opts: { avoidPhrases?: string[] }) => Promise<CatalogRewrite>
+  rewrite: (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite>
   /** Same order as the input; ingredientId null = couldn't match nor create. */
   matchIngredients: (recipeName: string, ings: DraftIngredient[]) => Promise<MatchedIngredient[]>
   persistDraft: (input: PersistDraftInput) => Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }>
@@ -171,6 +180,20 @@ function words(text: string): string[] {
  * Pure: runs of `n` words in a row that a written text shares with the
  * source (accents and punctuation ignored). Empty = written in our words.
  */
+/**
+ * Pure: meat, fish, shellfish or allergen words the rewrite uses and neither
+ * the ingredients nor the source steps account for («saca la carne» of an
+ * aubergine, «el hueso» of a peach, «galletas» in a cookie recipe). The
+ * reviewer would reject them (PRO-268); being the rewrite's own words, one
+ * more try avoiding them usually fixes it. A word the source already uses is
+ * the source's problem and stays for the reviewer.
+ */
+export function strayDietWords(sourceSteps: readonly string[], rewrite: CatalogRewrite, ingredientNames: readonly string[]): string[] {
+  const inSource = new Set(unlistedDietMentions(sourceSteps, ingredientNames).map((m) => m.term))
+  const inRewrite = unlistedDietMentions(rewrite.steps.map((s) => s.text), ingredientNames).map((m) => m.term)
+  return [...new Set(inRewrite)].filter((t) => !inSource.has(t))
+}
+
 export function copiedPhrases(source: readonly string[], written: readonly string[], n: number = COPY_RUN_WORDS): string[] {
   const grams = new Set<string>()
   for (const s of source) {
@@ -399,6 +422,13 @@ export async function importCatalogRecipe(
     rewrite = await deps.rewrite(forFour, { avoidPhrases: copied })
     copied = copiedPhrases(draft.sourceSteps, [...rewrite.steps.map((s) => s.text), rewrite.tips ?? ''])
     if (copied.length > 0) return { ...base, status: 'rejected', reason: 'copia_del_libro', detail: `${copied.length} frase(s) iguales al libro` }
+  }
+  const stray = strayDietWords(draft.sourceSteps, rewrite, ingredients.map((i) => i.name))
+  if (stray.length > 0) {
+    deps.log?.(`  ↻ ${draft.name}: reescribiendo otra vez (${stray.join(', ')}: no está en los ingredientes)`)
+    const again = await deps.rewrite(forFour, { avoidWords: stray })
+    // A second try that copies the source isn't better: the first goes on to the reviewer.
+    if (copiedPhrases(draft.sourceSteps, [...again.steps.map((s) => s.text), again.tips ?? '']).length === 0) rewrite = again
   }
   if (rewrite.steps.length === 0) return { ...base, status: 'rejected', reason: 'no_es_receta', detail: 'sin pasos' }
 

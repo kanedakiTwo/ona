@@ -29,13 +29,14 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { isTaperVariant, type DayMenu, type Dish, type LockedSlots, type RecipeDish } from '@ona/shared'
 import { db } from '../db/connection.js'
-import { ingredients, menus, recipeIngredients, recipes, shoppingLists, users } from '../db/schema.js'
+import { ingredients, menus, recipeIngredients, recipeSteps, recipes, shoppingLists, users } from '../db/schema.js'
 import { compileRestrictions, violatesRestrictions, type RestrictableRecipe } from './dietaryRestrictions.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { madridParts, madridWeekStart } from './madridTime.js'
 import { recordMenuEdits, slotDiff, type MenuEditChange } from './menuEdits.js'
 import { loadMenuRestrictions, loadSlotPickContext, slotPickOptions, type SlotPickContext } from './menuSlotPick.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
+import { unlistedDietMentions } from './stepDietMentions.js'
 import { generateShoppingList, mergeStaplesIntoItems, withLeftoverBatches } from './shoppingList.js'
 import { listActiveStaplesForHousehold } from './staplesStore.js'
 import { clearPendingForMenu, enqueuePrepAlertsForMenu } from './notificationScheduler.js'
@@ -65,9 +66,14 @@ export interface ReviewResult {
 
 type RecipeForCheck = RestrictableRecipe & { id: string; name: string }
 
-async function loadRecipesForCheck(ids: string[]): Promise<Map<string, RecipeForCheck>> {
+/** A dish id that isn't a uuid (old data) would make the `IN (…)` query fail (as in PRO-345). */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Each recipe as the matcher sees it: allergens, ingredients and what the steps name (PRO-346). */
+async function loadRecipesForCheck(allIds: string[]): Promise<Map<string, RecipeForCheck>> {
+  const ids = allIds.filter((id) => UUID.test(id))
   if (ids.length === 0) return new Map()
-  const [rows, ingRows] = await Promise.all([
+  const [rows, ingRows, stepRows] = await Promise.all([
     db.select({ id: recipes.id, name: recipes.name, allergens: recipes.allergens }).from(recipes).where(inArray(recipes.id, ids)),
     db
       .select({
@@ -79,9 +85,22 @@ async function loadRecipesForCheck(ids: string[]): Promise<Map<string, RecipeFor
       .from(recipeIngredients)
       .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
       .where(inArray(recipeIngredients.recipeId, ids)),
+    db
+      .select({ recipeId: recipeSteps.recipeId, index: recipeSteps.index, text: recipeSteps.text })
+      .from(recipeSteps)
+      .where(inArray(recipeSteps.recipeId, ids)),
   ])
   return new Map(
-    rows.map((r) => [r.id, { id: r.id, name: r.name, allergens: r.allergens ?? [], ingredients: ingRows.filter((i) => i.recipeId === r.id) }]),
+    rows.map((r): [string, RecipeForCheck] => {
+      const lines = ingRows.filter((i) => i.recipeId === r.id)
+      const steps = stepRows
+        .filter((st) => st.recipeId === r.id)
+        .sort((a, b) => a.index - b.index)
+        .map((st) => st.text)
+      // PRO-346: meat, fish or allergens the steps name and the ingredients don't, like `loadMatchableRecipes`.
+      const stepMentions = unlistedDietMentions(steps, lines.map((i) => i.ingredientName)).map(({ term, category }) => ({ term, category }))
+      return [r.id, { id: r.id, name: r.name, allergens: r.allergens ?? [], ingredients: lines, stepMentions }]
+    }),
   )
 }
 
@@ -93,6 +112,12 @@ function recipeIdsOf(days: DayMenu[]): Set<string> {
 
 function withoutConflict(d: RecipeDish): RecipeDish {
   const { restrictionConflict: _drop, ...rest } = d
+  return rest
+}
+
+/** Another recipe in the dish's place: neither the warning nor PRO-345's «En lugar de …» (it named the old one) stay. */
+function withoutMarks(d: RecipeDish): Omit<RecipeDish, 'restrictionConflict' | 'replaced' | 'why'> {
+  const { restrictionConflict: _c, replaced: _r, why: _w, ...rest } = d
   return rest
 }
 
@@ -154,15 +179,14 @@ async function reviewMenu(menu: MenuRow, requesterId: string, now: Date, result:
           let picked: RecipeDish | null = null
           if (dish.variant === 'leftover') {
             const src = dish.leftoverOf ? replacedAt.get(`${dish.leftoverOf.day}:${dish.leftoverOf.meal}:${dish.leftoverOf.dishPosition}`) : undefined
-            if (src) picked = { ...withoutConflict(dish), recipeId: src.recipeId, recipeName: src.recipeName, course: src.course ?? null }
+            if (src) picked = { ...withoutMarks(dish), recipeId: src.recipeId, recipeName: src.recipeName, course: src.course ?? null }
           } else {
             // Like «Cambiar»: every recipe of the week except this slot's is taken.
             const used = recipeIdsOf(days.map((d, di) => (di === dayIndex ? { ...d, [meal]: { dishes: next.filter((x) => x !== dish) } } : d)))
             const { pool, options } = await slotPickOptions(await getCtx(), pickMenu, dayIndex, meal, used)
             const found = findForCourse(pool, dish.course ?? null, options)
             if (found && !violatesRestrictions(found, rules)) {
-              const { restrictionConflict: _c, why: _w, ...keep } = dish
-              picked = { ...keep, kind: 'recipe', recipeId: found.id, recipeName: found.name, course: found.course ?? null }
+              picked = { ...withoutMarks(dish), kind: 'recipe', recipeId: found.id, recipeName: found.name, course: found.course ?? null }
             }
           }
           if (!picked) {

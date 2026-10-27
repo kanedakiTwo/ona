@@ -41,6 +41,32 @@ export function madridWeekStart(now = new Date()): string {
 }
 
 /**
+ * Monday `weeks` weeks after this one in Madrid (`YYYY-MM-DD`; 0 = this
+ * week). Never from `new Date().getDay()` in the runner: CI runs in UTC, and
+ * on Monday from 00:00 to 02:00 Madrid (01:00 in winter) the runner is still
+ * on Sunday, a week behind the app.
+ */
+export function madridMondayIn(weeks: number, now = new Date()): string {
+  const monday = new Date(`${madridWeekStart(now)}T10:00:00Z`)
+  monday.setUTCDate(monday.getUTCDate() + 7 * weeks)
+  return iso(monday)
+}
+
+/**
+ * A day of the pinned week for dishes that must reach the shopping list from
+ * the pinned day at any hour: the day after the pinned one, or the pinned day
+ * itself when the day after is Madrid's real «today». The API trims the meals
+ * of its own «today» that are already past (lunch from 16:00, dinner from
+ * 23:00 Madrid) and `pinClock` does not reach it; the pinned week is always
+ * the real one, so only the real «today» can be trimmed. (With
+ * `E2E_WEEKDAY=6` it is Sunday itself.)
+ */
+export function listSafeDay(weekday = pinnedWeekday(), now = new Date()): number {
+  const next = weekday < 6 ? weekday + 1 : weekday
+  return next === madridTodayIdx(now) ? weekday : next
+}
+
+/**
  * Monday of the current week in Madrid (`YYYY-MM-DD`, the menu's `weekStart`)
  * and the pinned day of that week at 12:00 Madrid (10:00 UTC in summer time,
  * 11:00 in winter: midday either way, far from any day boundary).

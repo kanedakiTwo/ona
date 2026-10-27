@@ -469,7 +469,8 @@ function pickStrings(o: unknown, keys: readonly string[]): Record<string, string
 
 const WAITLIST_TOTALS = ['entries', 'active', 'last7Days', 'wantsWhatsapp', 'newsletterOptIns', 'inTargetSegment', 'referredSignups'] as const
 const BATCH_COUNTS = ['waiting', 'waitingInTarget', 'selected', 'selectedInTarget', 'selectedReferrers', 'pulledInByReferrer'] as const
-const WAITLIST_DEFINITION_KEYS = ['active', 'last7Days', 'byDay', 'segments', 'sources', 'targetSegment', 'referredSignups', 'newsletterOptIns', 'suggestedNextBatch'] as const
+const WAITLIST_DEFINITION_KEYS = ['active', 'last7Days', 'byDay', 'segments', 'sources', 'targetSegment', 'referredSignups', 'invitations', 'newsletterOptIns', 'suggestedNextBatch'] as const
+const INVITATION_COUNTS = ['count', 'inTarget'] as const
 
 function pricingForAgents(raw: unknown) {
   const p = asLoose(raw)
@@ -551,6 +552,12 @@ export function waitlistForAgents(report: object) {
           referredSignups: num(referrals.referredSignups) ?? undefined,
           referrers: num(referrals.referrers) ?? undefined,
           topReferrers: arr(referrals.topReferrers).map((t) => ({ count: num(asLoose(t).count) })),
+        }
+      : undefined,
+    invitations: present('invitations')
+      ? {
+          invita: pickNumbers(asLoose(r.invitations).invita, INVITATION_COUNTS),
+          desconocidoPorInvitacion: pickNumbers(asLoose(r.invitations).desconocidoPorInvitacion, INVITATION_COUNTS),
         }
       : undefined,
     batches: present('batches')

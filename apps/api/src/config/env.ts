@@ -278,7 +278,26 @@ export const env = {
   TELEGRAM_WEBHOOK_SECRET: (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim(),
   TELEGRAM_BOT_USERNAME: (process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, ''),
   /**
-   * OpenAI speech-to-text model for WhatsApp voice notes. Full gpt-4o-transcribe
+   * Speech-to-text (WhatsApp voice notes, Mimo's voice in the app, the voice
+   * onboarding) is a chain: Groq → AiKit → OpenAI, the first one configured
+   * first; when it fails or hears nothing, the next one tries (services/stt.ts).
+   *
+   * Groq: Whisper through its OpenAI-compatible API. Free plan with no card
+   * (about 2,000 requests and 8 h of audio a day; the org's Limits page in
+   * console.groq.com says the exact figures); list price $0.04 / hour of audio.
+   * Without the key the chain starts at AiKit.
+   */
+  GROQ_API_KEY: process.env.GROQ_API_KEY || '',
+  GROQ_TRANSCRIBE_MODEL: process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
+  /**
+   * AiKit's chat model used as the transcription reserve (same AIKIT_API_KEY as
+   * the images). Gemini hears the audio well but, given only background noise,
+   * writes a plausible sentence nobody said: reserve only. Empty string turns
+   * AiKit off for transcription (images are unaffected).
+   */
+  AIKIT_TRANSCRIBE_MODEL: process.env.AIKIT_TRANSCRIBE_MODEL ?? 'google/gemini-3.8-flash',
+  /**
+   * OpenAI speech-to-text model, last in the chain above. Full gpt-4o-transcribe
    * (≈$0.006/min): the mini model mis-heard short Spanish notes as Galician.
    */
   OPENAI_TRANSCRIBE_MODEL: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe',

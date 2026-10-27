@@ -17,7 +17,7 @@ import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
 import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, RotateCw, Snowflake, TriangleAlert, Utensils } from "lucide-react"
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
-import { isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { isTaperDish, replacedDishLine, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { DAY_MEAL_ORDER, firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
@@ -62,12 +62,19 @@ function SlotChips({
   const eaten = !!ctx.slot.eaten && !showEatenElsewhere
   // PRO-364: someone saved an allergy or diet this dish breaks and there was nothing to put instead.
   const conflict = (ctx.slot.dishes ?? []).some((d) => d.kind === "recipe" && d.restrictionConflict)
-  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && ctx.slot.servings == null && others.length === 0) return null
+  // PRO-345: Mimoia changed the dish because the recipe changed or was deleted.
+  const replaced = first?.replaced ?? null
+  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && !replaced && ctx.slot.servings == null && others.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
       {conflict && (
         <span data-testid="restriction-conflict" className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2 py-0.5 font-semibold text-terracotta-deep">
           <TriangleAlert size={11} strokeWidth={2.4} /> No encaja con las alergias o la dieta de casa · cámbialo en «···»
+        </span>
+      )}
+      {replaced && (
+        <span data-testid="dish-replaced" className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2 py-0.5 font-medium text-terracotta-deep">
+          <RotateCw size={11} /> {replacedDishLine(replaced)}
         </span>
       )}
       {eaten && (

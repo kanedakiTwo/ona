@@ -60,6 +60,8 @@ export const USAGE_EVENTS = [
   'alerts_changed',
   'whatsapp_unlinked',
   'feedback_left',
+  // PRO-1022: every Mimo tool that returned data (`props.skill` = the tool's name, `props.canal`). Never text.
+  'mimo_skill_used',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -277,17 +279,42 @@ export function trackUsageRoutes(req: Request, res: Response, next: NextFunction
 
 // ─── Mimo skills ───────────────────────────────────────────────────
 
+/** Where a Mimo conversation happens, for `mimo_skill_used.props.canal`: Telegram runs in the whatsapp mode (PRO-313). */
+export const SKILL_CANALES = ['web', 'whatsapp', 'telegram', 'voice'] as const
+export type SkillCanal = (typeof SKILL_CANALES)[number]
+
+/** Pure: the channel plus the chat app (`surface`) → `canal`. */
+export function skillCanal(channel: UsageChannel, surface?: string | null): SkillCanal {
+  return channel === 'whatsapp' && surface === 'telegram' ? 'telegram' : channel
+}
+
 /**
  * Pure: the usage events a skill result represents. Skills report "not found"
- * / "nothing changed" with `data: null` — those don't count.
+ * / "nothing changed" with `data: null` — those don't count. Every tool with
+ * data also leaves one `mimo_skill_used` (PRO-1022), named only if it is a
+ * slug (PROP_VALUE_RE): the value is always one of the tools' own names.
  */
 export function skillUsageEvents(
   skillName: string,
   result: { data?: any } | null | undefined,
   channel: UsageChannel,
   input?: any,
+  surface?: string | null,
 ): Array<{ name: UsageEventName; props?: UsageProps }> {
   if (!result || result.data == null) return []
+  const used: Array<{ name: UsageEventName; props?: UsageProps }> = PROP_VALUE_RE.test(skillName)
+    ? [{ name: 'mimo_skill_used', props: { skill: skillName, canal: skillCanal(channel, surface) } }]
+    : []
+  return [...actionSkillEvents(skillName, result, channel, input), ...used]
+}
+
+/** Pure: the events of the tools that stand for a product action (menu, list, recipe…). */
+function actionSkillEvents(
+  skillName: string,
+  result: { data?: any },
+  channel: UsageChannel,
+  input?: any,
+): Array<{ name: UsageEventName; props?: UsageProps }> {
   switch (skillName) {
     case 'generate_weekly_menu':
       return [{ name: 'menu_generated' }]
@@ -325,13 +352,13 @@ export function skillUsageEvents(
 /** Assistant / voice tool runners call this after a skill ran. */
 export function recordSkillUsage(
   skillName: string,
-  ctx: { userId: string; channel?: string },
+  ctx: { userId: string; channel?: string; surface?: string },
   result: { data?: unknown } | null | undefined,
   input?: unknown,
 ): void {
   try {
     const channel = channelOfMode(ctx.channel)
-    for (const ev of skillUsageEvents(skillName, result, channel, input)) {
+    for (const ev of skillUsageEvents(skillName, result, channel, input, ctx.surface)) {
       trackEvent(ev.name, { userId: ctx.userId, channel, props: ev.props })
     }
   } catch (err: any) {

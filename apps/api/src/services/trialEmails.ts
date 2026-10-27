@@ -11,12 +11,14 @@
 import { and, isNull, sql } from 'drizzle-orm'
 import {
   BRAND_NAME,
+  CREATOR_TRIAL_DAYS,
   LAUNCH_DATE,
   PAID_ACCESS_STATUSES,
   TRIAL_DAYS,
   TRIAL_ENDING_NOTICE_DAYS,
   accountAccess,
   planByKey,
+  trialDaysFor,
   trialLastDayLabel,
   type AccountAccess,
 } from '@ona/shared'
@@ -26,9 +28,14 @@ import { households } from '../db/schema.js'
 import { renderBrandEmail, sendEmail, type EmailMessage, type EmailResult } from './email.js'
 import { MIGUEL, brandAssets } from './emailBrand.js'
 import { isBeta } from './billing.js'
+import { creatorRefsSql } from './creatorTrial.js'
 import { madridParts } from './madridTime.js'
 
-export function trialEndingEmail(i: { email: string; access: Pick<AccountAccess, 'trialLastDay' | 'daysLeft'>; publicUrl: string }): EmailMessage {
+export function trialEndingEmail(i: {
+  email: string
+  access: Pick<AccountAccess, 'trialLastDay' | 'daysLeft'> & Partial<Pick<AccountAccess, 'trialDays'>>
+  publicUrl: string
+}): EmailMessage {
   const web = i.publicUrl.replace(/\/+$/, '')
   const day = trialLastDayLabel(i.access)
   const left = i.access.daysLeft ?? TRIAL_ENDING_NOTICE_DAYS
@@ -41,7 +48,7 @@ export function trialEndingEmail(i: { email: string; access: Pick<AccountAccess,
     heading: leftWords,
     paragraphs: [
       'Hola:',
-      `Tu prueba de ${TRIAL_DAYS} días en ${BRAND_NAME} dura hasta el ${day}, incluido. Hasta entonces lo tienes todo, como hasta ahora.`,
+      `Tu prueba de ${i.access.trialDays ?? TRIAL_DAYS} días en ${BRAND_NAME} dura hasta el ${day}, incluido. Hasta entonces lo tienes todo, como hasta ahora.`,
       `Si después quieres seguir generando menús y hablando con Mimo, elige un plan antes de esa fecha. Esencial cuesta ${esencial} y Plus ${plus}, para todo tu hogar e IVA incluido.`,
       'Si no eliges ninguno, no se te cobra nada. Tu cuenta queda en pausa: tu menú, tus recetas y tu lista siguen ahí, no se borra nada, y puedes elegir un plan cuando quieras.',
     ],
@@ -59,6 +66,8 @@ export interface TrialEmailCandidate {
   householdId: string
   householdCreatedAt: Date
   ownerEmail: string
+  /** 28 with a creator's link (PRO-353); `TRIAL_DAYS` when left out. */
+  trialDays?: number
 }
 
 export interface TrialEmailRepo {
@@ -73,13 +82,14 @@ export function createDbTrialEmailRepo(db: typeof defaultDb = defaultDb): TrialE
   return {
     async listCandidates(now) {
       // Trial start = max(created, launch); the window opens 14 − 2 days after it
-      // (a day of margin on each side: the exact rule is re-checked in JS).
+      // (28 − 2 with a creator's link, PRO-353), with a day of margin on each
+      // side: the exact rule is re-checked in JS.
       const launch = new Date(`${LAUNCH_DATE}T00:00:00+01:00`)
-      const from = new Date(now.getTime() - (TRIAL_DAYS + 1) * 86_400_000)
+      const from = new Date(now.getTime() - (CREATOR_TRIAL_DAYS + 1) * 86_400_000)
       const to = new Date(now.getTime() - (TRIAL_DAYS - TRIAL_ENDING_NOTICE_DAYS - 1) * 86_400_000)
       const paid = sql.join(PAID_ACCESS_STATUSES.map((s) => sql`${s}`), sql`, `)
       const rows = await db.execute(sql`
-        SELECT h.id AS "householdId", h.created_at AS "householdCreatedAt", u.email AS "ownerEmail"
+        SELECT h.id AS "householdId", h.created_at AS "householdCreatedAt", u.email AS "ownerEmail", ${creatorRefsSql('h')} AS "creatorRefs"
         FROM households h
         JOIN users u ON u.id = h.owner_id
         WHERE h.trial_ending_email_at IS NULL
@@ -90,10 +100,11 @@ export function createDbTrialEmailRepo(db: typeof defaultDb = defaultDb): TrialE
           )
         LIMIT 1000
       `)
-      return (rows.rows as Array<{ householdId: string; householdCreatedAt: Date | string; ownerEmail: string }>).map((r) => ({
+      return (rows.rows as Array<{ householdId: string; householdCreatedAt: Date | string; ownerEmail: string; creatorRefs: string[] | null }>).map((r) => ({
         householdId: r.householdId,
         householdCreatedAt: new Date(r.householdCreatedAt),
         ownerEmail: r.ownerEmail,
+        trialDays: trialDaysFor(r.creatorRefs),
       }))
     },
     async claim(householdId, at) {
@@ -117,8 +128,8 @@ export interface TrialEmailDeps {
 }
 
 /** Due = in trial (from launch day) with at most 2 days left after today. */
-export function isTrialEndingEmailDue(householdCreatedAt: Date, now: Date): AccountAccess | null {
-  const access = accountAccess({ householdCreatedAt, paid: false, now })
+export function isTrialEndingEmailDue(householdCreatedAt: Date, now: Date, trialDays?: number): AccountAccess | null {
+  const access = accountAccess({ householdCreatedAt, paid: false, now, trialDays })
   return access.state === 'trial' && access.daysLeft !== null && access.daysLeft <= TRIAL_ENDING_NOTICE_DAYS ? access : null
 }
 
@@ -137,7 +148,7 @@ export async function sendTrialEndingEmails(now: Date, deps: TrialEmailDeps) {
   const out = { sent: 0, skipped: 0, failed: 0 }
   if (isBeta(now) || !isSendingHour(now)) return out
   for (const c of await deps.repo.listCandidates(now)) {
-    const access = isTrialEndingEmailDue(c.householdCreatedAt, now)
+    const access = isTrialEndingEmailDue(c.householdCreatedAt, now, c.trialDays)
     if (!access || !c.ownerEmail) continue
     if (!(await deps.repo.claim(c.householdId, now))) continue
     const r = await deps.sendEmail(trialEndingEmail({ email: c.ownerEmail, access, publicUrl: deps.publicUrl }))

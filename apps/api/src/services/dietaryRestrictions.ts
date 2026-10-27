@@ -11,11 +11,14 @@
  *     name-based inference (conservative: a false positive costs a recipe, a
  *     false negative costs a reaction);
  *   - ingredient terms (whole-word, accent/case-insensitive, plural-tolerant),
- *     for diets (vegetariano, vegano, sin cerdo) and anything free-text.
+ *     for diets (vegetariano, vegano, sin cerdo) and anything free-text;
+ *   - two rules of their own: alcohol («sin alcohol») and halal (pork and
+ *     its products, blood, gelatine and lard of unknown origin, alcohol).
  *
  * Spec: specs/menus.md ("Restrictions & allergies").
  */
 import { ALLERGEN_TAGS, inferAllergenTagsFromName, nameHasTerm, type AllergenTag } from './nutrition/allergens.js'
+import type { DietCategory, DietMention } from './stepDietMentions.js'
 
 export function normalizeText(s: string): string {
   return s
@@ -116,6 +119,33 @@ const PORK_TERMS = [
   'prosciutto', 'salami', 'espinazo',
 ]
 
+// Halal (2026-10-25, Miguel: «que la app sea utilizable por musulmanes»).
+// Beyond pork and alcohol: blood, wild boar, and what usually carries pork
+// without saying so — gelatine, lard, sausages and cured or mixed minced
+// meat. An ingredient whose name says «halal» («salchichas halal», «gelatina
+// halal») is fine, and so are «lomos de salmón» or «manteca de cacao». Meat
+// itself stays: whether it was slaughtered halal is decided at the butcher's
+// (the shop order asks for it, `shopOrders/message.ts`).
+const HARAM_TERMS = [
+  ...PORK_TERMS, 'jabali', 'sangre', 'gelatina', 'manteca', 'salchicha', 'frankfurt', 'pepperoni', 'embutido',
+  'picada mixta', 'carne picada de cerdo y ternera',
+]
+
+const NOT_HARAM = [
+  /(^|[^a-z0-9])lomos? (de |del )?(salmon|bacalao|atun|bonito|merluza|rape|corvina|lubina|dorada|caballa|pez espada|emperador|pescado|ternera|vaca|buey|cordero|pollo|pavo)/g,
+  /(^|[^a-z0-9])manteca (de )?(cacao|cacahuete|karite|coco)/g,
+  /(^|[^a-z0-9])manteca vegetal/g,
+  /(^|[^a-z0-9])naranjas? (de )?sangre/g,
+]
+
+/** True when a normalised ingredient name is not halal (alcohol aside: `nameHasAlcohol`). */
+export function nameIsHaram(normalizedName: string): boolean {
+  if (nameHasTerm(normalizedName, 'halal')) return false
+  let n = normalizedName
+  for (const re of NOT_HARAM) n = n.replace(re, ' ')
+  return HARAM_TERMS.some((t) => nameHasTerm(n, t))
+}
+
 // PRO-61 (2026-10-12, Miguel: «reglas prudentes»): cuts, offal and dishes
 // whose name doesn't say which animal («Costillas», «Rabo», «Sobras del
 // cocido») count as meat. «Cocido» only as the dish (start of the name or
@@ -136,6 +166,8 @@ const MEAT_TERMS = [
   'pularda', 'pichon', 'faisan', 'liebre', 'oca', 'ganso', 'embutido', 'fiambre', 'steak tartar',
   // Dishes made of meat.
   '^cocido', 'del cocido', 'de cocido', 'ropa vieja', 'pringa',
+  // PRO-363: «caldo de ave». Whole word, so «avena» stays vegetarian.
+  'ave',
 ]
 
 const FISH_TERMS = [
@@ -169,6 +201,10 @@ export const ALCOHOL_TERMS = [
   'vermut', 'vermu', 'cava', 'champan', 'champagne', 'whisky', 'whiskey', 'bourbon', 'ginebra', 'vodka',
   'tequila', 'orujo', 'aguardiente', 'pacharan', 'marsala', 'pedro ximenez', 'amontillado', 'sake', 'mirin',
   'calvados', 'armagnac', 'kirsch', 'amaretto', 'cointreau', 'grand marnier', 'triple seco',
+  // Anise spirits (arak in «Jerusalem», 2026-10-25) and other liqueurs and wines.
+  'arak', 'raki', 'ouzo', 'pernod', 'pastis', 'anisette', 'anis seco', 'anis dulce', 'sambuca', 'absenta',
+  'limoncello', 'baileys', 'frangelico', 'kahlua', 'malibu', 'pisco', 'mezcal', 'grappa', 'cachaca', 'prosecco',
+  'lambrusco', 'txakoli', 'sangria', 'tinto de verano', 'mistela', 'jagermeister', 'campari', 'aperol',
 ]
 
 const NOT_ALCOHOL = [
@@ -188,7 +224,11 @@ interface DietRule {
   terms: string[]
   /** Also excludes alcoholic drinks (ALCOHOL_TERMS, vinegars excepted). */
   alcohol?: boolean
+  /** Also excludes what is not halal (`nameIsHaram`). */
+  halal?: boolean
 }
+
+const HALAL: DietRule = { allergens: [], terms: [], alcohol: true, halal: true }
 
 const DIETS: Record<string, DietRule> = {
   vegetariano: { allergens: FISH_AND_SEAFOOD, terms: [...MEAT_TERMS, ...FISH_TERMS] },
@@ -200,7 +240,14 @@ const DIETS: Record<string, DietRule> = {
   pescetariana: { allergens: [], terms: MEAT_TERMS },
   carne: { allergens: [], terms: MEAT_TERMS }, // "sin carne"
   cerdo: { allergens: [], terms: PORK_TERMS },
-  halal: { allergens: [], terms: PORK_TERMS, alcohol: true },
+  halal: HALAL,
+  'comida halal': HALAL,
+  'carne halal': HALAL,
+  'solo halal': HALAL,
+  musulman: HALAL,
+  musulmana: HALAL,
+  musulmanes: HALAL,
+  musulmanas: HALAL,
   alcohol: { allergens: [], terms: [], alcohol: true }, // "sin alcohol"
   'bebidas alcoholicas': { allergens: [], terms: [], alcohol: true },
 }
@@ -255,6 +302,8 @@ export interface CompiledRestrictions {
   terms: string[]
   /** «Sin alcohol» (or halal): no alcoholic drink in the ingredients or the name. */
   alcohol: boolean
+  /** Halal: nothing `nameIsHaram` finds in the ingredients. */
+  halal: boolean
 }
 
 /**
@@ -265,6 +314,7 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
   const allergens = new Set<AllergenTag>()
   const terms = new Set<string>()
   let alcohol = false
+  let halal = false
   for (const raw of restrictions) {
     const key = restrictionKey(raw)
     if (!key) continue
@@ -274,6 +324,7 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
       diet.allergens.forEach((a) => allergens.add(a))
       diet.terms.forEach((t) => terms.add(t))
       if (diet.alcohol) alcohol = true
+      if (diet.halal) halal = true
       continue
     }
     if (MILK_ALLERGY_KEYS.has(key)) {
@@ -292,7 +343,7 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
     const key = restrictionKey(raw)
     if (key) terms.add(key)
   }
-  return { allergens, terms: [...terms], alcohol }
+  return { allergens, terms: [...terms], alcohol, halal }
 }
 
 // nameHasTerm lives in nutrition/allergens.ts (PRO-160: the peanut rule
@@ -314,24 +365,58 @@ export interface RestrictableRecipe {
      */
     containsTags?: readonly string[] | null
   }>
+  /**
+   * PRO-346: meat, fish, shellfish or allergens the steps name and the
+   * ingredients don't list (`unlistedDietMentions`, PRO-268's list for
+   * Cocina). Until Cocina fixes the recipe, each one counts as an ingredient.
+   */
+  stepMentions?: ReadonlyArray<Pick<DietMention, 'term' | 'category'>> | null
+}
+
+/** What a step mention's category means for the filter: allergen tags and a word of the name. */
+const STEP_CATEGORY: Record<DietCategory, { allergens: AllergenTag[]; word?: string }> = {
+  carne: { allergens: [], word: 'carne' },
+  pescado: { allergens: ['pescado'], word: 'pescado' },
+  marisco: { allergens: SEAFOOD, word: 'marisco' },
+  gluten: { allergens: ['gluten'] },
+  lacteos: { allergens: ['lactosa'] },
+  huevo: { allergens: ['huevo'], word: 'huevo' },
+  frutos_secos: { allergens: ['frutos_secos'] },
+  cacahuete: { allergens: ['cacahuetes'] },
+  soja: { allergens: ['soja'] },
+  sesamo: { allergens: ['sesamo'] },
+  mostaza: { allergens: ['mostaza'] },
+  apio: { allergens: ['apio'] },
+  sulfitos: { allergens: ['sulfitos'] },
+  altramuz: { allergens: ['altramuces'] },
+}
+
+/** A step mention as an ingredient: «huesos» (carne) → «hueso carne», no allergen tags. */
+function stepMentionIngredients(recipe: RestrictableRecipe): RestrictableRecipe['ingredients'] {
+  return (recipe.stepMentions ?? []).map((m) => {
+    const cat = STEP_CATEGORY[m.category]
+    return { ingredientName: cat?.word ? `${m.term} ${cat.word}` : m.term, allergenTags: cat?.allergens ?? [] }
+  })
 }
 
 /** True when the recipe contains something the compiled restrictions exclude. */
 export function violatesRestrictions(recipe: RestrictableRecipe, rules: CompiledRestrictions): boolean {
-  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol) return false
+  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal) return false
   if (rules.alcohol && recipe.name && nameHasAlcohol(normalizeText(recipe.name))) return true
   if (rules.allergens.size > 0) {
     if ((recipe.allergens ?? []).some((a) => rules.allergens.has(a as AllergenTag))) return true
   }
-  for (const ing of recipe.ingredients) {
+  const ingredients = recipe.stepMentions?.length ? [...recipe.ingredients, ...stepMentionIngredients(recipe)] : recipe.ingredients
+  for (const ing of ingredients) {
     if (rules.allergens.size > 0) {
       if ((ing.allergenTags ?? []).some((a) => rules.allergens.has(a as AllergenTag))) return true
       if (inferAllergenTagsFromName(ing.ingredientName).some((a) => rules.allergens.has(a))) return true
     }
-    if (rules.terms.length > 0 || rules.alcohol) {
+    if (rules.terms.length > 0 || rules.alcohol || rules.halal) {
       const name = normalizeText(ing.ingredientName)
       if (rules.terms.some((t) => nameHasTerm(name, t))) return true
       if (rules.alcohol && nameHasAlcohol(name)) return true
+      if (rules.halal && nameIsHaram(name)) return true
     }
     // PRO-198: what a compound ingredient contains counts as an allergen tag
     // and as a word of its name.
@@ -341,6 +426,7 @@ export function violatesRestrictions(recipe: RestrictableRecipe, rules: Compiled
       if (rules.allergens.has(tag as AllergenTag)) return true
       if (rules.terms.some((t) => nameHasTerm(tag, t))) return true
       if (rules.alcohol && nameHasAlcohol(tag)) return true
+      if (rules.halal && nameIsHaram(tag)) return true
     }
   }
   return false
@@ -355,6 +441,6 @@ export function recipeIdsBreakingRestrictions(
   restrictions: readonly string[],
 ): string[] {
   const rules = compileRestrictions(restrictions)
-  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol) return []
+  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal) return []
   return recipes.filter((r) => violatesRestrictions(r, rules)).map((r) => r.id)
 }

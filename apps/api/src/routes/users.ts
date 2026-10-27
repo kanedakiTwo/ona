@@ -19,11 +19,16 @@ import { alignHouseholdMemory } from '../services/userMemoryStore.js'
 import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import { reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
+import { readRestrictionTexts } from '../services/restrictionReader.js'
 import {
   getHealthConsent,
   grantHealthConsent,
+  assertReligionConsent,
   hasHealthConsent,
+  healthConsentCoversReligion,
+  ReligionConsentRequiredError,
   stripHealthFromTemplate,
+  withoutUncoveredReligiousDiets,
   stripHealthProfileFields,
   withdrawHealthConsent,
 } from '../services/healthConsent.js'
@@ -155,10 +160,20 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
       })
       return
     }
+    // «halal» under a v1 consent: the current text first (Legal, E-19).
+    try {
+      await assertReligionConsent(req.userId!, body.restrictions)
+    } catch (e) {
+      if (!(e instanceof ReligionConsentRequiredError)) throw e
+      res.status(403).json({ error: e.message, code: e.code })
+      return
+    }
 
+    // Restrictions saved: a former «No tengo ninguna» (PRO-347) no longer holds.
+    const noneCleared = Array.isArray(body.restrictions) && body.restrictions.length > 0 ? { allergiesNoneAt: null } : {}
     const [updated] = await db
       .update(users)
-      .set(body)
+      .set({ ...body, ...noneCleared })
       .where(eq(users.id, req.params.id))
       .returning({
         id: users.id,
@@ -327,6 +342,59 @@ router.post('/user/:id/health-consent', async (req: AuthRequest, res) => {
   }
 })
 
+// POST /user/:id/allergies-none — «No tengo ninguna» on «Tus alergias y tu
+// dieta» (PRO-347). Saying there are none stores no health data, so it needs
+// no consent; /menu stops asking (`allergiesAnswered`).
+router.post('/user/:id/allergies-none', async (req: AuthRequest, res) => {
+  try {
+    if (req.userId !== req.params.id) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const [row] = await db
+      .update(users)
+      .set({ allergiesNoneAt: new Date() })
+      .where(eq(users.id, req.params.id))
+      .returning({ allergiesNoneAt: users.allergiesNoneAt })
+    if (!row) {
+      res.status(404).json({ error: 'User not found' })
+      return
+    }
+    res.json(row)
+  } catch (err) {
+    console.error('Allergies none error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /user/:id/restrictions/read — body `{ texts: string[] }`: the free
+// texts of the allergies box read as Mimo reads them (PRO-347), nothing
+// saved. Health data: only with the consent in force.
+router.post('/user/:id/restrictions/read', async (req: AuthRequest, res) => {
+  try {
+    if (req.userId !== req.params.id) {
+      res.status(403).json({ error: 'Forbidden' })
+      return
+    }
+    const texts = req.body?.texts
+    if (!Array.isArray(texts) || texts.length > 8 || !texts.every((t) => typeof t === 'string' && t.length <= 200)) {
+      res.status(400).json({ error: 'Body must be { texts: string[] } (at most 8, 200 characters each)' })
+      return
+    }
+    if (!(await hasHealthConsent(req.userId!))) {
+      res.status(403).json({
+        error: 'Para guardar datos de salud necesitas dar tu consentimiento en tu perfil.',
+        code: 'HEALTH_CONSENT_REQUIRED',
+      })
+      return
+    }
+    res.json({ readings: await readRestrictionTexts(req.userId!, texts) })
+  } catch (err) {
+    console.error('Read restrictions error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // GET /user/:id/settings
 router.get('/user/:id/settings', async (req: AuthRequest, res) => {
   try {
@@ -357,7 +425,7 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     }
 
     const template = (await hasHealthConsent(req.params.id))
-      ? req.body.template
+      ? withoutUncoveredReligiousDiets(req.body.template, await healthConsentCoversReligion(req.params.id))
       : stripHealthFromTemplate(req.body.template)
     // Comidas fijas (PRO-218): keep only well-formed ones.
     if (template && typeof template === 'object' && !Array.isArray(template) && 'fixedMeals' in template) {

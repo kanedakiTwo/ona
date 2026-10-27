@@ -1,9 +1,14 @@
 node_modules/
 dist/
 .next/
+# next build regenerates these on every build (PRO-366)
+apps/web/next-env.d.ts
+apps/web/tsconfig.tsbuildinfo
 .turbo/
 .env
 *.local
+# Deployed commit, written by the deploy (specs/version.md)
+/VERSION_SHA
 .DS_Store
 
 # Git worktrees (isolated workspaces)
@@ -39,3 +44,9 @@ apps/web/.last-run.json
 # API on-disk caches (USDA, BEDCA, translations)
 apps/api/.cache/
 .superpowers/
+
+# Android app (apps/android, specs/android-app.md): construir.sh's output and Gradle's build dirs
+apps/android/dist/
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/

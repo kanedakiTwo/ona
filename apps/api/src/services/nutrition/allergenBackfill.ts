@@ -11,20 +11,40 @@
  * that uses it. Only those names and only that tag, so nothing a person set
  * by hand elsewhere comes back. **Additive only**: a stored tag is never
  * removed. Idempotent: the next boot finds nothing.
+ *
+ * PRO-363 (2026-10-24): same step, two more rules — a broth («caldo de ave»,
+ * «fondo oscuro de ternera»…, `isCeleryBroth`) gets «apio» and raisins
+ * («pasas») get «sulfitos».
  */
 import { eq, inArray } from 'drizzle-orm'
 import { ingredients, recipeIngredients, recipes } from '../../db/schema.js'
-import { PRO332_MILK_TERMS, inferAllergenTagsFromName, nameHasTerm, normalize } from './allergens.js'
+import {
+  PRO332_MILK_TERMS,
+  PRO363_SULFITE_TERMS,
+  inferAllergenTagsFromName,
+  isCeleryBroth,
+  nameHasTerm,
+  normalize,
+} from './allergens.js'
 
 type Db = typeof import('../../db/connection.js').db
 
-/** ['lactosa'] when a PRO-332 word in the name says milk and `stored` lacks it; else []. */
+/**
+ * The tags the boot step adds to a name: «lactosa» for a PRO-332 milk word,
+ * «apio» for a broth and «sulfitos» for raisins (PRO-363), each only when
+ * `stored` lacks it; else [].
+ */
 export function missingNameAllergens(name: string, stored: readonly string[] | null | undefined): string[] {
-  if ((stored ?? []).includes('lactosa')) return []
+  const have = new Set(stored ?? [])
   const n = normalize(name)
-  if (!PRO332_MILK_TERMS.some((t) => nameHasTerm(n, t))) return []
   // The full rules decide («kéfir de agua», «pisto manchego» are not milk).
-  return inferAllergenTagsFromName(name).includes('lactosa') ? ['lactosa'] : []
+  const inferred = inferAllergenTagsFromName(name)
+  const missing: string[] = []
+  if (!have.has('apio') && isCeleryBroth(n)) missing.push('apio')
+  if (!have.has('lactosa') && PRO332_MILK_TERMS.some((t) => nameHasTerm(n, t)) && inferred.includes('lactosa'))
+    missing.push('lactosa')
+  if (!have.has('sulfitos') && PRO363_SULFITE_TERMS.some((t) => nameHasTerm(n, t))) missing.push('sulfitos')
+  return missing
 }
 
 export interface AllergenBackfillResult {
@@ -54,7 +74,7 @@ export async function applyNameAllergenTags(
     changed.push(`«${r.name}» +${missing.join(', ')}`)
   }
   if (added.size === 0) {
-    log('[allergen-milk-names] nada que cambiar')
+    log('[allergen-names] nada que cambiar')
     return { ingredients: [], recipes: 0, catalogRecipes: 0 }
   }
 
@@ -89,7 +109,7 @@ export async function applyNameAllergenTags(
     }
   }
   log(
-    `[allergen-milk-names] ${changed.join('; ')}; ${recipeCount} receta(s) con alérgenos nuevos, ${catalogCount} del catálogo`,
+    `[allergen-names] ${changed.join('; ')}; ${recipeCount} receta(s) con alérgenos nuevos, ${catalogCount} del catálogo`,
   )
   return { ingredients: changed, recipes: recipeCount, catalogRecipes: catalogCount }
 }

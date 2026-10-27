@@ -39,9 +39,12 @@ import { decideBasketResult, ingredientsInSystemRecipes, withBasketPhoto } from 
 import { toggleChecked } from '../shoppingItemState.js'
 import type { PriceMemory } from './estimate.js'
 import { capForLines, draftOrdersFromItems, sumEstimate } from './draft.js'
+import { compileRestrictions } from '../dietaryRestrictions.js'
+import { loadHouseholdRestrictions } from '../householdAllergies.js'
 import {
   buildConfirmationMessage,
   buildOrderMessage,
+  halalBuyPrefs,
   isTooLongToPrefill,
   mailtoLink,
   shopSearchUrl,
@@ -390,8 +393,18 @@ function messageFor(
   lines: ShopOrderLine[],
   fulfilment: ShopFulfilment,
   address: string | null,
+  halal: boolean,
 ): string {
-  return buildOrderMessage({ kind: shop.kind, channel: shop.channel, customerName, fulfilment, address, lines })
+  return buildOrderMessage({ kind: shop.kind, channel: shop.channel, customerName, fulfilment, address, lines, halal })
+}
+
+/** Someone in the household eats halal (their restrictions, as the menu reads them). A read error counts as no. */
+async function householdIsHalal(userId: string, db: Db): Promise<boolean> {
+  try {
+    return compileRestrictions(await loadHouseholdRestrictions(userId, db)).halal
+  } catch {
+    return false
+  }
 }
 
 const identity = (l: ShopOrderLine) => l.ruleKey ?? `name:${normalizeBuyName(l.name)}`
@@ -479,7 +492,8 @@ export async function prepareOrders(userId: string, opts: { listId?: string } = 
   const alreadyOrdered = new Set(
     active.flatMap((o) => (o.lines as ShopOrderLine[]).flatMap((l) => l.sourceItemIds ?? (l.sourceItemId ? [l.sourceItemId] : []))),
   )
-  const prefs = await loadPrefs(hh, db)
+  const halal = await householdIsHalal(userId, db)
+  const prefs = halalBuyPrefs(await loadPrefs(hh, db), halal)
 
   const draft = draftOrdersFromItems(
     items,
@@ -518,7 +532,7 @@ export async function prepareOrders(userId: string, opts: { listId?: string } = 
         capEur: capForLines(g.lines),
         fulfilment,
         address,
-        messageText: messageFor(g.shop.customerName, snapshotOf(g.shop), g.lines, fulfilment, address),
+        messageText: messageFor(g.shop.customerName, snapshotOf(g.shop), g.lines, fulfilment, address, halal),
       })
       .returning()
     orders.push(presentOrder(row))
@@ -592,7 +606,8 @@ export async function patchOrder(userId: string, id: string, patch: OrderPatch, 
   const allShops = await shopRows(householdId, db)
   const shop = allShops.find((s) => s.id === row.shopId) ?? null
   const memory = (shop?.priceMemory ?? {}) as PriceMemory
-  const prefs = await loadPrefs(householdId, db)
+  const halal = await householdIsHalal(userId, db)
+  const prefs = halalBuyPrefs(await loadPrefs(householdId, db), halal)
   let lines = [...(row.lines as ShopOrderLine[])]
   const moves = new Map<string, ShopOrderLine[]>()
   for (const p of patch.lines ?? []) {
@@ -629,7 +644,7 @@ export async function patchOrder(userId: string, id: string, patch: OrderPatch, 
   }
   if (patch.add?.length) lines = [...lines, ...addedLines(patch.add, lines, kind, prefs, memory)]
 
-  for (const [shopId, moved] of moves) await appendToShopDraft(userId, householdId, shopId, moved, prefs, db)
+  for (const [shopId, moved] of moves) await appendToShopDraft(userId, householdId, shopId, moved, prefs, halal, db)
 
   const fulfilment: ShopFulfilment = patch.fulfilment ?? (row.fulfilment === 'domicilio' ? 'domicilio' : 'recoger')
   let address = patch.address !== undefined ? patch.address || null : row.address ?? null
@@ -640,14 +655,14 @@ export async function patchOrder(userId: string, id: string, patch: OrderPatch, 
     estimateEur: estimate,
     fulfilment,
     address,
-    messageText: messageFor(shop?.customerName ?? null, snap, lines, fulfilment, address),
+    messageText: messageFor(shop?.customerName ?? null, snap, lines, fulfilment, address, halal),
   }
   if (patch.capEur !== undefined) values.capEur = patch.capEur
   else if ((patch.lines?.length || patch.add?.length) && row.capEur == null) values.capEur = capForLines(lines)
   return update(row.id, values, db)
 }
 
-async function appendToShopDraft(userId: string, householdId: string, shopId: string, moved: ShopOrderLine[], prefs: Record<string, string>, db: Db) {
+async function appendToShopDraft(userId: string, householdId: string, shopId: string, moved: ShopOrderLine[], prefs: Record<string, string>, halal: boolean, db: Db) {
   const allShops = await shopRows(householdId, db)
   const shop = allShops.find((s) => s.id === shopId)
   if (!shop) throw new ShopOrderError(404, 'SHOP_NOT_FOUND', 'Esa tienda no existe.')
@@ -664,7 +679,7 @@ async function appendToShopDraft(userId: string, householdId: string, shopId: st
     capEur: existing?.capEur ?? capForLines(merged),
     fulfilment,
     address,
-    messageText: messageFor(shop.customerName, snapshotOf(shop), merged, fulfilment, address),
+    messageText: messageFor(shop.customerName, snapshotOf(shop), merged, fulfilment, address, halal),
   }
   if (existing) await db.update(shopOrders).set({ ...values, updatedAt: new Date() }).where(eq(shopOrders.id, existing.id))
   else await db.insert(shopOrders).values({ ...values, householdId, userId, shopId, shopSnapshot: snapshotOf(shop), status: 'draft', token: randomBytes(12).toString('base64url') })

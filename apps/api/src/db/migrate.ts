@@ -76,11 +76,12 @@ async function main() {
     console.error('[compound-tags] failed:', err)
   }
   // Idempotent, additive (PRO-332): cheeses called by their name, kéfir,
-  // ghee… get the milk tag, in the ingredient and in the recipes that use it.
+  // ghee… get the milk tag, in the ingredient and in the recipes that use it;
+  // PRO-363: broths get celery and raisins sulphites, the same way.
   try {
     await applyNameAllergenTags(db)
   } catch (err) {
-    console.error('[allergen-milk-names] failed:', err)
+    console.error('[allergen-names] failed:', err)
   }
   // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
   // every recipe; the cached figures are left as they are.

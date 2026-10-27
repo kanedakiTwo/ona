@@ -7,8 +7,13 @@
 
 import { test, expect } from '@playwright/test'
 import { registerFreshUser, completeOnboarding } from './_helpers'
+import { pinClock } from './_clock'
 
 test.beforeEach(async ({ page }) => {
+  // «Today» is this week's Monday at midday: the generator fills the week
+  // from Monday on, and with the CI catalogue the weekend (and often Friday's
+  // dinner) stays empty, with no featured meal to wait for (PRO-186).
+  await pinClock(page, 0)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 })

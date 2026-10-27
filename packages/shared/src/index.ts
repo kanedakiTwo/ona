@@ -221,6 +221,10 @@ export {
   isHealthMemoryKey,
   isHealthConsentActive,
   needsHealthConsentPrompt,
+  consentCoversReligiousDiet,
+  isReligiousDiet,
+  HALAL_HINT,
+  RELIGION_CONSENT_NOTE,
 } from './constants/healthConsent.js'
 export type { HealthConsentState } from './constants/healthConsent.js'
 export { RESTRICTION_PRESETS, saysNone, unionRestrictions } from './constants/restrictions.js'

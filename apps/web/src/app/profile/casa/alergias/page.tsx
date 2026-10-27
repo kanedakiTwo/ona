@@ -28,7 +28,14 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
-import { firstMenuWeeks, RESTRICTION_PRESETS, unionRestrictions, type HealthConsentState } from "@ona/shared"
+import {
+  consentCoversReligiousDiet,
+  firstMenuWeeks,
+  isReligiousDiet,
+  RESTRICTION_PRESETS,
+  unionRestrictions,
+  type HealthConsentState,
+} from "@ona/shared"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { safeNext } from "@/lib/safeNext"
@@ -56,6 +63,11 @@ export default function HouseholdAllergiesPage() {
   const queryClient = useQueryClient()
   const [householdName, setHouseholdName] = useState<string | null>(null)
   const [consent, setConsent] = useState(false)
+  /** The consent already in force when the screen opened (null = none). */
+  const [consentState, setConsentState] = useState<HealthConsentState | null>(null)
+  /** Halal under a v1 consent: the box for the current text (Legal, E-19). */
+  const [religionOk, setReligionOk] = useState(false)
+  const needsReligion = consentState?.active === true && !consentCoversReligiousDiet(consentState.version)
   const [restrictions, setRestrictions] = useState<string[]>([])
   /** Typed in the free-text box and not added yet: it counts and is saved too. */
   const [typed, setTyped] = useState("")
@@ -85,6 +97,7 @@ export default function HouseholdAllergiesPage() {
       if (cancelled) return
       setHouseholdName(h?.name ?? null)
       if (c?.active) {
+        setConsentState(c)
         setConsent(true)
         setRestrictions(unionRestrictions(u?.restrictions))
       }
@@ -117,11 +130,18 @@ export default function HouseholdAllergiesPage() {
       router.push(next)
       return
     }
+    if (needsReligion && !religionOk && toSave.some(isReligiousDiet)) {
+      setError("Para guardar «halal», marca la casilla del texto nuevo o quítalo de la lista.")
+      return
+    }
     setSaving(true)
     setError("")
     setUnclear([])
     try {
-      await api.post(`/user/${user.id}/health-consent`, { consent: true })
+      // Ticked here: the box of this screen, or the current text for a v1 consent.
+      if (!consentState?.active || (needsReligion && religionOk)) {
+        await api.post(`/user/${user.id}/health-consent`, { consent: true })
+      }
       // PRO-347: what was written by hand is read as Mimo reads it («sin
       // glutn» → «sin gluten»); what isn't understood is asked, not saved.
       let final = toSave
@@ -196,8 +216,8 @@ export default function HouseholdAllergiesPage() {
       }
       intro={
         fromProfile
-          ? "¿Tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? Si no está en la lista, escríbela. El menú de la casa las tendrá en cuenta para todos."
-          : "Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
+          ? "¿Tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, halal, sin cerdo…)? Si no está en la lista, escríbela. El menú de la casa las tendrá en cuenta para todos."
+          : "Antes de ver el menú de la casa: ¿tienes alguna alergia o intolerancia, o sigues alguna dieta (vegetariana, halal, sin cerdo…)? El menú de la casa las tendrá en cuenta para todos."
       }
     >
       <div data-testid="household-allergies" className="max-w-xl">
@@ -235,6 +255,7 @@ export default function HouseholdAllergiesPage() {
                 if (text) setUnclear([])
               }}
               typed={typed}
+              religion={{ needed: needsReligion, checked: religionOk, onChange: setReligionOk }}
             />
             {unclear.length > 0 && (
               <div

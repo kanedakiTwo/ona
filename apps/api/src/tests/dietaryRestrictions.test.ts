@@ -11,6 +11,7 @@ import {
   mergeRestrictions,
   nameHasAlcohol,
   nameHasTerm,
+  nameIsHaram,
   restrictionKey,
   violatesRestrictions,
   type RestrictableRecipe,
@@ -203,6 +204,69 @@ describe('PRO-144 — «sin alcohol»', () => {
     expect(blocks(['halal'], recipe(['vino blanco']))).toBe(true)
     expect(blocks(['halal'], recipe(['panceta']))).toBe(true)
     expect(blocks(['halal'], recipe(['vinagre de vino']))).toBe(false)
+  })
+
+  it('anise spirits and other liqueurs count («Pollo asado con clementinas y arak»)', () => {
+    for (const drink of ['arak', 'anís seco', 'ouzo', 'raki', 'pastís', 'limoncello', 'sangría', 'prosecco', 'mezcal']) {
+      expect(nameHasAlcohol(drink.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()), drink).toBe(true)
+      expect(blocks(['sin alcohol'], recipe([drink])), drink).toBe(true)
+    }
+    expect(blocks(['halal'], { ...recipe(['pollo', 'clementina']), name: 'Pollo asado con clementinas y arak' })).toBe(true)
+    // Star anise and aniseed are spices.
+    expect(blocks(['sin alcohol'], recipe(['anís estrellado', 'anís en grano']))).toBe(false)
+  })
+})
+
+/**
+ * Halal (2026-10-25, Miguel: «que la app sea utilizable por musulmanes»):
+ * no pork or anything made from it, no blood, no gelatine or lard of unknown
+ * origin, no alcohol. Meat stays (it is bought halal at the butcher's).
+ */
+describe('halal', () => {
+  it('is offered as a chip and understood as people say it', () => {
+    expect(RESTRICTION_PRESETS).toContain('halal')
+    for (const r of ['halal', 'Halal', 'dieta halal', 'comida halal', 'solo halal', 'soy musulmán', 'somos musulmanes', 'musulmana']) {
+      expect(compileRestrictions([r]).halal, r).toBe(true)
+      expect(compileRestrictions([r]).alcohol, r).toBe(true)
+    }
+    expect(compileRestrictions(['sin cerdo']).halal).toBe(false)
+    expect(compileRestrictions(['sin alcohol']).halal).toBe(false)
+  })
+
+  it('takes out pork, its products, blood, wild boar, gelatine, lard and sausages', () => {
+    for (const ing of [
+      'panceta', 'jamón serrano', 'chorizo', 'lomo de cerdo', 'manteca de cerdo', 'manteca', 'morcilla', 'sangre de cerdo',
+      'jabalí', 'gelatina neutra', 'hojas de gelatina', 'salchichas', 'salchichas frankfurt', 'pepperoni', 'embutido variado',
+      'carne picada mixta', 'mortadela', 'guanciale',
+    ]) {
+      expect(blocks(['halal'], recipe([ing])), ing).toBe(true)
+    }
+  })
+
+  it('keeps meat, fish, dairy and what only sounds like pork', () => {
+    for (const ing of [
+      'pollo', 'cordero', 'ternera', 'carne picada de ternera', 'lomos de salmón', 'lomo de bacalao', 'merluza',
+      'manteca de cacao', 'manteca de cacahuete', 'naranja sangre', 'queso feta', 'yogur griego', 'vinagre de jerez',
+      'levadura de cerveza', 'agar-agar',
+    ]) {
+      expect(blocks(['halal'], recipe([ing])), ing).toBe(false)
+    }
+  })
+
+  it('an ingredient that says «halal» is fine', () => {
+    for (const ing of ['salchichas halal', 'gelatina halal', 'chorizo de ternera halal', 'pepperoni halal']) {
+      expect(nameIsHaram(ing.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()), ing).toBe(false)
+      expect(blocks(['halal'], recipe([ing])), ing).toBe(false)
+    }
+  })
+
+  it('reads what a compound ingredient contains', () => {
+    expect(violatesRestrictions({ ingredients: [{ ingredientName: 'relleno de la casa', containsTags: ['gelatina'] }] }, compileRestrictions(['halal']))).toBe(true)
+  })
+
+  it('«sin cerdo» alone is not halal: wine and gelatine stay', () => {
+    expect(blocks(['sin cerdo'], recipe(['vino blanco']))).toBe(false)
+    expect(blocks(['sin cerdo'], recipe(['gelatina neutra']))).toBe(false)
   })
 })
 

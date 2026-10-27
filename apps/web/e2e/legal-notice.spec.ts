@@ -85,6 +85,18 @@ test('/privacidad: Groq transcribes the voice, does not train on it and keeps lo
   await expect(page.getByTestId('reading-column')).toContainText('cuando Groq y AiKit no están disponibles')
 })
 
+// Halal (2026-10-25): a religion-based diet is special-category data, under the same consent.
+test('/privacidad: a diet for religious reasons goes with the health data', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('reading-column')).toContainText(
+    'Las alergias y los datos físicos son datos de salud, y una dieta por motivos religiosos (como halal) revela tus creencias: solo los tratamos porque tú nos los das, con tu consentimiento explícito',
+  )
+  // «4. Base legal», in Legal's words (E-19).
+  await expect(page.getByTestId('privacy-religious-diet-basis')).toHaveText(
+    'Los datos de salud y, si la indicas, tu dieta por motivos religiosos los tratamos solo con tu consentimiento explícito (art. 9.2.a RGPD), que das aparte y puedes retirar cuando quieras desde tu perfil. Si lo retiras, los borramos.',
+  )
+})
+
 // PRO-120 (Legal, 2026-10-20): the app's own usage events, screens included, in Legal's exact words.
 test('/privacidad: the app counts functions and screens, never what you write', async ({ page }) => {
   await page.goto('/privacidad')

@@ -43,8 +43,9 @@ export default function PrivacidadPage() {
               <strong>Datos de salud y alimentación:</strong> sexo, edad, peso, altura y nivel de actividad
               (para calcular tus calorías), alergias, intolerancias y restricciones (para que Mimoia no te
               proponga lo que no puedes comer), gustos y lo que cocinas. Las alergias y los datos físicos son
-              datos de salud: solo los tratamos porque tú nos los das, con tu consentimiento explícito, y
-              puedes borrarlos cuando quieras desde tu perfil.
+              datos de salud, y una dieta por motivos religiosos (como halal) revela tus creencias: solo los
+              tratamos porque tú nos los das, con tu consentimiento explícito, y puedes borrarlos cuando quieras
+              desde tu perfil.
             </li>
             <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
             <li data-testid="privacy-signup-shopping">
@@ -100,7 +101,12 @@ export default function PrivacidadPage() {
           <H2>4. Base legal</H2>
           <p>
             La ejecución del servicio que pides al registrarte y, para los datos de salud, tu consentimiento
-            explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.
+            explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.{" "}
+            <span data-testid="privacy-religious-diet-basis">
+              Los datos de salud y, si la indicas, tu dieta por motivos religiosos los tratamos solo con tu
+              consentimiento explícito (art. 9.2.a RGPD), que das aparte y puedes retirar cuando quieras desde tu
+              perfil. Si lo retiras, los borramos.
+            </span>{" "}
             Los avisos proactivos por WhatsApp solo se envían si los activas, y puedes darte de baja escribiendo BAJA.
             El menú de los viernes por email es un consentimiento aparte (art. 6.1.a RGPD y art. 21 de la LSSI): lo
             quitas en tu

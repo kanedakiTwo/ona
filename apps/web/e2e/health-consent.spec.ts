@@ -79,7 +79,7 @@ test('onboarding with the box stores them with date and version; withdrawing del
 
   let user = await getUser(page)
   expect(user.restrictions).toEqual(['sin gluten'])
-  expect(user.healthConsentVersion).toBe('salud-v1-2026-10')
+  expect(user.healthConsentVersion).toBe('salud-v2-2026-10')
   expect(user.healthConsentAt).toBeTruthy()
   await expect(page.getByTestId('no-health-data-notice')).toHaveCount(0)
 
@@ -121,7 +121,7 @@ test('existing users with health data are asked once', async ({ page }) => {
   // Answered → the real state no longer asks.
   await page.unroute(`**/user/${s.userId}/health-consent`)
   const state = await (await page.request.get(`${API_URL}/user/${s.userId}/health-consent`, { headers: s.auth })).json()
-  expect(state).toMatchObject({ active: true, needsPrompt: false, version: 'salud-v1-2026-10' })
+  expect(state).toMatchObject({ active: true, needsPrompt: false, version: 'salud-v2-2026-10' })
   await page.goto('/recipes')
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('dialog', { name: /seguimos guardándolos/i })).toHaveCount(0)

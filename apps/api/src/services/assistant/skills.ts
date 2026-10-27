@@ -59,7 +59,7 @@ import { NotARecipeError, SocialCaptionUnavailableError } from '../recipeUrlExtr
 import { NoExtractableContentError } from '../sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
-import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
 import { schoolDinnerPool } from '../schoolMenu.js'
@@ -2879,7 +2879,7 @@ const updateMemory: SkillDefinition = {
       if (err instanceof HealthConsentRequiredError) {
         return {
           data: null,
-          summary: HEALTH_CONSENT_SKILL_REPLY,
+          summary: err.code === 'RELIGION_CONSENT_REQUIRED' ? RELIGION_CONSENT_SKILL_REPLY : HEALTH_CONSENT_SKILL_REPLY,
           uiHint: 'text',
         }
       }

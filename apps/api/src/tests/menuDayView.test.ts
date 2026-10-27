@@ -21,6 +21,7 @@ import {
   splitDay,
   weekColumnLabel,
   weekHasDishes,
+  weekMealRows,
   weekRangeLabel,
 } from '../../../web/src/lib/menuDay'
 
@@ -149,6 +150,35 @@ describe('absentMeals', () => {
   })
   it('one day alone does not make a meal usual', () => {
     expect(absentMeals([both, {}, {}, {}, {}, {}, {}], 1, [2, 3, 4, 5, 6])).toEqual([])
+  })
+})
+
+// Miguel, 2026-10-27 (opción C): «La semana» on desktop is one row per meal
+// with a photo cell per day; until then the dinner was a text line under the
+// lunch's photo. The rows are the meals the week uses, in the order of the day.
+describe('weekMealRows', () => {
+  const both = { lunch: { dishes: [recipe('a')] }, dinner: { dishes: [recipe('b')] } }
+  const dinnerOnly = { dinner: { dishes: [recipe('b')] } }
+
+  it('lunch and dinner, in the order of the day', () => {
+    expect(weekMealRows([both, both, both, both, both, {}, {}], [])).toEqual(['lunch', 'dinner'])
+  })
+  it('breakfast and snack only when some day has them, in their place in the day', () => {
+    const days = [both, { ...both, snack: { dishes: [recipe('c')] }, breakfast: { dishes: [] } }, both, {}, {}, {}, {}]
+    expect(weekMealRows(days, [])).toEqual(['breakfast', 'lunch', 'snack', 'dinner'])
+  })
+  it('one day with a meal is enough for its row (the other days say «no hay»)', () => {
+    expect(weekMealRows([dinnerOnly, dinnerOnly, { lunch: { dishes: [recipe('a')] } }, {}, {}, {}, {}], [])).toEqual(['lunch', 'dinner'])
+  })
+  it('an empty slot counts: it is a meal of the week waiting for a dish', () => {
+    expect(weekMealRows([{ lunch: { dishes: [] } }, {}, {}, {}, {}, {}, {}], [])).toEqual(['lunch'])
+  })
+  it('skipped days do not add rows', () => {
+    expect(weekMealRows([dinnerOnly, { breakfast: { dishes: [recipe('x')] } }, {}, {}, {}, {}, {}], [1])).toEqual(['dinner'])
+  })
+  it('a week with no meals at all still shows lunch and dinner', () => {
+    expect(weekMealRows([{}, {}, {}, {}, {}, {}, {}], [])).toEqual(['lunch', 'dinner'])
+    expect(weekMealRows([both, both, {}, {}, {}, {}, {}], [0, 1, 2, 3, 4, 5, 6])).toEqual(['lunch', 'dinner'])
   })
 })
 

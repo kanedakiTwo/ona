@@ -7,7 +7,8 @@
  * Now: today's featured meal is a photo hero with "Empezar a cocinar" (→ cook
  * mode) above the fold, every per-meal action sits behind the meal's "···",
  * the week's actions behind the header "···", and the tab bar has visible
- * labels. On desktop the week columns keep drag & drop between days.
+ * labels. On desktop «La semana» is one row per meal with a photo cell per
+ * day (opción C, 2026-10-27) and keeps drag & drop between days and meals.
  */
 
 import { test, expect, type Locator, type Page } from '@playwright/test'
@@ -64,6 +65,10 @@ async function fillSlot(page: Page, headers: Record<string, string>, menu: any, 
   expect(r.ok(), `fill day ${day} ${meal}: ${r.status()}`).toBeTruthy()
 }
 
+/** The draggable dish of a cell of «La semana» (`d` = day 0–6). */
+const weekDish = (page: Page, d: number, meal: string) =>
+  page.locator(`[data-week-cell="${d}-${meal}"] [aria-roledescription="plato arrastrable"]`)
+
 /**
  * Mouse drag past dnd-kit's 8 px activation. `inWeek` centres «La semana»
  * first, clear of dnd-kit's edge auto-scroll.
@@ -81,7 +86,7 @@ async function dragTo(page: Page, source: Locator, target: Locator, { inWeek = t
 
 /**
  * A week where lunch is the usual meal (every day has one) except `day`,
- * which only has a dinner: «Comida: no hay» shows in its column.
+ * which only has a dinner: «no hay» shows in its lunch cell.
  */
 async function weekWithoutLunchOn(page: Page, day: number) {
   const { menu, headers } = await userWithMenu(page)
@@ -247,8 +252,8 @@ test.describe('desktop', () => {
     await page.goto('/menu')
     const columns = page.getByTestId('week-columns')
     await expect(columns).toBeVisible({ timeout: 20_000 })
-    const source = page.locator('[data-day-column="0"] [aria-roledescription="plato arrastrable"]').first()
-    const target = page.locator('[data-day-column="1"] [aria-roledescription="plato arrastrable"]').first()
+    const source = weekDish(page, 0, 'lunch')
+    const target = weekDish(page, 1, 'lunch')
     await expect(source).toContainText(mon!)
     await expect(target).toContainText(tue!)
 
@@ -338,8 +343,8 @@ test.describe('desktop', () => {
 
   // Miguel, 2026-10-19: «no se ve que el viernes no hay comida y que la
   // pizza es para cenar» — the tile didn't name its meal and nothing said
-  // the lunch was missing.
-  test('a day without the week\'s lunch says so, and its tile names the meal', async ({ page }) => {
+  // the lunch was missing. Since 2026-10-27 the dinner sits in the «Cena» row.
+  test('a day without the week\'s lunch says so, and its dinner sits in the dinner row', async ({ page }) => {
     test.setTimeout(90_000)
     const other = today() === 0 ? 1 : 0
     const { menu, headers } = await weekWithoutLunchOn(page, other)
@@ -348,9 +353,15 @@ test.describe('desktop', () => {
 
     await page.goto('/menu')
     const column = page.locator(`[data-day-column="${other}"]`)
-    await expect(column.locator('[data-absent-meal="lunch"]')).toHaveText('Comida: no hay', { timeout: 20_000 })
+    const noLunch = column.locator(`[data-week-cell="${other}-lunch"] [data-absent-meal="lunch"]`)
+    await expect(noLunch).toHaveText('no hay', { timeout: 20_000 })
+    await expect(noLunch).toHaveAttribute('aria-label', `Comida: no hay. Ver el ${WEEKDAYS[other]}`)
     if (dinnerName) {
-      await expect(column.getByRole('button', { name: `Cena: ${dinnerName}. Ver el ${WEEKDAYS[other]}` })).toContainText(/cena/i)
+      await expect(
+        column
+          .locator(`[data-week-cell="${other}-dinner"]`)
+          .getByRole('button', { name: `Cena: ${dinnerName}. Ver el ${WEEKDAYS[other]}` }),
+      ).toBeVisible()
     }
 
     await column.locator('[data-absent-meal="lunch"]').click()
@@ -376,7 +387,7 @@ test.describe('desktop', () => {
     const column = page.locator(`[data-day-column="${other}"]`)
     const target = column.locator('[data-absent-meal="lunch"]')
     await expect(target).toBeVisible({ timeout: 20_000 })
-    const source = column.locator('[aria-roledescription="plato arrastrable"]').first()
+    const source = weekDish(page, other, 'dinner')
     await expect(source.getByRole('button', { name: /^Cena: / })).toBeVisible()
 
     const moved = moveSlotResponse(page)
@@ -384,7 +395,7 @@ test.describe('desktop', () => {
     const res = await moved
     expect(res.ok()).toBeTruthy()
     expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other, fromMeal: 'dinner', toDay: other, toMeal: 'lunch' })
-    await expect(source.getByRole('button', { name: /^Comida: / })).toBeVisible({ timeout: 10_000 })
+    await expect(weekDish(page, other, 'lunch').getByRole('button', { name: /^Comida: / })).toBeVisible({ timeout: 10_000 })
     await expect(target).toHaveCount(0)
   })
 
@@ -397,7 +408,7 @@ test.describe('desktop', () => {
     await page.goto('/menu')
     const target = page.locator(`[data-day-column="${other}"] [data-absent-meal="lunch"]`)
     await expect(target).toBeVisible({ timeout: 20_000 })
-    const source = page.locator(`[data-day-column="${from}"] [aria-roledescription="plato arrastrable"]`).first()
+    const source = weekDish(page, from, 'lunch')
     await expect(source.getByRole('button', { name: /^Comida: / })).toBeVisible()
 
     const moved = moveSlotResponse(page)
@@ -488,11 +499,14 @@ test.describe('desktop', () => {
     const dinnerBox = (await page.locator(`[data-dnd-slot="${other}-dinner"]`).boundingBox())!
     const breakfastBox = (await page.locator(`[data-dnd-slot="${other}-breakfast"]`).boundingBox())!
     expect(dinnerBox.y).toBeLessThan(breakfastBox.y)
-    // «La semana»: the day's tile is its lunch, too.
-    await expect(page.locator(`[data-day-column="${other}"] [aria-roledescription="plato arrastrable"]`).first()).toHaveAttribute(
-      'aria-label',
-      /^Comida: /,
-    )
+    // «La semana»: each meal in its own row, in the order of the day.
+    for (const [meal, label] of [['breakfast', 'Desayuno'], ['lunch', 'Comida'], ['snack', 'Merienda'], ['dinner', 'Cena']]) {
+      await expect(weekDish(page, other, meal)).toHaveAttribute('aria-label', new RegExp(`^${label}: `))
+    }
+    const rowY = async (meal: string) => (await page.locator(`[data-week-cell="${other}-${meal}"]`).boundingBox())!.y
+    expect(await rowY('breakfast')).toBeLessThan(await rowY('lunch'))
+    expect(await rowY('lunch')).toBeLessThan(await rowY('snack'))
+    expect(await rowY('snack')).toBeLessThan(await rowY('dinner'))
   })
 
   // Miguel, 2026-10-20: «no funciona el arrastrar entre platos del mismo
@@ -504,12 +518,13 @@ test.describe('desktop', () => {
 
     await page.goto('/menu')
     const column = page.locator('[data-day-column="0"]')
-    const cells = column.locator('[aria-roledescription="plato arrastrable"]')
-    await expect(cells.nth(1)).toBeVisible({ timeout: 20_000 })
-    const lunchName = (await cells.nth(0).getAttribute('aria-label'))!.replace(/^Comida: (.*)\. Pulsa.*$/, '$1')
+    const lunch = weekDish(page, 0, 'lunch')
+    const dinner = weekDish(page, 0, 'dinner')
+    await expect(dinner).toBeVisible({ timeout: 20_000 })
+    const lunchName = (await lunch.getAttribute('aria-label'))!.replace(/^Comida: (.*)\. Pulsa.*$/, '$1')
 
     let moved = moveSlotResponse(page)
-    await dragTo(page, cells.nth(0), cells.nth(1))
+    await dragTo(page, lunch, dinner)
     let res = await moved
     expect(res.ok(), `lunch → dinner: ${res.status()}`).toBeTruthy()
     expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
@@ -519,7 +534,7 @@ test.describe('desktop', () => {
     await page.waitForTimeout(500)
 
     moved = moveSlotResponse(page)
-    await dragTo(page, cells.nth(1), cells.nth(0))
+    await dragTo(page, dinner, lunch)
     res = await moved
     expect(res.ok(), `dinner → lunch: ${res.status()}`).toBeTruthy()
     expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'dinner', toDay: 0, toMeal: 'lunch' })
@@ -547,7 +562,7 @@ test.describe('desktop', () => {
     await page.goto('/menu')
     const note = page.locator('[data-day-column="0"] [aria-roledescription="plato arrastrable"]').filter({ hasText: 'Cenamos fuera' })
     await expect(note).toBeVisible({ timeout: 20_000 })
-    const target = page.locator('[data-day-column="1"] [aria-roledescription="plato arrastrable"]').first()
+    const target = weekDish(page, 1, 'lunch')
 
     const moved = moveSlotResponse(page)
     await dragTo(page, note, target)
@@ -564,7 +579,7 @@ test.describe('desktop', () => {
     await page.goto('/menu')
     const note = page.locator('[data-day-column="0"] [aria-roledescription="plato arrastrable"]').filter({ hasText: 'Cenamos fuera' })
     await expect(note).toBeVisible({ timeout: 20_000 })
-    const recipe = page.locator('[data-day-column="1"] [aria-roledescription="plato arrastrable"]').first()
+    const recipe = weekDish(page, 1, 'lunch')
 
     const moved = moveSlotResponse(page)
     await dragTo(page, recipe, note)
@@ -574,21 +589,37 @@ test.describe('desktop', () => {
     await expect(page.locator('[data-day-column="1"]')).toContainText('Cenamos fuera', { timeout: 10_000 })
   })
 
-  // Miguel, 2026-10-19: «al ponerte sobre la cena u otra comida estaría bien
-  // que la imagen cambiase a la de ese plato».
-  test('hovering a day\'s dinner line shows its photo on the tile', async ({ page }) => {
+  // Miguel, 2026-10-27 (opción C): «La semana» showed only each day's lunch
+  // photo and the dinner as a line of text (hovering it swapped the photo,
+  // 2026-10-19). Now each meal is a row with a cell per day, every dish with
+  // its photo, the same size.
+  test('«La semana» is a row per meal with seven cells, and the dinner has its photo like the lunch', async ({ page }) => {
     test.setTimeout(90_000)
     const { menu, headers } = await userWithMenu(page)
     await fillSlot(page, headers, menu, 0, 'dinner')
 
     await page.goto('/menu')
-    const column = page.locator('[data-day-column="0"]')
-    const peek = column.locator('[data-peek="dinner"]')
-    await expect(peek).toHaveCSS('opacity', '0', { timeout: 20_000 })
-    await column.getByRole('button', { name: /^Cena: / }).hover()
-    await expect(peek).toHaveCSS('opacity', '1')
-    await page.mouse.move(5, 5)
-    await expect(peek).toHaveCSS('opacity', '0')
+    const columns = page.getByTestId('week-columns')
+    await expect(columns).toBeVisible({ timeout: 20_000 })
+    await expect(columns.locator('[data-meal-row="lunch"]')).toHaveText('Comida')
+    await expect(columns.locator('[data-meal-row="dinner"]')).toHaveText('Cena')
+    for (const meal of ['lunch', 'dinner']) {
+      await expect(columns.locator(`[data-week-cell$="-${meal}"]`)).toHaveCount(7)
+    }
+
+    // Monday: two photos (or bone covers), one above the other, same size.
+    const photo = (meal: string) => page.locator(`[data-week-cell="0-${meal}"]`).locator('img, [role="img"]')
+    await expect(photo('lunch')).toHaveCount(1)
+    await expect(photo('dinner')).toHaveCount(1)
+    const a = (await photo('lunch').boundingBox())!
+    const b = (await photo('dinner').boundingBox())!
+    expect(Math.round(b.width)).toBe(Math.round(a.width))
+    expect(Math.round(b.height)).toBe(Math.round(a.height))
+    expect(a.height).toBeGreaterThanOrEqual(96)
+    expect(Math.abs(b.x - a.x)).toBeLessThan(1)
+    expect(b.y).toBeGreaterThan(a.y + a.height)
+    // No «Cena: …» text line under the lunch's photo any more.
+    await expect(page.locator('[data-week-cell="0-lunch"]').getByRole('button', { name: /^Cena: / })).toHaveCount(0)
   })
 
   // Miguel, 2026-10-19: «el botón de añadir comida no funciona» — with no
@@ -612,7 +643,11 @@ test.describe('desktop', () => {
     )
     await sheet.getByRole('button', { name: /^desayuno$/i }).click()
     expect((await added).status()).toBe(201)
-    await expect(page.locator(`[data-day-column="${other}"]`)).toContainText('Desayuno', { timeout: 10_000 })
+    // «La semana» gets its breakfast row, and the day's cell is the new slot, not «no hay».
+    await expect(page.getByTestId('week-columns').locator('[data-meal-row="breakfast"]')).toHaveText('Desayuno', { timeout: 10_000 })
+    const cell = page.locator(`[data-day-column="${other}"] [data-week-cell="${other}-breakfast"]`)
+    await expect(cell).toBeVisible()
+    await expect(cell.locator('[data-absent-meal]')).toHaveCount(0, { timeout: 10_000 })
   })
 })
 

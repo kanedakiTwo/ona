@@ -7,15 +7,19 @@
  *      meals (the first as a photo card), the meals it lacks («El viernes no
  *      hay comida»), "Añadir comida" / "Saltar día" and, at the bottom, a
  *      preview of the following day;
- *   2. "La semana": seven columns — day label, a 118 px photo tile of the
- *      featured meal with its meal («Cena») and full name in Fraunces, the
- *      other meals as text lines and the absent ones as «Comida: no hay».
- *      Clicking anywhere in a column shows that day above (scrolling back up
- *      to it); the recipe opens from there. Hovering a line shows its dish's
- *      photo on the tile (Miguel, 2026-10-19).
+ *   2. "La semana" (opción C, Miguel 2026-10-27): a row of day labels and
+ *      one row per meal the week uses (`weekMealRows`: «COMIDA», «CENA» and,
+ *      when the week has them, desayuno and merienda, in the order of the
+ *      day), labelled on the left, with a cell per day: the dish's 104 px
+ *      photo and its name in Fraunces, every meal the same size (until then
+ *      only the featured meal had a photo and the dinner was a text line).
+ *      A meal the day doesn't have is a dashed «no hay» cell; a skipped day
+ *      shows «Sin cocinar» + «Reactivar» once, in its first row. The selected
+ *      day is tinted down its whole column. Clicking a cell shows that day
+ *      above (scrolling back up to it); the recipe opens from there.
  *
  * Drag and drop spans both (one DndContext): every dish, empty slot and
- * «no hay» line — in the week, the hero row and the next day's preview — is
+ * «no hay» cell — in the week, the hero row and the next day's preview — is
  * a drop target, and every dish a drag source. Dropping swaps the two slots,
  * or moves the dish to a meal the day lacks (the source slot goes away), via
  * POST /menu/:id/move-slot (same contract as Vista semana). The week also
@@ -30,7 +34,6 @@ import {
   KeyboardSensor,
   PointerSensor,
   pointerWithin,
-  useDndContext,
   useDraggable,
   useDroppable,
   useSensor,
@@ -53,6 +56,7 @@ import {
   splitDay,
   weekColumnLabel,
   weekdayName,
+  weekMealRows,
   type DaySlot,
   type MealKey,
 } from "@/lib/menuDay"
@@ -515,7 +519,19 @@ function NextDayPreview({
 
 /* ─────────────────────────── La semana ─────────────────────────── */
 
+/** Height of every photo, «no hay» and empty cell of «La semana»: lunch and dinner the same size. */
+const CELL_H = "h-[104px]"
+
+/**
+ * One row per meal the week uses (`weekMealRows`) and one column per day
+ * (opción C, Miguel 2026-10-27; until then each day showed only its featured
+ * meal's photo and the dinner was a line of text). Each day is a DOM column
+ * (`data-day-column`) laid on the shared rows with `grid-rows-subgrid`, so the
+ * selected day's tint runs down the whole column and the rows line up across
+ * days whatever the length of the names.
+ */
 function WeekColumns(p: Props) {
+  const meals = weekMealRows(p.days, p.skippedDays)
   return (
     <section aria-labelledby="la-semana" className="flex flex-col gap-3.5">
       <div className="flex items-baseline justify-between">
@@ -524,108 +540,105 @@ function WeekColumns(p: Props) {
         </h2>
         {!p.readOnly && <span className="text-[13px] text-ink-muted">Arrastra un plato para cambiarlo de día o de comida</span>}
       </div>
-      <div className="grid grid-cols-7 gap-3.5" data-testid="week-columns">
+      <div
+        className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))] gap-x-2.5"
+        style={{ gridTemplateRows: `repeat(${meals.length + 1}, auto)` }}
+        data-testid="week-columns"
+      >
+        {/* The meal of each row; every cell's label already names it, so screen readers skip these. */}
+        <div className="row-span-full grid grid-rows-subgrid" aria-hidden="true">
+          <span />
+          {meals.map((m) => (
+            <span
+              key={m}
+              data-meal-row={m}
+              className="pt-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted"
+            >
+              {mealLabel(m)}
+            </span>
+          ))}
+        </div>
         {p.days.map((day, d) => (
-          <DayColumn key={d} d={d} day={day} {...p} />
+          <DayColumn key={d} d={d} day={day} meals={meals} {...p} />
         ))}
       </div>
     </section>
   )
 }
 
-function DayColumn({ d, day, ...p }: Props & { d: number; day: DayMenu }) {
+function DayColumn({ d, day, meals, ...p }: Props & { d: number; day: DayMenu; meals: MealKey[] }) {
   const isToday = d === p.todayIndex
   const isSelected = d === p.selectedDay
   const skipped = p.skippedDays.includes(d)
-  const slots = orderedSlots(day)
-  const { featured } = splitDay(day)
-  const tile = featured ?? slots[0] ?? null
-  const absent = absentMeals(p.days, d, p.skippedDays)
-  // The other meals and the absent ones («Comida: no hay»), in the order of the day.
-  const lines = DAY_MEAL_ORDER.filter((m) => m !== tile?.meal && (day?.[m] != null || absent.includes(m)))
   const slotProps = p.slotPropsFor(d)
   const dayName = weekdayName(d)
   const show = () => p.onSelectDay(d)
-  // Hovering (or focusing) a line shows its dish's photo on the tile; not mid-drag.
-  const [hovered, setHovered] = useState<MealKey | null>(null)
-  const { active } = useDndContext()
-  const peek = active ? null : hovered
-  const peeks = lines.flatMap((m) => {
-    const r = firstRecipeDish(day?.[m])
-    return r ? [{ meal: m, src: r.imageUrl ?? null }] : []
-  })
 
   return (
     <div
-      className={`-m-2 flex min-w-0 flex-col gap-2 rounded-2xl p-2 transition-colors ${isSelected ? "bg-cream-deep" : "hover:bg-cream-deep/50"}`}
+      className={`row-span-full grid min-w-0 grid-rows-subgrid rounded-2xl px-2 transition-colors ${
+        isSelected ? "bg-cream-deep" : "hover:bg-cream-deep/50"
+      }`}
       data-day-column={d}
     >
-      <button
-        type="button"
-        onClick={show}
-        aria-pressed={isSelected}
-        className={`min-h-[32px] cursor-pointer self-start rounded-full text-left text-[13px] font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-ink ${
-          isToday ? "text-terracotta-deep" : "text-ink-muted"
-        }`}
-      >
-        {weekColumnLabel(p.weekStart, d, p.todayIndex)}
-      </button>
+      <div className="pt-2.5 pb-3">
+        <button
+          type="button"
+          onClick={show}
+          aria-pressed={isSelected}
+          className={`min-h-[32px] cursor-pointer rounded-full text-left text-[13px] font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-ink ${
+            isToday ? "text-terracotta-deep" : "text-ink-muted"
+          }`}
+        >
+          {weekColumnLabel(p.weekStart, d, p.todayIndex)}
+        </button>
+      </div>
 
-      {skipped ? (
-        <div className="flex h-[118px] flex-col items-center justify-center gap-2 rounded-[14px] border border-dashed border-border text-center">
-          <span className="text-[13px] italic text-ink-soft">Sin cocinar</span>
-          {!p.readOnly && (
-            <button
-              type="button"
-              onClick={() => p.onUnskipDay(d)}
-              className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-border bg-paper px-3 text-[12px] text-ink hover:border-ink"
-            >
-              <RotateCcw size={12} /> Reactivar
-            </button>
-          )}
-        </div>
-      ) : (
-        <>
-          {tile && (
-            <SlotTile d={d} s={tile} slotProps={slotProps} readOnly={p.readOnly} onShow={show} peeks={peeks} peek={peek} />
-          )}
-          {lines.map((m) => {
-            const slot = day?.[m]
-            return slot ? (
-              <SlotLine
-                key={m}
-                d={d}
-                s={{ meal: m, slot }}
-                slotProps={slotProps}
-                readOnly={p.readOnly}
-                onShow={show}
-                onPeek={(on) => setHovered((cur) => (on ? m : cur === m ? null : cur))}
-              />
-            ) : (
-              <SlotDrop key={m} scope="week" d={d} meal={m} className="rounded-lg">
-                <button
-                  type="button"
-                  onClick={show}
-                  data-absent-meal={m}
-                  aria-label={`${mealLabel(m)}: no hay. Ver el ${dayName}`}
-                  className="min-h-[36px] w-full cursor-pointer py-1 text-left text-[13px] leading-[1.3] text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
-                >
-                  {mealLabel(m)}: <span className="italic">no hay</span>
-                </button>
-              </SlotDrop>
-            )
-          })}
-          {!tile && lines.length === 0 && (
-            <button
-              type="button"
-              onClick={show}
-              className="cursor-pointer self-start text-[13px] italic text-ink-soft hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
-            >
-              Sin comidas
-            </button>
-          )}
-        </>
-      )}
+      {meals.map((m, i) => {
+        const slot = day?.[m]
+        let cell: ReactNode
+        if (skipped) {
+          // Once per column, in the first row; the other cells stay quiet.
+          cell =
+            i === 0 ? (
+              <div className={`flex ${CELL_H} flex-col items-center justify-center gap-2 rounded-[12px] border border-dashed border-border text-center`}>
+                <span className="text-[13px] italic text-ink-soft">Sin cocinar</span>
+                {!p.readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => p.onUnskipDay(d)}
+                    aria-label={`Reactivar el ${dayName}`}
+                    className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-border bg-paper px-3 text-[12px] text-ink hover:border-ink focus-visible:outline-2 focus-visible:outline-ink"
+                  >
+                    <RotateCcw size={12} /> Reactivar
+                  </button>
+                )}
+              </div>
+            ) : null
+        } else if (slot) {
+          cell = <SlotTile d={d} s={{ meal: m, slot }} slotProps={slotProps} readOnly={p.readOnly} onShow={show} />
+        } else {
+          // A meal the day doesn't have: a drop zone («Comida: no hay»); clicking it shows the day.
+          cell = (
+            <SlotDrop scope="week" d={d} meal={m} className="rounded-[12px]">
+              <button
+                type="button"
+                onClick={show}
+                data-absent-meal={m}
+                aria-label={`${mealLabel(m)}: no hay. Ver el ${dayName}`}
+                className={`flex ${CELL_H} w-full cursor-pointer items-center justify-center rounded-[12px] border border-dashed border-border text-[13px] italic text-ink-muted hover:border-ink hover:text-ink focus-visible:outline-2 focus-visible:outline-ink`}
+              >
+                no hay
+              </button>
+            </SlotDrop>
+          )
+        }
+        return (
+          <div key={m} data-week-cell={`${d}-${m}`} className={`min-w-0 ${i === meals.length - 1 ? "pb-3" : "pb-3.5"}`}>
+            {cell}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -642,38 +655,20 @@ interface SlotCellProps {
   onShow: () => void
 }
 
-function SlotTile({
-  d,
-  s,
-  slotProps,
-  readOnly,
-  onShow,
-  peeks,
-  peek,
-}: SlotCellProps & { peeks: { meal: MealKey; src: string | null }[]; peek: MealKey | null }) {
+/**
+ * A cell of «La semana» with a slot: the dish's photo and its name (a written
+ * dish, «Cenamos fuera», in italics over the meal's bone cover), or, empty,
+ * «Añadir» (opens AddDishSheet). Every meal the same size.
+ */
+function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
   const ctl = useMealOptions()
   const props = slotProps(s.meal, s.slot)
   const { first, movable, drop, drag } = useSlotDnd("week", d, s.meal, s.slot)
   const empty = (s.slot.dishes ?? []).length === 0
-  const title = first?.recipeName ?? (s.slot.dishes ?? []).map((x) => (x.kind === "note" ? x.text : "")).join(", ")
-  const cover = (
-    <span className="relative block">
-      <RecipeCover src={first?.imageUrl} name={title} meal={s.meal} className="h-[118px] w-full rounded-[14px]" />
-      {/* The photo of the line under the pointer (Miguel, 2026-10-19). */}
-      {peeks.map((pk) => (
-        <span
-          key={pk.meal}
-          aria-hidden="true"
-          data-peek={pk.meal}
-          className={`pointer-events-none absolute inset-0 transition-opacity duration-200 motion-reduce:transition-none ${
-            peek === pk.meal ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          <RecipeCover src={pk.src} name="" meal={pk.meal} className="h-full w-full rounded-[14px]" />
-        </span>
-      ))}
-    </span>
-  )
+  const title =
+    first?.recipeName ?? (s.slot.dishes ?? []).map((x) => (x.kind === "note" ? x.text : "")).filter(Boolean).join(", ")
+  const meal = mealLabel(s.meal)
+  const dayName = weekdayName(d)
 
   // The sheets render as a sibling of the drag wrapper, never inside it:
   // React events bubble out of portals, so a keystroke in the recipe
@@ -688,8 +683,8 @@ function SlotTile({
       {...drag.listeners}
       onClickCapture={swallowClickAfterDrag}
       {...(movable ? { tabIndex: 0, "aria-roledescription": "plato arrastrable", "aria-describedby": drag.attributes["aria-describedby"] } : {})}
-      aria-label={movable ? `${mealLabel(s.meal)}: ${title}. Pulsa espacio para moverlo a otro día` : undefined}
-      className={`group relative flex flex-col gap-2 rounded-[16px] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ink ${
+      aria-label={movable ? `${meal}: ${title}. Pulsa espacio para moverlo a otro día` : undefined}
+      className={`group relative rounded-[14px] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ink ${
         drag.isDragging ? "opacity-30" : ""
       } ${drop.isOver ? "ring-2 ring-ink/50 ring-offset-2 ring-offset-cream" : ""}`}
     >
@@ -699,27 +694,23 @@ function SlotTile({
           disabled={readOnly || props.ctx.isLocked}
           onClick={() => ctl.setOpen("addDish")}
           {...stopKeys}
-          className="flex h-[118px] w-full flex-col items-center justify-center gap-1 rounded-[14px] border border-dashed border-border bg-paper/60 text-[13px] text-ink-mid hover:border-ink disabled:cursor-default"
+          aria-label={`${meal} del ${dayName}: ${readOnly ? "sin plato" : "añadir un plato"}`}
+          className={`flex ${CELL_H} w-full flex-col items-center justify-center gap-1 rounded-[12px] border border-dashed border-border bg-paper/60 text-[13px] text-ink-mid hover:border-ink focus-visible:outline-2 focus-visible:outline-ink disabled:cursor-default`}
         >
           {!readOnly && <Plus size={16} />}
-          <span>
-            {mealLabel(s.meal)}
-            {readOnly ? " · sin plato" : ": añadir"}
-          </span>
+          <span>{readOnly ? "Sin plato" : "Añadir"}</span>
         </button>
       ) : (
         <button
           type="button"
           onClick={onShow}
           {...stopKeys}
-          aria-label={`${mealLabel(s.meal)}: ${title}. Ver el ${weekdayName(d)}`}
-          className="flex cursor-pointer flex-col gap-2 text-left text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          aria-label={`${meal}: ${title}. Ver el ${dayName}`}
+          className="flex w-full cursor-pointer flex-col gap-1.5 text-left text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
-          {cover}
-          {/* Which meal it is: a dinner on a day without lunch mustn't pass for lunch. */}
-          <span className="flex flex-col gap-0.5">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{mealLabel(s.meal)}</span>
-            <span className="font-serif-text text-[15px] font-[650] leading-[1.2] [text-wrap:pretty]">{title}</span>
+          <RecipeCover src={first?.imageUrl} name={title} meal={s.meal} className={`${CELL_H} w-full rounded-[12px]`} />
+          <span className={`font-serif-text text-[14px] font-[650] leading-[1.2] [text-wrap:pretty] ${first ? "" : "italic"}`}>
+            {title}
           </span>
         </button>
       )}
@@ -731,83 +722,12 @@ function SlotTile({
       {!readOnly && (
         <span
           {...stopKeys}
-          className="absolute right-0 top-0 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100"
+          className="absolute right-0.5 top-0.5 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100"
         >
           <MealOptionsButton
             ctl={ctl}
-            label={`Más opciones de ${mealLabel(s.meal).toLowerCase()} del ${weekdayName(d)}`}
+            label={`Más opciones de ${meal.toLowerCase()} del ${dayName}`}
             className="scale-[0.82] bg-paper/95 shadow-sm"
-          />
-        </span>
-      )}
-    </div>
-    {!readOnly && <MealOptionsSheets ctl={ctl} {...props} />}
-    </>
-  )
-}
-
-function SlotLine({
-  d,
-  s,
-  slotProps,
-  readOnly,
-  onShow,
-  onPeek,
-}: SlotCellProps & { onPeek: (on: boolean) => void }) {
-  const ctl = useMealOptions()
-  const props = slotProps(s.meal, s.slot)
-  const { first, movable, drop, drag } = useSlotDnd("week", d, s.meal, s.slot)
-  const empty = (s.slot.dishes ?? []).length === 0
-  const text =
-    first?.recipeName ?? (s.slot.dishes ?? []).map((x) => (x.kind === "note" ? x.text : "")).filter(Boolean).join(", ")
-
-  return (
-    <>
-    <div
-      ref={(el) => {
-        drop.setNodeRef(el)
-        drag.setNodeRef(el)
-      }}
-      {...drag.listeners}
-      onClickCapture={swallowClickAfterDrag}
-      onMouseEnter={() => onPeek(true)}
-      onMouseLeave={() => onPeek(false)}
-      onFocus={() => onPeek(true)}
-      onBlur={() => onPeek(false)}
-      {...(movable ? { tabIndex: 0, "aria-roledescription": "plato arrastrable", "aria-describedby": drag.attributes["aria-describedby"] } : {})}
-      aria-label={movable ? `${mealLabel(s.meal)}: ${text}. Pulsa espacio para moverlo a otro día` : undefined}
-      className={`group relative flex min-h-[36px] items-start gap-1 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ink ${
-        drag.isDragging ? "opacity-30" : ""
-      } ${drop.isOver ? "bg-paper ring-2 ring-ink/50" : ""}`}
-    >
-      {empty ? (
-        <button
-          type="button"
-          disabled={readOnly || props.ctx.isLocked}
-          onClick={() => ctl.setOpen("addDish")}
-          {...stopKeys}
-          className="flex-1 py-1 text-left text-[13px] leading-[1.3] text-ink-mid hover:text-ink disabled:cursor-default [@media(hover:none)]:pr-8"
-        >
-          {mealLabel(s.meal)}: <span className="italic">{readOnly ? "sin plato" : "+ añadir"}</span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onShow}
-          {...stopKeys}
-          aria-label={`${mealLabel(s.meal)}: ${text}. Ver el ${weekdayName(d)}`}
-          className="flex-1 cursor-pointer py-1 text-left text-[13px] leading-[1.3] text-ink-mid hover:text-ink focus-visible:outline-2 focus-visible:outline-ink [@media(hover:none)]:pr-8"
-        >
-          {props.ctx.isLocked && <Lock size={10} className="mr-1 inline" aria-label="Fijada" />}
-          {mealLabel(s.meal)}: {first ? text : <span className="italic">{text}</span>}
-        </button>
-      )}
-      {!readOnly && (
-        <span {...stopKeys} className="absolute -right-1.5 -top-1 rounded-full bg-paper shadow-sm transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100">
-          <MealOptionsButton
-            ctl={ctl}
-            label={`Más opciones de ${mealLabel(s.meal).toLowerCase()} del ${weekdayName(d)}`}
-            className="h-9 w-9 text-ink-mid"
           />
         </span>
       )}

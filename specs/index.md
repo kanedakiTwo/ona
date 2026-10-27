@@ -269,6 +269,7 @@ Registro de cambios del menú / menu edits / `menu_edits` (swap, add, remove, ba
 Restricciones y dieta / alergias / vegetariano / vegano / sin cerdo / sin alcohol / halal / musulmán / comida halal / arak / gelatina / manteca (`compileRestrictions`, `violatesRestrictions`, `nameIsHaram`, `nameHasAlcohol`; halal chip, musulmán → halal, carne halal en el pedido a la carnicería) → `apps/api/src/services/dietaryRestrictions.ts`.
 
 Cuando cambia una receta / receta editada o borrada en un menú guardado / alérgenos nuevos / «Esta receta ya no está» (re-check of saved menus from today on against the household's allergies and diet, replaced dish with «En lugar de …», `replaced`, PRO-345) → `apps/api/src/services/menuRecipeRecheck.ts`.
+Cuando cambian las alergias o la dieta / alergia guardada después del menú / consentimiento de salud dado tarde / «No encaja con las alergias o la dieta de casa» (review of the household's saved menus from today on when someone saves restrictions or gives the consent, re-pick like «Cambiar», `restrictionConflict` warning, `reviewHouseholdMenus`, `menuSlotPick.ts`, PRO-364) → `apps/api/src/services/menuRestrictionsReview.ts`.
 
 **Source**: `apps/api/src/routes/menus.ts`, `apps/api/src/services/menuGenerator.ts`, `apps/api/src/services/recipeMatcher.ts`, `apps/api/src/services/catalogRecipeAudit.ts`, `apps/api/scripts/auditCatalogRecipes.ts`, `apps/web/src/app/menu/`, `apps/web/src/components/menu/`, `apps/web/src/hooks/useMenu.ts`
 

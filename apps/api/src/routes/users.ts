@@ -18,6 +18,7 @@ import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
 import { alignHouseholdMemory } from '../services/userMemoryStore.js'
 import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
+import { reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
 import {
   getHealthConsent,
@@ -201,6 +202,8 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
     if ('adults' in body || 'kidsCount' in body) {
       await alignHouseholdMemory(updated.id, updated).catch((err) => console.error('Align household memory error:', err))
     }
+    // PRO-364: the household's saved menus from today on drop what no longer fits.
+    if ('restrictions' in body) await reviewHouseholdMenusSafely(updated.id)
 
     res.json(updated)
   } catch (err) {
@@ -327,8 +330,11 @@ router.post('/user/:id/health-consent', async (req: AuthRequest, res) => {
       res.status(400).json({ error: 'Body must be { consent: boolean }' })
       return
     }
-    if (req.body.consent) await grantHealthConsent(req.params.id)
-    else await withdrawHealthConsent(req.params.id)
+    if (req.body.consent) {
+      await grantHealthConsent(req.params.id)
+      // PRO-364: with the consent, the restrictions it lets in count for the saved menus.
+      await reviewHouseholdMenusSafely(req.params.id)
+    } else await withdrawHealthConsent(req.params.id)
     res.json(await getHealthConsent(req.params.id))
   } catch (err) {
     console.error('Set health consent error:', err)

@@ -142,6 +142,21 @@ describe('day-7 founder-price offer', () => {
     expect(r.offered).toBe(0)
     expect(repo.marked.size).toBe(0)
   })
+
+  it('with a creator link (PRO-353): still day 7, with the 4-week last day and first charge', async () => {
+    expect(isFounderOfferDue(NEW, dayAt11(20), 28)).toMatchObject({ state: 'trial', trialDay: 20, trialLastDay: '2027-02-07' })
+    expect(isFounderOfferDue(NEW, dayAt11(20))).toBeNull()
+    const mail = sentMail()
+    const r = await sendFounderOffers(dayAt11(7), {
+      repo: memory([{ ...candidate, trialDays: 28 }], 'householdId'),
+      sendEmail: mail.send,
+      sendWhatsApp: async () => ({ status: 'skipped', error: 'outside-24h-window' }),
+      publicUrl: 'https://mimoia.com',
+    })
+    expect(r.offered).toBe(1)
+    expect(mail.sent[0].text).toContain('dura hasta el 7 de febrero, incluido')
+    expect(mail.sent[0].text).toContain('No se cobra nada hasta el 8 de febrero de 2027')
+  })
 })
 
 describe('legal notice 15 days before the first charge', () => {

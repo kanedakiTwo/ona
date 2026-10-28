@@ -66,7 +66,7 @@ describe('buildCampaigns (GET /admin/metrics → campaigns)', () => {
   it('counts signups, activation in the signup week and week 3', () => {
     const rows = buildCampaigns(input, campaignOf)
     expect(rows.find((r) => r.campaign === 'familia')).toEqual({
-      campaign: 'familia', signups: 2, activated: 2, activationRate: 1, week3Eligible: 2, week3Active: 1, week3Rate: 0.5,
+      campaign: 'familia', origin: 'campaña', signups: 2, activated: 2, activationRate: 1, week3Eligible: 2, week3Active: 1, week3Rate: 0.5,
     })
     expect(rows.find((r) => r.campaign === 'post-linkedin')).toMatchObject({ signups: 1, activated: 1, week3Eligible: 0, week3Rate: null })
     expect(rows.find((r) => r.campaign === null)).toMatchObject({ signups: 1, activated: 0, activationRate: 0 })

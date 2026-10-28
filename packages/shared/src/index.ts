@@ -23,8 +23,8 @@ export type {
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
 export { menuFitLevel } from './types/menu.js'
-export type { Dish, RecipeDish, NoteDish } from './types/menuDish.js'
-export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf } from './types/menuDish.js'
+export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/menuDish.js'
+export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine } from './types/menuDish.js'
 export type {
   MemoryKey,
   MemorySource,
@@ -221,9 +221,13 @@ export {
   isHealthMemoryKey,
   isHealthConsentActive,
   needsHealthConsentPrompt,
+  consentCoversReligiousDiet,
+  isReligiousDiet,
+  HALAL_HINT,
+  RELIGION_CONSENT_NOTE,
 } from './constants/healthConsent.js'
 export type { HealthConsentState } from './constants/healthConsent.js'
-export { RESTRICTION_PRESETS, unionRestrictions } from './constants/restrictions.js'
+export { RESTRICTION_PRESETS, saysNone, unionRestrictions } from './constants/restrictions.js'
 export type { RestrictionPreset } from './constants/restrictions.js'
 
 // Utils
@@ -342,6 +346,11 @@ export {
   BETA_FIRST_CHARGE_DATE,
   BETA_FIRST_CHARGE_LABEL,
   MIN_DAYS_CARD_TO_CHARGE,
+  CREATOR_TRIAL_DAYS,
+  CREATOR_BETA_FIRST_CHARGE_DATE,
+  CREATOR_BETA_FIRST_CHARGE_LABEL,
+  isCreatorRef,
+  trialDaysFor,
   PLANS,
   PLAN_HOUSEHOLD,
   PLAN_CAPS_NOTE,
@@ -549,8 +558,10 @@ export {
   dishFoodGroup,
   recipeFoodGroup,
   NotASchoolMenuError,
+  SchoolMenuFileError,
   schoolLunchLines,
 } from './types/schoolMenu.js'
+export type { SchoolMenuFileProblem } from './types/schoolMenu.js'
 export type { SpanishRegion, PublicHoliday } from './constants/holidays.js'
 export {
   SPANISH_REGIONS,

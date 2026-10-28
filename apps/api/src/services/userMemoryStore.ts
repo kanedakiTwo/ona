@@ -14,7 +14,7 @@
 import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { userMemories, users } from '../db/schema.js'
-import { HealthConsentRequiredError, hasHealthConsent } from './healthConsent.js'
+import { HealthConsentRequiredError, ReligionConsentRequiredError, assertReligionConsent, hasHealthConsent } from './healthConsent.js'
 import { mirrorMemoryDelete, mirrorMemoryWrite, type FactSignal } from './profile/writer.js'
 import {
   isHealthMemoryKey,
@@ -64,12 +64,17 @@ export async function getMemoryForUser(userId: string): Promise<UserMemory> {
   return out
 }
 
-export { HealthConsentRequiredError }
+export { HealthConsentRequiredError, ReligionConsentRequiredError }
 
-/** Health keys (physical.*, restrictions) need the art. 9 consent (PRO-21). Returns whether the user has it. */
-async function assertHealthConsentFor(userId: string, keys: string[]): Promise<boolean> {
-  if (!keys.some(isHealthMemoryKey)) return false
+/**
+ * Health keys (physical.*, restrictions) need the art. 9 consent (PRO-21);
+ * a diet for religious reasons, the consent text that names it (E-19).
+ * Returns whether the user has the consent.
+ */
+async function assertHealthConsentFor(userId: string, facts: ReadonlyArray<{ key: string; value: unknown }>): Promise<boolean> {
+  if (!facts.some((f) => isHealthMemoryKey(f.key))) return false
   if (!(await hasHealthConsent(userId))) throw new HealthConsentRequiredError()
+  for (const f of facts) if (f.key === 'restrictions') await assertReligionConsent(userId, f.value)
   return true
 }
 
@@ -135,9 +140,9 @@ export async function setMemoryFact(
     if (v.reason.startsWith('unknown')) throw new UnknownMemoryKeyError(key)
     throw new MemoryValueValidationError(key, v.reason)
   }
-  const consent = await assertHealthConsentFor(userId, [v.key])
+  const consent = await assertHealthConsentFor(userId, [v])
   const signal = signalFor(source, opts)
-  return db.transaction(async (tx) => {
+  const fact = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(userMemories)
       .values({
@@ -161,6 +166,8 @@ export async function setMemoryFact(
     await syncHouseholdCounts(tx, userId, [v])
     return rowToFact(row)
   })
+  if (v.key === 'restrictions') await reviewMenusAfterRestrictions(userId)
+  return fact
 }
 
 /**
@@ -186,7 +193,7 @@ export async function setMemoryBatch(
     }
     validated.push({ key: v.key, value: v.value, confidence: f.confidence ?? 1 })
   }
-  const consent = await assertHealthConsentFor(userId, validated.map((f) => f.key))
+  const consent = await assertHealthConsentFor(userId, validated)
   const signal = signalFor(source, opts)
   await db.transaction(async (tx) => {
     for (const f of validated) {
@@ -213,7 +220,18 @@ export async function setMemoryBatch(
     }
     await syncHouseholdCounts(tx, userId, validated)
   })
+  if (validated.some((f) => f.key === 'restrictions')) await reviewMenusAfterRestrictions(userId)
   return await getMemoryForUser(userId)
+}
+
+/**
+ * PRO-364: `restrictions` saved (Mimo, `/memory`, the fridge question) → the
+ * household's saved menus from today on drop what no longer fits. Imported
+ * lazily: the review reads the memory through this module.
+ */
+async function reviewMenusAfterRestrictions(userId: string): Promise<void> {
+  const { reviewHouseholdMenusSafely } = await import('./menuRestrictionsReview.js')
+  await reviewHouseholdMenusSafely(userId)
 }
 
 export async function deleteMemoryFact(userId: string, key: string, opts?: MemoryWriteOptions): Promise<void> {

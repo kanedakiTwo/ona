@@ -91,6 +91,14 @@ describe('firstChargeInstant (D-055/D-056/D-057: launch 2026-12-15, 14-day trial
     expect(iso(firstChargeInstant({ userCreatedAt: at('2026-12-20T10:00:00Z'), now: at('2026-12-22T19:00:00Z') }))).toBe('2027-01-07T11:00:00.000Z')
   })
 
+  it('a creator link (PRO-353, D-130): 28 days instead of 14, in the beta from launch day', () => {
+    const beta = at('2026-10-21T09:00:00Z')
+    expect(iso(firstChargeInstant({ userCreatedAt: beta, now: BETA_NOW, trialDays: 28 }))).toBe('2027-01-12T11:00:00.000Z')
+    expect(iso(firstChargeInstant({ userCreatedAt: beta, now: BETA_NOW }))).toBe('2026-12-29T11:00:00.000Z')
+    // Someone new: 20 Dec + 28 days → 17 January (card on day 2 is far enough).
+    expect(iso(firstChargeInstant({ userCreatedAt: at('2026-12-20T10:00:00Z'), now: at('2026-12-22T10:00:00Z'), trialDays: 28 }))).toBe('2027-01-17T11:00:00.000Z')
+  })
+
   it('in summer time noon Madrid is still that day', () => {
     const d = firstChargeInstant({ userCreatedAt: at('2027-06-01T08:00:00Z'), now: at('2027-06-01T08:00:00Z') })
     expect(d.getTime()).toBeGreaterThanOrEqual(at('2027-06-16T08:00:00Z').getTime())
@@ -207,10 +215,16 @@ describe('billingStateFor', () => {
     expect(billingStateFor(null, { enabled: true, canManage: true, now: BETA_NOW, userCreatedAt: new Date('2026-10-21T09:00:00Z') })).toEqual({
       enabled: true, beta: true, launchDate: '2026-12-15', canManage: true, firstChargeAt: '2026-12-29T11:00:00.000Z', subscription: null,
       // PRO-135: before launch day nobody is in a trial or paused.
-      access: { state: 'beta', trialEndsAt: '2026-12-28T23:00:00.000Z', trialLastDay: '2026-12-28', daysLeft: null, trialDay: null },
+      access: { state: 'beta', trialDays: 14, trialEndsAt: '2026-12-28T23:00:00.000Z', trialLastDay: '2026-12-28', daysLeft: null, trialDay: null },
       // PRO-136: a beta household is a founding one.
       founder: { household: true, priceIfSubscribing: true, offer: false },
     })
+  })
+
+  it('a beta household from a creator link (PRO-353): 4 weeks from launch, first charge on 12 January', () => {
+    const s = billingStateFor(null, { enabled: true, canManage: true, now: BETA_NOW, householdCreatedAt: new Date('2026-10-21T09:00:00Z'), trialDays: 28 })
+    expect(s.firstChargeAt).toBe('2027-01-12T11:00:00.000Z')
+    expect(s.access).toMatchObject({ state: 'beta', trialDays: 28, trialLastDay: '2027-01-11' })
   })
 
   it('paid during the beta: first charge on 29 December', () => {

@@ -65,14 +65,36 @@ test('/privacidad: Resend is a US company, no third-party advertising, the new n
 })
 
 // PRO-278 (Legal, 2026-10-20): AiKit forwards the recipe text to OpenAI (US), in Legal's exact words.
-test('/privacidad: AiKit says its images are made with OpenAI models', async ({ page }) => {
+// Since 2026-10-25 it is also the transcription reserve, with Google's Gemini (wording pending Legal review).
+test('/privacidad: AiKit says its images are made with OpenAI models and its transcription with Gemini', async ({ page }) => {
   await page.goto('/privacidad')
   await expect(page.getByTestId('privacy-processor-aikit')).toHaveText(
-    'AiKit: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto.',
+    'AiKit: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto. Si Groq no está disponible, también transcribe las notas de voz y lo que le dices a Mimo con la voz; para eso usa modelos de Google (Gemini), que reciben el audio.',
   )
   const main = page.getByTestId('reading-column')
   await expect(main).not.toContainText('cuando lo pides')
-  await expect(main).toContainText('Última actualización: 21 de octubre de 2026')
+  await expect(main).toContainText('Última actualización: 25 de octubre de 2026')
+})
+
+// 2026-10-25: Groq transcribes voice notes and Mimo's voice first (console.groq.com/docs/your-data).
+test('/privacidad: Groq transcribes the voice, does not train on it and keeps logs 30 days at most', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('privacy-processor-groq')).toHaveText(
+    'Groq (empresa de EE. UU.): transcripción de las notas de voz de WhatsApp y de lo que le dices a Mimo con la voz (recibe el audio). No entrena con esos datos ni los guarda, salvo registros de hasta 30 días para la fiabilidad del servicio y la prevención de abusos.',
+  )
+  await expect(page.getByTestId('reading-column')).toContainText('cuando Groq y AiKit no están disponibles')
+})
+
+// Halal (2026-10-25): a religion-based diet is special-category data, under the same consent.
+test('/privacidad: a diet for religious reasons goes with the health data', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('reading-column')).toContainText(
+    'Las alergias y los datos físicos son datos de salud, y una dieta por motivos religiosos (como halal) revela tus creencias: solo los tratamos porque tú nos los das, con tu consentimiento explícito',
+  )
+  // «4. Base legal», in Legal's words (E-19).
+  await expect(page.getByTestId('privacy-religious-diet-basis')).toHaveText(
+    'Los datos de salud y, si la indicas, tu dieta por motivos religiosos los tratamos solo con tu consentimiento explícito (art. 9.2.a RGPD), que das aparte y puedes retirar cuando quieras desde tu perfil. Si lo retiras, los borramos.',
+  )
 })
 
 // PRO-120 (Legal, 2026-10-20): the app's own usage events, screens included, in Legal's exact words.

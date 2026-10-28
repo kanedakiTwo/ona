@@ -7,10 +7,12 @@ import {
   HOUSEHOLD_INVITE_TTL_DAYS,
   capitalize,
   familyInviteShareText,
+  consentCoversReligiousDiet,
   formatQty,
   householdInvitePath,
   inviteHouseholdShareText,
   isAlertKind,
+  isReligiousDiet,
   prettyName,
   whatsappShareHref,
   type AlertKind,
@@ -22,7 +24,7 @@ import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
-import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
@@ -1342,15 +1344,23 @@ const updateProfile: SkillDefinition = {
     // Sex, age, weight, height, activity and restrictions are health data:
     // only with the art. 9 consent in force (PRO-21).
     const health = ['sex', 'age', 'weight', 'height', 'activityLevel', 'restrictions'].filter((k) => k in body)
+    let religionNote = ''
     if (health.length > 0) {
-      const consent = await api(ctx)<{ active?: boolean }>('GET', `/user/${ctx.userId}/health-consent`)
+      const consent = await api(ctx)<{ active?: boolean; version?: string | null }>('GET', `/user/${ctx.userId}/health-consent`)
       if (!consent?.active) {
         for (const k of health) delete body[k]
         if (Object.keys(body).length === 0) return text(HEALTH_CONSENT_SKILL_REPLY)
+      } else if (Array.isArray(body.restrictions) && !consentCoversReligiousDiet(consent.version)) {
+        // «halal» under a v1 consent: the current text first, in the profile (Legal, E-19).
+        const kept = (body.restrictions as string[]).filter((r) => !isReligiousDiet(r))
+        if (kept.length < (body.restrictions as string[]).length) {
+          body.restrictions = kept
+          religionNote = ` ${RELIGION_CONSENT_SKILL_REPLY}`
+        }
       }
     }
     await api(ctx)('PUT', `/user/${ctx.userId}`, body)
-    return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).`)
+    return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).${religionNote}`)
   },
 }
 

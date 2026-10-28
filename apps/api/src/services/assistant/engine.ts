@@ -116,7 +116,7 @@ export async function chat(
     tools,
     messages,
     skills,
-    ctx: { userId, db, channel: mode },
+    ctx: { userId, db, channel: mode, surface: opts.surface },
     onToolStart: opts.onToolStart,
   })
 
@@ -193,9 +193,12 @@ export const TRUNCATED_NOTE =
  * but no tool that changes anything ran this turn (none, or only reads like
  * `get_shopping_list`). The engine gives the model ONE more round with this
  * note instead of sending the claim.
+ * PRO-348: when the last message was a question, the note made Mimo answer
+ * «No he cambiado nada en el menú… Dime qué cambio quieres» instead of the
+ * question; it now says to answer the question and leave changes out.
  */
 export const UNBACKED_CLAIM_NOTE =
-  '[Nota del sistema, no la menciones] En este turno no has hecho ningun cambio: no ha corrido ninguna herramienta que cambie algo. Si el usuario te ha pedido un cambio, hazlo ahora con la herramienta. Si no puedes hacerlo, o ya estaba asi de antes y lo has comprobado, dilo con claridad sin afirmar que acabas de hacerlo. No pidas perdon por esta nota ni hables de herramientas.'
+  '[Nota del sistema, no la menciones] En este turno no has hecho ningun cambio: no ha corrido ninguna herramienta que cambie algo. Si el ultimo mensaje del usuario te pide un cambio, hazlo ahora con la herramienta; si no puedes hacerlo, o ya estaba asi de antes y lo has comprobado, dilo con claridad sin afirmar que acabas de hacerlo. Si su ultimo mensaje es una pregunta o no pide ningun cambio, contesta solo a esa pregunta: sin decir que no has cambiado nada y sin repetir lo hecho en turnos anteriores. No pidas perdon por esta nota ni hables de herramientas.'
 
 const REFUSAL_REPLY = 'Perdona, con eso no te puedo ayudar. ¿Te echo una mano con el menú, una receta o la compra?'
 

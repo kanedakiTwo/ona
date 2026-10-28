@@ -323,7 +323,7 @@ export const seedIngredients = [
     category: 'proteina',
     aisle: 'despensa',
     density: 1,
-    allergenTags: ['pescado'],
+    allergenTags: ['apio', 'pescado'],
     calories: 16,
     protein: 2.0,
     carbs: 0.4,

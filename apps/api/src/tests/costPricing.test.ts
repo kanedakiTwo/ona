@@ -88,6 +88,8 @@ describe('price table coverage', () => {
       ['anthropic', 'claude-haiku-4-5-20251001'], // unit fallback + USDA translator
       ['openai', 'gpt-realtime'],
       ['openai', 'gpt-4o-transcribe'],
+      ['groq', 'whisper-large-v3-turbo'], // GROQ_TRANSCRIBE_MODEL default
+      ['aikit', 'google/gemini-3.8-flash'], // AIKIT_TRANSCRIBE_MODEL default
       ['meta_whatsapp', 'utility_template'],
       ['aikit', 'imagen-fal'],
     ] as const) {

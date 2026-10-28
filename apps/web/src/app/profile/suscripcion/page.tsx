@@ -14,7 +14,7 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, founderOfferText, trialLastDayLabel, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
+import { CREATOR_TRIAL_DAYS, LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, TRIAL_DAYS, founderOfferText, trialLastDayLabel, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
 import { PlanCards } from '@/components/billing/PlanCards'
 import { chargeNoticeLine } from '@/components/billing/AccountAccessNotice'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
@@ -25,6 +25,11 @@ const shortDay = (iso: string) =>
   new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'Europe/Madrid' }).format(new Date(iso))
 const fmt = (iso: string) =>
   new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' }).format(new Date(iso))
+/** The beta's trial from launch day: 14 days, or 4 weeks with a creator's link (PRO-353). */
+const trialFromLaunchLine = (trialDays: number | undefined) =>
+  trialDays === CREATOR_TRIAL_DAYS
+    ? 'con el enlace de tu creadora tienes 4 semanas gratis desde la salida'
+    : `como todos, tienes ${TRIAL_DAYS} días de prueba desde la salida`
 
 export default function SuscripcionPage() {
   return (
@@ -71,7 +76,7 @@ function Suscripcion() {
             borrado nada.
           </span>
         ) : state?.access?.state === 'trial' ? (
-          <span data-testid="subscription-trial">Estás en tu prueba de 14 días: dura hasta el {trialLastDayLabel(state.access)}, incluido.</span>
+          <span data-testid="subscription-trial">Estás en tu prueba de {state.access.trialDays ?? TRIAL_DAYS} días: dura hasta el {trialLastDayLabel(state.access)}, incluido.</span>
         ) : undefined
       }
     >
@@ -168,7 +173,7 @@ function Suscripcion() {
             <>
               <p className="mb-5 text-[14px] leading-relaxed text-ink-mid">
                 {state.beta
-                  ? `Si ya sabes que te quedas, déjalo pagado con tu precio de fundador: guardamos la tarjeta hoy y el primer cobro es el ${fmt(state.firstChargeAt)} (como todos, tienes 14 días de prueba desde la salida, el ${LAUNCH_DATE_LABEL}). Hasta entonces puedes cancelar sin pagar nada.`
+                  ? `Si ya sabes que te quedas, déjalo pagado con tu precio de fundador: guardamos la tarjeta hoy y el primer cobro es el ${fmt(state.firstChargeAt)} (${trialFromLaunchLine(state.access?.trialDays)}, el ${LAUNCH_DATE_LABEL}). Hasta entonces puedes cancelar sin pagar nada.`
                   : `Guardamos la tarjeta hoy y el primer cobro es el ${fmt(state.firstChargeAt)}. Hasta entonces puedes cancelar sin pagar nada.`}
               </p>
               {state.founder?.offer && (

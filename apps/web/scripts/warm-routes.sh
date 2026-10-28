@@ -57,6 +57,7 @@ ROUTES=(
   /blog
   /blog/articulo-de-prueba-publicado
   /sitemap.xml
+  /version.json
 )
 
 for route in "${ROUTES[@]}"; do

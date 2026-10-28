@@ -391,10 +391,44 @@ const MOLLUSC_KEYWORDS = [
 ]
 
 const CELERY_KEYWORDS = ['apio', 'apionabo']
+
+// PRO-363 (2026-10-24): a broth, stock or concentrate of meat, poultry, ham,
+// cocido, vegetables or fish counts as celery unless the name says «sin
+// apio» — bought broths almost always carry it, so we are prudent. Fumet and
+// dashi say no broth word, so they stay as they were; «huesos para caldo» are
+// the bones you make it with, not the broth. «Fondo» needs a base so the
+// «fondos de alcachofa» stay out.
+const BROTH_WORDS = ['caldo', 'fondo', 'concentrado']
+const BROTH_BASES = [
+  'carne',
+  'ave',
+  'pollo',
+  'gallina',
+  'jamon',
+  'cocido',
+  'ternera',
+  'verdura',
+  'vegetal',
+  'pescado',
+  'marisco',
+  'hueso',
+]
+/** «X para caldo» is what you make the broth with, not the broth. */
+const NOT_BROTH_PHRASES = ['para caldo', 'para fondo']
+
+/** True when the name is a broth that counts as celery (PRO-363). Exported for the boot step. */
+export function isCeleryBroth(normalizedName: string): boolean {
+  if (normalizedName.includes('sin apio')) return false
+  const s = stripPhrases(normalizedName, NOT_BROTH_PHRASES)
+  return hasAnyTerm(s, BROTH_WORDS) && hasAnyTerm(s, BROTH_BASES)
+}
+
 const MUSTARD_KEYWORDS = ['mostaza']
 const SESAME_KEYWORDS = ['sesamo', 'tahini', 'tahina', 'shichimi']
 const LUPIN_KEYWORDS = ['altramuz', 'altramuces']
-const SULFITE_KEYWORDS = ['vino', 'vinagre', 'vinagret*']
+/** PRO-363: raisins («pasas», «uvas pasas») are usually kept with sulphites. Exported for the boot step. */
+export const PRO363_SULFITE_TERMS = ['pasa'] as const
+const SULFITE_KEYWORDS = ['vino', 'vinagre', 'vinagret*', ...PRO363_SULFITE_TERMS]
 
 /**
  * Infer EU-labelling allergen tags from a Spanish ingredient name.
@@ -424,7 +458,7 @@ export function inferAllergenTagsFromName(name: string): AllergenTag[] {
     tags.add('moluscos')
     tags.add('marisco')
   }
-  if (hasAnyTerm(n, CELERY_KEYWORDS)) tags.add('apio')
+  if (hasAnyTerm(stripPhrases(n, ['sin apio']), CELERY_KEYWORDS) || isCeleryBroth(n)) tags.add('apio')
   if (hasAnyTerm(n, MUSTARD_KEYWORDS)) tags.add('mostaza')
   if (hasAnyTerm(n, SESAME_KEYWORDS)) tags.add('sesamo')
   if (hasAnyTerm(n, LUPIN_KEYWORDS)) tags.add('altramuces')

@@ -5,15 +5,24 @@
  * user-agent we pass on) and answers with the saved URL: the destination
  * never comes from this request, so this is not an open redirect. Unknown
  * issue or link → 404, no redirect. No IP, browser or recipient is stored.
+ * The «Corre la voz» buttons (PRO-1019) add `?c=<code>&k=lista|hogar`,
+ * passed on; the API builds WhatsApp or the copy page from that code.
  */
 import type { NextRequest } from "next/server"
 
 const API = (process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "")
 
 async function resolve(req: NextRequest, issue: string, n: string, method: "GET" | "HEAD"): Promise<Response> {
-  const proof = req.nextUrl.searchParams.get("prueba") === "1" ? "?prueba=1" : ""
+  const q = new URLSearchParams()
+  if (req.nextUrl.searchParams.get("prueba") === "1") q.set("prueba", "1")
+  // «Corre la voz» (PRO-1019): the recipient's code and kind; the API checks them and builds the destination.
+  for (const k of ["c", "k"]) {
+    const v = req.nextUrl.searchParams.get(k)
+    if (v) q.set(k, v.slice(0, 32))
+  }
+  const query = q.toString() ? `?${q.toString()}` : ""
   try {
-    const r = await fetch(`${API}/newsletter/click/${encodeURIComponent(issue)}/${encodeURIComponent(n)}${proof}`, {
+    const r = await fetch(`${API}/newsletter/click/${encodeURIComponent(issue)}/${encodeURIComponent(n)}${query}`, {
       method: "GET",
       cache: "no-store",
       headers: {

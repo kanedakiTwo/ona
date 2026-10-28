@@ -66,7 +66,9 @@ describe('recipe visibility coverage', () => {
     expect(read('services/assistant/skills.ts')).toContain('loadMatchableRecipes(userId, db)')
     // generate-slot, household slot, regenerate-dish, add-course: all through the loader
     // (a school-day dinner wraps it in schoolDinnerPool, PRO-224).
-    expect(read('routes/menus.ts').match(/= await (schoolDinnerPool\(await )?loadMatchableRecipes\(req\.userId!\)/g)?.length).toBe(4)
+    expect(read('routes/menus.ts').match(/= await (schoolDinnerPool\(await )?loadMatchableRecipes\(req\.userId!\)/g)?.length).toBe(3)
+    // «Cambiar» (PUT slot) and PRO-364's review share the context in menuSlotPick.ts.
+    expect(read('services/menuSlotPick.ts')).toContain('= await loadMatchableRecipes(requesterId)')
     expect(read('services/pantryMatcher.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
     expect(read('services/advisor.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
     // manual pick of a recipe for a slot (meal + course variants).

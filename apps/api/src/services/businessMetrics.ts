@@ -16,7 +16,11 @@ import { loadErrorSummary } from './appErrors.js'
 import { loadWaitlistSummary } from './waitlist.js'
 import { buildInstalledOpens, buildPushEnabled, deviceCountsFor, loadInstallRows } from './appInstalls.js'
 import { NOTICE_DEFINITIONS, loadNoticeMetrics } from './notifications/metrics.js'
+<<<<<<< 308f972b97ee5fb1be5f8e4aadd3eeef682478cd
 import { loadKFactor } from './kFactor.js'
+=======
+import { campaignOrigin, invitationOrigin, loadCircleCodes, type CampaignOrigin, type InvitationOrigin } from './circleInvitations.js'
+>>>>>>> f8d4f8653a38e7635640023f58f1d191f78c4bae
 
 type Db = typeof defaultDb
 
@@ -240,6 +244,12 @@ export function buildCohorts(input: MetricsInput): CohortMetrics[] {
 export interface CampaignMetrics {
   /** Campaign name; null = signed up without a campaign link. */
   campaign: string | null
+  /**
+   * PRO-1017: `circulo` (Miguel's circle, D-129), `campaña` (any other link), and without a link
+   * `desconocido-por-invitacion` (personal link of a circle household, D-132), `invita` (any other
+   * household's link) or `sin-enlace`.
+   */
+  origin: CampaignOrigin
   signups: number
   /** Active in their signup week. */
   activated: number
@@ -256,22 +266,30 @@ const rate = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10_000) / 1
 /**
  * Signups in the window grouped by the campaign link they used (PRO-27), so
  * Miguel's circle ("familia", "amigos-padel"…) is read apart from strangers.
+ * Households without a campaign link are split by who invited them (PRO-1017).
  */
-export function buildCampaigns(input: MetricsInput, campaignOf: Map<string, string | null>): CampaignMetrics[] {
+export function buildCampaigns(
+  input: MetricsInput,
+  campaignOf: Map<string, string | null>,
+  invitationOf: Map<string, InvitationOrigin | null> = new Map(),
+): CampaignMetrics[] {
   const active = groupSets(input.activity)
-  const groups = new Map<string | null, HouseholdWeek[]>()
+  const groups = new Map<string, { campaign: string | null; origin: CampaignOrigin; members: HouseholdWeek[] }>()
   for (const s of signupWeeks(input.signups)) {
-    const c = campaignOf.get(s.householdId) ?? null
-    if (!groups.has(c)) groups.set(c, [])
-    groups.get(c)!.push(s)
+    const campaign = campaignOf.get(s.householdId) ?? null
+    const origin = campaignOrigin(campaign, invitationOf.get(s.householdId) ?? null)
+    const key = JSON.stringify([campaign, origin])
+    if (!groups.has(key)) groups.set(key, { campaign, origin, members: [] })
+    groups.get(key)!.members.push(s)
   }
-  return [...groups.entries()]
-    .map(([campaign, members]) => {
+  return [...groups.values()]
+    .map(({ campaign, origin, members }) => {
       const activated = members.filter((m) => active.get(m.week)?.has(m.householdId)).length
       const eligible = members.filter((m) => addDays(m.week, 21) <= input.currentWeek)
       const week3Active = eligible.filter((m) => active.get(addDays(m.week, 21))?.has(m.householdId)).length
       return {
         campaign,
+        origin,
         signups: members.length,
         activated,
         activationRate: rate(activated, members.length),
@@ -280,7 +298,7 @@ export function buildCampaigns(input: MetricsInput, campaignOf: Map<string, stri
         week3Rate: rate(week3Active, eligible.length),
       }
     })
-    .sort((a, b) => b.signups - a.signups || String(a.campaign).localeCompare(String(b.campaign)))
+    .sort((a, b) => b.signups - a.signups || String(a.campaign).localeCompare(String(b.campaign)) || a.origin.localeCompare(b.origin))
 }
 
 export function buildTotals(input: MetricsInput, weekly: WeeklyMetrics[]) {
@@ -336,7 +354,7 @@ export const DEFINITIONS = {
   errors:
     'In-house error tracker (specs/errors.md), last 7 days by last_seen: newGroups = error groups first seen in the window, activeGroups / openGroups = groups seen (unresolved), events = Σ count of those groups (cumulative, an upper bound). Detail: GET /admin/errors.',
   campaigns:
-    'Households that signed up in the window, by the campaign invitation link their first user registered with (null = no link: waitlist invitation, household invitation, admin or open registration). activated = active (see activeHouseholds) in the signup week; week3 = active in signup week + 3, over the signups whose week 3 has started.',
+    'Households that signed up in the window, by the campaign invitation link their first user registered with (null = no link: waitlist invitation, household invitation, admin or open registration). origin: circulo = a link of Miguel’s circle (circulo-*, beta-privada-*, colegio-estudio); campaña = any other link; without a link, desconocido-por-invitacion = signed up with the personal link of a circle household (they don’t know Miguel: counts for the 13-nov signal), invita = with the personal link of any other household, sin-enlace = none. activated = active (see activeHouseholds) in the signup week; week3 = active in signup week + 3, over the signups whose week 3 has started.',
   installedAppHouseholds:
     'Households (counted users) that opened Mimoia as an installed app (display-mode standalone) at least once that week, by device (android / ios / desktop, deduced from the browser; total counts each household once). The web reports at most one open per household and day. Starts when this shipped (PRO-83): earlier weeks read 0.',
   pushEnabledHouseholds:
@@ -362,8 +380,8 @@ export const FEATURE_DEFINITIONS: Record<string, string> = {
   whatsapp_service: 'One free-form WhatsApp message sent by Mimo (reply or proactive inside the 24 h window); 0 € for the first 1,000 of the month.',
   whatsapp_template: 'One template message sent by Mimo outside the 24 h window (Meta utility template).',
   whatsapp_review: 'One call of the daily conversation reviewer (system cost; an admin re-run is another row).',
-  voice_note_transcription: 'One WhatsApp voice note transcribed.',
-  mimo_voice_transcription: "One recording of the user's voice in the app transcribed (POST /stt).",
+  voice_note_transcription: 'One WhatsApp voice note transcribed by one provider (Groq, AiKit or OpenAI; the provider says which). When one hears nothing and the next one tries, each is a row.',
+  mimo_voice_transcription: "One recording of the user's voice in the app transcribed by one provider (POST /stt; Groq, AiKit or OpenAI, as voice_note_transcription).",
   chat_tts: "One of Mimo's replies read aloud (POST /tts).",
   voice_realtime: 'Historical: one OpenAI Realtime voice session (retired 2026-10-09).',
   recipe_extract_photo: 'One recipe read from a photo (web or WhatsApp).',
@@ -463,7 +481,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
   `)
 
   const campaignsQ = db.execute(sql`
-    SELECT h.id::text AS household_id, MIN(c.name) AS campaign
+    SELECT h.id::text AS household_id, MIN(c.name) AS campaign, MIN(u.invited_by_code) AS invited_by_code
       FROM households h
       JOIN users u ON u.primary_household_id = h.id
       LEFT JOIN invite_campaigns c ON c.id = u.invite_campaign_id
@@ -490,11 +508,19 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
+<<<<<<< 308f972b97ee5fb1be5f8e4aadd3eeef682478cd
   const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor] = await Promise.all([
     activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
     campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
     loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
     loadKFactor(weeks, inc, db),
+=======
+  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, circleCodes] = await Promise.all([
+    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
+    campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
+    loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
+    loadCircleCodes(db),
+>>>>>>> f8d4f8653a38e7635640023f58f1d191f78c4bae
   ])
 
   const input: MetricsInput = {
@@ -540,6 +566,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     campaigns: buildCampaigns(
       input,
       new Map((campaignRows.rows as any[]).map((r) => [r.household_id as string, (r.campaign as string | null) ?? null])),
+      new Map((campaignRows.rows as any[]).map((r) => [r.household_id as string, invitationOrigin(r.invited_by_code, circleCodes)])),
     ),
     totals: buildTotals(input, weekly),
     errors,

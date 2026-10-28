@@ -35,7 +35,7 @@ import {
   users,
   whatsappLinks,
 } from '../../db/schema.js'
-import { hasHealthConsent } from '../healthConsent.js'
+import { hasHealthConsent, healthConsentCoversReligion, religiousDietsIn, RELIGION_CONSENT_MESSAGE } from '../healthConsent.js'
 import { syncHouseholdCounts } from '../userMemoryStore.js'
 import { factsInForce } from './reader.js'
 import { SERVICE_WINDOW_MS } from '../whatsapp/proactive.js'
@@ -575,6 +575,9 @@ export async function writeProfileFact(
   // Over WhatsApp not even a note that talks about health (LEG-03): «apunta que soy celíaca» stays out.
   if (input.channel === 'whatsapp' && mentionsHealth(JSON.stringify(input.value ?? ''))) {
     throw new FichaError(403, 'HEALTH_FROM_WHATSAPP', 'Por WhatsApp no guardo datos de salud: se cambian en Tu ficha, en la web')
+  }
+  if (input.type === 'restrictions' && religiousDietsIn(input.value).length > 0 && !(await healthConsentCoversReligion(userId))) {
+    throw new FichaError(403, 'RELIGION_CONSENT_REQUIRED', RELIGION_CONSENT_MESSAGE)
   }
   let personId: string | null = null
   if (input.about === 'person') {

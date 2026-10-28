@@ -174,6 +174,7 @@ describe('stripHealthFromWhatsAppText (LEG-03)', () => {
     'Estoy embarazada de 5 meses',
     'Peso 82 kilos y quiero adelgazar',
     'Comemos halal',
+    'Soy musulmán y estamos en Ramadán',
     'El médico me ha quitado la sal',
     'Tomo medicación para la tensión alta',
   ])('removes «%s»', (s) => {

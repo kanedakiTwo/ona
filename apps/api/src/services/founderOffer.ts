@@ -13,20 +13,22 @@
 import { sql } from 'drizzle-orm'
 import {
   BRAND_NAME,
+  CREATOR_TRIAL_DAYS,
   FOUNDER_OFFER_DAY,
   LAUNCH_DATE,
-  TRIAL_DAYS,
   accountAccess,
   founderOfferStands,
   founderOfferText,
   founderPriceAmounts,
   planByKey,
+  trialDaysFor,
   trialLastDayLabel,
   type AccountAccess,
 } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { LIVE_STATUSES, firstChargeInstant, formatDayEs, isBeta } from './billing.js'
+import { creatorRefsSql } from './creatorTrial.js'
 import { renderBrandEmail, sendEmail, type EmailMessage, type EmailResult } from './email.js'
 import { MIGUEL, brandAssets } from './emailBrand.js'
 import { isSendingHour } from './trialEmails.js'
@@ -70,6 +72,8 @@ export interface OfferCandidate {
   householdCreatedAt: Date
   ownerId: string
   ownerEmail: string
+  /** 28 with a creator's link (PRO-353); `TRIAL_DAYS` when left out. */
+  trialDays?: number
 }
 
 export interface OfferRepo {
@@ -83,11 +87,13 @@ export function createDbOfferRepo(db: typeof defaultDb = defaultDb): OfferRepo {
   return {
     async listCandidates(now) {
       const launch = new Date(`${LAUNCH_DATE}T00:00:00+01:00`)
-      const from = new Date(now.getTime() - (TRIAL_DAYS + 1) * 86_400_000)
+      // Up to the end of a creator's-link trial (PRO-353); the exact rule is re-checked in JS.
+      const from = new Date(now.getTime() - (CREATOR_TRIAL_DAYS + 1) * 86_400_000)
       const to = new Date(now.getTime() - (FOUNDER_OFFER_DAY - 1) * 86_400_000)
       const live = sql.join(LIVE_STATUSES.map((s) => sql`${s}`), sql`, `)
       const rows = await db.execute(sql`
-        SELECT h.id AS "householdId", h.created_at AS "householdCreatedAt", u.id AS "ownerId", u.email AS "ownerEmail"
+        SELECT h.id AS "householdId", h.created_at AS "householdCreatedAt", u.id AS "ownerId", u.email AS "ownerEmail",
+          ${creatorRefsSql('h')} AS "creatorRefs"
         FROM households h
         JOIN users u ON u.id = h.owner_id
         WHERE h.founder_offer_at IS NULL
@@ -96,9 +102,12 @@ export function createDbOfferRepo(db: typeof defaultDb = defaultDb): OfferRepo {
           AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.household_id = h.id AND s.status IN (${live}))
         LIMIT 1000
       `)
-      return (rows.rows as Array<{ householdId: string; householdCreatedAt: Date | string; ownerId: string; ownerEmail: string }>).map((r) => ({
+      return (
+        rows.rows as Array<{ householdId: string; householdCreatedAt: Date | string; ownerId: string; ownerEmail: string; creatorRefs: string[] | null }>
+      ).map(({ creatorRefs, ...r }) => ({
         ...r,
         householdCreatedAt: new Date(r.householdCreatedAt),
+        trialDays: trialDaysFor(creatorRefs),
       }))
     },
     async claim(householdId, at) {
@@ -120,8 +129,8 @@ export interface OfferDeps {
 }
 
 /** The offer is due: in trial from day 7, no plan (the repo already left out households with one). */
-export function isFounderOfferDue(householdCreatedAt: Date, now: Date): AccountAccess | null {
-  const access = accountAccess({ householdCreatedAt, paid: false, now })
+export function isFounderOfferDue(householdCreatedAt: Date, now: Date, trialDays?: number): AccountAccess | null {
+  const access = accountAccess({ householdCreatedAt, paid: false, now, trialDays })
   return founderOfferStands(access) ? access : null
 }
 
@@ -133,10 +142,10 @@ export async function sendFounderOffers(now: Date, deps: OfferDeps) {
   const out = { offered: 0, email: { sent: 0, skipped: 0, failed: 0 }, whatsapp: 0 }
   if (isBeta(now) || !isSendingHour(now)) return out
   for (const c of await deps.repo.listCandidates(now)) {
-    const access = isFounderOfferDue(c.householdCreatedAt, now)
+    const access = isFounderOfferDue(c.householdCreatedAt, now, c.trialDays)
     if (!access) continue
     if (!(await deps.repo.claim(c.householdId, now))) continue
-    const copy = { access, firstCharge: firstChargeInstant({ userCreatedAt: c.householdCreatedAt, now }) }
+    const copy = { access, firstCharge: firstChargeInstant({ userCreatedAt: c.householdCreatedAt, now, trialDays: c.trialDays }) }
     // PRO-234 (D-080): ONE message — Mimo on WhatsApp if it gets through,
     // otherwise the email. Never both.
     let wa: ChannelOutcome = { status: 'skipped' }

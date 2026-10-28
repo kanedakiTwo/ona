@@ -1,5 +1,15 @@
 import type { Course } from './recipe.js'
 
+/** Why a dish was replaced on its own (PRO-345): see `RecipeDish.replaced`. */
+export type DishReplacedReason = 'diet' | 'removed'
+
+/** Pure: the day card's line for a replaced dish (PRO-345). */
+export function replacedDishLine(r: { recipeName: string; reason: DishReplacedReason }): string {
+  return r.reason === 'diet'
+    ? `En lugar de «${r.recipeName}», que ha cambiado y ya no encaja con vuestra dieta`
+    : `En lugar de «${r.recipeName}», que ya no está en el catálogo`
+}
+
 export interface RecipeDish {
   kind: 'recipe'
   recipeId: string
@@ -26,6 +36,20 @@ export interface RecipeDish {
    * (menú inteligente, specs/smart-menu.md); today's generator never sets it.
    */
   why?: string | null
+  /**
+   * PRO-345: Mimoia put this dish in place of another because that recipe
+   * changed after entering the menu and no longer fits the household's
+   * allergies or diet (`diet`), or was deleted (`removed`). The day card
+   * says so. Gone as soon as the dish is changed by hand.
+   */
+  replaced?: { recipeName: string; reason: DishReplacedReason } | null
+  /**
+   * PRO-364: someone in the household saved an allergy or diet this dish
+   * breaks, and there was no other recipe to put instead (or the slot is
+   * «Fijada», or it's a táper already cooked). The day's card warns; any
+   * change of the dish drops it.
+   */
+  restrictionConflict?: boolean
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
   imageUrl?: string | null
   /** Hydrated alongside `imageUrl`. */

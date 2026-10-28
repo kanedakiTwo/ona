@@ -32,6 +32,7 @@ The public waitlist that comes before the launch. The product launches publicly 
   - `segments`: marginals plus the household × planner × method cross with a `target` flag;
   - `sources`: `bySource` (`?ref=`), `byUtm` (source × medium × campaign) and `byCampaign` (`utm_campaign` alone, PRO-189); every row has `count` and `inTarget` — how many of those active entries are in the target segment (`isTargetSegment`), so each link (peluquería, Telegram, creadoras…) is read by the households it brings, not only by signups;
   - `referrals`: top referrers by **code only**;
+  - `invitations` (PRO-1017, D-132 point 2): the active entries that came with someone's personal link (`?invita=`), in two groups, each `{ count, inTarget }`: `desconocidoPorInvitacion` — the link of a household of Miguel's circle (a member signed up with a `circulo-*`, `beta-privada-*` or `colegio-estudio` campaign link, D-129): they don't know Miguel and count for the 13-nov signal (D-020) — and `invita`, the link of any other household or list person. Same rule as `campaigns[].origin` in [metrics](./metrics.md); the token gets the same counts, never the codes;
   - `batches`: size / joined / unsubscribed per batch;
   - `suggestedNextBatch`: ids + counts;
   - `pricing` (PRO-26): `answeredPriceQuestions`, per question `{ answers, min, p25, median, p75, max, histogram[{eur,count}] }`, `reservations { total, byPlan }`, `none { total, byReason }` — aggregates of active entries only;

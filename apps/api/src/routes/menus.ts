@@ -28,6 +28,7 @@ import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
 import { startShadowPlan } from '../services/menuPlannerShadow.js'
+import { loadSlotPickContext, slotPickOptions } from '../services/menuSlotPick.js'
 import {
   recordMenuEdits,
   slotDiff,
@@ -600,60 +601,10 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       }
     }
 
-    // Fetch user for restrictions + load dislikes from long-term memory.
-    const [user] = await db
-      .select({ restrictions: users.restrictions })
-      .from(users)
-      .where(eq(users.id, menu.userId))
-      .limit(1)
-    const memory = await getMemoryForUser(menu.userId).catch(() => null)
-    // PRO-305: every member's allergies and diet, like the weekly menu.
-    const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memory), menu.userId)
-    const dislikesValue = memory?.dislikes?.value
-    const equipmentValue = memory?.equipment?.value
-    // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes, availableEquipment, unavailableEquipment: unavailEquip1 } = withFichaFilters(
-      {
-        dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
-        availableEquipment: Array.isArray(equipmentValue) ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment)) : undefined,
-      },
-      await loadFichaMenuConstraints(menu.userId),
-    )
-    // PRO-138: the day's limit on total or hands-on time.
-    const timeBudget = slotTimeBudget(memory, menu.weekStart, dayIndex)
-
-    // Fetch favorites — household-scoped when the flag is on so the
-    // matcher boosts recipes any household member has starred.
-    const favScope = await resolveScope(menu.userId)
-    const favRows = await db
-      .select({ recipeId: userFavorites.recipeId })
-      .from(userFavorites)
-      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScope))
-
-    // «¿Qué tal?» ratings (PRO-111): 5 stars boost, 1 star never auto-picked.
-    const rated = withHouseholdRatings(
-      new Set<string>(favRows.map((f: any) => f.recipeId)),
-      new Set(menu.bannedRecipeIds ?? []),
-      await loadHouseholdRatingSets(req.userId!),
-    )
-
-    // Load all recipes with ingredients for matching
-    // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-    const recipesWithIngredients = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, dayIndex, meal)
-
-    const season = detectSeason()
-
-    const matcherOptions = {
-      meal: meal as Meal,
-      season,
-      usedRecipeIds,
-      restrictions,
-      ...rated,
-      dislikes,
-      availableEquipment,
-      unavailableEquipment: unavailEquip1,
-      timeBudget,
-    }
+    // Allergies and diet of the whole household, dislikes, equipment,
+    // favourites, ratings and the catalogue (shared with PRO-364's review).
+    const pickCtx = await loadSlotPickContext(menu, req.userId!)
+    const { pool: recipesWithIngredients, options: matcherOptions } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds)
 
     // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
     // Note dishes stay in place unchanged.

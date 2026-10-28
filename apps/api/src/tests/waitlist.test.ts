@@ -294,6 +294,25 @@ describe('buildWaitlistReport', () => {
     expect(r.totals.referredSignups).toBe(3)
   })
 
+  it('PRO-1017: someone invited by a circle household is «desconocido por invitación»; by any other, `invita`', () => {
+    const circleCodes = new Set(['circ0001'])
+    const rows = [
+      row({ referredByCode: 'circ0001' }),
+      row({ referredByCode: 'circ0001', householdSize: '1' }),
+      row({ referredByCode: 'otro0001' }),
+      row({ referredByCode: 'circ0001', status: 'unsubscribed' }),
+      row(),
+    ]
+    const r = buildWaitlistReport(rows, { now, days: 30, batchSize: 20, circleCodes })
+    expect(r.invitations).toEqual({
+      invita: { count: 1, inTarget: 1 },
+      desconocidoPorInvitacion: { count: 2, inTarget: 1 },
+    })
+    // Without the circle's codes, every referral is `invita`.
+    expect(buildWaitlistReport(rows, { now, days: 30, batchSize: 20 }).invitations.invita.count).toBe(3)
+    expect(r.definitions.invitations).toMatch(/círculo/)
+  })
+
   it('includes the suggested next batch and never an email', () => {
     const rows = [row({ id: 'x1' }), row({ id: 'x2', householdSize: '1' })]
     const r = buildWaitlistReport(rows, { now, days: 30, batchSize: 1 })

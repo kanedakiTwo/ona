@@ -12,6 +12,7 @@ import {
 } from './middleware/errorCapture.js'
 import authRoutes from './routes/auth.js'
 import publicConfigRoutes from './routes/publicConfig.js'
+import versionRoutes from './routes/version.js'
 import userRoutes from './routes/users.js'
 import recipeRoutes from './routes/recipes.js'
 import ingredientRoutes from './routes/ingredients.js'
@@ -53,6 +54,7 @@ import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
+import { startMenuRecipeRecheck } from './services/menuRecipeRecheck.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
 import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
@@ -128,6 +130,8 @@ app.use(
 app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() })
 })
+// The deployed commit (PRO-365): public, no cache, no DB read.
+app.use(versionRoutes)
 
 // Routes
 // Order matters: routers that call `router.use(authMiddleware)` at the top
@@ -226,6 +230,8 @@ app.listen(env.PORT, () => {
   void interruptStaleCatalogImports()
   // Catalogue photos are made before a recipe goes out (and for any published without one).
   startCatalogPhotos()
+  // PRO-345: saved menus whose recipe changed (catalogue fixes on deploy, scripts) or was deleted.
+  startMenuRecipeRecheck()
 })
 
 export default app

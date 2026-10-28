@@ -12,7 +12,7 @@ import { persistRecipe } from './recipePersistence.js'
 import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
-import { catalogSourceRecord, planBatchPublish, reviewDecision, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
+import { catalogSourceRecord, planBatchPublish, reviewDecision, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type RewriteOptions, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
 
 type Db = typeof defaultDb
 /** The database or a transaction on it (the admin page publishes and audits in one). */
@@ -99,7 +99,7 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
 }
 
 export function createDbCatalogImportDeps(
-  rewrite: (draft: CatalogDraftInput, opts: { avoidPhrases?: string[] }) => Promise<CatalogRewrite>,
+  rewrite: (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite>,
   log?: (line: string) => void,
 ): CatalogImportDeps {
   return {

@@ -1,9 +1,9 @@
 import { eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { households, users } from '../db/schema.js'
-import { grantHealthConsent, hasHealthConsent } from './healthConsent.js'
+import { grantHealthConsent, hasHealthConsent, healthConsentCoversReligion } from './healthConsent.js'
 import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
-import { applyFreezeAnswer, timeAvailableForChoice, type CookingStyle, type FreezeAnswer, type WeekdayCookingChoice } from '@ona/shared'
+import { applyFreezeAnswer, isReligiousDiet, timeAvailableForChoice, type CookingStyle, type FreezeAnswer, type WeekdayCookingChoice } from '@ona/shared'
 import { getMemoryForUser, setMemoryFact } from './userMemoryStore.js'
 import { cookingStyleHousehold, setCookingStyle } from './profile/cookingStyle.js'
 
@@ -86,7 +86,12 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
   const note = typeof input.cookingNote === 'string' ? input.cookingNote.trim().slice(0, ONBOARDING_NOTE_MAX) : undefined
   if (note) set.onboardingNote = note
   if (input.restrictions !== undefined) {
-    set.restrictions = healthConsent === true || (await hasHealthConsent(userId)) ? input.restrictions : []
+    let restrictions = healthConsent === true || (await hasHealthConsent(userId)) ? input.restrictions : []
+    // A consent given now is the current text; an older one (v1) doesn't name a religious diet (E-19).
+    if (healthConsent !== true && restrictions.some(isReligiousDiet) && !(await healthConsentCoversReligion(userId))) {
+      restrictions = restrictions.filter((r) => !isReligiousDiet(r))
+    }
+    set.restrictions = restrictions
   }
   const [updated] = await database.update(users).set(set).where(eq(users.id, userId)).returning(onboardedUserColumns)
   // PRO-154: favourites the catalogue doesn't have become «deseos del

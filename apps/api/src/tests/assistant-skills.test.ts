@@ -718,7 +718,7 @@ describe('swap_meal', () => {
       id: 'm-1',
       days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
-    // queries: menu → candidates by name → user restrictions → recipe allergens → its ingredients [→ update]
+    // queries: menu → candidates by name → user restrictions → recipe allergens → its ingredients → its steps [→ update]
     const queue = (extra: any[] = []) =>
       makeDb(
         [menu],
@@ -726,8 +726,23 @@ describe('swap_meal', () => {
         [{ restrictions: ['sin gluten'] }],
         [{ allergens: ['gluten', 'huevo'] }],
         [{ ingredientName: 'espaguetis', allergenTags: ['gluten'] }],
+        [{ index: 0, text: 'Cuece la pasta.' }],
         ...extra,
       )
+
+    it('PRO-346: meat the steps name and the ingredients don\'t counts too', async () => {
+      const db = makeDb(
+        [menu],
+        [{ id: 'r-lent', name: 'Lentejas guisadas', authorId: null }],
+        [{ restrictions: ['vegetariano'] }],
+        [{ allergens: [] }],
+        [{ ingredientName: 'lentejas', allergenTags: [] }, { ingredientName: 'cebolla', allergenTags: [] }],
+        [{ index: 0, text: 'Sofríe la cebolla.' }, { index: 1, text: 'A los 30 minutos añadir chorizo y morcilla.' }],
+      )
+      const r = await skill.handler({ dayIndex: 0, meal: 'lunch', recipeName: 'lentejas guisadas' }, ctx(db))
+      expect(r.uiHint).toBe('text')
+      expect(r.summary).toMatch(/No he cambiado nada.*vegetariano/)
+    })
 
     it('is not placed without confirmation; the model is told why', async () => {
       const r = await skill.handler({ dayIndex: 0, meal: 'lunch', recipeName: 'carbonara' }, ctx(queue()))

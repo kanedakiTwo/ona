@@ -14,6 +14,7 @@ Mimoia splits what's left on the shopping list for the next 7 days into one orde
   - Lines show the shop text. Products with options show chips (serrano/ibérico, dorada/lubina/gallo, de ternera/de cerdo/mixta…); the pick is remembered for the household. Weight products typed without an amount ask **¿Cuánto?** with a one-tap suggestion (100 g de jamón). Fridge staples needed in tiny amounts (25 g de mantequilla, 50 ml de leche, 1 yema) come **unticked** as "probablemente lo tienes".
   - **"¿Algo más?"** adds products ("1 kg de manzanas", "Fruta (fresas, plátanos)").
   - Remove a line, move it to another shop, add a preparation note (carnicería / pescadería), set "tope del pedido: hasta X €", read the message.
+  - **Halal households** (2026-10-25: someone in the household has «halal» among their restrictions, as the menu reads them, `loadHouseholdRestrictions`): the butcher's message adds «Toda la carne, halal, por favor.» after the lines, and «carne picada» defaults to «de ternera» instead of «mixta», which carries pork (also over a saved «mixta» / «de cerdo» preference; a pick made on the line still wins) (`buildOrderMessage` `halal`, `halalBuyPrefs`, `shopOrders.test.ts`).
   - **Antes de enviarlo**: while a choice, an amount or the delivery address is missing, the card lists it and there's no send link.
   - Then:
   - WhatsApp → **Enviar por WhatsApp** opens `wa.me/<shop>?text=<order>`; tapping it marks the order *enviado*. Over 1,200 characters Mimoia opens the chat without text and the user pastes it (Copiar mensaje).

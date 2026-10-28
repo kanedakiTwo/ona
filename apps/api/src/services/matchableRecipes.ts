@@ -1,4 +1,4 @@
-import { count, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import type { Course } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { recipes, recipeIngredients, recipeSteps, ingredients } from '../db/schema.js'
@@ -7,6 +7,7 @@ import type { RecipeWithIngredients } from './recipeMatcher.js'
 import { catalogAuditIssuesFor } from './catalogRecipeAudit.js'
 import { isRetiredRecipe } from './recipeCatalogOrder.js'
 import { loadFichaMenuConstraints } from './profile/reader.js'
+import { unlistedDietMentions } from './stepDietMentions.js'
 
 export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
 
@@ -58,13 +59,19 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
     .where(inArray(recipeIngredients.recipeId, recipeIds))
 
-  // Step counts for the catalogue quality audit (PRO-73).
+  // Step texts: their count for the catalogue quality audit (PRO-73) and
+  // what they name that the ingredients don't (PRO-346).
   const stepRows = await db
-    .select({ recipeId: recipeSteps.recipeId, n: count() })
+    .select({ recipeId: recipeSteps.recipeId, index: recipeSteps.index, text: recipeSteps.text })
     .from(recipeSteps)
     .where(inArray(recipeSteps.recipeId, recipeIds))
-    .groupBy(recipeSteps.recipeId)
-  const stepCountByRecipe = new Map<string, number>(stepRows.map((r: any) => [r.recipeId, Number(r.n)]))
+  const stepsByRecipe = new Map<string, Array<{ index: number; text: string }>>()
+  for (const s of stepRows) {
+    const list = stepsByRecipe.get(s.recipeId) ?? []
+    list.push({ index: s.index, text: s.text ?? '' })
+    stepsByRecipe.set(s.recipeId, list)
+  }
+  const stepTexts = (recipeId: string) => [...(stepsByRecipe.get(recipeId) ?? [])].sort((a, b) => a.index - b.index).map((s) => s.text)
 
   const auditLinesByRecipe = new Map<string, Array<{ name: string; quantity: number; unit: string; unitWeight: number | null; density: number | null; edibleFraction: number | null; note: string | null }>>()
   const ingredientsByRecipe = new Map<string, RecipeWithIngredients['ingredients']>()
@@ -116,6 +123,13 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     nutritionPerServing: r.nutritionPerServing ?? null,
     servings: r.servings ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],
+    // PRO-346: meat, fish or allergens the steps name and the ingredients
+    // don't (PRO-268's list for Cocina). The diet filter counts them as
+    // ingredients until the recipe is fixed: «Lentejas guisadas» with
+    // «añadir chorizo y morcilla» isn't vegetarian.
+    stepMentions: unlistedDietMentions(stepTexts(r.id), (ingredientsByRecipe.get(r.id) ?? []).map((i) => i.ingredientName)).map(
+      ({ term, category }) => ({ term, category }),
+    ),
     // PRO-73: catalogue recipes with no steps, too few ingredients or
     // quantities out of range are skipped by the matcher. Computed here, on
     // read; nothing is written. Users' own recipes are never audited.
@@ -126,7 +140,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
         servings: r.servings ?? 4,
         course: (r.course as string | null | undefined) ?? null,
         meals: r.meals ?? [],
-        stepCount: stepCountByRecipe.get(r.id) ?? 0,
+        stepCount: stepsByRecipe.get(r.id)?.length ?? 0,
         ingredients: auditLinesByRecipe.get(r.id) ?? [],
       },
       auditOptions,

@@ -16,11 +16,8 @@ import { loadErrorSummary } from './appErrors.js'
 import { loadWaitlistSummary } from './waitlist.js'
 import { buildInstalledOpens, buildPushEnabled, deviceCountsFor, loadInstallRows } from './appInstalls.js'
 import { NOTICE_DEFINITIONS, loadNoticeMetrics } from './notifications/metrics.js'
-<<<<<<< 308f972b97ee5fb1be5f8e4aadd3eeef682478cd
 import { loadKFactor } from './kFactor.js'
-=======
 import { campaignOrigin, invitationOrigin, loadCircleCodes, type CampaignOrigin, type InvitationOrigin } from './circleInvitations.js'
->>>>>>> f8d4f8653a38e7635640023f58f1d191f78c4bae
 
 type Db = typeof defaultDb
 
@@ -508,19 +505,12 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-<<<<<<< 308f972b97ee5fb1be5f8e4aadd3eeef682478cd
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor] = await Promise.all([
+  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor, circleCodes] = await Promise.all([
     activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
     campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
     loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
     loadKFactor(weeks, inc, db),
-=======
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, circleCodes] = await Promise.all([
-    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
-    campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
-    loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
     loadCircleCodes(db),
->>>>>>> f8d4f8653a38e7635640023f58f1d191f78c4bae
   ])
 
   const input: MetricsInput = {

@@ -43,7 +43,7 @@ Añadir un truco es añadir una entrada; sus usos de los últimos 180 días se c
 
 ## Tabla `household_feature_usage`
 
-Migración aditiva 0094. Una fila por hogar (o persona) y función:
+Migración aditiva 0097. Una fila por hogar (o persona) y función:
 
 | Columna | Qué |
 |---|---|

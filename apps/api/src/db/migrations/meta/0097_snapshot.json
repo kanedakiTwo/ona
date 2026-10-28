@@ -1,6 +1,6 @@
 {
-  "id": "a04284c0-8020-4205-b638-58bea00e92d7",
-  "prevId": "c6ca238e-40e8-4780-9b43-cecfa6db811c",
+  "id": "309f173b-5384-445e-821a-133185ea8500",
+  "prevId": "45c24bf3-efe7-4157-834c-beb31fceff7d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8756,6 +8756,12 @@
         },
         "health_consent_withdrawn_at": {
           "name": "health_consent_withdrawn_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "allergies_none_at": {
+          "name": "allergies_none_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

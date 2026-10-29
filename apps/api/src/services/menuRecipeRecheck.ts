@@ -25,7 +25,8 @@
  * A táper or leftover whose source was already cooked is food that exists:
  * kept on `diet`, turned into a note on `removed` (nothing links anymore).
  * A retired recipe (PRO-140) still exists and opens by id; it is only
- * checked for `diet`.
+ * checked for `diet`. A recipe is read as the matcher reads it: allergens,
+ * ingredients and what the steps name (PRO-346, here since PRO-1067).
  *
  * When: right after `PUT /recipes/:id` and `DELETE /recipes/:id` (that
  * recipe only), and a full pass at boot and every hour, which catches the
@@ -37,12 +38,13 @@ import { and, eq, gte, inArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { detectSeason, isTaperVariant, type Course, type DayMenu, type Dish, type DishReplacedReason, type Meal, type MealSlot, type RecipeDish } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { ingredients, menuEdits, menus, recipeIngredients, recipes, users } from '../db/schema.js'
+import { ingredients, menuEdits, menus, recipeIngredients, recipeSteps, recipes, users } from '../db/schema.js'
 import { compileRestrictions, mergeRestrictions, violatesRestrictions, type RestrictableRecipe } from './dietaryRestrictions.js'
 import { withHouseholdRestrictions } from './householdAllergies.js'
 import { addDays, madridParts } from './madridTime.js'
 import { loadMatchableRecipes } from './matchableRecipes.js'
 import { findForCourse } from './courseAwareMatcher.js'
+import { unlistedDietMentions } from './stepDietMentions.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { clearPendingForMenu, enqueuePrepAlertsForMenu } from './notificationScheduler.js'
 
@@ -241,11 +243,25 @@ function recipeIdsIn(days: DayMenu[]): Set<string> {
 /** A dish id that isn't a uuid (old data) would make the `IN (…)` query fail. */
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success
 
+/**
+ * Pure: a recipe as the check reads it — allergens, ingredients and, like
+ * the matcher (PRO-346), the meat, fish or allergens its steps name and the
+ * ingredients don't («Lentejas guisadas» with «añadir chorizo»).
+ */
+export function toRecheckRecipe(
+  row: { id: string; name: string; allergens: string[] | null; updatedAt: Date | null },
+  lines: RecheckRecipe['ingredients'][number][],
+  steps: readonly string[],
+): RecheckRecipe {
+  const stepMentions = unlistedDietMentions(steps, lines.map((l) => l.ingredientName)).map(({ term, category }) => ({ term, category }))
+  return { id: row.id, name: row.name, allergens: row.allergens ?? [], updatedAt: row.updatedAt ?? null, ingredients: lines, stepMentions }
+}
+
 async function loadRecheckRecipes(ids: string[], db: Db): Promise<Map<string, RecheckRecipe>> {
   const valid = ids.filter(isUuid)
   const out = new Map<string, RecheckRecipe>()
   if (valid.length === 0) return out
-  const [rows, lines] = await Promise.all([
+  const [rows, lines, steps] = await Promise.all([
     db
       .select({ id: recipes.id, name: recipes.name, allergens: recipes.allergens, updatedAt: recipes.updatedAt })
       .from(recipes)
@@ -260,6 +276,10 @@ async function loadRecheckRecipes(ids: string[], db: Db): Promise<Map<string, Re
       .from(recipeIngredients)
       .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
       .where(inArray(recipeIngredients.recipeId, valid)),
+    db
+      .select({ recipeId: recipeSteps.recipeId, index: recipeSteps.index, text: recipeSteps.text })
+      .from(recipeSteps)
+      .where(inArray(recipeSteps.recipeId, valid)),
   ])
   const linesByRecipe = new Map<string, RecheckRecipe['ingredients'][number][]>()
   for (const l of lines) {
@@ -267,8 +287,15 @@ async function loadRecheckRecipes(ids: string[], db: Db): Promise<Map<string, Re
     list.push({ ingredientName: l.ingredientName, allergenTags: l.allergenTags ?? [], containsTags: l.containsTags ?? [] })
     linesByRecipe.set(l.recipeId, list)
   }
+  const stepsByRecipe = new Map<string, Array<{ index: number; text: string }>>()
+  for (const st of steps) {
+    const list = stepsByRecipe.get(st.recipeId) ?? []
+    list.push(st)
+    stepsByRecipe.set(st.recipeId, list)
+  }
   for (const r of rows) {
-    out.set(r.id, { id: r.id, name: r.name, allergens: r.allergens ?? [], updatedAt: r.updatedAt ?? null, ingredients: linesByRecipe.get(r.id) ?? [] })
+    const texts = (stepsByRecipe.get(r.id) ?? []).sort((a, b) => a.index - b.index).map((st) => st.text)
+    out.set(r.id, toRecheckRecipe(r, linesByRecipe.get(r.id) ?? [], texts))
   }
   return out
 }

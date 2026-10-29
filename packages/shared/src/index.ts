@@ -572,6 +572,8 @@ export {
   holidayOn,
   weekHolidays,
 } from './constants/holidays.js'
+export type { FeatureKind, FeatureScope, FeatureEventRule, FeatureCatalogEntry, FeatureId } from './constants/featureCatalog.js'
+export { FEATURE_CATALOG, FEATURE_IDS } from './constants/featureCatalog.js'
 export {
   HOUSEHOLD_INVITE_TTL_DAYS,
   HOUSEHOLD_INVITE_SOURCES,

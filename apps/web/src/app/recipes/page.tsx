@@ -12,7 +12,7 @@ import {
   type Meal,
   type Season,
 } from "@ona/shared"
-import { useRecipes, useRecipesWithWhatIHave } from "@/hooks/useRecipes"
+import { useRecipes, useRecipesWithWhatIHave, useSeasonalProduce } from "@/hooks/useRecipes"
 import { useHouseholdCustomTags } from "@/hooks/useRecipeNotes"
 import { useAuth } from "@/lib/auth"
 import {
@@ -26,7 +26,11 @@ import { WithWhatIHavePicker, MAX_WITH_WHAT_I_HAVE, type PickedIngredient } from
 import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
+<<<<<<< e7dfff9cdd5b3f876314aed71ae49c175460481f
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
+=======
+import { SeasonalProduceRow } from "@/components/recipes/SeasonalProduceRow"
+>>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
 
 const SCOPE_KEY = "ona.recipes.scope"
 
@@ -43,7 +47,8 @@ function readScope(): CatalogScope | null {
  * `/recipes` — "D · Luz y foto". Header ("Recetas" + Nueva receta), one
  * search field, one chip row (quick filters + scope, plus «Con lo que tengo»,
  * which opens an ingredient picker and swaps the grid for ranked results
- * with what is missing), a "De temporada" hero
+ * with what is missing), the «Este mes» row of the month's fruits and
+ * vegetables (PRO-375: one tapped filters by that ingredient), a "De temporada" hero
  * when nothing is filtered, then the card grid. Advanced filters live in a
  * dialog opened from the search field (mobile) or "Más filtros" (lg+).
  *
@@ -77,6 +82,10 @@ export default function RecipesPage() {
   const [picked, setPicked] = useState<PickedIngredient[]>([])
   /** Season "now" — meteorological, Spain; same rule as the menu generator. */
   const [currentSeason] = useState<Season>(() => detectSeason(new Date()))
+  /** «Este mes» (PRO-375): the browser's month and the product picked from the row. */
+  const [currentMonth] = useState(() => new Date().getMonth() + 1)
+  const [produce, setProduce] = useState("")
+  const { data: seasonalProduce } = useSeasonalProduce(currentMonth)
 
   useEffect(() => {
     const saved = readScope()
@@ -100,6 +109,7 @@ export default function RecipesPage() {
     search: searchQuery || undefined,
     meal: selectedMeal || undefined,
     customTags: selectedTags.length > 0 ? selectedTags : undefined,
+    ingredient: produce || undefined,
     perPage: 100,
     // PRO-299: «Mis recetas» asks the API for them, so none is cut off.
     ...(scope === "mine" ? { mine: true } : {}),
@@ -141,7 +151,8 @@ export default function RecipesPage() {
     !!maxTime ||
     scope !== "all" ||
     selectedTags.length > 0 ||
-    withWhatIHave
+    withWhatIHave ||
+    !!produce
   // Filters with no chip in the row → badge on the filters button.
   const hiddenFiltersCount =
     (selectedSeason && selectedSeason !== currentSeason ? 1 : 0) +
@@ -169,6 +180,7 @@ export default function RecipesPage() {
     setSelectedTags([])
     setWithWhatIHave(false)
     setPicked([])
+    setProduce("")
   }
 
   function addPicked(ing: PickedIngredient) {
@@ -194,7 +206,12 @@ export default function RecipesPage() {
     onToggleTag: toggleTag,
     currentSeason,
     withWhatIHave,
-    onWithWhatIHaveChange: signedOut ? undefined : setWithWhatIHave,
+    onWithWhatIHaveChange: signedOut
+      ? undefined
+      : (on: boolean) => {
+          setWithWhatIHave(on)
+          if (on) setProduce("")
+        },
     accountFilters: !signedOut,
   }
 
@@ -272,6 +289,15 @@ export default function RecipesPage() {
             picked={picked}
             onAdd={addPicked}
             onRemove={(id) => setPicked((prev) => prev.filter((p) => p.id !== id))}
+          />
+        )}
+
+        {!withWhatIHave && (
+          <SeasonalProduceRow
+            className={`mt-2.5 lg:mt-[22px] ${signedOut ? "" : "px-5 lg:px-0"}`}
+            produce={seasonalProduce ?? []}
+            selected={produce}
+            onSelect={setProduce}
           />
         )}
 

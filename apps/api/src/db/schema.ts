@@ -1918,6 +1918,25 @@ export interface CatalogImportOutcomeRecord {
   auditIssues?: string[]
 }
 
+// ─── catalog_collections (PRO-374, PRO-378) ─────────────────
+// Catalogue collections. PRO-378 «Menú del mes»: `kind = 'menu_mes'`, one per
+// `month` (YYYY-MM), and `week` = 7 days (Monday first), per meal the recipe
+// ids (services/monthMenus.ts). Migration 0099 only adds.
+export const catalogCollections = pgTable('catalog_collections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull(),
+  title: text('title').notNull(),
+  /** 'coleccion' (PRO-374) | 'menu_mes' (PRO-378). */
+  kind: text('kind').notNull().default('coleccion'),
+  /** YYYY-MM, only for `menu_mes`. */
+  month: text('month'),
+  /** `menu_mes`: `[{ lunch: [recipeId…], dinner: […] }, …]`, Monday to Sunday. */
+  week: jsonb('week').$type<Array<Partial<Record<'breakfast' | 'lunch' | 'dinner' | 'snack', string[]>>>>(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 // ─── household_notices (PRO-205) ────────────────────────────
 // One-off notices to a household, once per (key, household): the apology for
 // «Afina tu menú» showing dishes that broke allergies or diets (PRO-197).

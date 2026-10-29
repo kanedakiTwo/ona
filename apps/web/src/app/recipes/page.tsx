@@ -26,6 +26,7 @@ import { WithWhatIHavePicker, MAX_WITH_WHAT_I_HAVE, type PickedIngredient } from
 import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
+import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 
 const SCOPE_KEY = "ona.recipes.scope"
 
@@ -280,6 +281,9 @@ export default function RecipesPage() {
             {featured[1] && <FeaturedRecipeCard recipe={featured[1]} className="hidden lg:block" />}
           </section>
         )}
+
+        {/* «Menú de <mes>» (PRO-378): signed in, nothing filtered. */}
+        {!signedOut && !anyFilterActive && <MonthMenuCard className="mx-4 mt-3 lg:mx-0 lg:mt-5" />}
 
         <div className={signedOut ? "pt-3.5 lg:pt-[22px]" : "px-4 pt-3.5 lg:px-0 lg:pt-[22px]"}>
           {!isLoading && !waitingForIngredients && (

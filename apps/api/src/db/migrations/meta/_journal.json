@@ -645,6 +645,13 @@
       "when": 1792837955738,
       "tag": "0096_allergies_none",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1793232000000,
+      "tag": "0099_catalog_collections_month_menu",
+      "breakpoints": true
     }
   ]
 }

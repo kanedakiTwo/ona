@@ -59,6 +59,7 @@ import householdHabitsRoutes from './routes/householdHabits.js'
 import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
 import blindComparisonRoutes from './routes/blindComparison.js'
+import monthMenusRoutes from './routes/monthMenus.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { warnDroppedExtraRefSources } from './services/agentView.js'
@@ -170,6 +171,8 @@ app.use(householdProfileRoutes)
 app.use(schoolMenuRoutes)
 // Menú inteligente: comparación a ciegas en los hogares de prueba (PRO-256).
 app.use(blindComparisonRoutes)
+// Menú del mes (PRO-378): per-route auth.
+app.use(monthMenusRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

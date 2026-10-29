@@ -1,9 +1,5 @@
 {
-<<<<<<< b7915fa3618c218611433bd741330f04c3892c20
-  "id": "fb27cc67-011b-4c05-98ec-250a1f63e8b9",
-=======
   "id": "309f173b-5384-445e-821a-133185ea8500",
->>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
   "prevId": "45c24bf3-efe7-4157-834c-beb31fceff7d",
   "version": "7",
   "dialect": "postgresql",
@@ -1679,8 +1675,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-<<<<<<< b7915fa3618c218611433bd741330f04c3892c20
-=======
     "public.household_feature_usage": {
       "name": "household_feature_usage",
       "schema": "",
@@ -1843,7 +1837,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
->>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
     "public.household_invites": {
       "name": "household_invites",
       "schema": "",
@@ -6779,7 +6772,6 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< b7915fa3618c218611433bd741330f04c3892c20
         "freezable": {
           "name": "freezable",
           "type": "boolean",
@@ -6792,8 +6784,6 @@
           "primaryKey": false,
           "notNull": false
         },
-=======
->>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
         "advance_prep": {
           "name": "advance_prep",
           "type": "jsonb",

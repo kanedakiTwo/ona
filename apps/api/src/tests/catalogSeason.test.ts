@@ -22,6 +22,10 @@ import {
   recipeMinutes,
   filterCatalogRecipes,
   pickFeaturedRecipes,
+  isQuickDinner,
+  isNibbles,
+  isGlutenFree,
+  matchesCatalogIntent,
   type Season,
 } from '@ona/shared'
 
@@ -120,6 +124,59 @@ describe('filterCatalogRecipes — chips + advanced filters', () => {
     expect(names(filterCatalogRecipes(list, { scope: 'mine', userId: me }))).toEqual(['mia'])
     expect(isCuratedRecipe(list[0])).toBe(true)
     expect(isCuratedRecipe(list[4])).toBe(false)
+  })
+})
+
+describe('intent chips (PRO-376) — one recipe in, one out', () => {
+  const names = (rs: { id: string }[]) => rs.map((r) => r.id)
+  const filter = (list: ReturnType<typeof recipe>[], over: Parameters<typeof filterCatalogRecipes>[1]) =>
+    names(filterCatalogRecipes(list, over))
+
+  it('«Listas en 15 min» is the 15-minute time filter', () => {
+    const list = [recipe('tostada', { totalTime: 10 }), recipe('tortilla', { totalTime: 25 })]
+    expect(filter(list, { scope: 'all', maxTime: 15 })).toEqual(['tostada'])
+  })
+
+  it('«Cenas rápidas»: dinner and at most 30 min', () => {
+    const tortilla = { ...recipe('tortilla', { totalTime: 25 }), meals: ['dinner'] }
+    const guiso = { ...recipe('guiso', { totalTime: 70 }), meals: ['dinner'] }
+    const lunch = { ...recipe('ensalada', { totalTime: 15 }), meals: ['lunch'] }
+    expect(isQuickDinner(tortilla)).toBe(true)
+    expect(isQuickDinner(guiso)).toBe(false)
+    expect(isQuickDinner(lunch)).toBe(false)
+    expect(names(filterCatalogRecipes([tortilla, guiso, lunch], { scope: 'all', intents: ['quickDinner'] }))).toEqual([
+      'tortilla',
+    ])
+  })
+
+  it('«Para picar»: a starter or tagged picoteo', () => {
+    const croquetas = { ...recipe('croquetas'), course: 'starter', tags: [] }
+    const hummus = { ...recipe('hummus'), course: null, tags: ['Picoteo'] }
+    const lentejas = { ...recipe('lentejas'), course: 'main', tags: ['legumbres'] }
+    expect(isNibbles(croquetas)).toBe(true)
+    expect(isNibbles(hummus)).toBe(true)
+    expect(isNibbles(lentejas)).toBe(false)
+    expect(matchesCatalogIntent(lentejas, 'nibbles')).toBe(false)
+  })
+
+  it('«Sin gluten»: no gluten allergen and no allergen doubt', () => {
+    const arroz = { ...recipe('arroz'), allergens: ['pescado'], allergenDoubt: false }
+    const pizza = { ...recipe('pizza'), allergens: ['gluten', 'lactosa'], allergenDoubt: false }
+    const dudosa = { ...recipe('dudosa'), allergens: [], allergenDoubt: true }
+    expect(isGlutenFree(arroz)).toBe(true)
+    expect(isGlutenFree(pizza)).toBe(false)
+    expect(isGlutenFree(dudosa)).toBe(false)
+    expect(names(filterCatalogRecipes([arroz, pizza, dudosa], { scope: 'all', intents: ['glutenFree'] }))).toEqual([
+      'arroz',
+    ])
+  })
+
+  it('several intents on: a recipe must match all of them', () => {
+    const tortilla = { ...recipe('tortilla', { totalTime: 20 }), meals: ['dinner'], allergens: [] }
+    const croque = { ...recipe('croque', { totalTime: 20 }), meals: ['dinner'], allergens: ['gluten'] }
+    expect(
+      names(filterCatalogRecipes([tortilla, croque], { scope: 'all', intents: ['quickDinner', 'glutenFree'] })),
+    ).toEqual(['tortilla'])
   })
 })
 

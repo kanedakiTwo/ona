@@ -182,6 +182,7 @@ interface RecipeRow {
   nutritionIncomplete?: boolean | null
   tags: string[] | null
   internalTags: string[] | null
+  course?: string | null
   sourceUrl: string | null
   sourceType: string | null
   /** PRO-299: the catalogue recipe a copy was made from. */
@@ -215,6 +216,13 @@ interface RecipeCard {
   /** Only `kcal` is exposed on the card (per spec). */
   nutritionPerServing: { kcal: number } | null
   allergens: string[]
+  /** PRO-376: for the «Para picar» chip. */
+  course: string | null
+  /**
+   * PRO-376: the importer wasn't sure of the allergens (internal tag
+   * `alergenos:duda`, never sent itself); «Sin gluten» leaves it out.
+   */
+  allergenDoubt: boolean
   /** The signed-in reader marked it (their own heart); absent for anonymous callers. */
   is_favorite?: boolean
 }
@@ -226,6 +234,9 @@ async function favoriteIdsOf(userId: string | undefined, recipeIds: string[]): P
     .where(and(eq(userFavorites.userId, userId), inArray(userFavorites.recipeId, recipeIds)))
   return new Set(rows.map((r) => r.recipeId))
 }
+
+/** Internal tag the catalogue import sets when the allergens are in doubt (`services/catalogImport.ts`). */
+const ALLERGEN_DOUBT_TAG = 'alergenos:duda'
 
 function toCard(row: RecipeRow): RecipeCard {
   return {
@@ -246,6 +257,8 @@ function toCard(row: RecipeRow): RecipeCard {
         ? { kcal: row.nutritionPerServing.kcal }
         : null,
     allergens: row.allergens ?? [],
+    course: row.course ?? null,
+    allergenDoubt: (row.internalTags ?? []).some((t) => t.toLowerCase() === ALLERGEN_DOUBT_TAG),
   }
 }
 
@@ -1441,6 +1454,7 @@ router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) =>
         nutritionPerServing: recipes.nutritionPerServing,
         tags: recipes.tags,
         internalTags: recipes.internalTags,
+        course: recipes.course,
         sourceUrl: recipes.sourceUrl,
         sourceType: recipes.sourceType,
         createdAt: recipes.createdAt,

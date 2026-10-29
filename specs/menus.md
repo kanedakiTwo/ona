@@ -267,7 +267,7 @@ A saved menu holds recipe ids; the recipe behind one can change or be deleted la
 - [Nutrition](./nutrition.md) — provides the cached per-serving nutrition the algorithm now scores against
 - [Auth](./auth.md) — user profile drives calorie targets and restrictions
 - [Advisor](./advisor.md) — assistant skills can generate, regenerate, and read menus
-- [PWA](./pwa.md) — meal regeneration and slot-lock toggles are wrapped by the offline queue; meal-time notifications are scheduled client-side from saved meal-time preferences
+- [PWA](./pwa.md) — meal regeneration and slot-lock toggles are wrapped by the offline queue
 
 ## Source
 - [packages/shared/src/types/cookingTime.ts](../packages/shared/src/types/cookingTime.ts) — day limits (total / trabajo) and `fitsTimeBudget`

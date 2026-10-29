@@ -26,11 +26,8 @@ import { WithWhatIHavePicker, MAX_WITH_WHAT_I_HAVE, type PickedIngredient } from
 import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
-<<<<<<< e7dfff9cdd5b3f876314aed71ae49c175460481f
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
-=======
 import { SeasonalProduceRow } from "@/components/recipes/SeasonalProduceRow"
->>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
 
 const SCOPE_KEY = "ona.recipes.scope"
 

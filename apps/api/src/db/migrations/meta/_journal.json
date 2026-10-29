@@ -652,6 +652,13 @@
       "when": 1793229743373,
       "tag": "0097_household_feature_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1793231501459,
+      "tag": "0097_recipe_storage_seals",
+      "breakpoints": true
     }
   ]
 }

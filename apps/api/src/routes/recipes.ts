@@ -172,6 +172,9 @@ interface RecipeRow {
   tips: string | null
   substitutions: string | null
   storage: string | null
+  /** PRO-372 (migration 0097); absent on pre-migration rows. */
+  freezable?: boolean | null
+  fridgeDays?: number | null
   /** PRO-220 (migration 0071); absent on pre-migration rows. */
   advancePrep?: Array<{ text: string; hoursBefore: number }> | null
   nutritionPerServing: Recipe['nutritionPerServing']
@@ -360,6 +363,9 @@ function toDetailRecipe(
   // (file, batch, audit notes).
   detail.sourceCredit = catalogSourceCredit(row.catalogSource)
   if (row.advancePrep?.length) detail.advancePrep = row.advancePrep
+  // PRO-372: the ficha's «Se puede congelar» / «Aguanta N días en nevera» seals.
+  if (row.freezable != null) detail.freezable = row.freezable
+  if (row.fridgeDays != null) detail.fridgeDays = row.fridgeDays
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".
 

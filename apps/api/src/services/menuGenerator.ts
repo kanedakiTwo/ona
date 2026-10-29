@@ -284,12 +284,6 @@ export function buildRandomMenu(
   /** PRO-224: day index → the group the kids ate at school; that dinner avoids it. */
   dinnerAvoidGroups?: Record<number, FoodGroup>,
   unavailableEquipment?: Set<string>,
-<<<<<<< 50086eefab6903edfc94fc3f398f75649d6cca0d
-): { days: DayMenu[]; warnings: string[] } {
-  // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
-  // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
-  if (allRecipes.some((r) => isBaseRecipe(r))) allRecipes = allRecipes.filter((r) => !isBaseRecipe(r))
-=======
   /**
    * PRO-377 · «Rehacer la semana con mis favoritas»: every dish comes from
    * these recipes while one fits; a dish none fits takes the catalogue and
@@ -297,7 +291,9 @@ export function buildRandomMenu(
    */
   onlyFavoriteIds?: ReadonlySet<string>,
 ): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
->>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
+  // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
+  // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
+  if (allRecipes.some((r) => isBaseRecipe(r))) allRecipes = allRecipes.filter((r) => !isBaseRecipe(r))
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
   const warnings: string[] = []

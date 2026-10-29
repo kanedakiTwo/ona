@@ -226,6 +226,21 @@ async function mirrorToMemory(tx: any, owners: string[], key: string, value: unk
   }
 }
 
+/**
+ * PRO-1067: allergies or diet changed in the ficha review the saved menus
+ * like the profile does (PRO-364). Called before the write, with the
+ * restrictions from before; the function it returns runs the review after.
+ * Imported lazily (the review reaches the memory store, which reaches this one).
+ */
+async function menuReviewFor(userId: string, type: string | null | undefined): Promise<() => Promise<void>> {
+  if (type !== 'restrictions') return async () => {}
+  const { householdRestrictionsBefore, reviewHouseholdMenusSafely } = await import('../menuRestrictionsReview.js')
+  const before = await householdRestrictionsBefore(userId)
+  return async () => {
+    await reviewHouseholdMenusSafely(userId, before)
+  }
+}
+
 async function assertHealthWrite(reader: FichaReader, type: string) {
   if (isHealthProfileFactType(type) && !(await hasHealthConsent(reader.userId))) {
     throw new FichaError(403, 'HEALTH_CONSENT_REQUIRED', 'Para guardar datos de salud necesitas dar tu consentimiento en Perfil')
@@ -240,6 +255,7 @@ export async function confirmFact(userId: string, factId: string, opts: { db?: D
   if (!reader) throw new FichaError(404, 'NO_HOUSEHOLD', 'Sin hogar')
   const f = await visibleFact(reader, factId, db)
   assertCanEdit(reader, f)
+  const review = await menuReviewFor(userId, f.type)
   await db.transaction(async (tx) => {
     await upsertProfileFact(tx, {
       householdId: f.householdId, subjectUserId: f.subjectUserId, subjectPersonId: f.subjectPersonId, type: f.type, value: f.value,
@@ -248,6 +264,7 @@ export async function confirmFact(userId: string, factId: string, opts: { db?: D
     })
     await mirrorToMemory(tx, await memoryOwners(tx, reader, f), f.type, f.value)
   })
+  await review()
 }
 
 /**
@@ -271,6 +288,7 @@ export async function correctFact(
   const schema = PROFILE_FACT_VALUE_SCHEMAS[f.type as keyof typeof PROFILE_FACT_VALUE_SCHEMAS]
   const parsed = schema?.safeParse(input.value)
   if (!parsed?.success) throw new FichaError(422, 'INVALID_VALUE', 'No he sabido apuntarlo así')
+  const review = await menuReviewFor(userId, f.type)
   await db.transaction(async (tx) => {
     // The corrected fact replaces this one (also for a multi-valued type: it's the same thing, said right).
     await tx.update(profileFacts).set({ value: parsed.data, origin: 'user', confidence: 1, validUntil: input.validUntil === undefined ? f.validUntil : input.validUntil,
@@ -283,6 +301,7 @@ export async function correctFact(
     })
     await mirrorToMemory(tx, await memoryOwners(tx, reader, f), f.type, parsed.data)
   })
+  await review()
 }
 
 /** «Olvidar». Mimo won't add it back without asking (the refiner sees it as the reader's). */
@@ -293,6 +312,7 @@ export async function forgetFact(userId: string, factId: string, opts: { db?: Db
   if (!reader) throw new FichaError(404, 'NO_HOUSEHOLD', 'Sin hogar')
   const f = await visibleFact(reader, factId, db)
   assertCanEdit(reader, f)
+  const review = await menuReviewFor(userId, f.type)
   await db.transaction(async (tx) => {
     await tx.update(profileFacts).set({ status: 'retired', updatedAt: now }).where(eq(profileFacts.id, f.id))
     await tx.insert(profileChanges).values({
@@ -302,6 +322,7 @@ export async function forgetFact(userId: string, factId: string, opts: { db?: Db
     })
     await mirrorToMemory(tx, await memoryOwners(tx, reader, f), f.type, null)
   })
+  await review()
 }
 
 /** «Deshacer» what Mimo did (a change by the AI); 409 when the fact has moved on since. */
@@ -313,6 +334,7 @@ export async function undoChange(userId: string, changeId: string, opts: { db?: 
   if (reader.role === 'child') throw new FichaError(403, 'CHILD', 'La ficha la cambian los adultos de la casa')
   const [c] = await db.select().from(profileChanges).where(and(eq(profileChanges.id, changeId), eq(profileChanges.householdId, reader.householdId))).limit(1)
   if (!c || !['ai_realtime', 'ai_nightly', 'ai_weekly'].includes(c.origin)) throw new FichaError(404, 'NOT_FOUND', 'Eso no se puede deshacer')
+  const review = await menuReviewFor(userId, c.factType)
   await db.transaction(async (tx) => {
     if (c.action === 'portrait_updated') {
       const before = (c.before as { portrait?: string } | null)?.portrait
@@ -345,6 +367,7 @@ export async function undoChange(userId: string, changeId: string, opts: { db?: 
       throw new FichaError(404, 'NOT_FOUND', 'Eso no se puede deshacer')
     }
   })
+  await review()
 }
 
 /**
@@ -477,6 +500,7 @@ export async function correctFactWithNote(userId: string, factId: string, input:
   if (!reader) throw new FichaError(404, 'NO_HOUSEHOLD', 'Sin hogar')
   const f = await visibleFact(reader, factId, db)
   assertCanEdit(reader, f)
+  const review = await menuReviewFor(userId, f.type)
   await db.transaction(async (tx) => {
     await tx.update(profileFacts).set({ status: 'retired', updatedAt: now }).where(eq(profileFacts.id, f.id))
     await tx.insert(profileChanges).values({
@@ -498,6 +522,7 @@ export async function correctFactWithNote(userId: string, factId: string, input:
     await mirrorToMemory(tx, await memoryOwners(tx, reader, f), f.type, null)
     await mirrorToMemory(tx, await memoryOwners(tx, reader, { type: 'notes', subjectUserId: f.subjectUserId, subjectPersonId: f.subjectPersonId }), 'notes', value)
   })
+  await review()
 }
 
 /** The fact as its reader sees it, for the correction prompt. */
@@ -590,7 +615,8 @@ export async function writeProfileFact(
   }
   const subject = fichaSubjectFor(input.type, input.about, userId, personId)
   const signal = input.channel === 'whatsapp' ? 'whatsapp' : 'chat'
-  return db.transaction(async (tx) => {
+  const review = await menuReviewFor(userId, input.type)
+  const written = await db.transaction(async (tx) => {
     const [current] = await tx.select().from(profileFacts).where(and(
       eq(profileFacts.householdId, reader.householdId), eq(profileFacts.type, input.type), eq(profileFacts.status, 'active'),
       subject.subjectUserId ? eq(profileFacts.subjectUserId, subject.subjectUserId) : isNull(profileFacts.subjectUserId),
@@ -611,6 +637,8 @@ export async function writeProfileFact(
     const who = subject.subjectUserId ? 'tu' : subject.subjectPersonId ? 'otra' : 'casa'
     return { ...out, sentence: factSentence(input.type, parsed.data, who, input.validUntil ?? null) }
   })
+  await review()
+  return written
 }
 
 /**

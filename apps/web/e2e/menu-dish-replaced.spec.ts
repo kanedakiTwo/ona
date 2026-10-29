@@ -6,13 +6,31 @@
  *   - a generated menu has no such line;
  *   - with `replaced` on the dishes (injected into GET /menu/…, as
  *     `menuRecipeRecheck.ts` writes it), the card shows it.
- * The replacement itself is `menuRecipeRecheck.test.ts` / `.smoke.ts`.
+ *   - PRO-1067: the same card when the review of PRO-364 changed the dish
+ *     after someone saved an allergy or diet (`reason: 'restrictions'`).
+ * The replacement itself is `menuRecipeRecheck.test.ts` / `.smoke.ts` and
+ * `menuRestrictionsReview.test.ts` / `.smoke.ts`.
  */
 import { test, expect } from '@playwright/test'
 import { menuWithRecipesOn, registerFreshUser, skipFirstSteps } from './_helpers'
 import { pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
+
+/** GET /menu/… with `replaced` on every recipe dish, as the server writes it. */
+async function injectReplaced(page: import('@playwright/test').Page, userId: string, weekStart: string, replaced: { recipeName: string; reason: string }) {
+  await page.route(`**/menu/${userId}/${weekStart}`, async (route) => {
+    const res = await route.fetch()
+    const body = await res.json()
+    const days = (body.days ?? []).map((day: Record<string, { dishes?: Array<Record<string, unknown>> }>) =>
+      Object.fromEntries(Object.entries(day ?? {}).map(([meal, slot]) => [
+        meal,
+        slot ? { ...slot, dishes: (slot.dishes ?? []).map((d) => (d.kind === 'recipe' ? { ...d, replaced } : d)) } : slot,
+      ])),
+    )
+    await route.fulfill({ response: res, json: { ...body, days } })
+  })
+}
 
 test('the day card says which dish was replaced and why', async ({ page }) => {
   test.setTimeout(120_000)
@@ -43,21 +61,15 @@ test('the day card says which dish was replaced and why', async ({ page }) => {
   await expect(page.getByTestId('dish-replaced')).toHaveCount(0)
 
   // The fajitas got wheat tortillas: every recipe dish now stands in for them.
-  await page.route(`**/menu/${userId}/${weekStart}`, async (route) => {
-    const res = await route.fetch()
-    const body = await res.json()
-    const days = (body.days ?? []).map((day: Record<string, { dishes?: Array<Record<string, unknown>> }>) =>
-      Object.fromEntries(Object.entries(day ?? {}).map(([meal, slot]) => [
-        meal,
-        slot
-          ? { ...slot, dishes: (slot.dishes ?? []).map((d) => (d.kind === 'recipe' ? { ...d, replaced: { recipeName: 'Fajitas de pollo', reason: 'diet' } } : d)) }
-          : slot,
-      ])),
-    )
-    await route.fulfill({ response: res, json: { ...body, days } })
-  })
+  await injectReplaced(page, userId, weekStart, { recipeName: 'Fajitas de pollo', reason: 'diet' })
   await page.reload()
   const line = page.getByTestId('menu-hero').getByTestId('dish-replaced')
   await expect(line).toBeVisible({ timeout: 20_000 })
   await expect(line).toContainText('En lugar de «Fajitas de pollo», que ha cambiado y ya no encaja con vuestra dieta')
+
+  // PRO-1067: someone saved «sin gluten» and the review (PRO-364) changed the pizza.
+  await page.unrouteAll({ behavior: 'wait' })
+  await injectReplaced(page, userId, weekStart, { recipeName: 'Pizza margarita', reason: 'restrictions' })
+  await page.reload()
+  await expect(line).toContainText('En lugar de «Pizza margarita», que no encaja con vuestras alergias o dieta', { timeout: 20_000 })
 })

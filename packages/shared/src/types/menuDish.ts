@@ -1,10 +1,16 @@
 import type { Course } from './recipe.js'
 
-/** Why a dish was replaced on its own (PRO-345): see `RecipeDish.replaced`. */
-export type DishReplacedReason = 'diet' | 'removed'
+/**
+ * Why a dish was replaced on its own: see `RecipeDish.replaced`. `diet` and
+ * `removed`: the recipe changed or was deleted (PRO-345); `restrictions`:
+ * someone in the household saved an allergy or diet it breaks (PRO-364,
+ * PRO-1067).
+ */
+export type DishReplacedReason = 'diet' | 'removed' | 'restrictions'
 
-/** Pure: the day card's line for a replaced dish (PRO-345). */
+/** Pure: the day card's line for a replaced dish (PRO-345, PRO-1067). */
 export function replacedDishLine(r: { recipeName: string; reason: DishReplacedReason }): string {
+  if (r.reason === 'restrictions') return `En lugar de «${r.recipeName}», que no encaja con vuestras alergias o dieta`
   return r.reason === 'diet'
     ? `En lugar de «${r.recipeName}», que ha cambiado y ya no encaja con vuestra dieta`
     : `En lugar de «${r.recipeName}», que ya no está en el catálogo`
@@ -39,15 +45,16 @@ export interface RecipeDish {
   /**
    * PRO-345: Mimoia put this dish in place of another because that recipe
    * changed after entering the menu and no longer fits the household's
-   * allergies or diet (`diet`), or was deleted (`removed`). The day card
-   * says so. Gone as soon as the dish is changed by hand.
+   * allergies or diet (`diet`), or was deleted (`removed`); PRO-1067: or
+   * because someone saved an allergy or diet the old dish breaks
+   * (`restrictions`, PRO-364's review). The day card says so. Gone as soon
+   * as the dish is changed by hand.
    */
   replaced?: { recipeName: string; reason: DishReplacedReason } | null
   /**
    * PRO-364: someone in the household saved an allergy or diet this dish
-   * breaks, and there was no other recipe to put instead (or the slot is
-   * «Fijada», or it's a táper already cooked). The day's card warns; any
-   * change of the dish drops it.
+   * breaks, and there was no other recipe to put instead (or it's a táper
+   * already cooked). The day's card warns; any change of the dish drops it.
    */
   restrictionConflict?: boolean
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */

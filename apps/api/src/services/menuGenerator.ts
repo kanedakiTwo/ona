@@ -284,13 +284,24 @@ export function buildRandomMenu(
   /** PRO-224: day index → the group the kids ate at school; that dinner avoids it. */
   dinnerAvoidGroups?: Record<number, FoodGroup>,
   unavailableEquipment?: Set<string>,
+<<<<<<< 50086eefab6903edfc94fc3f398f75649d6cca0d
 ): { days: DayMenu[]; warnings: string[] } {
   // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
   // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
   if (allRecipes.some((r) => isBaseRecipe(r))) allRecipes = allRecipes.filter((r) => !isBaseRecipe(r))
+=======
+  /**
+   * PRO-377 · «Rehacer la semana con mis favoritas»: every dish comes from
+   * these recipes while one fits; a dish none fits takes the catalogue and
+   * counts in `favoritesShort`.
+   */
+  onlyFavoriteIds?: ReadonlySet<string>,
+): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
+>>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
   const warnings: string[] = []
+  let favoritesShort = 0
   const proteinById = new Map<string, string | null>()
   let recipeById: Map<string, RecipeWithCourse> | null = null
   const proteinOfId = (id: string): string | null => {
@@ -394,7 +405,13 @@ export function buildRandomMenu(
           unavailableEquipment,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
         }
-        const picked = (pool !== slotPool ? findForCourse(pool, course, opts) : undefined) ?? findForCourse(slotPool, course, opts)
+        // Favourites first (PRO-377), even over the protein rule, which only
+        // asks for another protein when there is one.
+        const pools = pool !== slotPool ? [pool, slotPool] : [slotPool]
+        const tries = onlyFavoriteIds ? [...pools.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))), ...pools] : pools
+        let picked: RecipeWithCourse | undefined
+        for (const p of tries) if ((picked = findForCourse(p, course, opts) as RecipeWithCourse | undefined)) break
+        if (picked && onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
         if (!picked) {
           warnings.push(`no_${course ?? 'main'}_available_${meal}_d${dayIndex}`)
           continue
@@ -422,7 +439,7 @@ export function buildRandomMenu(
     days.push(dayMenu)
   }
 
-  return { days, warnings }
+  return { days, warnings, favoritesShort }
 }
 
 /**
@@ -509,7 +526,9 @@ export async function generateMenu(
   bannedRecipeIds?: Set<string>,
   skippedDays?: Set<number>,
   weekPlan?: WeekPlan,
-): Promise<{ days: DayMenu[]; warnings: string[] }> {
+  /** PRO-377: `onlyFavorites` — the week out of the household's favourites. */
+  options: { onlyFavorites?: boolean } = {},
+): Promise<{ days: DayMenu[]; warnings: string[]; favoritesShort?: number }> {
   // 1. Fetch user profile
   const [user] = await db
     .select()
@@ -581,6 +600,8 @@ export async function generateMenu(
     .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScope))
 
   const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
+  // PRO-377: only the starred ones (not the boosts added below).
+  const onlyFavoriteIds = options.onlyFavorites ? new Set(favoriteRecipeIds) : undefined
 
   // 2. Calculate target calories
   const sex = (user.sex as Sex) ?? 'male'
@@ -646,9 +667,10 @@ export async function generateMenu(
   let bestDays: DayMenu[] | null = null
   let bestFitness: number = MENU_GENERATION.MIN_FITNESS
   let bestWarnings: string[] = []
+  let bestShort = Infinity
 
   for (let i = 0; i < MENU_GENERATION.MAX_ITERATIONS; i++) {
-    const { days: candidateDays, warnings: candidateWarnings } = buildRandomMenu(
+    const { days: candidateDays, warnings: candidateWarnings, favoritesShort: candidateShort } = buildRandomMenu(
       template,
       allRecipes,
       season,
@@ -666,6 +688,7 @@ export async function generateMenu(
       rated.likedRecipeIds,
       dinnerAvoidGroups,
       unavailableEquipment,
+      onlyFavoriteIds,
     )
 
     // Verify the menu has at least some recipes
@@ -676,10 +699,12 @@ export async function generateMenu(
 
     const fitness = await scoreMenu(candidateDays, targetCalories, db, unmappedRecipeIds, metabolic)
 
-    if (fitness < bestFitness) {
+    // PRO-377: with «mis favoritas», fewer dishes from outside them wins first.
+    if (fitness < MENU_GENERATION.MIN_FITNESS && (candidateShort < bestShort || (candidateShort === bestShort && fitness < bestFitness))) {
       bestFitness = fitness
       bestDays = candidateDays
       bestWarnings = candidateWarnings
+      bestShort = candidateShort
     }
 
     // Early stop if fitness is good enough
@@ -688,8 +713,9 @@ export async function generateMenu(
 
   // PRO-229: if the draw left out everything that uses the fridge, put one in
   // (first free lunch/dinner it fits, Monday first), with the same matcher rules.
+  // Not with «mis favoritas» (PRO-377): it would swap a favourite out.
   const withFridge = (days: DayMenu[]) =>
-    ensureFridgeRecipe(
+    onlyFavoriteIds ? days : ensureFridgeRecipe(
       days,
       fridgeRecipeIds,
       (dayIndex, meal, used) =>
@@ -718,8 +744,13 @@ export async function generateMenu(
   const finish = (days: DayMenu[]) =>
     withFixedMeals(applyTemplateTapers(withFridge(days), rawTemplate, lockedSlots, skippedDays ?? []), fixedMeals, fixedOpts)
 
+  // PRO-377: dishes of the generated slots not from the favourites (a táper
+  // repeats the dinner before; locked slots were not generated).
+  const withShort = (out: { days: DayMenu[]; warnings: string[] }) =>
+    onlyFavoriteIds ? { ...out, favoritesShort: countOutsideFavorites(out.days, onlyFavoriteIds, lockedSlots) } : out
+
   if (bestDays) {
-    return { days: finish(bestDays), warnings: bestWarnings }
+    return withShort({ days: finish(bestDays), warnings: bestWarnings })
   }
 
   const fallback = buildRandomMenu(
@@ -740,6 +771,21 @@ export async function generateMenu(
     rated.likedRecipeIds,
     dinnerAvoidGroups,
     unavailableEquipment,
+    onlyFavoriteIds,
   )
-  return { days: finish(fallback.days), warnings: fallback.warnings }
+  return withShort({ days: finish(fallback.days), warnings: fallback.warnings })
+}
+
+/** PRO-377: recipe dishes outside the favourites, locked slots and tápers left out. */
+export function countOutsideFavorites(days: DayMenu[], favoriteIds: ReadonlySet<string>, lockedSlots: LockedSlots = {}): number {
+  let n = 0
+  days.forEach((day, dayIndex) => {
+    for (const [meal, slot] of Object.entries(day ?? {})) {
+      if (lockedSlots[String(dayIndex)]?.[meal]) continue
+      for (const d of slot?.dishes ?? []) {
+        if (d.kind === 'recipe' && !(d as RecipeDish).leftoverOf && !favoriteIds.has(d.recipeId)) n++
+      }
+    }
+  })
+  return n
 }

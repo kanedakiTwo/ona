@@ -100,6 +100,7 @@ import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
+import { ingredientIdsNamed, loadSeasonalProduce, madridMonth } from '../services/seasonalProduce.js'
 
 const router = Router()
 
@@ -479,6 +480,18 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
     if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
+    // ?ingredient=<nombre> (PRO-375, «Este mes»): recipes with that
+    // ingredient, by normalised name (a calendar product takes its terms:
+    // «setas» → champiñón, boletus…).
+    const ingredientName = typeof req.query.ingredient === 'string' ? req.query.ingredient.trim() : ''
+    if (ingredientName) {
+      const ids = await ingredientIdsNamed(ingredientName)
+      conditions.push(
+        ids.length > 0
+          ? inArray(recipes.id, db.selectDistinct({ id: recipeIngredients.recipeId }).from(recipeIngredients).where(inArray(recipeIngredients.ingredientId, ids)))
+          : sql`FALSE`,
+      )
+    }
     if (maxTime != null && Number.isFinite(maxTime) && maxTime > 0) {
       conditions.push(sql`coalesce(${recipes.totalTime}, 999999) <= ${maxTime}`)
     }
@@ -548,6 +561,21 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     res.json(cards)
   } catch (err) {
     console.error('List recipes error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /recipes/seasonal-produce[?month=1-12] — «Este mes» (PRO-375): the
+// calendar's products of the month (Madrid by default; the web sends its own)
+// used by at least 3 published catalogue recipes, with how many. Public.
+// **Must be declared before `/recipes/:id`.**
+router.get('/recipes/seasonal-produce', async (req, res) => {
+  try {
+    const raw = parseInt(String(req.query.month ?? ''), 10)
+    const month = raw >= 1 && raw <= 12 ? raw : madridMonth()
+    res.json(await loadSeasonalProduce(month))
+  } catch (err) {
+    console.error('GET /recipes/seasonal-produce error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

@@ -9,15 +9,19 @@
  * lactose-intolerant household had pizza on Saturday that way.
  *
  * So every path that saves restrictions (`PUT /user/:id`, the `restrictions`
- * memory key — Mimo, `/memory`, the fridge question) calls
- * `reviewHouseholdMenus`: the household's saved menus from today on are
- * checked dish by dish with `violatesRestrictions` and everyone's
+ * memory key — Mimo, `/memory`, the fridge question — and the ficha del
+ * hogar) calls `reviewHouseholdMenus`: the household's saved menus from today
+ * on are checked dish by dish with `violatesRestrictions` and everyone's
  * restrictions (`withHouseholdRestrictions`). A dish that no longer fits is
- * re-picked like «Cambiar» does (`menuSlotPick.ts`); when nothing fits it
- * stays with `restrictionConflict: true` and the day's card says so. Days and
- * meals already past, eaten slots and fixed («Fijada») slots are never
- * changed (a fixed one gets the warning). Tápers already cooked get the
- * warning too; a leftover follows the dish it comes from.
+ * re-picked like «Cambiar» does (`menuSlotPick.ts`), also in a «Fijada» slot
+ * (safety first, like PRO-345), and the card says «En lugar de X, que no
+ * encaja con vuestras alergias o dieta»; when nothing fits it stays with
+ * `restrictionConflict: true` and the day's card says so. Days and meals
+ * already past and eaten slots are never changed. Tápers already cooked get
+ * the warning; a leftover follows the dish it comes from. A dish picked by
+ * hand breaking a rule (Mimo asks first) stays, unless what was just saved
+ * is what it breaks (PRO-1067: the save path passes the restrictions from
+ * before, `householdRestrictionsBefore`).
  *
  * The rolling shopping list (`GET /shopping-list`) is rebuilt from the menus
  * on every read; a list saved for one menu (`shopping_lists.menu_id`) gets its
@@ -27,9 +31,9 @@
  * Spec: specs/menus.md → «Cuando cambian las alergias o la dieta».
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
-import { isTaperVariant, type DayMenu, type Dish, type LockedSlots, type RecipeDish } from '@ona/shared'
+import { isTaperVariant, type DayMenu, type Dish, type RecipeDish } from '@ona/shared'
 import { db } from '../db/connection.js'
-import { ingredients, menus, recipeIngredients, recipeSteps, recipes, shoppingLists, users } from '../db/schema.js'
+import { ingredients, menuEdits, menus, recipeIngredients, recipeSteps, recipes, shoppingLists, users } from '../db/schema.js'
 import { compileRestrictions, violatesRestrictions, type RestrictableRecipe } from './dietaryRestrictions.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { madridParts, madridWeekStart } from './madridTime.js'
@@ -123,22 +127,41 @@ function withoutMarks(d: RecipeDish): Omit<RecipeDish, 'restrictionConflict' | '
 
 type MenuRow = typeof menus.$inferSelect
 
-/** Review one menu. Returns the new days (null when nothing changed). */
-async function reviewMenu(menu: MenuRow, requesterId: string, now: Date, result: ReviewResult): Promise<{ days: DayMenu[]; changes: MenuEditChange[] } | null> {
-  const days = structuredClone(menu.days as DayMenu[])
-  const locked = (menu.locked as LockedSlots | null) ?? {}
-  const pickMenu = { userId: menu.userId, householdId: menu.householdId, weekStart: String(menu.weekStart), bannedRecipeIds: menu.bannedRecipeIds }
-  let ctx: SlotPickContext | null = null
-  const getCtx = async () => (ctx ??= await loadSlotPickContext(pickMenu, requesterId))
-  const checked = await loadRecipesForCheck([...recipeIdsOf(days)])
-  const rules = compileRestrictions((await loadMenuRestrictions(menu)).restrictions)
-  const breaks = (id: string) => {
-    const r = checked.get(id)
-    return r ? violatesRestrictions(r, rules) : false
-  }
+export interface ReviewDaysInput {
+  days: DayMenu[]
+  weekStart: string
+  now: Date
+  /** Breaks anyone's restrictions now. */
+  breaks: (recipeId: string) => boolean
+  /** Breaks what was just saved (PRO-1067): only this moves a dish picked by hand. */
+  breaksSaved: (recipeId: string) => boolean
+  /** The household put this recipe in this slot by hand (a `menu_edits` row after the menu was made). */
+  handPicked: (day: number, meal: string, recipeId: string) => boolean
+  /** Another recipe for the slot, like «Cambiar» (null = none fits). `used`: the week's recipes, this one aside. */
+  pick: (day: number, meal: string, course: RecipeDish['course'], used: Set<string>) => Promise<{ id: string; name: string; course?: RecipeDish['course'] } | null>
+  recipeName?: (recipeId: string) => string | undefined
+}
 
-  let changed = false
-  const changes: MenuEditChange[] = []
+export interface ReviewDaysResult {
+  days: DayMenu[]
+  changes: MenuEditChange[]
+  changed: boolean
+  swapped: Array<{ day: number; meal: string; before: string; after: string }>
+  warned: Array<{ day: number; meal: string; recipe: string }>
+}
+
+/**
+ * The review of one menu's days, without the database. A dish that breaks
+ * the restrictions is re-picked (also in a «Fijada» slot, safety first like
+ * PRO-345) and carries `replaced: { reason: 'restrictions' }`; nothing to
+ * put instead, or a táper already cooked → `restrictionConflict`. A dish
+ * the household picked by hand breaking a rule (after Mimo asked) stays,
+ * unless what was just saved is what it breaks (PRO-1067).
+ */
+export async function reviewDays(input: ReviewDaysInput): Promise<ReviewDaysResult> {
+  const days = structuredClone(input.days)
+  const { breaks, breaksSaved, handPicked } = input
+  const out: ReviewDaysResult = { days, changes: [], changed: false, swapped: [], warned: [] }
   /** `day:meal:position` of a planned dish → the recipe it became, for its leftovers. */
   const replacedAt = new Map<string, RecipeDish>()
 
@@ -148,7 +171,7 @@ async function reviewMenu(menu: MenuRow, requesterId: string, now: Date, result:
       for (const meal of Object.keys(days[dayIndex] ?? {})) {
         const slot = days[dayIndex][meal]
         if (!slot || !Array.isArray(slot.dishes)) continue
-        if (!slotIsAhead(String(menu.weekStart), dayIndex, meal, now) || slot.eaten) continue
+        if (!slotIsAhead(input.weekStart, dayIndex, meal, input.now) || slot.eaten) continue
         const before = slot.dishes
         const next: Dish[] = [...before]
         for (let i = 0; i < before.length; i++) {
@@ -160,33 +183,45 @@ async function reviewMenu(menu: MenuRow, requesterId: string, now: Date, result:
           if (!breaks(dish.recipeId)) {
             if (dish.restrictionConflict) {
               next[i] = withoutConflict(dish)
-              changed = true
+              out.changed = true
             }
             continue
           }
+          // Picked by hand knowing it breaks a rule: only the rule just saved moves it.
+          const src = dish.variant === 'leftover' ? dish.leftoverOf : null
+          const byHand = handPicked(dayIndex, meal, dish.recipeId) || (src ? handPicked(src.day, src.meal, dish.recipeId) : false)
+          const srcReplaced = src ? replacedAt.get(`${src.day}:${src.meal}:${src.dishPosition}`) : undefined
+          if (byHand && !srcReplaced && !breaksSaved(dish.recipeId)) continue
+
+          const oldName = dish.recipeName ?? input.recipeName?.(dish.recipeId) ?? dish.recipeId
           const warn = () => {
             if (!dish.restrictionConflict) {
               next[i] = { ...dish, restrictionConflict: true }
-              changed = true
+              out.changed = true
             }
-            result.warned.push({ menuId: menu.id, day: dayIndex, meal, recipe: dish.recipeName ?? checked.get(dish.recipeId)?.name ?? dish.recipeId })
+            out.warned.push({ day: dayIndex, meal, recipe: oldName })
           }
 
-          if (locked[String(dayIndex)]?.[meal] || isTaperVariant(dish.variant)) {
+          if (isTaperVariant(dish.variant)) {
             warn()
             continue
           }
           let picked: RecipeDish | null = null
           if (dish.variant === 'leftover') {
-            const src = dish.leftoverOf ? replacedAt.get(`${dish.leftoverOf.day}:${dish.leftoverOf.meal}:${dish.leftoverOf.dishPosition}`) : undefined
-            if (src) picked = { ...withoutMarks(dish), recipeId: src.recipeId, recipeName: src.recipeName, course: src.course ?? null }
+            if (srcReplaced) picked = { ...withoutMarks(dish), recipeId: srcReplaced.recipeId, recipeName: srcReplaced.recipeName, course: srcReplaced.course ?? null, ...(srcReplaced.replaced ? { replaced: srcReplaced.replaced } : {}) }
           } else {
             // Like «Cambiar»: every recipe of the week except this slot's is taken.
             const used = recipeIdsOf(days.map((d, di) => (di === dayIndex ? { ...d, [meal]: { dishes: next.filter((x) => x !== dish) } } : d)))
-            const { pool, options } = await slotPickOptions(await getCtx(), pickMenu, dayIndex, meal, used)
-            const found = findForCourse(pool, dish.course ?? null, options)
-            if (found && !violatesRestrictions(found, rules)) {
-              picked = { ...withoutMarks(dish), kind: 'recipe', recipeId: found.id, recipeName: found.name, course: found.course ?? null }
+            const found = await input.pick(dayIndex, meal, dish.course ?? null, used)
+            if (found) {
+              picked = {
+                ...withoutMarks(dish),
+                kind: 'recipe',
+                recipeId: found.id,
+                recipeName: found.name,
+                course: found.course ?? null,
+                replaced: { recipeName: oldName, reason: 'restrictions' },
+              }
             }
           }
           if (!picked) {
@@ -194,16 +229,83 @@ async function reviewMenu(menu: MenuRow, requesterId: string, now: Date, result:
             continue
           }
           next[i] = picked
-          changed = true
+          out.changed = true
           replacedAt.set(`${dayIndex}:${meal}:${i}`, picked)
-          result.swapped.push({ menuId: menu.id, day: dayIndex, meal, before: dish.recipeName ?? dish.recipeId, after: picked.recipeName ?? picked.recipeId })
+          out.swapped.push({ day: dayIndex, meal, before: oldName, after: picked.recipeName ?? picked.recipeId })
         }
         days[dayIndex][meal] = { ...slot, dishes: next }
-        changes.push(...slotDiff(dayIndex, meal, before, next))
+        out.changes.push(...slotDiff(dayIndex, meal, before, next))
       }
     }
   }
-  return changed ? { days, changes } : null
+  return out
+}
+
+/** Pure: the restrictions in `now` that weren't in `before` (as written, case and spaces aside). */
+export function savedRestrictions(now: readonly string[], before: readonly string[]): string[] {
+  const key = (s: string) => s.trim().toLowerCase()
+  const had = new Set(before.map(key))
+  return now.filter((r) => !had.has(key(r)))
+}
+
+/** Last time each recipe was put in each slot by hand, `day:meal:recipeId` (as PRO-345's `loadEnteredAt`). */
+async function loadHandPicked(menu: MenuRow): Promise<Set<string>> {
+  const rows = await db
+    .select({ day: menuEdits.day, meal: menuEdits.meal, recipeId: menuEdits.afterRecipeId, createdAt: menuEdits.createdAt })
+    .from(menuEdits)
+    .where(eq(menuEdits.menuId, menu.id))
+  const out = new Set<string>()
+  for (const r of rows) {
+    if (r.day == null || !r.meal || !r.recipeId) continue
+    if (menu.createdAt && r.createdAt <= menu.createdAt) continue
+    out.add(`${r.day}:${r.meal}:${r.recipeId}`)
+  }
+  return out
+}
+
+/**
+ * Review one menu. `before`: the household's restrictions before the save
+ * (null = unknown: everything counts as just saved). Returns the new days
+ * (null when nothing changed).
+ */
+async function reviewMenu(
+  menu: MenuRow,
+  requesterId: string,
+  now: Date,
+  before: readonly string[] | null,
+  result: ReviewResult,
+): Promise<{ days: DayMenu[]; changes: MenuEditChange[] } | null> {
+  const days = menu.days as DayMenu[]
+  const pickMenu = { userId: menu.userId, householdId: menu.householdId, weekStart: String(menu.weekStart), bannedRecipeIds: menu.bannedRecipeIds }
+  let ctx: SlotPickContext | null = null
+  const getCtx = async () => (ctx ??= await loadSlotPickContext(pickMenu, requesterId))
+  const checked = await loadRecipesForCheck([...recipeIdsOf(days)])
+  const restrictions = (await loadMenuRestrictions(menu)).restrictions
+  const rules = compileRestrictions(restrictions)
+  const savedRules = before ? compileRestrictions(savedRestrictions(restrictions, before)) : rules
+  const handPicked = await loadHandPicked(menu)
+  const check = (id: string, r: typeof rules) => {
+    const recipe = checked.get(id)
+    return recipe ? violatesRestrictions(recipe, r) : false
+  }
+
+  const reviewed = await reviewDays({
+    days,
+    weekStart: String(menu.weekStart),
+    now,
+    breaks: (id) => check(id, rules),
+    breaksSaved: (id) => check(id, savedRules),
+    handPicked: (day, meal, id) => handPicked.has(`${day}:${meal}:${id}`),
+    pick: async (day, meal, course, used) => {
+      const { pool, options } = await slotPickOptions(await getCtx(), pickMenu, day, meal, used)
+      const found = findForCourse(pool, course ?? null, options)
+      return found && !violatesRestrictions(found, rules) ? found : null
+    },
+    recipeName: (id) => checked.get(id)?.name,
+  })
+  for (const s of reviewed.swapped) result.swapped.push({ menuId: menu.id, ...s })
+  for (const w of reviewed.warned) result.warned.push({ menuId: menu.id, ...w })
+  return reviewed.changed ? { days: reviewed.days, changes: reviewed.changes } : null
 }
 
 /** A list saved for one menu: rebuild its menu lines, keep the manual ones (like «Regenerar»). */
@@ -233,7 +335,7 @@ async function rebuildMenuShoppingLists(menu: MenuRow, days: DayMenu[]): Promise
  * Check the household's saved menus from this week on against everyone's
  * restrictions now, and fix them. `userId`: whoever just saved theirs.
  */
-export async function reviewHouseholdMenus(userId: string, opts: { now?: Date } = {}): Promise<ReviewResult> {
+export async function reviewHouseholdMenus(userId: string, opts: { now?: Date; before?: readonly string[] | null } = {}): Promise<ReviewResult> {
   const now = opts.now ?? new Date()
   const result: ReviewResult = { swapped: [], warned: [] }
   const householdId = await getPrimaryHouseholdId(userId)
@@ -249,7 +351,7 @@ export async function reviewHouseholdMenus(userId: string, opts: { now?: Date } 
   for (const m of rows) if (!latest.has(String(m.weekStart))) latest.set(String(m.weekStart), m)
 
   for (const menu of latest.values()) {
-    const reviewed = await reviewMenu(menu, userId, now, result)
+    const reviewed = await reviewMenu(menu, userId, now, opts.before ?? null, result)
     if (!reviewed) continue
     await db.update(menus).set({ days: reviewed.days }).where(eq(menus.id, menu.id))
     await recordMenuEdits({ userId }, menu, reviewed.changes)
@@ -264,10 +366,24 @@ export async function reviewHouseholdMenus(userId: string, opts: { now?: Date } 
   return result
 }
 
-/** For the save paths: never throws, logs what it did. */
-export async function reviewHouseholdMenusSafely(userId: string): Promise<ReviewResult | null> {
+/**
+ * Everyone's restrictions in the household right now, taken by a save path
+ * before it writes, so the review knows what was just saved (PRO-1067).
+ * Null when it can't be read: then everything counts as just saved.
+ */
+export async function householdRestrictionsBefore(userId: string): Promise<string[] | null> {
   try {
-    const r = await reviewHouseholdMenus(userId)
+    return (await loadMenuRestrictions({ userId })).restrictions
+  } catch (err) {
+    console.warn('[menu-review] restrictions before the save:', (err as Error)?.message ?? err)
+    return null
+  }
+}
+
+/** For the save paths: never throws, logs what it did. `before`: `householdRestrictionsBefore`. */
+export async function reviewHouseholdMenusSafely(userId: string, before?: readonly string[] | null): Promise<ReviewResult | null> {
+  try {
+    const r = await reviewHouseholdMenus(userId, { before })
     if (r.swapped.length || r.warned.length) console.info(`[menu-review] ${userId}: ${r.swapped.length} cambiados, ${r.warned.length} con aviso`)
     return r
   } catch (err) {

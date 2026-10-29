@@ -27,3 +27,16 @@ export const FEATURED_RECIPES: ReadonlyArray<{ id: string; name: string }> = [
 
 /** System recipes tagged with this internal tag are retired (PRO-140): out of the catalogue and the menu, still open by id. */
 export const RETIRED_RECIPE_TAG = 'retirada'
+
+/**
+ * PRO-373: a recipe tagged `base` (sofrito, legumbre aliñada, verduras
+ * asadas…) is cooked one day and used by several dishes of the week
+ * (`recipe_bases`). It shows in `/recipes`, but the menu never picks it as a
+ * dish; the shopping list adds its ingredients through the dishes that use it.
+ */
+export const BASE_RECIPE_TAG = 'base'
+
+/** Pure: whether a recipe is a base (PRO-373), by its public or internal tags. */
+export function isBaseRecipe(r: { tags?: readonly string[] | null; internalTags?: readonly string[] | null }): boolean {
+  return (r.tags ?? []).includes(BASE_RECIPE_TAG) || (r.internalTags ?? []).includes(BASE_RECIPE_TAG)
+}

@@ -730,6 +730,21 @@ function RecipeHeader({
           {recipe.sourceCredit}
         </p>
       )}
+      {recipe.bases && recipe.bases.length > 0 && (
+        // PRO-373: bases cooked another day (sofrito, verduras asadas…).
+        <p className="text-[15px] leading-snug text-[#4A4239]" data-testid="recipe-bases">
+          Usa:{" "}
+          {recipe.bases.map((b, i) => (
+            <span key={b.id}>
+              {i > 0 && ", "}
+              <Link href={`/recipes/${b.id}`} className="underline decoration-[#C65D38] underline-offset-2 hover:text-[#C65D38]">
+                {b.name}
+              </Link>{" "}
+              ({formatBaseServings(b.servings)})
+            </span>
+          ))}
+        </p>
+      )}
       {isDesktop && metaParts.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-x-[18px] gap-y-1 text-[15px] text-[#4A4239]">
           {metaParts.map((p) => (
@@ -863,6 +878,11 @@ function DesktopSection({
 
 function EmptyLine({ children }: { children: ReactNode }) {
   return <p className="py-4 text-[14px] italic text-[#7A7066]">{children}</p>
+}
+
+/** «2 raciones», «1 ración», «1,5 raciones» (PRO-373). */
+function formatBaseServings(n: number): string {
+  return `${(Math.round(n * 10) / 10).toLocaleString("es-ES")} ${n === 1 ? "ración" : "raciones"}`
 }
 
 /**

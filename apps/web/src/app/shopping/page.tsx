@@ -993,6 +993,12 @@ function ItemRow({
           )}
           {buy && isHabitual(item) && <HabitualTag />}
         </span>
+        {Array.isArray(item.bases) && item.bases.length > 0 && (
+          // PRO-373: cooked once, for every dish of the week that uses it.
+          <span className="block text-[12px] text-ink-muted" data-testid="shopping-bases">
+            Para {item.bases.length === 1 ? 'la base' : 'las bases'}: {item.bases.join(', ')}
+          </span>
+        )}
       </button>
 
       {buy && <HabitualStar item={item} listId={listId} busy={busy} />}

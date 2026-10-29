@@ -6,13 +6,13 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Unit } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { ingredients, recipes, type CatalogSourceInfo } from '../db/schema.js'
+import { ingredients, recipeBases, recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { matchIngredients } from './recipeExtractor.js'
 import { persistRecipe } from './recipePersistence.js'
 import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
-import { catalogSourceRecord, planBatchPublish, reviewDecision, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type RewriteOptions, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
+import { baseNameKey, catalogSourceRecord, planBatchPublish, reviewDecision, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type RewriteOptions, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
 
 type Db = typeof defaultDb
 /** The database or a transaction on it (the admin page publishes and audits in one). */
@@ -22,6 +22,19 @@ type DbOrTx = Pick<Db, 'select' | 'update'>
 export async function allCatalogNames(db: Db = defaultDb): Promise<string[]> {
   const rows = await db.select({ name: recipes.name }).from(recipes).where(isNull(recipes.authorId))
   return rows.map((r) => r.name)
+}
+
+/**
+ * PRO-373: the catalogue recipe (published or draft) with this name, accents,
+ * case and spacing aside — a published one first.
+ */
+export async function findCatalogRecipeByName(name: string, db: Db = defaultDb): Promise<{ id: string; name: string } | null> {
+  const key = baseNameKey(name)
+  if (!key) return null
+  const rows = await db.select({ id: recipes.id, name: recipes.name, status: recipes.status }).from(recipes).where(isNull(recipes.authorId))
+  const same = rows.filter((r) => baseNameKey(r.name) === key)
+  const hit = same.find((r) => r.status === PUBLISHED) ?? same[0]
+  return hit ? { id: hit.id, name: hit.name } : null
 }
 
 /** Match by name (token match → AI → new ingredient created) + weights for the audit. */
@@ -87,6 +100,10 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
       await db.delete(recipes).where(eq(recipes.id, row.id))
       return { ok: false, errors: res.errors.map((e) => e.message) }
     }
+    // PRO-373: the bases it uses (already resolved by name).
+    if (input.bases?.length) {
+      await db.insert(recipeBases).values(input.bases.map((b) => ({ recipeId: row.id, baseRecipeId: b.baseRecipeId, servingsUsed: b.servingsUsed })))
+    }
     // PRO-284: the same total rule as the boot fix (prep done while the
     // oven or the pot go by themselves); the rewriter's prep is already
     // realistic, so it is not cut again.
@@ -107,6 +124,7 @@ export function createDbCatalogImportDeps(
     rewrite,
     matchIngredients: (name, ings) => matchDraftIngredients(name, ings),
     persistDraft: (input) => persistCatalogDraft(input),
+    findCatalogRecipe: (name) => findCatalogRecipeByName(name),
     log,
   }
 }

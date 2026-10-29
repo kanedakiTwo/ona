@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   index,
   check,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { UNITS, type MenuFit, type NutritionPerServing } from '@ona/shared'
@@ -450,6 +451,22 @@ export const recipeSteps = pgTable('recipe_steps', {
 }, (table) => [
   index('idx_recipe_steps_recipe').on(table.recipeId),
   uniqueIndex('uq_recipe_step_order').on(table.recipeId, table.index),
+])
+
+// ─── 6b. recipe_bases (PRO-373) ─────────────────────────────
+// A dish that uses a base cooked another day (sofrito, legumbre aliñada,
+// verduras asadas…): `servings_used` servings of the base for one batch of the
+// dish (its `servings`). Deleting the dish drops the link; a base in use can't
+// be deleted. The shopping list adds the base's ingredients through it.
+export const recipeBases = pgTable('recipe_bases', {
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  baseRecipeId: uuid('base_recipe_id').notNull().references(() => recipes.id, { onDelete: 'restrict' }),
+  servingsUsed: real('servings_used').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.recipeId, table.baseRecipeId] }),
+  index('idx_recipe_bases_base').on(table.baseRecipeId),
+  check('recipe_bases_servings_check', sql.raw('servings_used > 0')),
+  check('recipe_bases_not_self_check', sql.raw('recipe_id <> base_recipe_id')),
 ])
 
 // ─── 7. user_favorites ──────────────────────────────────────

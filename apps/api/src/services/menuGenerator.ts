@@ -22,6 +22,7 @@ import {
   normalizeDeviation,
   TARGET_MACROS,
   MENU_GENERATION,
+  isBaseRecipe,
 } from '@ona/shared'
 import { applyTemplateTapers } from './taper.js'
 import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
@@ -284,6 +285,9 @@ export function buildRandomMenu(
   dinnerAvoidGroups?: Record<number, FoodGroup>,
   unavailableEquipment?: Set<string>,
 ): { days: DayMenu[]; warnings: string[] } {
+  // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
+  // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
+  if (allRecipes.some((r) => isBaseRecipe(r))) allRecipes = allRecipes.filter((r) => !isBaseRecipe(r))
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
   const warnings: string[] = []

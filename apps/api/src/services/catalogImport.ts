@@ -61,6 +61,12 @@ export interface DraftIngredient {
   section?: string | null
 }
 
+/** PRO-373: a base the recipe uses, by name, and how many of its servings (for the recipe's `servings`). */
+export interface DraftBase {
+  name: string
+  servings: number
+}
+
 /** A recipe as read from its source, before the house rewrite. */
 export interface CatalogDraftInput {
   name: string
@@ -76,6 +82,8 @@ export interface CatalogDraftInput {
   /** The source's steps. Read to rewrite them; never saved. */
   sourceSteps: string[]
   source: CatalogSourceRef
+  /** PRO-373: bases it uses, resolved by name against the catalogue or the same batch. */
+  bases?: DraftBase[]
 }
 
 export interface RewrittenStep {
@@ -143,6 +151,8 @@ export interface PersistDraftInput {
   ingredients: Array<{ ingredientId: string; quantity: number; unit: Unit; note: string | null; optional: boolean; section: string | null; displayOrder: number }>
   steps: Array<{ index: number; text: string; durationMin: number | null; temperature: number | null; technique: string | null; ingredientRefs: string[] }>
   catalogSource: CatalogSourceRef & { batch: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
+  /** PRO-373: rows of `recipe_bases` (servings for the house's 4). */
+  bases?: Array<{ baseRecipeId: string; servingsUsed: number }>
 }
 
 export interface CatalogImportDeps {
@@ -152,6 +162,11 @@ export interface CatalogImportDeps {
   /** Same order as the input; ingredientId null = couldn't match nor create. */
   matchIngredients: (recipeName: string, ings: DraftIngredient[]) => Promise<MatchedIngredient[]>
   persistDraft: (input: PersistDraftInput) => Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }>
+  /**
+   * PRO-373: the catalogue recipe (published or draft) with this name, accents,
+   * case and spacing aside, or null. Only asked for recipes that use bases.
+   */
+  findCatalogRecipe?: (name: string) => Promise<{ id: string; name: string } | null>
   log?: (line: string) => void
   /**
    * After each recipe, with how many are done of how many: the admin page's
@@ -164,7 +179,7 @@ export interface CatalogImportDeps {
 export type ImportOutcome =
   | { name: string; source: CatalogSourceRef; status: 'draft'; recipeId: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
   | { name: string; source: CatalogSourceRef; status: 'duplicate'; duplicateOf: string }
-  | { name: string; source: CatalogSourceRef; status: 'rejected'; reason: 'no_es_receta' | 'copia_del_libro' | 'ingredientes' | 'revisor' | 'error'; detail?: string }
+  | { name: string; source: CatalogSourceRef; status: 'rejected'; reason: 'no_es_receta' | 'copia_del_libro' | 'ingredientes' | 'bases' | 'revisor' | 'error'; detail?: string }
 
 export const HOUSE_SERVINGS = 4
 /** Words in a row shared with the source that count as copying. */
@@ -396,6 +411,55 @@ export function catalogSourceRecord(src: PersistDraftInput['catalogSource']): Ca
   }
 }
 
+// ─── Bases (PRO-373) ────────────────────────────────────────────
+
+/** Key a base is looked up by: accents, case and spacing aside. */
+export function baseNameKey(name: string): string {
+  return normalize(name).replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * The recipes of this batch already saved (or found repeated in the
+ * catalogue), by `baseNameKey`: a base the batch brings resolves to them.
+ */
+export type BatchRecipeIds = Map<string, string>
+
+/**
+ * PRO-373: the draft's bases as `recipe_bases` rows, each resolved by name
+ * against the same batch first and then the catalogue (`findCatalogRecipe`);
+ * the servings scaled with the recipe to the house's 4. The names it can't
+ * find come back in `missing`.
+ */
+export async function resolveDraftBases(
+  draft: Pick<CatalogDraftInput, 'bases' | 'servings'>,
+  batchIds: BatchRecipeIds,
+  deps: Pick<CatalogImportDeps, 'findCatalogRecipe'>,
+): Promise<{ links: Array<{ baseRecipeId: string; servingsUsed: number }>; missing: string[] }> {
+  const links: Array<{ baseRecipeId: string; servingsUsed: number }> = []
+  const missing: string[] = []
+  const from = Number.isFinite(draft.servings) && draft.servings > 0 ? draft.servings : HOUSE_SERVINGS
+  for (const b of draft.bases ?? []) {
+    const id = batchIds.get(baseNameKey(b.name)) ?? (await deps.findCatalogRecipe?.(b.name))?.id ?? null
+    if (!id) {
+      missing.push(b.name)
+      continue
+    }
+    if (links.some((l) => l.baseRecipeId === id)) continue
+    links.push({ baseRecipeId: id, servingsUsed: Math.round(((b.servings * HOUSE_SERVINGS) / from) * 100) / 100 })
+  }
+  return { links, missing }
+}
+
+/**
+ * Pure: the batch in the order to import it — the recipes another one uses as
+ * a base go first (in file order), so the dish finds its base already saved.
+ */
+export function basesFirst<T extends Pick<CatalogDraftInput, 'name' | 'bases'>>(drafts: readonly T[]): T[] {
+  const used = new Set(drafts.flatMap((d) => (d.bases ?? []).map((b) => baseNameKey(b.name))))
+  if (used.size === 0) return [...drafts]
+  return [...drafts.filter((d) => used.has(baseNameKey(d.name))), ...drafts.filter((d) => !used.has(baseNameKey(d.name)))]
+}
+
 // ─── Orchestration ──────────────────────────────────────────────
 
 export async function importCatalogRecipe(
@@ -403,12 +467,19 @@ export async function importCatalogRecipe(
   batch: string,
   deps: CatalogImportDeps,
   known: string[],
+  batchIds: BatchRecipeIds = new Map(),
 ): Promise<ImportOutcome> {
   const base = { name: draft.name, source: draft.source }
   if (!draft.name?.trim() || draft.ingredients.length === 0) return { ...base, status: 'rejected', reason: 'no_es_receta' }
 
   const dup = findDuplicate(draft.name, known)
   if (dup) return { ...base, status: 'duplicate', duplicateOf: dup }
+
+  // PRO-373: every base it names must exist, before paying for any AI.
+  const bases = await resolveDraftBases(draft, batchIds, deps)
+  if (bases.missing.length > 0) {
+    return { ...base, status: 'rejected', reason: 'bases', detail: `sin la base en el catálogo ni en la tanda: ${bases.missing.join(', ')}` }
+  }
 
   // Frying/confit oil marked (and mixed lines split) before scaling, while
   // the amounts in a note still match the line's (PRO-195).
@@ -481,23 +552,36 @@ export async function importCatalogRecipe(
       ingredientRefs: [...new Set((s.ingredientRefs ?? []).filter((k) => Number.isInteger(k) && k >= 0 && k < n))].map((k) => `ing_${k}`),
     })),
     catalogSource: { ...draft.source, batch, auditIssues: audit.issues, allergenDoubt: !!rewrite.allergenDoubt },
+    ...(bases.links.length > 0 ? { bases: bases.links } : {}),
   })
   if (!saved.ok) return { ...base, status: 'rejected', reason: 'revisor', detail: saved.errors.join(' · ') }
   return { ...base, status: 'draft', recipeId: saved.recipeId, auditIssues: audit.issues, allergenDoubt: !!rewrite.allergenDoubt }
 }
 
-/** A whole batch, in order. One failure never stops the rest. */
+/**
+ * A whole batch, in order — except that the recipes another one uses as a
+ * base go first (PRO-373). One failure never stops the rest.
+ */
 export async function importCatalogBatch(drafts: readonly CatalogDraftInput[], batch: string, deps: CatalogImportDeps): Promise<ImportOutcome[]> {
   const known = await deps.catalogNames()
   const out: ImportOutcome[] = []
-  for (const d of drafts) {
+  const batchIds: BatchRecipeIds = new Map()
+  const ordered = basesFirst(drafts)
+  for (const d of ordered) {
     let r: ImportOutcome
     try {
-      r = await importCatalogRecipe(d, batch, deps, known)
+      r = await importCatalogRecipe(d, batch, deps, known, batchIds)
     } catch (err) {
       r = { name: d.name, source: d.source, status: 'rejected', reason: 'error', detail: (err as Error)?.message ?? String(err) }
     }
-    if (r.status === 'draft') known.push(r.name)
+    if (r.status === 'draft') {
+      known.push(r.name)
+      batchIds.set(baseNameKey(r.name), r.recipeId)
+    } else if (r.status === 'duplicate' && deps.findCatalogRecipe) {
+      // A base the catalogue already has: the batch's dishes use that one.
+      const same = await deps.findCatalogRecipe(r.duplicateOf).catch(() => null)
+      if (same) batchIds.set(baseNameKey(r.name), same.id)
+    }
     deps.log?.(`${r.status === 'draft' ? '✓' : r.status === 'duplicate' ? '=' : '✗'} ${r.name}${r.status === 'duplicate' ? ` (ya está: ${r.duplicateOf})` : r.status === 'rejected' ? ` (${r.reason}${r.detail ? `: ${r.detail}` : ''})` : r.auditIssues.length ? ` (auditoría: ${r.auditIssues.join(', ')})` : ''}`)
     out.push(r)
     if (deps.onOutcome) {
@@ -559,6 +643,9 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
         section: i.section ?? null,
       })),
       sourceSteps: (r.steps ?? []).map((s: any) => (typeof s === 'string' ? s : String(s?.text ?? ''))).filter(Boolean),
+      ...(Array.isArray(r.bases) && r.bases.length > 0
+        ? { bases: r.bases.map((b: any) => ({ name: String(b?.name ?? '').trim(), servings: Number(b?.servings) || 0 })) }
+        : {}),
       source: {
         origin: src.origin === 'miguel' ? 'miguel' : 'cocina',
         book: src.book ?? null,

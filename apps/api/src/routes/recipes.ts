@@ -95,6 +95,7 @@ import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
+import { loadRecipeBaseUses } from '../services/recipeBases.js'
 import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
@@ -629,6 +630,9 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
     ])
 
     const recipe = toDetailRecipe(row, ings, steps)
+    // PRO-373: «Usa: Sofrito (2 raciones)», with a link to each base.
+    const bases = await loadRecipeBaseUses(id, { userId: req.userId, isAdmin: req.user?.role === 'admin' })
+    if (bases.length > 0) recipe.bases = bases
     // The reader's heart (it was never sent, so the button looked dead: it
     // saved the favourite and the refetch said «not favourite» again).
     if (req.userId) recipe.is_favorite = (await favoriteIdsOf(req.userId, [id])).has(id)

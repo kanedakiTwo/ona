@@ -95,6 +95,13 @@ export interface RecipeShoppingIssue {
   rowId: string
 }
 
+/** PRO-373: a base the recipe uses and how many of its servings. */
+export interface RecipeBaseUse {
+  id: string
+  name: string
+  servings: number
+}
+
 export interface Recipe {
   id: string
   name: string
@@ -169,6 +176,12 @@ export interface Recipe {
    * «<libro>»». Sent by GET /recipes/:id; null when there is nothing to credit.
    */
   sourceCredit?: string | null
+  /**
+   * PRO-373: the bases this recipe uses («Usa: Sofrito (2 raciones)»), from
+   * `recipe_bases`, with the base's id for the link. Sent by GET /recipes/:id;
+   * absent when it uses none.
+   */
+  bases?: RecipeBaseUse[]
 
   ingredients: RecipeIngredient[]
   steps: RecipeStep[]

@@ -1,5 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
-import type { Course } from '@ona/shared'
+import { isBaseRecipe, type Course } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { recipes, recipeIngredients, recipeSteps, ingredients } from '../db/schema.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
@@ -24,11 +24,13 @@ export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
  * never other users' private recipes (specs/recipes.md).
  * Allergens: the recipe's union plus each ingredient's catalogue tags, so
  * the restriction check doesn't depend on a stale recipe-level union.
- * Retired catalogue recipes (PRO-140) are never picked or suggested.
+ * Retired catalogue recipes (PRO-140) are never picked or suggested, nor are
+ * bases (PRO-373: sofrito, verduras asadas… are cooked for the dishes that
+ * use them, never served as a dish).
  */
 export async function loadMatchableRecipes(userId: string, db: any = defaultDb): Promise<RecipeWithCourse[]> {
   const allRecipes = (await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))).filter(
-    (r: any) => !isRetiredRecipe(r),
+    (r: any) => !isRetiredRecipe(r) && !isBaseRecipe(r),
   )
 
   const recipeIds = allRecipes.map((r: any) => r.id)

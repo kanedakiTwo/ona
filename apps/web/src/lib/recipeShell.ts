@@ -5,12 +5,19 @@
  * The root layout asks these helpers which case a pathname is.
  */
 
-/** `/recipes/<id>` (not `/recipes/new`). */
-const RECIPE_DETAIL = /^\/recipes\/(?!new\/?$)[^/]+\/?$/
+/** `/recipes/<id>` (not `/recipes/new` nor the collections, `/recipes/coleccion/…`). */
+const RECIPE_DETAIL = /^\/recipes\/(?!(new|coleccion)\/?$)[^/]+\/?$/
 /** `/recipes/<id>/cook`. */
-const RECIPE_COOK = /^\/recipes\/(?!new\/)[^/]+\/cook\/?$/
+const RECIPE_COOK = /^\/recipes\/(?!(new|coleccion)\/)[^/]+\/cook\/?$/
 /** Everything under `/recipes/<id>` — the segment whose layout sets the link-preview metadata. */
-const RECIPE_SEGMENT = /^\/recipes\/(?!new(\/|$))[^/]+(\/|$)/
+const RECIPE_SEGMENT = /^\/recipes\/(?!(new|coleccion)(\/|$))[^/]+(\/|$)/
+/** `/recipes/coleccion/<slug>` (PRO-374): a collection, open to everyone. */
+const COLLECTION_PAGE = /^\/recipes\/coleccion\/[^/]+\/?$/
+
+/** A catalogue collection's page. */
+export function isCollectionRoute(pathname: string | null | undefined): boolean {
+  return COLLECTION_PAGE.test(pathname ?? "")
+}
 
 export type PublicRecipeRoute = "detail" | "cook"
 

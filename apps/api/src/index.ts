@@ -52,6 +52,7 @@ import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
+import catalogCollectionsRoutes from './routes/catalogCollections.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
 import { startMenuRecipeRecheck } from './services/menuRecipeRecheck.js'
@@ -162,6 +163,7 @@ app.use(feedbackRoutes)
 app.use(tasteRoutes)
 app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
+app.use(catalogCollectionsRoutes)
 // How the household cooks (PRO-217): per-route auth.
 app.use(householdHabitsRoutes)
 // «Tu ficha» (PRO-317): per-route auth.

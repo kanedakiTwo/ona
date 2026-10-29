@@ -24,6 +24,7 @@ import {
 import CatalogGrid from "@/components/recipes/CatalogGrid"
 import { WithWhatIHavePicker, MAX_WITH_WHAT_I_HAVE, type PickedIngredient } from "@/components/recipes/WithWhatIHavePicker"
 import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
+import { CollectionsRow } from "@/components/recipes/CollectionsRow"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
 
@@ -42,7 +43,7 @@ function readScope(): CatalogScope | null {
  * `/recipes` — "D · Luz y foto". Header ("Recetas" + Nueva receta), one
  * search field, one chip row (quick filters + scope, plus «Con lo que tengo»,
  * which opens an ingredient picker and swaps the grid for ranked results
- * with what is missing), a "De temporada" hero
+ * with what is missing), a "De temporada" hero and the «Colecciones» row
  * when nothing is filtered, then the card grid. Advanced filters live in a
  * dialog opened from the search field (mobile) or "Más filtros" (lg+).
  *
@@ -279,6 +280,14 @@ export default function RecipesPage() {
             <FeaturedRecipeCard recipe={featured[0]} className={signedOut ? "rounded-[18px]" : ""} />
             {featured[1] && <FeaturedRecipeCard recipe={featured[1]} className="hidden lg:block" />}
           </section>
+        )}
+
+        {/* «Colecciones» (PRO-374): Cocina's collections, only on the unfiltered catalogue. */}
+        {!anyFilterActive && (
+          <CollectionsRow
+            className="mt-6 lg:mt-8"
+            edgeClassName={signedOut ? "" : "px-5 lg:px-0"}
+          />
         )}
 
         <div className={signedOut ? "pt-3.5 lg:pt-[22px]" : "px-4 pt-3.5 lg:px-0 lg:pt-[22px]"}>

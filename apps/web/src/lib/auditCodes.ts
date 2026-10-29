@@ -26,6 +26,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'catalog_draft.restore': 'Borrador del catálogo recuperado',
   'catalog_batch.publish': 'Tanda del catálogo publicada',
   'catalog_import.start': 'Importación de una tanda lanzada',
+  'catalog_collection.import': 'Colección del catálogo subida',
 }
 
 export function actionLabel(code: string): string {

@@ -238,6 +238,15 @@ export { firstMenuWeeks, pastDayIndexes } from './utils/firstMenuWeeks.js'
 export type { FirstMenuWeeks } from './utils/firstMenuWeeks.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
 export {
+  SEASONAL_PRODUCE,
+  SEASONAL_PRODUCE_MIN_RECIPES,
+  produceInSeason,
+  findProduce,
+  ingredientMatchesProduce,
+  normalizeProduceName,
+} from './constants/seasonalProduce.js'
+export type { SeasonalProduce, SeasonalProduceCount } from './constants/seasonalProduce.js'
+export {
   isCuratedRecipe,
   isAllYearRecipe,
   recipeMinutes,

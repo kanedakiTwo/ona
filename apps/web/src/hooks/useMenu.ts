@@ -62,8 +62,10 @@ export function useGenerateMenu() {
     /** `empty: true` skips the matcher and creates a row with all 7 days
      *  scaffolded per the user's mealTemplate but every slot empty
      *  (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero". */
-    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean; force?: boolean; weekPlan?: WeekPlan }) =>
-      api.post<Menu>("/menu/generate", params),
+    // PRO-377: `onlyFavorites` («Rehacer la semana con mis favoritas»); the
+    // answer says how many dishes are not favourites (`favoritesShort`).
+    mutationFn: (params: { userId: string; weekStart: string; empty?: boolean; force?: boolean; weekPlan?: WeekPlan; onlyFavorites?: boolean }) =>
+      api.post<Menu & { favoritesShort?: number }>("/menu/generate", params),
     onError: (err) => {
       // 409 MENU_NOT_EMPTY: the week has dishes we didn't know about (an
       // earlier GET failed). Re-read it instead of showing an empty week.

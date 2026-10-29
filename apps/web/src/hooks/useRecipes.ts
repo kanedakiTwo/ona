@@ -3,7 +3,7 @@ import { z } from "zod"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 import { createRecipeSchema } from "@ona/shared"
-import type { ExtractedRecipe, Ingredient, Recipe } from "@ona/shared"
+import type { ExtractedRecipe, Ingredient, Recipe, SeasonalProduceCount } from "@ona/shared"
 
 export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 
@@ -13,6 +13,18 @@ export function useRecipes(filters?: RecipeFilters) {
   return useQuery<Recipe[]>({
     queryKey: ["recipes", filters],
     queryFn: () => api.get(`/recipes${buildQueryString(filters)}`),
+  })
+}
+
+/**
+ * «Este mes» (PRO-375): the calendar's products of `month` (1–12, the
+ * browser's) that at least 3 catalogue recipes use. Public.
+ */
+export function useSeasonalProduce(month: number) {
+  return useQuery<SeasonalProduceCount[]>({
+    queryKey: ["recipes", "seasonal-produce", month],
+    queryFn: () => api.get(`/recipes/seasonal-produce?month=${month}`),
+    staleTime: 60 * 60 * 1000,
   })
 }
 

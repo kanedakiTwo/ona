@@ -44,13 +44,9 @@ function readScope(): CatalogScope | null {
  * `/recipes` — "D · Luz y foto". Header ("Recetas" + Nueva receta), one
  * search field, one chip row (quick filters + scope, plus «Con lo que tengo»,
  * which opens an ingredient picker and swaps the grid for ranked results
-<<<<<<< d206c23eb37358e3a38feb5d9527a504413e7b80
- * with what is missing), a "De temporada" hero and the «Colecciones» row
-=======
  * with what is missing), the «Este mes» row of the month's fruits and
  * vegetables (PRO-375: one tapped filters by that ingredient), a "De temporada" hero
->>>>>>> 7b0646dc16502a3bfffb441d2fe3a9addfd0f635
- * when nothing is filtered, then the card grid. Advanced filters live in a
+ * and the «Colecciones» row (PRO-374) when nothing is filtered, then the card grid. Advanced filters live in a
  * dialog opened from the search field (mobile) or "Más filtros" (lg+).
  *
  * Signed out (specs/recipes.md → "Catálogo público") this is the public

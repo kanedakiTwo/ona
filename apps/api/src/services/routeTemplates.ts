@@ -28,6 +28,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/admin/errors/:x/resolve',
   '/admin/extension-gaps',
   '/admin/extension-sends',
+  '/admin/feature-usage',
   '/admin/feedback',
   '/admin/ingredient-gaps',
   '/admin/invite-campaigns',

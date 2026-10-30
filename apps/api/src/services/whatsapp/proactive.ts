@@ -527,6 +527,23 @@ export function chooseDelivery(
 }
 
 /**
+ * Pure: how a proactive message of `kind` goes out now (PRO-1076). Inside
+ * the 24 h window, free-form; outside it, by the kind's approved template
+ * (`templateFor`); without one, skipped (logged `fuera_ventana`).
+ */
+export function deliveryFor(
+  kind: string,
+  lastInboundAt: Date | null,
+  now: Date,
+  perKind: Readonly<Record<string, string>>,
+  generic: string,
+): { delivery: Delivery; template: string | null } {
+  const template = templateFor(kind, perKind, generic)
+  const delivery = chooseDelivery(lastInboundAt, now, Boolean(template))
+  return { delivery, template: delivery === 'template' ? template : null }
+}
+
+/**
  * Template body parameters can't contain newlines, tabs or 4+ consecutive
  * spaces (Meta rejects the send). Buttons are folded into the text.
  */

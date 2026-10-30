@@ -395,6 +395,7 @@ export const FEATURE_DEFINITIONS: Record<string, string> = {
   taste_reason: 'One reason the user gave in the taste game read into the household file.',
   shop_quote_parse: "One shop's reply read for a shop order.",
   catalog_import_rewrite: 'One recipe rewritten for the catalogue import (system cost).',
+  catalog_storage_labels: 'One lot of up to 20 catalogue recipes labelled «se congela» / «días en nevera» (PRO-372, system cost).',
 }
 
 // ─── SQL loader ──────────────────────────────────────────────────

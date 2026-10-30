@@ -23,8 +23,8 @@ import {
   mondayOf,
   planProactive,
   sawTodaysMenu,
+  deliveryFor,
   templateParamFrom,
-  templateFor,
   withText,
   parseTemplateMap,
   PROACTIVE_KINDS,
@@ -71,8 +71,7 @@ export async function sendProactive(
   opts: { meta?: ReturnType<typeof guidedMeta> } = {},
 ): Promise<ChannelOutcome> {
   const meta = opts.meta
-  const template = templateFor(kind, TEMPLATES, env.WHATSAPP_TEMPLATE_NAME)
-  const delivery = chooseDelivery(link.lastInboundAt, now, Boolean(template))
+  const { delivery, template } = deliveryFor(kind, link.lastInboundAt, now, TEMPLATES, env.WHATSAPP_TEMPLATE_NAME)
   if (delivery === 'skip') return { status: 'skipped', error: 'outside-24h-window' }
   try {
     if (delivery === 'session') {

@@ -1,6 +1,6 @@
 {
   "id": "9cf3b291-4aaf-4e8a-932e-9b9e0d3e86fb",
-  "prevId": "309f173b-5384-445e-821a-133185ea8500",
+  "prevId": "8292cb9b-bf0d-4936-afb5-7b2cfc26c075",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -494,6 +494,32 @@
           "primaryKey": false,
           "notNull": true
         },
+        "subtitle": {
+          "name": "subtitle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "season": {
+          "name": "season",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recipe_ids": {
+          "name": "recipe_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "published": {
+          "name": "published",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
         "kind": {
           "name": "kind",
           "type": "text",
@@ -551,7 +577,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "catalog_collections_slug_unique": {
+          "name": "catalog_collections_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

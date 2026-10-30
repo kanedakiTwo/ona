@@ -13,6 +13,10 @@
  *
  * A recipe that is retired or no longer published after the upload just stops
  * showing; the collection keeps its id in case it comes back.
+ *
+ * The table also keeps the «Menú del mes» (PRO-378, `kind = 'menu_mes'`,
+ * services/monthMenus.ts): the row, the pages and the admin list read only
+ * `kind = 'coleccion'`.
  */
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import {
@@ -27,7 +31,10 @@ import { db } from '../db/connection.js'
 import { catalogCollections, recipes } from '../db/schema.js'
 import { PUBLISHED } from './recipeVisibility.js'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const COLLECTION_KIND = 'coleccion'
+const isCollection = eq(catalogCollections.kind, COLLECTION_KIND)
+
+const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** A catalogue recipe as the import sees it. */
 export interface CollectionRecipeCandidate {
@@ -190,7 +197,7 @@ const visibleIdsOf = (row: CollectionRow, visible: Map<string, VisibleRecipe>) =
 
 /** The `/recipes` row: published collections with a recipe to show, newest first. */
 export async function listCollectionCards(): Promise<CatalogCollectionCard[]> {
-  const rows = await db.select().from(catalogCollections).where(eq(catalogCollections.published, true)).orderBy(desc(catalogCollections.createdAt))
+  const rows = await db.select().from(catalogCollections).where(and(isCollection, eq(catalogCollections.published, true))).orderBy(desc(catalogCollections.createdAt))
   const visible = await visibleCatalogRecipes([...new Set(rows.flatMap((r) => r.recipeIds ?? []))])
   return rows
     .map((r) => cardOf(r, visibleIdsOf(r, visible), visible))
@@ -199,7 +206,7 @@ export async function listCollectionCards(): Promise<CatalogCollectionCard[]> {
 
 /** Admin: every collection, published or not, with what shows today. */
 export async function listCollectionsForAdmin(): Promise<CatalogCollectionAdminView[]> {
-  const rows = await db.select().from(catalogCollections).orderBy(desc(catalogCollections.createdAt))
+  const rows = await db.select().from(catalogCollections).where(isCollection).orderBy(desc(catalogCollections.createdAt))
   const visible = await visibleCatalogRecipes([...new Set(rows.flatMap((r) => r.recipeIds ?? []))])
   return rows.map((r) => ({ ...cardOf(r, visibleIdsOf(r, visible), visible), published: r.published, createdAt: r.createdAt.toISOString() }))
 }
@@ -209,7 +216,7 @@ export async function loadCollection(slug: string): Promise<{ card: CatalogColle
   const [row] = await db
     .select()
     .from(catalogCollections)
-    .where(and(eq(catalogCollections.slug, slug), eq(catalogCollections.published, true)))
+    .where(and(isCollection, eq(catalogCollections.slug, slug), eq(catalogCollections.published, true)))
     .limit(1)
   if (!row) return null
   const visible = await visibleCatalogRecipes(row.recipeIds ?? [])

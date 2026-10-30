@@ -318,10 +318,9 @@ export default function RecipesPage() {
           </section>
         )}
 
-<<<<<<< 8cc5a2d747cc1d4ea9eb68aea9ceb0f227a946a6
         {/* «Menú de <mes>» (PRO-378): signed in, nothing filtered. */}
         {!signedOut && !anyFilterActive && <MonthMenuCard className="mx-4 mt-3 lg:mx-0 lg:mt-5" />}
-=======
+
         {/* «Colecciones» (PRO-374): Cocina's collections, only on the unfiltered catalogue. */}
         {!anyFilterActive && (
           <CollectionsRow
@@ -329,7 +328,6 @@ export default function RecipesPage() {
             edgeClassName={signedOut ? "" : "px-5 lg:px-0"}
           />
         )}
->>>>>>> 4642190c413c206063e969027094cf41d38db52c
 
         <div className={signedOut ? "pt-3.5 lg:pt-[22px]" : "px-4 pt-3.5 lg:px-0 lg:pt-[22px]"}>
           {!isLoading && !waitingForIngredients && (

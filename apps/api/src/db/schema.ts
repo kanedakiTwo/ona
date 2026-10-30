@@ -9,6 +9,7 @@ import {
   date,
   jsonb,
   bigint,
+  smallint,
   uniqueIndex,
   index,
   check,
@@ -306,6 +307,14 @@ export const recipes = pgTable('recipes', {
   tips: text('tips'),
   substitutions: text('substitutions'),
   storage: text('storage'),
+  /**
+   * PRO-372: «Se puede congelar» / «No se congela» and «Aguanta N días en
+   * nevera» seals on the ficha. Null = no data yet (no seal). Filled by
+   * Cocina in the batch, by the rewriter, or by the boot backfill
+   * (`catalogStorageLabels.ts`) for catalogue recipes.
+   */
+  freezable: boolean('freezable'),
+  fridgeDays: smallint('fridge_days'),
   /**
    * PRO-220 (D-069): «preparativos con antelación» of the recipe itself —
    * `[{ text: 'Saca el filete del frigorífico', hoursBefore: 1.5 }]`. Prep
@@ -1957,6 +1966,24 @@ export const catalogImportJobs = pgTable('catalog_import_jobs', {
   index('idx_catalog_import_jobs_created').on(t.createdAt),
   check('catalog_import_jobs_status_check', sql.raw("status IN ('running','done','failed','interrupted')")),
 ])
+
+// ─── catalog_collections (PRO-374) ───────────────────────────
+// Editorial collections of the catalogue («Vuelta al cole», «Otoño»), made by
+// Cocina as a JSON file and uploaded from Admin → «Recetas pendientes»
+// (specs/catalog-import.md → «Colecciones»). Shown as a row on `/recipes` and
+// at `/recipes/coleccion/<slug>`. `recipe_ids` keeps Cocina's order; a recipe
+// retired or turned back into a draft later just stops showing.
+export const catalogCollections = pgTable('catalog_collections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  subtitle: text('subtitle'),
+  /** 'spring' | 'summer' | 'autumn' | 'winter', or null (not tied to one). */
+  season: text('season'),
+  recipeIds: jsonb('recipe_ids').notNull().default([]).$type<string[]>(),
+  published: boolean('published').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /** One recipe's result in `catalog_import_jobs.outcomes`. */
 export interface CatalogImportOutcomeRecord {

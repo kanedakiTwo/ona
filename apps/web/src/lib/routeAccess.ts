@@ -9,7 +9,7 @@
  * Pure module (no React): the root layout and RootShell use it, and
  * apps/api/src/tests/routeAccess.test.ts pins the lists.
  */
-import { publicRecipeRoute } from "./recipeShell"
+import { isCollectionRoute, publicRecipeRoute } from "./recipeShell"
 
 /**
  * Drawn without the app shell for everyone, signed in or not (a bare
@@ -38,7 +38,8 @@ const BARE_PREFIXES = ["/lista/", "/invites/", "/blog/", "/newsletter/"]
 /**
  * Open without an account, but their chrome depends on the session: signed
  * out, the public chrome (PublicNavbar + Footer); signed in, the app shell.
- * `/recipes/<id>` and its cook mode join them through `publicRecipeRoute`.
+ * `/recipes/<id>` and its cook mode join them through `publicRecipeRoute`, and
+ * the catalogue collections `/recipes/coleccion/<slug>` through `isCollectionRoute`.
  */
 const SESSION_ROUTES = new Set(["/recipes", "/whatsapp/conectar"])
 
@@ -68,7 +69,7 @@ export type SignedOutChrome = "page" | "recipe" | "fullscreen"
 
 export function signedOutChrome(pathname: string | null | undefined): SignedOutChrome | null {
   const p = normalise(pathname)
-  if (SESSION_ROUTES.has(p)) return "page"
+  if (SESSION_ROUTES.has(p) || isCollectionRoute(p)) return "page"
   const recipe = publicRecipeRoute(p)
   if (recipe === "detail") return "recipe"
   if (recipe === "cook") return "fullscreen"

@@ -656,8 +656,20 @@
     {
       "idx": 98,
       "version": "7",
+<<<<<<< 7cc4241e3aacd170975ba5b3c35771be49e91e8d
       "when": 1793365615835,
       "tag": "0098_newsletter_tip_log",
+=======
+      "when": 1793231501459,
+      "tag": "0097_recipe_storage_seals",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1793232057227,
+      "tag": "0098_catalog_collections",
+>>>>>>> 4642190c413c206063e969027094cf41d38db52c
       "breakpoints": true
     }
   ]

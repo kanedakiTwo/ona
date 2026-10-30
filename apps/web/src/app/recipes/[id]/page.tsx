@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { ShoppingIssues } from "@/components/recipes/ShoppingIssues"
 import { DietNotices } from "@/components/recipes/DietNotices"
+import { StorageSeals, hasStorageSeals } from "@/components/recipes/StorageSeals"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { RecipeNotesSection } from "@/components/recipes/RecipeNotesSection"
 import { AddToCookbookButton } from "@/components/recipes/AddToCookbookButton"
@@ -375,6 +376,7 @@ export default function RecipeDetailPage() {
       recipeName={recipe.name}
     />
   ) : null
+  const seals = hasStorageSeals(recipe)
   const notesBlock = (
     <div>
       {/* Quick personal actions: log a cook, file it in a cookbook. */}
@@ -389,7 +391,7 @@ export default function RecipeDetailPage() {
           persisted as a single text blob with paragraph breaks (`\n\n`);
           legacy `tips` content is merged in beneath so nothing the author
           typed disappears. */}
-      {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
+      {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage || seals) && (
         <section className={`${user ? "mt-8" : ""} space-y-5`} aria-label="Notas de la receta">
           {(recipe.notes || recipe.tips) && (
             <div>
@@ -412,10 +414,13 @@ export default function RecipeDetailPage() {
               <p className="text-[15px] leading-relaxed text-[#1A1612]">{recipe.substitutions}</p>
             </div>
           )}
-          {recipe.storage && (
+          {(recipe.storage || seals) && (
             <div>
               <div className="text-eyebrow mb-2 text-[#7A7066]">Conservación</div>
-              <p className="text-[15px] leading-relaxed text-[#1A1612]">{recipe.storage}</p>
+              <StorageSeals freezable={recipe.freezable} fridgeDays={recipe.fridgeDays} />
+              {recipe.storage && (
+                <p className={`${seals ? "mt-3 " : ""}text-[15px] leading-relaxed text-[#1A1612]`}>{recipe.storage}</p>
+              )}
             </div>
           )}
         </section>
@@ -457,7 +462,7 @@ export default function RecipeDetailPage() {
         <CopyToMineButton recipeId={recipe.id} />
       )}
 
-      {!user && !(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
+      {!user && !(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage || seals) && (
         <EmptyLine>Esta receta no tiene notas.</EmptyLine>
       )}
     </div>
@@ -727,7 +732,19 @@ function RecipeHeader({
           className={`font-italic text-ink-muted ${isDesktop ? "text-[21px]" : "text-[18px]"} leading-[1.25]`}
           data-testid="recipe-credit"
         >
-          {recipe.sourceCredit}
+          {/* PRO-1075: with the original's link, the credit is the link. */}
+          {recipe.sourceUrl ? (
+            <a
+              href={recipe.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-2 hover:underline active:underline"
+            >
+              {recipe.sourceCredit}
+            </a>
+          ) : (
+            recipe.sourceCredit
+          )}
         </p>
       )}
       {isDesktop && metaParts.length > 0 && (

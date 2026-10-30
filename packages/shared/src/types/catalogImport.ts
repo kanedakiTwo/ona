@@ -71,6 +71,10 @@ export const cocinaRecipeSchema = z.object({
   equipment: z.array(z.string().max(60)).max(30).optional(),
   ingredients: z.array(ingredientSchema).min(1).max(80),
   steps: z.array(stepSchema).min(1).max(60),
+  /** PRO-372: «Se puede congelar» / «No se congela». Absent = the rewriter guesses it. */
+  freezable: z.boolean().nullish(),
+  /** PRO-372: «Aguanta N días en nevera». Absent = the rewriter guesses it. */
+  fridgeDays: z.number().int().min(1).max(30).nullish(),
   source: sourceSchema.optional(),
 })
 
@@ -114,6 +118,8 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   optional: { label: 'optional' },
   section: { label: 'la sección (section)' },
   text: { label: 'el texto' },
+  freezable: { label: 'si se congela (freezable)' },
+  fridgeDays: { label: 'los días en nevera (fridgeDays)', plural: true },
   source: { label: 'source' },
   origin: { label: 'el origen (source.origin)' },
   book: { label: 'el libro (source.book)' },

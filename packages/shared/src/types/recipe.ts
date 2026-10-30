@@ -139,6 +139,13 @@ export interface Recipe {
   tips?: string
   substitutions?: string
   storage?: string
+  /**
+   * PRO-372: «Se puede congelar» (true) / «No se congela» (false) seal on the
+   * ficha. Null/absent = no data, no seal.
+   */
+  freezable?: boolean | null
+  /** PRO-372: «Aguanta N días en nevera». Null/absent = no data, no seal. */
+  fridgeDays?: number | null
   /** PRO-220: what to do hours before cooking («Pon los garbanzos en remojo» · 10 h). */
   advancePrep?: AdvancePrep[]
 

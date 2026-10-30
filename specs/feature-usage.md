@@ -68,12 +68,31 @@ Migración aditiva 0097. Una fila por hogar (o persona) y función:
 
 Los eventos de hoy esperan a la noche siguiente. Por hogar cuenta cualquier evento con hogar (también de una cuenta ya borrada); por persona, solo los que tienen persona.
 
+## Uso de funciones en el admin (PRO-1025)
+
+D-122, punto 5. `GET /admin/feature-usage?days=30[&includeInternal=1]` (`routes/metrics.ts`, `services/featureUsageReport.ts`), con el JWT de admin o el token de métricas (`x-metrics-token`), lo mismo con los dos: solo agregados, nunca ids ni textos.
+
+- `days`: de 1 a 180 (30 por defecto); la ventana son esos días ya contados, hasta las 00:00 de hoy (Madrid).
+- `base`: hogares con algún miembro contado y personas contadas en un hogar. Sin cuentas de admin ni suspendidas (ni sus filas de persona), salvo `includeInternal=1`.
+- `features`: una fila por función, en el orden de `FEATURE_CATALOG`, también sin uso (con ceros). `unit` es `hogares` en las del hogar y `personas` en las de persona, y es la unidad de:
+  - `users`: la han usado alguna vez; `active`: en los últimos `days` días (`last_used_at`); `lapsed`: la usaron, pero no en esos días; `never`: de la base, nunca;
+  - `households`: hogares distintos (en las de persona, con alguien que la usa);
+  - `uses30d` (siempre los 30 días de la tabla, aunque cambie `days`) y `usesTotal`;
+  - `medianDaysSinceLast`: mediana de días desde la última vez; `share`: `users` / base.
+- `tricks` («Trucos de la newsletter»): las funciones con alguien a quien proponerlas, de más a menos `never`, y después `lapsed`.
+- **«menos de 5»**: una cifra de hogares o personas de 1 a 4 sale `"menos de 5"` en vez del número (`0` sale `0`). Si los que usan una función son de 1 a 4, también salen así sus usos, la mediana, `active`, `lapsed` y `households`, y `share` es null.
+- `countedUntil`: hasta dónde llegó la última pasada (null si aún no hay filas).
+
+La pantalla es `/admin/funciones` («Uso de funciones» en el menú del admin, `FeatureUsageSection.tsx`): los filtros (7, 30 o 90 días; acciones o ajustes; por hogar o por persona; orden del catálogo, más o menos usadas), una tarjeta por función con sus cifras y el bloque «Trucos de la newsletter» con, por función, cuántos no la han usado nunca y cuántos la dejaron. «Menos de 5» se pinta tal cual llega de la API.
+
 ## Tests
 
+- `featureUsageReport.test.ts` (router de métricas de verdad, base de datos de mentira): cerrada sin credenciales; una fila por función del catálogo, en su orden; una celda con 3 hogares sale «menos de 5», con sus usos; en la respuesta no hay ids ni textos (ni los que traiga de más la consulta); los trucos, de más a menos; `days` acotado y sin cuentas internas por defecto. `tokenRoutes.test.ts` fija la ruta entre las del token.
+- `e2e/admin-feature-usage.spec.ts`: `/admin/funciones` con una respuesta fijada (filas, filtros, orden, trucos y «menos de 5»), con la API de verdad y desde el menú del admin en escritorio.
 - `featureUsage.test.ts` (repo en memoria que imita el SQL): una acción suma un uso; volver a pasar la misma noche no suma; un ajuste cuenta una vez por semana (el domingo a las 23:30 de Madrid es aún esa semana); `uses_total` sobrevive a borrar los eventos y los 30 días bajan; filas por hogar y por persona; filtro por props; la ventana con el cambio de hora; una vez al día desde la 01:00; el catálogo.
 - `featureUsage.smoke.ts` (Postgres, CI): lo mismo con el SQL de verdad sobre un hogar propio, y borrar la cuenta (y su hogar) borra las filas.
 
 ## Pendiente
 
-- Nadie lee aún la tabla: la usará la newsletter del n.º 4 (truco por persona) y, si hace falta, un recuento en `/admin/usage`.
+- La lee el admin (`/admin/funciones`, arriba); la usará también la newsletter del n.º 4 (truco por persona).
 - Ajustes que no dejan evento (comidas fijas, menú del cole…) necesitan antes su evento.

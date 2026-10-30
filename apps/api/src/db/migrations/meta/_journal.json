@@ -652,6 +652,13 @@
       "when": 1793229743373,
       "tag": "0097_household_feature_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1793365615835,
+      "tag": "0098_newsletter_tip_log",
+      "breakpoints": true
     }
   ]
 }

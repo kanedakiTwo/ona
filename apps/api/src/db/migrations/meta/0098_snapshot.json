@@ -1,9 +1,5 @@
 {
-<<<<<<< 7cc4241e3aacd170975ba5b3c35771be49e91e8d
-  "id": "032a737a-b729-4753-a17a-50ac7cb69106",
-=======
   "id": "8292cb9b-bf0d-4936-afb5-7b2cfc26c075",
->>>>>>> 4642190c413c206063e969027094cf41d38db52c
   "prevId": "309f173b-5384-445e-821a-133185ea8500",
   "version": "7",
   "dialect": "postgresql",
@@ -475,8 +471,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-<<<<<<< 7cc4241e3aacd170975ba5b3c35771be49e91e8d
-=======
     "public.catalog_collections": {
       "name": "catalog_collections",
       "schema": "",
@@ -550,7 +544,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
->>>>>>> 4642190c413c206063e969027094cf41d38db52c
     "public.catalog_import_jobs": {
       "name": "catalog_import_jobs",
       "schema": "",
@@ -4448,7 +4441,6 @@
       },
       "isRLSEnabled": false
     },
-<<<<<<< 7cc4241e3aacd170975ba5b3c35771be49e91e8d
     "public.newsletter_tip_log": {
       "name": "newsletter_tip_log",
       "schema": "",
@@ -4595,8 +4587,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-=======
->>>>>>> 4642190c413c206063e969027094cf41d38db52c
     "public.newsletter_unsubscribes": {
       "name": "newsletter_unsubscribes",
       "schema": "",
@@ -7001,8 +6991,6 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< 7cc4241e3aacd170975ba5b3c35771be49e91e8d
-=======
         "freezable": {
           "name": "freezable",
           "type": "boolean",
@@ -7015,7 +7003,6 @@
           "primaryKey": false,
           "notNull": false
         },
->>>>>>> 4642190c413c206063e969027094cf41d38db52c
         "advance_prep": {
           "name": "advance_prep",
           "type": "jsonb",

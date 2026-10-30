@@ -654,17 +654,17 @@
       "breakpoints": true
     },
     {
-<<<<<<< 1d61a06e46ab28735decaa07dc8b6044610e84f0
-      "idx": 99,
-      "version": "7",
-      "when": 1793232000000,
-      "tag": "0099_catalog_collections_month_menu",
-=======
       "idx": 98,
       "version": "7",
       "when": 1793231501459,
       "tag": "0097_recipe_storage_seals",
->>>>>>> 02e03fb5178735eadf0d8cdeb2dda8901a33babc
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1793232000000,
+      "tag": "0099_catalog_collections_month_menu",
       "breakpoints": true
     }
   ]

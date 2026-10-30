@@ -58,7 +58,7 @@ const APPLE_SPLASH_IMAGES = [
   { src: "splash-1242x2688.png", w: 414, h: 896, dpr: 3 },
 ] as const
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children, seo }: { children: React.ReactNode; seo: React.ReactNode }) {
   const pathname = usePathname()
   // Who may open which page and with which chrome: lib/routeAccess.ts (applied by RootShell).
   const isPublicRoute = isBareRoute(pathname)
@@ -131,6 +131,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <ServiceWorkerRegistration />
+        {/* `@seo` slot (PRO-1077): a recipe's JSON-LD, outside RootShell so it is in the server HTML. */}
+        {seo}
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <RootShell pathname={pathname}>

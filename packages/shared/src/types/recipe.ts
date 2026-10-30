@@ -169,6 +169,11 @@ export interface Recipe {
    * «<libro>»». Sent by GET /recipes/:id; null when there is nothing to credit.
    */
   sourceCredit?: string | null
+  /**
+   * PRO-1077: a catalogue recipe adapted from a book (D-104). Its page is not
+   * indexed and it stays out of the sitemap until Legal's OK. Absent otherwise.
+   */
+  fromBook?: boolean
 
   ingredients: RecipeIngredient[]
   steps: RecipeStep[]

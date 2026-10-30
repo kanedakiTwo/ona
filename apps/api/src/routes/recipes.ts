@@ -262,6 +262,22 @@ function toCard(row: RecipeRow): RecipeCard {
   }
 }
 
+/**
+ * Catalogue cards for `ids`, in that order, with the reader's hearts — the
+ * same card `GET /recipes` lists (used by the collections, PRO-374). The
+ * caller has already checked the ids are visible.
+ */
+export async function recipeCardsByIds(ids: string[], userId: string | undefined): Promise<RecipeCard[]> {
+  if (ids.length === 0) return []
+  const rows = (await db.select().from(recipes).where(inArray(recipes.id, ids))) as RecipeRow[]
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const favs = await favoriteIdsOf(userId, ids)
+  return ids
+    .map((id) => byId.get(id))
+    .filter((r): r is RecipeRow => r != null)
+    .map((r) => (userId ? { ...toCard(r), is_favorite: favs.has(r.id) } : toCard(r)))
+}
+
 interface IngredientRow {
   id: string
   recipeId: string

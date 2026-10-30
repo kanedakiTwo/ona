@@ -10,7 +10,8 @@
  * «Publicar» (his OK + this recipe out) and «Descartar» (his «no»); per batch,
  * «Publicar las aprobadas» when the rule leaves any. D-099: every Cocina
  * recipe is seen and approved one by one; nothing goes out without a click.
- * The import of a new batch file lives on top (CatalogImportPanel).
+ * The import of a new batch file lives on top (CatalogImportPanel), then
+ * «Subir colección» for Cocina's catalogue collections (CatalogCollectionPanel).
  */
 
 import { useMemo, useState } from "react"
@@ -21,6 +22,7 @@ import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { RecipeCover } from "@/components/menu/RecipeCover"
 import { useCatalogDrafts, useDraftAction, usePublishBatch } from "@/hooks/useCatalogReview"
 import { CatalogImportPanel } from "./CatalogImportPanel"
+import { CatalogCollectionPanel } from "./CatalogCollectionPanel"
 import { Empty } from "./shared"
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -74,6 +76,7 @@ export function PendingRecipesSection() {
   return (
     <section data-testid="pending-recipes" className="space-y-6">
       <CatalogImportPanel />
+      <CatalogCollectionPanel />
 
       {/* Count + filters, sticky like the index bar of a cookbook. */}
       <div className="sticky top-0 z-10 -mx-5 border-b border-border-soft bg-cream/95 px-5 py-3 backdrop-blur">

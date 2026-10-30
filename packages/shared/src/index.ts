@@ -658,4 +658,20 @@ export type {
   CatalogImportJobView,
   CatalogImportCheckView,
 } from './types/catalogImport.js'
+// Catalogue collections (PRO-374, specs/recipes.md → «Colecciones»)
+export {
+  CATALOG_COLLECTION_SLUG_RE,
+  CATALOG_COLLECTION_MAX_RECIPES,
+  CATALOG_COLLECTION_PATH,
+  HEALTH_CLAIM_WORDS,
+  healthClaimWordsIn,
+  catalogCollectionFileSchema,
+  checkCatalogCollection,
+} from './types/catalogCollections.js'
+export type {
+  CatalogCollectionFile,
+  CatalogCollectionCheck,
+  CatalogCollectionCard,
+  CatalogCollectionAdminView,
+} from './types/catalogCollections.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'

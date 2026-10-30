@@ -6845,6 +6845,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "freezable": {
+          "name": "freezable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fridge_days": {
+          "name": "fridge_days",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "advance_prep": {
           "name": "advance_prep",
           "type": "jsonb",

@@ -26,6 +26,7 @@ import {
 import CatalogGrid from "@/components/recipes/CatalogGrid"
 import { WithWhatIHavePicker, MAX_WITH_WHAT_I_HAVE, type PickedIngredient } from "@/components/recipes/WithWhatIHavePicker"
 import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
+import { CollectionsRow } from "@/components/recipes/CollectionsRow"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
 import { SeasonalProduceRow } from "@/components/recipes/SeasonalProduceRow"
@@ -47,7 +48,7 @@ function readScope(): CatalogScope | null {
  * which opens an ingredient picker and swaps the grid for ranked results
  * with what is missing), the «Este mes» row of the month's fruits and
  * vegetables (PRO-375: one tapped filters by that ingredient), a "De temporada" hero
- * when nothing is filtered, then the card grid. Advanced filters live in a
+ * and the «Colecciones» row (PRO-374) when nothing is filtered, then the card grid. Advanced filters live in a
  * dialog opened from the search field (mobile) or "Más filtros" (lg+).
  *
  * Signed out (specs/recipes.md → "Catálogo público") this is the public
@@ -314,6 +315,14 @@ export default function RecipesPage() {
             <FeaturedRecipeCard recipe={featured[0]} className={signedOut ? "rounded-[18px]" : ""} />
             {featured[1] && <FeaturedRecipeCard recipe={featured[1]} className="hidden lg:block" />}
           </section>
+        )}
+
+        {/* «Colecciones» (PRO-374): Cocina's collections, only on the unfiltered catalogue. */}
+        {!anyFilterActive && (
+          <CollectionsRow
+            className="mt-6 lg:mt-8"
+            edgeClassName={signedOut ? "" : "px-5 lg:px-0"}
+          />
         )}
 
         <div className={signedOut ? "pt-3.5 lg:pt-[22px]" : "px-4 pt-3.5 lg:px-0 lg:pt-[22px]"}>

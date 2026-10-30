@@ -727,7 +727,19 @@ function RecipeHeader({
           className={`font-italic text-ink-muted ${isDesktop ? "text-[21px]" : "text-[18px]"} leading-[1.25]`}
           data-testid="recipe-credit"
         >
-          {recipe.sourceCredit}
+          {/* PRO-1075: with the original's link, the credit is the link. */}
+          {recipe.sourceUrl ? (
+            <a
+              href={recipe.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-2 hover:underline active:underline"
+            >
+              {recipe.sourceCredit}
+            </a>
+          ) : (
+            recipe.sourceCredit
+          )}
         </p>
       )}
       {isDesktop && metaParts.length > 0 && (

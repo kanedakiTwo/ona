@@ -253,8 +253,14 @@ export {
   recipeMinutes,
   filterCatalogRecipes,
   pickFeaturedRecipes,
+  CATALOG_INTENTS,
+  QUICK_DINNER_MAX_TIME,
+  isQuickDinner,
+  isNibbles,
+  isGlutenFree,
+  matchesCatalogIntent,
 } from './utils/catalog.js'
-export type { CatalogScope, CatalogRecipeLike, CatalogFilterState } from './utils/catalog.js'
+export type { CatalogScope, CatalogRecipeLike, CatalogFilterState, CatalogIntent } from './utils/catalog.js'
 export { menuShareText, recipeSharePayload, withOnaFooter } from './utils/sharePayloads.js'
 export { shoppingProgress, parseShoppingAmount } from './utils/shoppingProgress.js'
 export type { ShoppingProgress } from './utils/shoppingProgress.js'

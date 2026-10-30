@@ -9,6 +9,7 @@ import {
   date,
   jsonb,
   bigint,
+  smallint,
   uniqueIndex,
   index,
   check,
@@ -307,6 +308,14 @@ export const recipes = pgTable('recipes', {
   tips: text('tips'),
   substitutions: text('substitutions'),
   storage: text('storage'),
+  /**
+   * PRO-372: «Se puede congelar» / «No se congela» and «Aguanta N días en
+   * nevera» seals on the ficha. Null = no data yet (no seal). Filled by
+   * Cocina in the batch, by the rewriter, or by the boot backfill
+   * (`catalogStorageLabels.ts`) for catalogue recipes.
+   */
+  freezable: boolean('freezable'),
+  fridgeDays: smallint('fridge_days'),
   /**
    * PRO-220 (D-069): «preparativos con antelación» of the recipe itself —
    * `[{ text: 'Saca el filete del frigorífico', hoursBefore: 1.5 }]`. Prep

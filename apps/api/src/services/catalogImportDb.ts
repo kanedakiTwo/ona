@@ -73,7 +73,17 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
   const catalogSource = catalogSourceRecord(input.catalogSource)
   const [row] = await db
     .insert(recipes)
-    .values({ name: input.name, servings: input.servings, authorId: null, status: DRAFT, importBatch: input.catalogSource.batch, catalogSource })
+    .values({
+      name: input.name,
+      servings: input.servings,
+      authorId: null,
+      status: DRAFT,
+      importBatch: input.catalogSource.batch,
+      catalogSource,
+      // PRO-372: persistRecipe doesn't know the storage seals, so they go in here.
+      freezable: input.freezable,
+      fridgeDays: input.fridgeDays,
+    })
     .returning({ id: recipes.id })
   try {
     const res = await persistRecipe(

@@ -1548,6 +1548,30 @@ export const newsletterUnsubscribes = pgTable('newsletter_unsubscribes', {
 ])
 
 /**
+ * PRO-1020 (D-122 punto 4): la receta y el truco que la newsletter eligió
+ * para cada persona, una fila por número y cuenta. Lo lee solo el compositor
+ * (no repetir receta, descanso de los trucos, adoptado en 14 días); los
+ * agentes, recuentos por truco. `clicked_at` queda vacío mientras los clics
+ * sean anónimos (PRO-191). Se borra con la cuenta y con el hogar.
+ */
+export const newsletterTipLog = pgTable('newsletter_tip_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Id del truco (`NEWSLETTER_TIPS`); null = el general del número. */
+  tip: text('tip'),
+  /** La receta elegida; null = la receta de la semana. */
+  recipeId: uuid('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  shownAt: timestamp('shown_at', { withTimezone: true }).notNull().defaultNow(),
+  clickedAt: timestamp('clicked_at', { withTimezone: true }),
+  adoptedAt: timestamp('adopted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_newsletter_tip_log_issue_user').on(t.issueId, t.userId),
+  index('idx_newsletter_tip_log_user').on(t.userId),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).

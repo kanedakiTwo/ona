@@ -30,6 +30,7 @@ import {
   type NewsletterSendInput,
 } from '../services/newsletter.js'
 import type { EmailMessage, EmailResult } from '../services/email.js'
+import type { NewsletterTipsRepo, RecipeFacts, TipLogRow, TipPersona } from '../services/newsletterTips.js'
 import {
   buildIssueStats,
   contentLinks,
@@ -904,5 +905,201 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
     for (const ua of ['Googlebot/2.1', 'Mozilla/5.0 (compatible; Mimecast)', 'Microsoft Office SafeLinks', 'WhatsApp/2.23', 'curl/8.4.0', 'python-requests/2.31']) {
       expect(countsAsClick({ method: 'GET', userAgent: ua }), ua).toBe(false)
     }
+  })
+})
+
+// ─── Receta y truco por persona (PRO-1020) ───────────────────────
+
+describe('a recipe and a tip for each person (PRO-1020)', () => {
+  const ANA_ID = '44444444-4444-4444-8444-444444444444'
+  const BEA_ID = '55555555-5555-4555-8555-555555555555'
+  const ADMIN_ID = '66666666-6666-4666-8666-666666666666'
+  const R1 = '77777777-7777-4777-8777-777777777771'
+  const R2 = '77777777-7777-4777-8777-777777777772'
+  const NOW = new Date('2026-11-06T08:00:00.000Z')
+  const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000)
+  const BROWSER = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'
+
+  const N4 = newsletterSendSchema.parse({
+    ...ISSUE,
+    issueId: 'n4',
+    content: {
+      ...ISSUE.content,
+      recipes: [
+        { recipeId: R1, title: 'Crema de calabaza', body: 'Para la primera noche de frío.', imageUrl: 'https://mimoia.com/c.jpg', imageAlt: 'Crema de calabaza' },
+        { recipeId: R2, title: 'Pollo al horno con patatas', body: 'El domingo, sin prisa.', imageUrl: 'https://mimoia.com/p.jpg', imageAlt: 'Pollo al horno' },
+      ],
+    },
+  })
+
+  function persona(userId: string, extra: Partial<TipPersona & { log: TipLogRow[] }> = {}): TipPersona & { log: TipLogRow[] } {
+    return {
+      userId,
+      householdId: `h-${userId}`,
+      signedUpAt: daysAgo(20),
+      whatsapp: { linked: true, notify: true, declined: false },
+      push: false,
+      accounts: 1,
+      isOwner: true,
+      adults: 1,
+      familyInviteDeclined: false,
+      inviteOfferDeclined: false,
+      usage: {},
+      shown: [],
+      log: [],
+      ...extra,
+    }
+  }
+
+  /** Ana: week 3, uses the list → «tacha la lista»; can't have R2. Bea: no WhatsApp → «Mimo por WhatsApp»; can't have R1. */
+  function memoryTips() {
+    const people: Record<string, TipPersona & { log: TipLogRow[] }> = {
+      [ANA_ID]: persona(ANA_ID, {
+        usage: { lista_compra: { firstUsedAt: daysAgo(18), lastUsedAt: daysAgo(2) }, afinar_menu: { firstUsedAt: daysAgo(30), lastUsedAt: daysAgo(30) } },
+        log: [{ id: 'l1', userId: ANA_ID, issueId: 'n2', tip: 'afinar_menu', recipeId: null, shownAt: daysAgo(35), adoptedAt: null }],
+        shown: [{ tip: 'afinar_menu', shownAt: daysAgo(35) }],
+      }),
+      [BEA_ID]: persona(BEA_ID, { signedUpAt: daysAgo(3), whatsapp: { linked: false, notify: false, declined: false } }),
+      [ADMIN_ID]: persona(ADMIN_ID, { whatsapp: { linked: false, notify: false, declined: false } }),
+    }
+    const facts: Record<string, RecipeFacts> = {
+      [ANA_ID]: { blocked: new Set([R2]), sentBefore: new Set() },
+      [BEA_ID]: { blocked: new Set([R1]), sentBefore: new Set() },
+      [ADMIN_ID]: { blocked: new Set([R1]), sentBefore: new Set() },
+    }
+    const recorded: Array<{ issueId: string; userId: string; tip: string | null; recipeId: string | null }> = []
+    const adopted: Array<{ id: string; adoptedAt: Date }> = []
+    const tips: NewsletterTipsRepo = {
+      async personas(ids) {
+        return new Map(ids.filter((i) => people[i]).map((i) => [i, people[i]]))
+      },
+      async recipeFacts(ids) {
+        return new Map(ids.map((i) => [i, facts[i]]))
+      },
+      async record(issueId, rows) {
+        recorded.push(...rows.map((r) => ({ issueId, userId: r.userId, tip: r.tip, recipeId: r.recipeId })))
+      },
+      async markAdopted(rows) {
+        adopted.push(...rows)
+      },
+      async userIdByEmail(email) {
+        return email === 'admin@mimoia.com' ? ADMIN_ID : null
+      },
+    }
+    return { tips, recorded, adopted }
+  }
+
+  const accounts = () => [
+    userCand('ana@example.com', { userId: ANA_ID, token: newsletterTokenForUser(ANA_ID) }),
+    userCand('bea@example.com', { userId: BEA_ID, token: newsletterTokenForUser(BEA_ID) }),
+    cand('lista@example.com', { unsubscribeToken: TOKEN_C }),
+  ]
+
+  it('two people get a different recipe and a different tip; the waitlist the star and the general tip; all logged', async () => {
+    const { repo } = memoryRepo(accounts())
+    const { tips, recorded, adopted } = memoryTips()
+    const sendBatch = okBatch()
+    expect(await sendNewsletter(N4, { ...deps(repo, sendBatch), tips, now: () => NOW })).toMatchObject({ sent: 3 })
+    const [toAna, toBea, toList] = sendBatch.mock.calls[0][0]
+    expect(toAna.html).toContain('Crema de calabaza')
+    expect(toAna.html).not.toContain('Pollo al horno')
+    expect(toAna.html).toContain('Tacha la lista en el súper')
+    expect(toAna.html).toContain(`href="https://mimoia.com/recipes/${R1}"`)
+    expect(toAna.html).toContain('href="https://mimoia.com/shopping"')
+    expect(toBea.html).toContain('Pollo al horno con patatas')
+    expect(toBea.html).not.toContain('Crema de calabaza')
+    expect(toBea.html).toContain('Mimo, también por WhatsApp')
+    expect(toBea.text).toContain('LA RECETA DE LA SEMANA: Pollo al horno con patatas')
+    expect(toList.html).toContain('Lentejas estofadas')
+    expect(toList.html).toContain('¿Qué ceno con lo que tengo?')
+    expect(toList.html).not.toContain('Crema de calabaza')
+    expect(recorded).toEqual([
+      { issueId: 'n4', userId: ANA_ID, tip: 'tachar_lista', recipeId: R1 },
+      { issueId: 'n4', userId: BEA_ID, tip: 'whatsapp', recipeId: R2 },
+    ])
+    // Ana's earlier «Afina tu menú» (n2, 35 days ago) was first used 5 days after: adopted.
+    expect(adopted).toEqual([{ id: 'l1', adoptedAt: daysAgo(30) }])
+  })
+
+  it('no candidate fits → the star; a failing tips repo → everyone gets the general ones, and the send goes on', async () => {
+    const { repo } = memoryRepo(accounts())
+    const { tips } = memoryTips()
+    const blocked: NewsletterTipsRepo = {
+      ...tips,
+      recipeFacts: async (ids) => new Map(ids.map((i) => [i, { blocked: new Set([R1, R2]), sentBefore: new Set<string>() }])),
+    }
+    const batch = okBatch()
+    await sendNewsletter(N4, { ...deps(repo, batch), tips: blocked, now: () => NOW })
+    expect(batch.mock.calls[0][0][0].html).toContain('Lentejas estofadas')
+    expect(batch.mock.calls[0][0][0].html).toContain('Tacha la lista en el súper')
+
+    const other = memoryRepo(accounts())
+    const broken: NewsletterTipsRepo = { ...tips, personas: async () => Promise.reject(new Error('db down')) }
+    const batch2 = okBatch()
+    expect(await sendNewsletter(N4, { ...deps(other.repo, batch2), tips: broken, now: () => NOW })).toMatchObject({ sent: 3 })
+    expect(batch2.mock.calls[0][0][0].html).toContain('Lentejas estofadas')
+    expect(batch2.mock.calls[0][0][0].html).toContain('¿Qué ceno con lo que tengo?')
+  })
+
+  it("the proof carries the admin's own recipe and tip, and is not logged", async () => {
+    const { repo } = memoryRepo(accounts(), ['admin@mimoia.com'])
+    const { tips, recorded } = memoryTips()
+    const sendOne = vi.fn(async () => ({ status: 'sent', id: 'one' }) as EmailResult)
+    await sendNewsletter({ ...N4, testTo: 'admin@mimoia.com' }, { ...deps(repo, okBatch()), sendOne, tips, now: () => NOW })
+    const html = (sendOne.mock.calls[0] as any)[0].html as string
+    expect(html).toContain('Pollo al horno con patatas')
+    expect(html).toContain('Mimo, también por WhatsApp')
+    expect(recorded).toEqual([])
+  })
+
+  it('both go through our counter and count in the slots receta and truco; a bad id → 404', async () => {
+    const { repo } = memoryRepo(accounts())
+    const { tips } = memoryTips()
+    const { stats } = memoryStats(() => [{ issueId: 'n4', source: 'user' }])
+    const sendBatch = okBatch()
+    const asAdmin: RequestHandler = (req, _res, next) => {
+      ;(req as any).userId = '11111111-1111-4111-8111-111111111111'
+      next()
+    }
+    const app = express()
+      .use(express.json())
+      .use(
+        createNewsletterRouter({
+          repo,
+          stats,
+          adminAuth: [asAdmin],
+          statsAuth: asAdmin,
+          unsubscribeLimiter: noLimit,
+          audit: (async () => 'a1') as any,
+          makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats, tips, now: () => NOW }),
+          publicUrl: () => 'https://mimoia.com',
+        }),
+      )
+    const b = await serve(app)
+    await fetch(`${b}/admin/newsletter/send`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(N4) })
+    const [toAna] = sendBatch.mock.calls[0][0]
+    expect(toAna.html).toContain(`https://mimoia.com/n/n4/43?r=${R1}`)
+    expect(toAna.html).toContain('https://mimoia.com/n/n4/44?t=tachar_lista')
+    expect(toAna.html).not.toContain(`https://mimoia.com/recipes/${R1}`)
+
+    const click = (path: string) => fetch(`${b}${path}`, { headers: { 'user-agent': BROWSER } })
+    expect(await (await click(`/newsletter/click/n4/43?r=${R1}`)).json()).toEqual({ url: `https://mimoia.com/recipes/${R1}` })
+    expect(await (await click('/newsletter/click/n4/44?t=tachar_lista')).json()).toEqual({ url: 'https://mimoia.com/shopping' })
+    await click('/newsletter/click/n4/44?t=whatsapp')
+    await click('/newsletter/click/n4/44?t=whatsapp&prueba=1')
+    for (const p of [
+      '/newsletter/click/n4/43',
+      '/newsletter/click/n4/43?r=no-es-un-id',
+      '/newsletter/click/n4/44?t=no_existe',
+      `/newsletter/click/n4/44?t=${encodeURIComponent('https://malo.example')}`,
+    ]) {
+      const r = await click(p)
+      expect(r.status, p).toBe(404)
+    }
+    const report = await (await fetch(`${b}/admin/newsletter/stats`)).json()
+    const row = report.issues.find((i: any) => i.issueId === 'n4')
+    expect(row.clicks.slots.receta).toEqual({ total: 1, buttons: { abrir: 1 } })
+    expect(row.clicks.slots.truco).toEqual({ total: 2, buttons: { abrir: 2 } })
+    expect(JSON.stringify(report)).not.toContain('tachar_lista')
   })
 })

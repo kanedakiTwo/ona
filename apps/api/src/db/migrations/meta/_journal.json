@@ -666,6 +666,13 @@
       "when": 1793232057227,
       "tag": "0098_catalog_collections",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1793365615835,
+      "tag": "0098_newsletter_tip_log",
+      "breakpoints": true
     }
   ]
 }

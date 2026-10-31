@@ -29,6 +29,7 @@ import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
 import { CollectionsRow } from "@/components/recipes/CollectionsRow"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
+import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { SeasonalProduceRow } from "@/components/recipes/SeasonalProduceRow"
 
 const SCOPE_KEY = "ona.recipes.scope"
@@ -316,6 +317,9 @@ export default function RecipesPage() {
             {featured[1] && <FeaturedRecipeCard recipe={featured[1]} className="hidden lg:block" />}
           </section>
         )}
+
+        {/* «Menú de <mes>» (PRO-378): signed in, nothing filtered. */}
+        {!signedOut && !anyFilterActive && <MonthMenuCard className="mx-4 mt-3 lg:mx-0 lg:mt-5" />}
 
         {/* «Colecciones» (PRO-374): Cocina's collections, only on the unfiltered catalogue. */}
         {!anyFilterActive && (

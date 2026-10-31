@@ -673,6 +673,13 @@
       "when": 1793365615835,
       "tag": "0098_newsletter_tip_log",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1793365700000,
+      "tag": "0099_catalog_collections_month_menu",
+      "breakpoints": true
     }
   ]
 }

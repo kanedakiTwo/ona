@@ -14,6 +14,7 @@
  */
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
+import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
@@ -660,6 +661,8 @@ export default function MenuPage() {
           )}
         </div>
       )}
+      {/* «Menú de <mes>» (PRO-378): copy Cocina's week into this one. */}
+      {!isPastWeek && !fridgeQuestion && <MonthMenuCard weekStart={weekStart} className="mx-auto mt-5 max-w-md" />}
     </div>
   ) : null
 

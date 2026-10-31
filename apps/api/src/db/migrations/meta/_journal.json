@@ -670,8 +670,13 @@
     {
       "idx": 100,
       "version": "7",
+<<<<<<< 9415d973a32a4586aac536b3ef4d7cebcd6de529
       "when": 1793232100000,
       "tag": "0099_catalog_collections_month_menu",
+=======
+      "when": 1793365615835,
+      "tag": "0098_newsletter_tip_log",
+>>>>>>> bd8927f8861f640277b5969239f9f80000706901
       "breakpoints": true
     }
   ]

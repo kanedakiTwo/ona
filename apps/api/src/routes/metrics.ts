@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
+import { loadFeatureUsageReport } from '../services/featureUsageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
 import { basketGapsForToken, basketSendsForToken, loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
 import { flagsForAgents } from '../services/agentView.js'
@@ -24,7 +25,10 @@ import { flagsForAgents } from '../services/agentView.js'
  *     guardado esos días, sin hogar, usuario, envioId ni texto tecleado
  *     (specs/shop-orders.md). Las dos, con el nombre recortado (`publicLineName`).
  *     Con el token (PRO-322): la fecha solo por día y el producto de la tienda
- *     de 80 caracteres y 12 palabras como mucho (si no, null y `productosFiltrados`).
+ *     de 80 caracteres y 12 palabras como mucho (si no, null y `productosFiltrados`);
+ *   - GET /admin/feature-usage?days=30[&includeInternal=1] — uso de cada función
+ *     por hogar (PRO-1025, specs/feature-usage.md): una fila por función, solo
+ *     cifras, y «menos de 5» en los grupos de 1 a 4. Igual con sesión que con el token.
  *
  * Own router, mounted in index.ts BEFORE the routers that `router.use(authMiddleware)`
  * as a catch-all — otherwise a token-only request would be 401'd before it
@@ -54,6 +58,16 @@ router.get('/admin/usage', metricsAuth, async (req, res) => {
     res.json(await loadUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
   } catch (err: any) {
     console.error('[usage] report failed:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.get('/admin/feature-usage', metricsAuth, async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 30, 1, 180)
+    res.json(await loadFeatureUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
+  } catch (err: any) {
+    console.error('[feature-usage] report failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

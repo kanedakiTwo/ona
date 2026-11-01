@@ -24,6 +24,14 @@ export interface CatalogRecipeLike {
   seasons?: readonly string[] | null
   prepTime?: number | null
   totalTime?: number | null
+  meals?: readonly string[] | null
+  /** 'starter' | 'main' | 'dessert'; null = versatile. */
+  course?: string | null
+  /** Public tags (internal ones never reach the card). */
+  tags?: readonly string[] | null
+  allergens?: readonly string[] | null
+  /** The importer wasn't sure of the allergens (internal tag `alergenos:duda`, PRO-376). */
+  allergenDoubt?: boolean | null
 }
 
 /** "Selección Mimoia": system / curated recipes (`authorId IS NULL`). */
@@ -47,6 +55,42 @@ export function recipeMinutes(recipe: Pick<CatalogRecipeLike, 'prepTime' | 'tota
   return null
 }
 
+/**
+ * Intent shortcuts of the chip row (PRO-376, from FuturApp). «Listas en 15
+ * min» is not one: it is the 15-minute time filter (`maxTime`).
+ *   - quickDinner «Cenas rápidas»: dinner and at most 30 min;
+ *   - nibbles «Para picar»: a starter, or tagged `picoteo`;
+ *   - glutenFree «Sin gluten»: no `gluten` allergen and no allergen doubt.
+ */
+export const CATALOG_INTENTS = ['quickDinner', 'nibbles', 'glutenFree'] as const
+export type CatalogIntent = (typeof CATALOG_INTENTS)[number]
+
+/** «Cenas rápidas»: dinner within this many minutes. */
+export const QUICK_DINNER_MAX_TIME = 30
+
+export function isQuickDinner(recipe: CatalogRecipeLike): boolean {
+  const minutes = recipeMinutes(recipe)
+  return (recipe.meals ?? []).includes('dinner') && minutes != null && minutes <= QUICK_DINNER_MAX_TIME
+}
+
+export function isNibbles(recipe: CatalogRecipeLike): boolean {
+  return recipe.course === 'starter' || (recipe.tags ?? []).some((t) => t.toLowerCase() === 'picoteo')
+}
+
+export function isGlutenFree(recipe: CatalogRecipeLike): boolean {
+  return !recipe.allergenDoubt && !(recipe.allergens ?? []).includes('gluten')
+}
+
+const INTENT_MATCHERS: Record<CatalogIntent, (r: CatalogRecipeLike) => boolean> = {
+  quickDinner: isQuickDinner,
+  nibbles: isNibbles,
+  glutenFree: isGlutenFree,
+}
+
+export function matchesCatalogIntent(recipe: CatalogRecipeLike, intent: CatalogIntent): boolean {
+  return INTENT_MATCHERS[intent](recipe)
+}
+
 export interface CatalogFilterState {
   scope: CatalogScope
   userId?: string | null
@@ -54,12 +98,14 @@ export interface CatalogFilterState {
   season?: Season | '' | null
   /** Max total minutes; recipes with unknown time are dropped. */
   maxTime?: number | '' | null
+  /** Intent chips that are on; a recipe must match all of them. */
+  intents?: readonly CatalogIntent[]
 }
 
 /** Client-side part of the catalogue filters (meal, search and custom tags are server-side). */
 export function filterCatalogRecipes<T extends CatalogRecipeLike>(
   recipes: readonly T[],
-  { scope, userId, season, maxTime }: CatalogFilterState,
+  { scope, userId, season, maxTime, intents = [] }: CatalogFilterState,
 ): T[] {
   return recipes.filter((r) => {
     if (scope === 'mine' && (!userId || r.authorId !== userId)) return false
@@ -69,7 +115,7 @@ export function filterCatalogRecipes<T extends CatalogRecipeLike>(
       const minutes = recipeMinutes(r)
       if (minutes == null || minutes > maxTime) return false
     }
-    return true
+    return intents.every((i) => matchesCatalogIntent(r, i))
   })
 }
 

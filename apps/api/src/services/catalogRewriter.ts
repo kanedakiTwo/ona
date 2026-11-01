@@ -8,10 +8,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
-import type { CatalogDraftInput, CatalogRewrite, RewriteOptions } from './catalogImport.js'
+import { cleanFridgeDays, type CatalogDraftInput, type CatalogRewrite, type RewriteOptions } from './catalogImport.js'
 import { CLAUDE_MODEL } from '../config/models.js'
 
-const REWRITE_MODEL = CLAUDE_MODEL
+export const REWRITE_MODEL = CLAUDE_MODEL
 
 export const REWRITE_PROMPT = `Eres el equipo de cocina de Mimoia, un planificador de menús para hogares en España.
 Te paso una receta leída de un libro o de una nota. Tu trabajo es escribir los pasos OTRA VEZ, con nuestras palabras, y etiquetarla.
@@ -37,9 +37,11 @@ Etiquetas:
 - "difficulty": "easy" | "medium" | "hard".
 - "allergenDoubt": true si no se puede descartar un alérgeno por cómo está escrito (por ejemplo «salsa al gusto», «caldo» sin decir de qué, trazas); "allergenNote": por qué, en una frase.
 - "tips": un consejo corto con tus palabras, o null.
+- "freezable": true si el plato ya hecho se puede congelar y queda bien al descongelarlo; false si no (ensaladas crudas, fritos crujientes, salsas que se cortan, patata cocida en trozos…); null si no lo tienes claro.
+- "fridgeDays": días que aguanta el plato ya hecho en la nevera, en un táper cerrado, de 1 a 5 (pescado y marisco, 1 o 2; guisos y legumbres, 3 o 4); null si no lo tienes claro.
 
 Devuelve SOLO un JSON con esta forma, sin markdown:
-{"steps":[{"text":"…","durationMin":null,"temperature":null,"technique":null,"ingredientRefs":[0,1]}],"meals":[],"seasons":[],"course":null,"dishType":null,"protein":null,"techniques":[],"cuisine":null,"activeTime":null,"totalTime":null,"difficulty":null,"allergenDoubt":false,"allergenNote":null,"tips":null}`
+{"steps":[{"text":"…","durationMin":null,"temperature":null,"technique":null,"ingredientRefs":[0,1]}],"meals":[],"seasons":[],"course":null,"dishType":null,"protein":null,"techniques":[],"cuisine":null,"activeTime":null,"totalTime":null,"difficulty":null,"allergenDoubt":false,"allergenNote":null,"tips":null,"freezable":null,"fridgeDays":null}`
 
 /** Pure: the user message for one recipe. */
 export function rewriteMessage(draft: CatalogDraftInput, avoidPhrases: readonly string[] = [], avoidWords: readonly string[] = []): string {
@@ -91,6 +93,8 @@ export function parseRewrite(text: string): CatalogRewrite {
     allergenDoubt: parsed.allergenDoubt === true,
     allergenNote: str(parsed.allergenNote),
     tips: str(parsed.tips),
+    freezable: typeof parsed.freezable === 'boolean' ? parsed.freezable : null,
+    fridgeDays: cleanFridgeDays(parsed.fridgeDays),
   }
 }
 

@@ -6,7 +6,8 @@
  * never comes from this request, so this is not an open redirect. Unknown
  * issue or link → 404, no redirect. No IP, browser or recipient is stored.
  * The «Corre la voz» buttons (PRO-1019) add `?c=<code>&k=lista|hogar`,
- * passed on; the API builds WhatsApp or the copy page from that code.
+ * passed on; the API builds WhatsApp or the copy page from that code. The
+ * person's recipe and tip (PRO-1020) add `?r=<recipe id>` and `?t=<tip id>`.
  */
 import type { NextRequest } from "next/server"
 
@@ -15,10 +16,11 @@ const API = (process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 
 async function resolve(req: NextRequest, issue: string, n: string, method: "GET" | "HEAD"): Promise<Response> {
   const q = new URLSearchParams()
   if (req.nextUrl.searchParams.get("prueba") === "1") q.set("prueba", "1")
-  // «Corre la voz» (PRO-1019): the recipient's code and kind; the API checks them and builds the destination.
-  for (const k of ["c", "k"]) {
+  // «Corre la voz» (PRO-1019): the recipient's code and kind; the person's recipe
+  // and tip (PRO-1020): their ids. The API checks them and builds the destination.
+  for (const k of ["c", "k", "r", "t"]) {
     const v = req.nextUrl.searchParams.get(k)
-    if (v) q.set(k, v.slice(0, 32))
+    if (v) q.set(k, v.slice(0, 64))
   }
   const query = q.toString() ? `?${q.toString()}` : ""
   try {

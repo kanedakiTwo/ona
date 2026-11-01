@@ -18,6 +18,7 @@ import {
   planBatchPublish,
   reviewDecision,
   scaleToHouseServings,
+  storageFrom,
   strayDietWords,
   type BatchRecipe,
   type CatalogDraftInput,
@@ -26,6 +27,7 @@ import {
   type PersistDraftInput,
 } from '../services/catalogImport.js'
 import { parseRewrite, rewriteMessage } from '../services/catalogRewriter.js'
+import { cocinaBatchFileSchema } from '@ona/shared'
 import { aggregateNutrition, type IngredientCatalogEntry } from '../services/nutrition/aggregate.js'
 
 // Three made-up pages of a made-up book.
@@ -471,5 +473,48 @@ describe('where the recipe comes from (D-067)', () => {
     const bare = catalogSourceRecord({ ...saved[0].catalogSource, credit: undefined })
     expect(bare.credit).toBeNull()
     expect(catalogSourceCredit(bare)).toBe('Inspirada en Cuaderno azul')
+  })
+})
+
+describe('storage seals: «Se puede congelar» and days in the fridge (PRO-372)', () => {
+  const asCocina = (p: CatalogDraftInput) => ({
+    name: p.name,
+    servings: p.servings,
+    ingredients: p.ingredients.map((i) => ({ name: i.name, qty: i.quantity, unit: i.unit })),
+    steps: p.sourceSteps,
+  })
+  const cocinaJson = {
+    source: { origin: 'cocina' },
+    recipes: [{ ...asCocina(PAGES[0]), freezable: true, fridgeDays: 4 }, asCocina(PAGES[2])],
+  }
+
+  it('the batch file accepts freezable and fridgeDays, and the importer reads them', () => {
+    expect(cocinaBatchFileSchema.safeParse(cocinaJson).success).toBe(true)
+    expect(cocinaBatchFileSchema.safeParse({ recipes: [{ ...cocinaJson.recipes[0], fridgeDays: 0 }] }).success).toBe(false)
+    const drafts = draftsFromCocinaJson(cocinaJson, { origin: 'cocina' })
+    expect(drafts[0]).toMatchObject({ freezable: true, fridgeDays: 4 })
+    expect(drafts[1]).toMatchObject({ freezable: null, fridgeDays: null })
+  })
+
+  it('saves the batch values; without them, the rewriter\'s answer', async () => {
+    const answer = parseRewrite(JSON.stringify({ ...rewriteFor(PAGES[2], HOUSE_STEPS[PAGES[2].name]), freezable: false, fridgeDays: 3 }))
+    expect(answer).toMatchObject({ freezable: false, fridgeDays: 3 })
+    const { deps, saved } = fakeDeps({
+      rewrite: async (d) => ({ ...answer, steps: rewriteFor(d, HOUSE_STEPS[d.name]).steps }),
+    })
+    const out = await importCatalogBatch(draftsFromCocinaJson(cocinaJson, { origin: 'cocina' }), 'cocina-seals', deps)
+    expect(out.map((o) => o.status)).toEqual(['draft', 'draft'])
+    // Cocina said it: it wins over the rewriter.
+    expect(saved[0]).toMatchObject({ freezable: true, fridgeDays: 4 })
+    // Cocina said nothing: the rewriter's guess is saved.
+    expect(saved[1]).toMatchObject({ freezable: false, fridgeDays: 3 })
+  })
+
+  it('the rewriter\'s unsure or odd answers are no data', () => {
+    const base = rewriteFor(PAGES[0], ['Paso.'])
+    expect(parseRewrite(JSON.stringify({ ...base, freezable: null, fridgeDays: null }))).toMatchObject({ freezable: null, fridgeDays: null })
+    expect(parseRewrite(JSON.stringify({ ...base, freezable: 'sí', fridgeDays: 90 }))).toMatchObject({ freezable: null, fridgeDays: null })
+    expect(parseRewrite(JSON.stringify({ ...base, fridgeDays: 2.6 })).fridgeDays).toBe(3)
+    expect(storageFrom(base, PAGES[0])).toEqual({ freezable: null, fridgeDays: null })
   })
 })

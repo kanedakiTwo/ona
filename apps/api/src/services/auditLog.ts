@@ -44,6 +44,7 @@ export type AdminAction =
   | 'catalog_draft.restore'
   | 'catalog_batch.publish'
   | 'catalog_import.start'
+  | 'catalog_collection.import'
 
 export type AuditTargetType =
   | 'ingredient'
@@ -55,6 +56,7 @@ export type AuditTargetType =
   | 'newsletter_issue'
   | 'catalog_batch'
   | 'catalog_import'
+  | 'catalog_collection'
 
 export interface AuditRecord {
   adminId: string

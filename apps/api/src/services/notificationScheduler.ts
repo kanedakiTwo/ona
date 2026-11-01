@@ -50,6 +50,7 @@ import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
+import { runFeatureUsagePassIfDue } from './featureUsage.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { WAITLIST_RETENTION_DATE, purgeWaitlistPersonalDataIfDue } from './waitlistRetention.js'
@@ -742,6 +743,15 @@ async function tickOnce(): Promise<true> {
     if (w?.collected) console.log(`[menuPlannerWeekly] ${w.collected} semanas pensadas`)
   } catch (err) {
     console.error('[notificationScheduler] weekly planner failed:', err)
+  }
+
+  // PRO-1023: uso de cada función por hogar, desde los eventos de ayer
+  // (una vez por día de Madrid, desde la 01:00; antes de la purga).
+  try {
+    const r = await runFeatureUsagePassIfDue(now)
+    if (r) console.log(`[feature-usage] ${r.features} funciones, ${r.rows} filas, ${r.newUses} usos nuevos`)
+  } catch (err) {
+    console.error('[notificationScheduler] feature usage pass failed:', err)
   }
 
   // Product analytics retention: usage events older than 180 days (once a day).

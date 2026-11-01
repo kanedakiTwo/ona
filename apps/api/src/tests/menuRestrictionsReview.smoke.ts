@@ -3,7 +3,10 @@
  * «Pizza» in the saved menu saves «sin gluten» afterwards and the menu from
  * today on no longer has gluten (or carries the warning), by the profile
  * (`PUT /user/:id`) and by the memory Mimo writes (`setMemoryBatch`, the same
- * store `PATCH /memory` uses). Days already past are not touched.
+ * store `PATCH /memory` uses) and, since PRO-1067, by the ficha del hogar
+ * (`POST /household/profile/facts`). Days already past are not touched.
+ * PRO-1067: the new dish says «En lugar de …», and a pizza picked again by
+ * hand stays when the next save brings a rule it doesn't break.
  * Registers its own throwaway users. Skips when the API isn't reachable.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -133,15 +136,37 @@ async function expectSaturdayWithoutGluten(h: Awaited<ReturnType<typeof househol
 describe.skipIf(!reachable)('saved menus after saving allergies (smoke)', () => {
   let profile: Awaited<ReturnType<typeof householdWithPizza>>
   let mimo: Awaited<ReturnType<typeof householdWithPizza>>
+  let ficha: Awaited<ReturnType<typeof householdWithPizza>>
   beforeAll(async () => {
     profile = await householdWithPizza('celiaco')
     mimo = await householdWithPizza('celiacomimo')
-  }, 120_000)
+    ficha = await householdWithPizza('celiacoficha')
+  }, 180_000)
 
   it('«sin gluten» saved in the profile: Saturday has no gluten, past days untouched', async () => {
     const put = await profile.api('PUT', `/user/${profile.user.userId}`, { restrictions: ['sin gluten'] })
     expect(put.status).toBe(200)
     await expectSaturdayWithoutGluten(profile)
+    // PRO-1067: the card says what was there.
+    const menu = (await profile.api('GET', `/menu/${profile.user.userId}/${profile.next.weekStart}`)).json
+    const saturday = (menu.days[5].lunch.dishes ?? []) as Array<{ recipeId?: string; restrictionConflict?: boolean; replaced?: { recipeName: string; reason: string } }>
+    const swapped = saturday.find((d) => d.replaced?.reason === 'restrictions')
+    if (!saturday.some((d) => d.restrictionConflict)) expect(swapped?.replaced?.recipeName).toBe('Pizza margarita (smoke)')
+  }, 90_000)
+
+  it('PRO-1067: the pizza picked again by hand stays when an unrelated rule is saved', async () => {
+    const menu = (await profile.api('GET', `/menu/${profile.user.userId}/${profile.next.weekStart}`)).json
+    await place(profile.api, menu.id, 5, 'lunch', profile.pizzaId)
+    const put = await profile.api('PUT', `/user/${profile.user.userId}`, { restrictions: ['sin gluten', 'sin lactosa'] })
+    expect(put.status).toBe(200)
+    const after = (await profile.api('GET', `/menu/${profile.user.userId}/${profile.next.weekStart}`)).json
+    expect(((after.days[5].lunch as Slot).dishes ?? []).map((d) => d.recipeId)).toContain(profile.pizzaId)
+  }, 90_000)
+
+  it('PRO-1067: «sin gluten» written in the ficha del hogar: the same', async () => {
+    const fact = await ficha.api('POST', '/household/profile/facts', { type: 'restrictions', value: ['sin gluten'], about: 'me' })
+    expect(fact.status, JSON.stringify(fact.json)).toBe(201)
+    await expectSaturdayWithoutGluten(ficha)
   }, 90_000)
 
   it('«sin gluten» saved in the memory (what Mimo writes): the same', async () => {

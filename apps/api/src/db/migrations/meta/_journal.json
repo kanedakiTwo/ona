@@ -645,6 +645,13 @@
       "when": 1792837955738,
       "tag": "0096_allergies_none",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1793229743373,
+      "tag": "0097_household_feature_usage",
+      "breakpoints": true
     }
   ]
 }

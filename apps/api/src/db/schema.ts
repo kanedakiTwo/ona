@@ -1259,6 +1259,34 @@ export const usageEvents = pgTable('usage_events', {
   index('idx_usage_events_household_created').on(t.householdId, t.createdAt),
 ])
 
+/**
+ * Uso de cada función por hogar (PRO-1023, specs/feature-usage.md): una fila
+ * por hogar (o persona, `user_id`) y función del catálogo
+ * (`FEATURE_CATALOG`, @ona/shared). La rellena cada noche
+ * `services/featureUsage.ts` desde `usage_events`, que se borran a los 180
+ * días: `uses_total` sigue sumando después. Guarda cifras y fechas, nada
+ * más; CASCADE con el hogar y con la cuenta.
+ */
+export const householdFeatureUsage = pgTable('household_feature_usage', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** null = fila del hogar; con valor = la de esa persona en ese hogar. */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  feature: text('feature').notNull(),
+  firstUsedAt: timestamp('first_used_at', { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull(),
+  /** Usos en los 30 días antes de `counted_until` (un ajuste: semanas en que actuó). */
+  uses30d: integer('uses_30d').notNull().default(0),
+  usesTotal: integer('uses_total').notNull().default(0),
+  /** Los eventos anteriores a este instante ya están contados. */
+  countedUntil: timestamp('counted_until', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_feature_usage').on(t.householdId, sql`COALESCE(${t.userId}, '00000000-0000-0000-0000-000000000000'::uuid)`, t.feature),
+  index('idx_household_feature_usage_feature').on(t.feature),
+  index('idx_household_feature_usage_user').on(t.userId),
+])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and

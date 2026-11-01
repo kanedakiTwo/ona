@@ -11,6 +11,7 @@ import {
   replaceStaleDishes,
   staleDishes,
   staleNoteText,
+  toRecheckRecipe,
   type PickContext,
   type RecheckMenu,
   type RecheckRecipe,
@@ -178,5 +179,28 @@ describe('replaceStaleDishes (PRO-345)', () => {
   it('notes never pass 120 characters', () => {
     expect(staleNoteText('x'.repeat(200), 'removed').length).toBeLessThanOrEqual(120)
     expect(staleNoteText('x'.repeat(200), 'diet', true).length).toBeLessThanOrEqual(120)
+  })
+})
+
+describe('the recipe as the check reads it (PRO-1067)', () => {
+  // «Lentejas guisadas» edited afterwards: the chorizo only in a step, as in PRO-346.
+  const steps = ['Pon las lentejas en remojo.', 'Sofríe la cebolla y añade el chorizo en rodajas.']
+  const edited = toRecheckRecipe(
+    { id: 'lentejas', name: 'Lentejas guisadas', allergens: [], updatedAt: EDITED },
+    [{ ingredientName: 'Lentejas', allergenTags: [] }, { ingredientName: 'Cebolla', allergenTags: [] }],
+    steps,
+  )
+
+  it('reads what the steps name and the ingredients don’t, like the matcher', () => {
+    expect(edited.stepMentions?.map((m) => m.term)).toContain('chorizo')
+    expect(toRecheckRecipe({ id: 'l', name: 'L', allergens: null, updatedAt: null }, [{ ingredientName: 'Chorizo', allergenTags: [] }], steps).stepMentions).toEqual([])
+  })
+
+  it('a vegetarian household: the lentils with chorizo in a step are replaced', () => {
+    const stale = staleDishes({ menu: menu(), recipesById: byId(fajitasBefore, edited, { ...lentejas, id: 'crema', name: 'Crema de calabaza' }), restrictions: ['vegetariano'], today: TODAY })
+    expect(stale).toEqual([
+      { day: 1, meal: 'lunch', position: 0, recipeId: 'lentejas', recipeName: 'Lentejas guisadas', reason: 'diet' },
+      { day: 5, meal: 'lunch', position: 1, recipeId: 'lentejas', recipeName: 'Lentejas guisadas', reason: 'diet' },
+    ])
   })
 })

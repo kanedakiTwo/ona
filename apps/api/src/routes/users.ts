@@ -18,7 +18,7 @@ import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
 import { alignHouseholdMemory } from '../services/userMemoryStore.js'
 import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
-import { reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
+import { householdRestrictionsBefore, reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
 import {
   getHealthConsent,
@@ -171,6 +171,8 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
 
     // Restrictions saved: a former «No tengo ninguna» (PRO-347) no longer holds.
     const noneCleared = Array.isArray(body.restrictions) && body.restrictions.length > 0 ? { allergiesNoneAt: null } : {}
+    // PRO-1067: what the household had, so the review knows what was just saved.
+    const restrictionsBefore = 'restrictions' in body ? await householdRestrictionsBefore(req.params.id) : null
     const [updated] = await db
       .update(users)
       .set({ ...body, ...noneCleared })
@@ -203,7 +205,7 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
       await alignHouseholdMemory(updated.id, updated).catch((err) => console.error('Align household memory error:', err))
     }
     // PRO-364: the household's saved menus from today on drop what no longer fits.
-    if ('restrictions' in body) await reviewHouseholdMenusSafely(updated.id)
+    if ('restrictions' in body) await reviewHouseholdMenusSafely(updated.id, restrictionsBefore)
 
     res.json(updated)
   } catch (err) {
@@ -331,9 +333,10 @@ router.post('/user/:id/health-consent', async (req: AuthRequest, res) => {
       return
     }
     if (req.body.consent) {
+      const restrictionsBefore = await householdRestrictionsBefore(req.params.id)
       await grantHealthConsent(req.params.id)
       // PRO-364: with the consent, the restrictions it lets in count for the saved menus.
-      await reviewHouseholdMenusSafely(req.params.id)
+      await reviewHouseholdMenusSafely(req.params.id, restrictionsBefore)
     } else await withdrawHealthConsent(req.params.id)
     res.json(await getHealthConsent(req.params.id))
   } catch (err) {

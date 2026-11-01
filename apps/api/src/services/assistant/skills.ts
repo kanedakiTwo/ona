@@ -911,11 +911,12 @@ const generateWeeklyMenu: SkillDefinition = {
         description: 'Obsoleto: usa fridge_text.',
       },
       answer: { type: 'string', description: 'El texto tal cual del usuario cuando contesta a las preguntas de antes de planificar (p. ej. «el jueves cenamos fuera y el sabado somos 6»). Se usa solo si no pasas mealsOut ni guests.' },
+      only_favorites: { type: 'boolean', description: 'true cuando pide la semana con sus favoritas («hazme la semana con mis favoritas»): los platos salen de las recetas que el hogar tiene en favoritos; lo que no llenen sale del catalogo y te digo cuantos.' },
     },
     required: [],
   },
   async handler(
-    params: { nextWeek?: boolean; replaceExisting?: boolean; diners?: number; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; fridge_text?: string; fridge_health?: 'save' | 'skip'; fridge_restrictions?: string[]; answer?: string },
+    params: { nextWeek?: boolean; replaceExisting?: boolean; diners?: number; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; fridge_text?: string; fridge_health?: 'save' | 'skip'; fridge_restrictions?: string[]; answer?: string; only_favorites?: boolean },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -940,7 +941,7 @@ const generateWeeklyMenu: SkillDefinition = {
     // until the person says whether to save it.
     const fridge = await fridgeGateForSkill(ctx, weekPlan)
     if (fridge.stop) return { data: { weekStart, replaced: false }, summary: fridge.stop, uiHint: 'text' }
-    const result = await generateAndSaveWeek(ctx, weekStart, previous, undefined, fridge.plan)
+    const result = await generateAndSaveWeek(ctx, weekStart, previous, undefined, fridge.plan, params?.only_favorites === true)
     return fridge.saved ? { ...result, summary: `${result.summary}\n${fridge.saved.trim()}` } : result
   },
 }
@@ -957,12 +958,15 @@ async function generateAndSaveWeek(
   fromDate?: string,
   /** PRO-225: meals out and guests for this week only. */
   weekPlan?: WeekPlan,
+  /** PRO-377: «hazme la semana con mis favoritas». */
+  onlyFavorites = false,
 ): Promise<SkillResult> {
     const { userId, db } = ctx
-    const { days } = await generateMenu(
+    const { days, favoritesShort } = await generateMenu(
       userId, weekStart, undefined, db,
       previous.locked, previous.days, previous.bannedRecipeIds, generationSkips(previous.skippedDays, weekStart, fromDate),
       weekPlan,
+      { onlyFavorites },
     )
 
     // Save to menus table — dual-write household_id so shared-scope reads
@@ -1033,9 +1037,14 @@ async function generateAndSaveWeek(
     const holidayLine = await weekHolidaySummary(userId, weekStart)
 
     const planLine = weekPlan ? `\nSolo esta semana (la plantilla no cambia): ${describeWeekPlan(weekPlan)}.` : ''
+    const favLine = !onlyFavorites
+      ? ''
+      : favoritesShort
+        ? `\nCon sus favoritas. Tenia pocas: ${favoritesShort} ${favoritesShort === 1 ? 'plato es nuevo (del catalogo)' : 'platos son nuevos (del catalogo)'}; diselo.`
+        : '\nTodos los platos salen de sus favoritas.'
     return {
-      data: { ...menu, fit },
-      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
+      data: { ...menu, fit, ...(onlyFavorites ? { favoritesShort: favoritesShort ?? 0 } : {}) },
+      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
       uiHint: 'menu',
     }
 }

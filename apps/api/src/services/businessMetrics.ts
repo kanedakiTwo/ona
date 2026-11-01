@@ -16,6 +16,7 @@ import { loadErrorSummary } from './appErrors.js'
 import { loadWaitlistSummary } from './waitlist.js'
 import { buildInstalledOpens, buildPushEnabled, deviceCountsFor, loadInstallRows } from './appInstalls.js'
 import { NOTICE_DEFINITIONS, loadNoticeMetrics } from './notifications/metrics.js'
+import { loadKFactor } from './kFactor.js'
 import { campaignOrigin, invitationOrigin, loadCircleCodes, type CampaignOrigin, type InvitationOrigin } from './circleInvitations.js'
 
 type Db = typeof defaultDb
@@ -356,6 +357,8 @@ export const DEFINITIONS = {
   pushEnabledHouseholds:
     'Households (counted users) with push notifications on at the end of the week: a push subscription that still exists today and was created on or before that Sunday, by device (from the browser). Turning notifications off deletes the subscription, so past weeks are a lower bound.',
   notifications: NOTICE_DEFINITIONS,
+  kFactor:
+    'Invitations to another household (PRO-1018, D-132), each week of the window and cumulative (`cumulative`: from the first record to that Sunday; `allTime`: all history). inviteShared = taps on «Invitar a otro hogar» (invite_shared: WhatsApp, Copiar, or Mimo giving the link); inviteSignups = new households whose first account registered with another household’s code (joining the inviter’s own household does not count; campaign links such as Miguel’s circle are in campaigns, not here); invitingHouseholds = distinct households that shared or whose code brought a sign-up in the period; kFactor = inviteSignups / invitingHouseholds, 2 decimals, null with no inviting household. A sign-up counts in its sign-up week. Counts only: no codes, ids or emails.',
   waitlist:
     'Pre-launch waitlist (specs/waitlist.md), all time: entries by status, last7Days = signups in the last 7 × 24 h, referredSignups / newsletterOptIns = active entries (not unsubscribed) that came with someone’s link / opted in to the weekly menu email. Segments, sources and the suggested next batch: GET /admin/waitlist.',
 } as const
@@ -502,10 +505,11 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, circleCodes] = await Promise.all([
+  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor, circleCodes] = await Promise.all([
     activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
     campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
     loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
+    loadKFactor(weeks, inc, db),
     loadCircleCodes(db),
   ])
 
@@ -558,6 +562,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     errors,
     waitlist,
     notifications,
+    kFactor,
     definitions: { ...DEFINITIONS, featureDefinitions: FEATURE_DEFINITIONS },
   }
 }

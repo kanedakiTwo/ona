@@ -178,7 +178,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
 // A paused account (PRO-135) can't generate a new menu; an empty week stays open.
 router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req) => req.body?.empty === true }), validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
-    const { userId, weekStart, customTemplate, empty, force, weekPlan, fromDate } = req.body
+    const { userId, weekStart, customTemplate, empty, force, weekPlan, fromDate, onlyFavorites } = req.body
 
     if (userId !== req.userId) {
       res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
@@ -277,7 +277,8 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
     // Generate the menu. PRO-244: the first menu starts on the sign-up day —
     // days before `fromDate` are left out of generation (no dishes, nothing
     // on the list); they are not stored as "sin cocinar".
-    const { days, warnings } = await generateMenu(
+    // PRO-377: `onlyFavorites` — «Rehacer la semana con mis favoritas».
+    const { days, warnings, favoritesShort } = await generateMenu(
       userId,
       weekStart,
       customTemplate,
@@ -287,6 +288,7 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       carryBanned,
       generationSkips(carrySkipped, weekStart, fromDate),
       plan,
+      { onlyFavorites: onlyFavorites === true },
     )
 
     // Save to menus table — carry the lists forward so the matcher honours
@@ -345,7 +347,7 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days })
 
     const hydrated = await hydrateMenuImages(menu)
-    res.status(201).json({ ...hydrated, fit, warnings })
+    res.status(201).json({ ...hydrated, fit, warnings, ...(favoritesShort !== undefined ? { favoritesShort } : {}) })
   } catch (err) {
     console.error('Generate menu error:', err)
     res.status(500).json({ error: 'Internal server error' })

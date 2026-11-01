@@ -264,6 +264,26 @@ export default function MenuPage() {
     const plan = !menu || blankWeek ? weekPlan : undefined
     generateMenu.mutate({ userId: user.id, weekStart, ...(plan ? { weekPlan: plan } : {}) })
   }
+  // PRO-377 · «Rehacer la semana con mis favoritas»: what the favourites
+  // don't fill comes from the catalogue, and the page says how many.
+  function handleGenerateFavorites() {
+    if (!user) return
+    haptic.medium()
+    generateMenu.mutate({ userId: user.id, weekStart, onlyFavorites: true })
+  }
+  const favoritesShort =
+    generateMenu.variables?.onlyFavorites && generateMenu.variables.weekStart === weekStart
+      ? (generateMenu.data?.favoritesShort ?? 0)
+      : 0
+  const favoritesNotice = favoritesShort > 0 && (
+    <p
+      role="status"
+      data-testid="favorites-short"
+      className="mx-4 mt-3 rounded-[16px] border border-border bg-paper px-4 py-3 text-[14px] text-ink-mid lg:mx-0"
+    >
+      Tenías pocas favoritas: {favoritesShort === 1 ? "1 plato es nuevo" : `${favoritesShort} platos son nuevos`}.
+    </p>
+  )
 
   // PRO-295: the fridge text talks about an allergy → the API asks first.
   const genError = generateMenu.error
@@ -494,6 +514,7 @@ export default function MenuPage() {
       }}
       onThisWeek={() => setWeekStart(getWeekStart())}
       onRegenerate={handleGenerate}
+      onRegenerateFavorites={handleGenerateFavorites}
       onShare={handleShareWeek}
       onClear={handleClearWeek}
       onToggleView={() => {
@@ -708,6 +729,7 @@ export default function MenuPage() {
                 <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
+                {favoritesNotice}
                 {statusCard}
               </>
             }
@@ -794,6 +816,7 @@ export default function MenuPage() {
         />
       )}
 
+      {favoritesNotice}
       {statusCard}
 
       {menu && !loadFailed && (

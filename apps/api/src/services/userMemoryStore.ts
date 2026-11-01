@@ -142,6 +142,7 @@ export async function setMemoryFact(
   }
   const consent = await assertHealthConsentFor(userId, [v])
   const signal = signalFor(source, opts)
+  const review = v.key === 'restrictions' ? await menuReviewAfterSave(userId) : null
   const fact = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(userMemories)
@@ -166,7 +167,7 @@ export async function setMemoryFact(
     await syncHouseholdCounts(tx, userId, [v])
     return rowToFact(row)
   })
-  if (v.key === 'restrictions') await reviewMenusAfterRestrictions(userId)
+  await review?.()
   return fact
 }
 
@@ -195,6 +196,7 @@ export async function setMemoryBatch(
   }
   const consent = await assertHealthConsentFor(userId, validated)
   const signal = signalFor(source, opts)
+  const review = validated.some((f) => f.key === 'restrictions') ? await menuReviewAfterSave(userId) : null
   await db.transaction(async (tx) => {
     for (const f of validated) {
       const [row] = await tx
@@ -220,18 +222,23 @@ export async function setMemoryBatch(
     }
     await syncHouseholdCounts(tx, userId, validated)
   })
-  if (validated.some((f) => f.key === 'restrictions')) await reviewMenusAfterRestrictions(userId)
+  await review?.()
   return await getMemoryForUser(userId)
 }
 
 /**
  * PRO-364: `restrictions` saved (Mimo, `/memory`, the fridge question) → the
- * household's saved menus from today on drop what no longer fits. Imported
- * lazily: the review reads the memory through this module.
+ * household's saved menus from today on drop what no longer fits. Called
+ * before the write (PRO-1067: the restrictions from before tell the review
+ * what was just saved); the function it returns runs the review after it.
+ * Imported lazily: the review reads the memory through this module.
  */
-async function reviewMenusAfterRestrictions(userId: string): Promise<void> {
-  const { reviewHouseholdMenusSafely } = await import('./menuRestrictionsReview.js')
-  await reviewHouseholdMenusSafely(userId)
+async function menuReviewAfterSave(userId: string): Promise<() => Promise<void>> {
+  const { householdRestrictionsBefore, reviewHouseholdMenusSafely } = await import('./menuRestrictionsReview.js')
+  const before = await householdRestrictionsBefore(userId)
+  return async () => {
+    await reviewHouseholdMenusSafely(userId, before)
+  }
 }
 
 export async function deleteMemoryFact(userId: string, key: string, opts?: MemoryWriteOptions): Promise<void> {

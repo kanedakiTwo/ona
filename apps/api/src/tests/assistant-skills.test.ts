@@ -509,6 +509,26 @@ describe('generate_weekly_menu', () => {
     expect([...args[7]]).toEqual([6])
   })
 
+  it('«hazme la semana con mis favoritas» (PRO-377): only_favorites reaches the generator and Mimo hears how many are new', async () => {
+    const { generateMenu } = await import('../services/menuGenerator.js')
+    const inserted = { id: 'm-fav', days: [{}, {}, {}, {}, {}, {}, {}] }
+    vi.mocked(generateMenu).mockClear()
+    vi.mocked(generateMenu).mockResolvedValueOnce({ days: inserted.days, warnings: [], favoritesShort: 4 })
+    const r = await skill.handler({ only_favorites: true }, ctx(makeDb([], [inserted], [{ id: 'log-1' }])))
+    expect((vi.mocked(generateMenu).mock.calls[0] as any[])[9]).toEqual({ onlyFavorites: true })
+    expect(r.data.favoritesShort).toBe(4)
+    expect(r.summary).toContain('Tenia pocas: 4 platos son nuevos')
+
+    vi.mocked(generateMenu).mockResolvedValueOnce({ days: inserted.days, warnings: [], favoritesShort: 0 })
+    const all = await skill.handler({ only_favorites: true }, ctx(makeDb([], [inserted], [{ id: 'log-2' }])))
+    expect(all.summary).toContain('Todos los platos salen de sus favoritas')
+
+    const plain = await skill.handler({}, ctx(makeDb([], [inserted], [{ id: 'log-3' }])))
+    expect((vi.mocked(generateMenu).mock.calls.at(-1) as any[])[9]).toEqual({ onlyFavorites: false })
+    expect(plain.summary).not.toContain('favoritas')
+    expect(plain.data.favoritesShort).toBeUndefined()
+  })
+
   it('targets next Monday with nextWeek=true (Sunday "¿te preparo el menú?" nudge)', async () => {
     const inserted = { id: 'm-next', days: [{}, {}, {}, {}, {}, {}, {}] }
     const thisWeek = await skill.handler({}, ctx(makeDb([], [inserted], [{ id: 'log-1' }])))

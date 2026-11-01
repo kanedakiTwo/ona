@@ -115,6 +115,12 @@ export const generateMenuSchema = z.object({
    * dishes and add nothing to the shopping list).
    */
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /**
+   * PRO-377 · «Rehacer la semana con mis favoritas»: the dishes come from
+   * the household's favourites; what they don't fill comes from the
+   * catalogue and the answer says how many (`favoritesShort`).
+   */
+  onlyFavorites: z.boolean().optional(),
 })
 
 export const lockMealSchema = z.object({

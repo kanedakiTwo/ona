@@ -656,10 +656,6 @@
     {
       "idx": 98,
       "version": "7",
-<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
-      "when": 1793532686022,
-      "tag": "0098_cap_hits",
-=======
       "when": 1793231501459,
       "tag": "0097_recipe_storage_seals",
       "breakpoints": true
@@ -683,7 +679,13 @@
       "version": "7",
       "when": 1793365700000,
       "tag": "0099_catalog_collections_month_menu",
->>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1793532686022,
+      "tag": "0100_cap_hits",
       "breakpoints": true
     }
   ]

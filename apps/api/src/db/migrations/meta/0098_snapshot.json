@@ -1,9 +1,5 @@
 {
-<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
-  "id": "148bf0ee-5f2b-47c9-8f49-9aa583417d90",
-=======
   "id": "8292cb9b-bf0d-4936-afb5-7b2cfc26c075",
->>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
   "prevId": "309f173b-5384-445e-821a-133185ea8500",
   "version": "7",
   "dialect": "postgresql",
@@ -475,13 +471,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
-    "public.cap_hits": {
-      "name": "cap_hits",
-=======
     "public.catalog_collections": {
       "name": "catalog_collections",
->>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
       "schema": "",
       "columns": {
         "id": {
@@ -491,49 +482,6 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "household_id": {
-          "name": "household_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "month": {
-          "name": "month",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cap": {
-          "name": "cap",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "spent_micros": {
-          "name": "spent_micros",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cap_micros": {
-          "name": "cap_micros",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "channel": {
-          "name": "channel",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-=======
         "slug": {
           "name": "slug",
           "type": "text",
@@ -571,7 +519,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
->>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
         },
         "created_at": {
           "name": "created_at",
@@ -581,87 +528,6 @@
           "default": "now()"
         }
       },
-<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
-      "indexes": {
-        "uq_cap_hits_user_month": {
-          "name": "uq_cap_hits_user_month",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "month",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_cap_hits_month": {
-          "name": "idx_cap_hits_month",
-          "columns": [
-            {
-              "expression": "month",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "cap_hits_user_id_users_id_fk": {
-          "name": "cap_hits_user_id_users_id_fk",
-          "tableFrom": "cap_hits",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "cap_hits_household_id_households_id_fk": {
-          "name": "cap_hits_household_id_households_id_fk",
-          "tableFrom": "cap_hits",
-          "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "cap_hits_cap_check": {
-          "name": "cap_hits_cap_check",
-          "value": "cap IN ('asistente','ia')"
-        },
-        "cap_hits_channel_check": {
-          "name": "cap_hits_channel_check",
-          "value": "channel IN ('app','whatsapp')"
-        }
-      },
-=======
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
@@ -676,7 +542,6 @@
       },
       "policies": {},
       "checkConstraints": {},
->>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
       "isRLSEnabled": false
     },
     "public.catalog_import_jobs": {
@@ -4576,8 +4441,6 @@
       },
       "isRLSEnabled": false
     },
-<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
-=======
     "public.newsletter_tip_log": {
       "name": "newsletter_tip_log",
       "schema": "",
@@ -4724,7 +4587,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
->>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
     "public.newsletter_unsubscribes": {
       "name": "newsletter_unsubscribes",
       "schema": "",
@@ -7129,8 +6991,6 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
-=======
         "freezable": {
           "name": "freezable",
           "type": "boolean",
@@ -7143,7 +7003,6 @@
           "primaryKey": false,
           "notNull": false
         },
->>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
         "advance_prep": {
           "name": "advance_prep",
           "type": "jsonb",

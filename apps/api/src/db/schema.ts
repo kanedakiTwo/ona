@@ -1287,6 +1287,33 @@ export const householdFeatureUsage = pgTable('household_feature_usage', {
   index('idx_household_feature_usage_user').on(t.userId),
 ])
 
+/**
+ * PRO-1090 (D-148): la primera vez de cada usuario y mes (Madrid) que salta
+ * un tope de gasto — el de Mimo (`asistente`, ADVISOR_BUDGET_EXCEEDED) o el
+ * de toda la IA (`ia`, SPEND_CAP_EXCEEDED) — en la app o por WhatsApp. Los
+ * 429 siguientes de ese mes no escriben nada. Los admins no cuentan.
+ * Lo lee `/admin/metrics` → `capHits` (services/capHits.ts).
+ */
+export const capHits = pgTable('cap_hits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  /** AAAA-MM en hora de Madrid. */
+  month: text('month').notNull(),
+  /** 'asistente' | 'ia'. */
+  cap: text('cap').notNull(),
+  spentMicros: bigint('spent_micros', { mode: 'number' }).notNull(),
+  capMicros: bigint('cap_micros', { mode: 'number' }).notNull(),
+  /** 'app' | 'whatsapp'. */
+  channel: text('channel').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_cap_hits_user_month').on(t.userId, t.month),
+  index('idx_cap_hits_month').on(t.month),
+  check('cap_hits_cap_check', sql.raw("cap IN ('asistente','ia')")),
+  check('cap_hits_channel_check', sql.raw("channel IN ('app','whatsapp')")),
+])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and

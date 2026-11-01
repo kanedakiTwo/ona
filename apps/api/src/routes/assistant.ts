@@ -6,6 +6,7 @@ import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../services/advisorBudget.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
+import { recordCapHit } from '../services/capHits.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
 import { eq } from 'drizzle-orm'
 import { recipes } from '../db/schema.js'
@@ -49,6 +50,8 @@ router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapac
     // burned through their euro budget for the month. Resets next month.
     const budget = await checkAdvisorBudget(userId, db)
     if (budget.exceeded) {
+      // PRO-1090: the first time this month, a cap_hits row (admins excluded).
+      await recordCapHit({ userId, cap: 'asistente', spentEur: budget.spentMicros / 1_000_000, capEur: budget.budgetMicros / 1_000_000, channel: 'app' })
       const euros = (budget.budgetMicros / 1_000_000).toFixed(0)
       res.status(429).json({
         error: `Has alcanzado tu límite mensual del asistente (€${euros}). Se renueva el mes que viene.`,

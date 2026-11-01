@@ -39,6 +39,12 @@ describe('isRecipeSegment (root layout skips its default <title> there)', () => 
     expect(isRecipeSegment('/recipes/new')).toBe(false)
     expect(isRecipeSegment('/recipes-ona')).toBe(false)
   })
+
+  it('not the collections (PRO-374): they keep the default <title>', () => {
+    expect(isRecipeSegment('/recipes/coleccion/otono')).toBe(false)
+    expect(publicRecipeRoute('/recipes/coleccion')).toBeNull()
+    expect(publicRecipeRoute('/recipes/coleccion/cook')).toBeNull()
+  })
 })
 
 describe('recipeMetadata (link previews)', () => {

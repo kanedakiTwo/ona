@@ -72,6 +72,9 @@ export interface CatalogDraftInput {
   seasons?: string[]
   tags?: string[]
   equipment?: string[]
+  /** PRO-372: from the batch when Cocina sets it; else the rewrite's guess. */
+  freezable?: boolean | null
+  fridgeDays?: number | null
   ingredients: DraftIngredient[]
   /** The source's steps. Read to rewrite them; never saved. */
   sourceSteps: string[]
@@ -115,6 +118,9 @@ export interface CatalogRewrite {
   allergenNote?: string | null
   /** Short house note (optional), in our words. */
   tips?: string | null
+  /** PRO-372: can it be frozen, and how many days it keeps in the fridge (null = unsure). */
+  freezable?: boolean | null
+  fridgeDays?: number | null
 }
 
 export interface MatchedIngredient {
@@ -140,6 +146,9 @@ export interface PersistDraftInput {
   tags: string[]
   internalTags: string[]
   tips: string | null
+  /** PRO-372: the ficha's storage seals; null = no data. */
+  freezable: boolean | null
+  fridgeDays: number | null
   ingredients: Array<{ ingredientId: string; quantity: number; unit: Unit; note: string | null; optional: boolean; section: string | null; displayOrder: number }>
   steps: Array<{ index: number; text: string; durationMin: number | null; temperature: number | null; technique: string | null; ingredientRefs: string[] }>
   catalogSource: CatalogSourceRef & { batch: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
@@ -359,6 +368,22 @@ export function timesFrom(r: CatalogRewrite, draft: CatalogDraftInput): { prepTi
   return { prepTime: active, cookTime: total - active || null }
 }
 
+/** Most days a cooked dish is told to keep in the fridge (PRO-372). */
+export const MAX_FRIDGE_DAYS = 30
+
+/** Pure: a fridge-days figure we trust (whole days, 1–30), or null. */
+export function cleanFridgeDays(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null
+  const d = Math.round(v)
+  return d >= 1 && d <= MAX_FRIDGE_DAYS ? d : null
+}
+
+/** Pure (PRO-372): the storage seals — what the batch says wins, key by key; else the rewrite's. */
+export function storageFrom(r: CatalogRewrite, draft: CatalogDraftInput): { freezable: boolean | null; fridgeDays: number | null } {
+  const freezable = typeof draft.freezable === 'boolean' ? draft.freezable : typeof r.freezable === 'boolean' ? r.freezable : null
+  return { freezable, fridgeDays: cleanFridgeDays(draft.fridgeDays) ?? cleanFridgeDays(r.fridgeDays) }
+}
+
 // ─── Where the recipe comes from (D-067) ────────────────────────
 
 function cleanText(v: unknown): string | null {
@@ -463,6 +488,7 @@ export async function importCatalogRecipe(
     tags,
     internalTags,
     tips: rewrite.tips?.trim() || null,
+    ...storageFrom(rewrite, draft),
     ingredients: matched.map((m, i) => ({
       ingredientId: m.ingredientId as string,
       quantity: m.quantity,
@@ -550,6 +576,8 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
       seasons: r.seasons ?? [],
       tags: r.tags ?? [],
       equipment: r.equipment ?? [],
+      freezable: typeof r.freezable === 'boolean' ? r.freezable : null,
+      fridgeDays: cleanFridgeDays(r.fridgeDays),
       ingredients: (r.ingredients ?? []).map((i: any) => ({
         name: String(i.name ?? ''),
         quantity: Number(i.qty ?? i.quantity ?? 0),

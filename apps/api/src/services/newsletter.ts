@@ -17,12 +17,21 @@ import {
   createDbNewsletterStatsRepo,
   slotLinkFor,
   slotLinks,
+  trackedPersonalUrl,
   trackedSlotUrl,
   withTrackedLinks,
   type InviteKind,
   type NewsletterStatsRepo,
 } from './newsletterStats.js'
 import { correLaVozCopyUrl, correLaVozWhatsappHref, personalInviteUrl } from './newsletterShare.js'
+import {
+  createDbNewsletterTipsRepo,
+  pickRecipe,
+  pickTip,
+  tipAdoptedAt,
+  type NewsletterTip,
+  type NewsletterTipsRepo,
+} from './newsletterTips.js'
 import { ensureReferralCode } from './accountReferrals.js'
 import {
   ACCENT,
@@ -69,6 +78,8 @@ import {
  *     invite link (the household's `/i/<code>`, or the list's `?invita=`,
  *     PRO-130) and two buttons, WhatsApp and copy, counted in the slot
  *     «corre_la_voz» (`newsletterStats.ts`).
+ *   - Every account gets its own recipe and tip (PRO-1020, `newsletterTips.ts`),
+ *     counted in the slots «receta» and «truco» and logged in `newsletter_tip_log`.
  */
 
 // ─── Content ─────────────────────────────────────────────────────
@@ -111,8 +122,27 @@ export const newsletterContentSchema = z.object({
     /** One line under the title, e.g. «Cuchara · 3 horas · para 6». */
     meta: z.string().trim().max(120).optional(),
   }),
+  /**
+   * PRO-1020: catalogue recipes to choose from for each account (its
+   * household can eat it, hasn't said «Mejor no», hasn't had it before).
+   * Waitlist people, and accounts none of them fits, get the `star`.
+   */
+  recipes: z
+    .array(
+      z.object({
+        recipeId: z.string().uuid(),
+        title: z.string().trim().min(1).max(160),
+        body: z.string().trim().min(1).max(1200),
+        imageUrl: httpsUrl,
+        imageAlt: z.string().trim().min(1).max(200),
+        meta: z.string().trim().max(120).optional(),
+      }),
+    )
+    .max(8)
+    .optional(),
   sections: z.array(section).max(4).optional(),
   news: block.optional(),
+  /** The general tip; with personalisation (PRO-1020), only for whoever has no tip of their own. */
   tip: block.optional(),
   cta: z.object({ label: z.string().trim().min(1).max(60), url: httpsUrl }),
   /** Small print (e.g. how the photos are made). */
@@ -639,6 +669,10 @@ export interface NewsletterDeps {
    * `<web>/n/<issue>/<index>` and are saved before sending. Absent → links as written.
    */
   stats?: NewsletterStatsRepo
+  /** PRO-1020: present → each account gets its own recipe and tip (`newsletterTips.ts`). */
+  tips?: NewsletterTipsRepo
+  /** The clock of the tip rules (tests). */
+  now?: () => Date
 }
 
 export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string }): NewsletterDeps {
@@ -647,8 +681,66 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
     sendBatch: (m) => sendEmailBatch(m),
     sendOne: (m) => sendEmail(m),
     stats: createDbNewsletterStatsRepo(),
+    tips: createDbNewsletterTipsRepo(),
     ...urls,
   }
+}
+
+type RecipeCandidate = NonNullable<NewsletterContent['recipes']>[number]
+
+/** What one account gets in this issue (PRO-1020); nothing = the issue's star and general tip. */
+export interface PersonalPick {
+  recipe?: RecipeCandidate
+  tip?: NewsletterTip
+}
+
+interface PersonalChoice {
+  householdId: string
+  pick: PersonalPick
+  /** Earlier tips of theirs that turn out adopted (first use within 14 days). */
+  adopted: Array<{ id: string; adoptedAt: Date }>
+}
+
+/**
+ * Each account's recipe and tip (PRO-1020, §6.3 of Marketing's tips). Never
+ * fails the send: an error leaves everyone with the star and the general tip.
+ */
+async function choosePersonal(
+  input: NewsletterSendInput,
+  userIds: string[],
+  tips: NewsletterTipsRepo,
+  now: Date,
+): Promise<Map<string, PersonalChoice>> {
+  const out = new Map<string, PersonalChoice>()
+  if (userIds.length === 0) return out
+  try {
+    const personas = await tips.personas(userIds)
+    const candidates = input.content.recipes ?? []
+    const ids = candidates.map((c) => c.recipeId)
+    const facts = ids.length > 0 ? await tips.recipeFacts([...personas.keys()], ids) : new Map()
+    for (const [userId, p] of personas) {
+      const picked = pickTip(p, now)
+      // Without its facts (it couldn't be checked) no candidate goes: the star.
+      const recipeId = ids.length > 0 ? pickRecipe(ids, facts.get(userId) ?? { blocked: new Set(ids), sentBefore: new Set() }, `${input.issueId}|${userId}`) : null
+      const adopted = p.log.flatMap((l) => {
+        if (!l.tip || l.adoptedAt) return []
+        const at = tipAdoptedAt(l.tip, l.shownAt, p.usage)
+        return at ? [{ id: l.id, adoptedAt: at }] : []
+      })
+      out.set(userId, {
+        householdId: p.householdId,
+        pick: {
+          ...(recipeId ? { recipe: candidates.find((c) => c.recipeId === recipeId) } : {}),
+          ...(picked ? { tip: picked.tip } : {}),
+        },
+        adopted,
+      })
+    }
+  } catch (err: any) {
+    console.warn('[newsletter] no personal recipe or tip (everyone gets the general ones):', err?.message ?? err)
+    out.clear()
+  }
+  return out
 }
 
 /**
@@ -675,6 +767,37 @@ export function correLaVozLinks(
   }
 }
 
+/**
+ * PRO-1020: the content with the person's own recipe in place of the star and
+ * their tip in place of the general one. With `track`, both go through our
+ * counter (slots `receta` and `truco`); without it, straight to the page.
+ */
+export function withPersonalPick(
+  content: NewsletterContent,
+  pick: PersonalPick | undefined,
+  publicUrl: string,
+  track?: { issueId: string; proof: boolean },
+): NewsletterContent {
+  if (!pick || (!pick.recipe && !pick.tip)) return content
+  const web = publicUrl.replace(/\/+$/, '')
+  const out = { ...content }
+  if (pick.recipe) {
+    const { recipeId, ...rest } = pick.recipe
+    out.star = {
+      ...rest,
+      url: track ? trackedPersonalUrl(web, track.issueId, 'receta', recipeId, track.proof) : `${web}/recipes/${recipeId}`,
+    }
+  }
+  if (pick.tip) {
+    out.tip = {
+      title: pick.tip.title,
+      body: pick.tip.body,
+      url: track ? trackedPersonalUrl(web, track.issueId, 'truco', pick.tip.id, track.proof) : `${web}${pick.tip.path}`,
+    }
+  }
+  return out
+}
+
 export function buildNewsletterMessage(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   to: string,
@@ -682,6 +805,7 @@ export function buildNewsletterMessage(
   urls: { publicUrl: string; apiUrl: string },
   issueId?: string,
   track?: { issueId: string; proof: boolean },
+  pick?: PersonalPick,
 ): EmailMessage {
   const web = urls.publicUrl.replace(/\/+$/, '')
   const api = urls.apiUrl.replace(/\/+$/, '')
@@ -689,7 +813,8 @@ export function buildNewsletterMessage(
   const leaveListUrl = tokens.leaveToken ? `${web}${waitlistUnsubscribePath(tokens.leaveToken)}` : undefined
   const share = tokens.referralCode ? correLaVozLinks(web, tokens.referralCode, tokens.inviteKind ?? 'lista', track) : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
-  const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
+  const content = withPersonalPick(input.content, pick, web, track)
+  const { html, text } = renderNewsletterEmail({ ...input, content }, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
   return {
     to,
     subject: input.subject,
@@ -723,8 +848,8 @@ export class NewsletterTestAddressError extends Error {}
 async function trackContent(input: NewsletterSendInput, deps: NewsletterDeps, proof: boolean): Promise<NewsletterSendInput> {
   if (!deps.stats) return input
   const links = contentLinks(input.content)
-  // The «Corre la voz» slot rows (PRO-1019) go with them.
-  await deps.stats.registerLinks(input.issueId, [...links, ...slotLinks()])
+  // The «Corre la voz» slot rows (PRO-1019) go with them, and the recipe and tip ones when personalised (PRO-1020).
+  await deps.stats.registerLinks(input.issueId, [...links, ...slotLinks(deps.tips ? ['corre_la_voz', 'receta', 'truco'] : ['corre_la_voz'])])
   return { ...input, content: withTrackedLinks(input.content, links, deps.publicUrl, input.issueId, proof) }
 }
 
@@ -746,15 +871,44 @@ async function withAccountCodes(recipients: NewsletterRecipient[], repo: Newslet
   return out
 }
 
-const inviteKindOf = (r: Pick<NewsletterRecipient, 'source'>): InviteKind => (r.source === 'user' ? 'hogar' : 'lista')
+/**
+ * PRO-1020: what went out to each account goes in `newsletter_tip_log`, and
+ * earlier tips now adopted get their date. Only for emails that were sent;
+ * a failure here only warns (the emails are already out).
+ */
+async function recordPersonal(
+  issueId: string,
+  mine: NewsletterRecipient[],
+  results: EmailResult[],
+  choices: Map<string, PersonalChoice>,
+  tips: NewsletterTipsRepo,
+): Promise<void> {
+  try {
+    const rows = mine.flatMap((r, k) => {
+      const c = r.userId ? choices.get(r.userId) : undefined
+      if (!c || results[k]?.status !== 'sent') return []
+      return [{ userId: r.userId!, householdId: c.householdId, tip: c.pick.tip?.id ?? null, recipeId: c.pick.recipe?.recipeId ?? null }]
+    })
+    await tips.record(issueId, rows)
+    await tips.markAdopted([...choices.values()].flatMap((c) => c.adopted))
+  } catch (err: any) {
+    console.warn('[newsletter] recipe and tip log not saved:', err?.message ?? err)
+  }
+}
+
+const inviteKindOf =(r: Pick<NewsletterRecipient, 'source'>): InviteKind => (r.source === 'user' ? 'hogar' : 'lista')
 
 export async function sendNewsletter(input: NewsletterSendInput, deps: NewsletterDeps): Promise<NewsletterOutcome> {
   const urls = { publicUrl: deps.publicUrl, apiUrl: deps.apiUrl }
+  const now = deps.now?.() ?? new Date()
   if (input.testTo) {
     if (!(await deps.repo.isAdminEmail(input.testTo))) throw new NewsletterTestAddressError(input.testTo)
     const tracked = await trackContent(input, deps, true)
     // The proof carries the admin's own «Corre la voz» (their household's link), never anyone else's.
     const adminCode = deps.repo.ensureAccountCode ? await deps.repo.ensureAccountCode({ email: input.testTo }).catch(() => null) : null
+    // And the admin's own recipe and tip (PRO-1020), never recorded.
+    const adminId = deps.tips ? await deps.tips.userIdByEmail(input.testTo).catch(() => null) : null
+    const mine = adminId && deps.tips ? (await choosePersonal(input, [adminId], deps.tips, now)).get(adminId) : undefined
     const msg = buildNewsletterMessage(
       { ...tracked, subject: `[Prueba] ${input.subject}` },
       input.testTo,
@@ -762,6 +916,7 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
       urls,
       undefined,
       deps.stats ? { issueId: input.issueId, proof: true } : undefined,
+      mine?.pick,
     )
     const r = await deps.sendOne(msg)
     return { mode: 'test', issueId: input.issueId, to: maskEmail(input.testTo), status: r.status }
@@ -791,6 +946,8 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
     deps.repo,
   )
   const track = deps.stats && recipients.length > 0 ? { issueId: input.issueId, proof: false } : undefined
+  const accountIds = mine.flatMap((r) => (r.source === 'user' && r.userId ? [r.userId] : []))
+  const choices = deps.tips ? await choosePersonal(input, accountIds, deps.tips, now) : new Map<string, PersonalChoice>()
   const results = await deps.sendBatch(
     mine.map((r) =>
       buildNewsletterMessage(
@@ -800,6 +957,7 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
         urls,
         input.issueId,
         track,
+        r.userId ? choices.get(r.userId)?.pick : undefined,
       ),
     ),
   )
@@ -818,6 +976,7 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   })
   await deps.repo.markSent(input.issueId, sent)
   await deps.repo.release(input.issueId, notSent)
+  if (deps.tips && choices.size > 0) await recordPersonal(input.issueId, mine, results, choices, deps.tips)
   console.log(
     `[newsletter] ${input.issueId}: sent ${sent.length}, failed ${failed}, skipped ${skipped}, already ${claimedBefore.size + (recipients.length - mine.length)}`,
   )

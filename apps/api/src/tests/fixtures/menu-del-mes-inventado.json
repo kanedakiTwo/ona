@@ -1,0 +1,12 @@
+{
+  "month": "2026-11",
+  "days": {
+    "lunes": { "comida": ["Lentejas de prueba"], "cena": ["Crema de prueba"] },
+    "martes": { "comida": ["Merluza de prueba"], "cena": ["Tortilla de prueba"] },
+    "miércoles": { "comida": ["Pollo de prueba"], "cena": ["Crema de prueba"] },
+    "jueves": { "comida": ["Arroz con gambas de prueba"], "cena": ["Tortilla de prueba"] },
+    "viernes": { "comida": ["Lentejas de prueba"], "cena": ["Merluza de prueba"] },
+    "sábado": { "desayuno": ["Tostadas de prueba"], "comida": ["Pollo de prueba"], "cena": ["Crema de prueba"] },
+    "domingo": { "desayuno": ["Tostadas de prueba"], "comida": ["Arroz con gambas de prueba"] }
+  }
+}

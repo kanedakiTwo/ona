@@ -22,6 +22,7 @@ import {
   type NewsletterStatsRepo,
 } from '../services/newsletterStats.js'
 import { parseSlotParams, slotDestination } from '../services/newsletterShare.js'
+import { personalSlotDestination } from '../services/newsletterTips.js'
 import { metricsAuth } from '../middleware/metricsAuth.js'
 
 /**
@@ -39,6 +40,9 @@ import { metricsAuth } from '../middleware/metricsAuth.js'
  *                                  The «Corre la voz» slot (41 WhatsApp, 42 copy, PRO-1019)
  *                                  takes `?c=<code>&k=lista|hogar` and answers wa.me or our
  *                                  copy page with that code; a bad code → 404.
+ *                                  The person's recipe (43, `?r=<recipe id>`) and tip (44,
+ *                                  `?t=<tip id>`, PRO-1020) answer our recipe page or the
+ *                                  tip's screen; a bad id → 404.
  *   GET  /admin/newsletter/stats   admin JWT or x-metrics-token: per issue sent, clicks
  *                                  per link and opt-outs. Counts only.
  */
@@ -212,14 +216,21 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       const count = countsAsClick({ method, userAgent: req.get('user-agent'), proof: req.query.prueba === '1' })
       // A «Corre la voz» button (PRO-1019): its destination is built from the
       // recipient's code in the link, so a bad code is a 404 and counts nothing.
+      // The person's recipe and tip (PRO-1020): from the recipe or tip id, the same way.
       const slot = slotLinkAt(n)
-      const params = slot ? parseSlotParams(req.query.c, req.query.k) : null
-      if (slot && !params) {
+      let built: string | null = null
+      if (slot?.slot === 'corre_la_voz') {
+        const params = parseSlotParams(req.query.c, req.query.k)
+        built = params ? slotDestination(slot, deps.publicUrl(), params.code, params.kind) : null
+      } else if (slot) {
+        built = personalSlotDestination(slot.slot, deps.publicUrl(), slot.slot === 'receta' ? req.query.r : req.query.t)
+      }
+      if (slot && !built) {
         res.status(404).json({ error: 'Este enlace no existe.', code: 'NEWSLETTER_LINK_NOT_FOUND' })
         return
       }
       const saved = await deps.stats.click(issueId, n, count)
-      const url = saved && slot && params ? slotDestination(slot, deps.publicUrl(), params.code, params.kind) : saved
+      const url = saved && slot ? built : saved
       if (!url) {
         res.status(404).json({ error: 'Este enlace no existe.', code: 'NEWSLETTER_LINK_NOT_FOUND' })
         return

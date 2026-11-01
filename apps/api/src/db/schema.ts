@@ -9,6 +9,7 @@ import {
   date,
   jsonb,
   bigint,
+  smallint,
   uniqueIndex,
   index,
   check,
@@ -306,6 +307,14 @@ export const recipes = pgTable('recipes', {
   tips: text('tips'),
   substitutions: text('substitutions'),
   storage: text('storage'),
+  /**
+   * PRO-372: «Se puede congelar» / «No se congela» and «Aguanta N días en
+   * nevera» seals on the ficha. Null = no data yet (no seal). Filled by
+   * Cocina in the batch, by the rewriter, or by the boot backfill
+   * (`catalogStorageLabels.ts`) for catalogue recipes.
+   */
+  freezable: boolean('freezable'),
+  fridgeDays: smallint('fridge_days'),
   /**
    * PRO-220 (D-069): «preparativos con antelación» of the recipe itself —
    * `[{ text: 'Saca el filete del frigorífico', hoursBefore: 1.5 }]`. Prep
@@ -1566,6 +1575,30 @@ export const newsletterUnsubscribes = pgTable('newsletter_unsubscribes', {
 ])
 
 /**
+ * PRO-1020 (D-122 punto 4): la receta y el truco que la newsletter eligió
+ * para cada persona, una fila por número y cuenta. Lo lee solo el compositor
+ * (no repetir receta, descanso de los trucos, adoptado en 14 días); los
+ * agentes, recuentos por truco. `clicked_at` queda vacío mientras los clics
+ * sean anónimos (PRO-191). Se borra con la cuenta y con el hogar.
+ */
+export const newsletterTipLog = pgTable('newsletter_tip_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Id del truco (`NEWSLETTER_TIPS`); null = el general del número. */
+  tip: text('tip'),
+  /** La receta elegida; null = la receta de la semana. */
+  recipeId: uuid('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  shownAt: timestamp('shown_at', { withTimezone: true }).notNull().defaultNow(),
+  clickedAt: timestamp('clicked_at', { withTimezone: true }),
+  adoptedAt: timestamp('adopted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_newsletter_tip_log_issue_user').on(t.issueId, t.userId),
+  index('idx_newsletter_tip_log_user').on(t.userId),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).
@@ -1960,6 +1993,36 @@ export const catalogImportJobs = pgTable('catalog_import_jobs', {
   index('idx_catalog_import_jobs_created').on(t.createdAt),
   check('catalog_import_jobs_status_check', sql.raw("status IN ('running','done','failed','interrupted')")),
 ])
+
+// ─── catalog_collections (PRO-374) ───────────────────────────
+// Editorial collections of the catalogue («Vuelta al cole», «Otoño»), made by
+// Cocina as a JSON file and uploaded from Admin → «Recetas pendientes»
+// (specs/catalog-import.md → «Colecciones»). Shown as a row on `/recipes` and
+// at `/recipes/coleccion/<slug>`. `recipe_ids` keeps Cocina's order; a recipe
+// retired or turned back into a draft later just stops showing.
+// PRO-378 «Menú del mes»: `kind = 'menu_mes'`, one per `month` (YYYY-MM), and
+// `week` = 7 days (Monday first), per meal the recipe ids (services/monthMenus.ts).
+// Migration 0099 only adds those columns. The collections' row and pages read
+// only `kind = 'coleccion'`.
+export const catalogCollections = pgTable('catalog_collections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  subtitle: text('subtitle'),
+  /** 'spring' | 'summer' | 'autumn' | 'winter', or null (not tied to one). */
+  season: text('season'),
+  recipeIds: jsonb('recipe_ids').notNull().default([]).$type<string[]>(),
+  published: boolean('published').notNull().default(true),
+  /** 'coleccion' (PRO-374) | 'menu_mes' (PRO-378). */
+  kind: text('kind').notNull().default('coleccion'),
+  /** YYYY-MM, only for `menu_mes`. */
+  month: text('month'),
+  /** `menu_mes`: `[{ lunch: [recipeId…], dinner: […] }, …]`, Monday to Sunday. */
+  week: jsonb('week').$type<Array<Partial<Record<'breakfast' | 'lunch' | 'dinner' | 'snack', string[]>>>>(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /** One recipe's result in `catalog_import_jobs.outcomes`. */
 export interface CatalogImportOutcomeRecord {

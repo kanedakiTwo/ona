@@ -1,5 +1,9 @@
 {
+<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
   "id": "148bf0ee-5f2b-47c9-8f49-9aa583417d90",
+=======
+  "id": "8292cb9b-bf0d-4936-afb5-7b2cfc26c075",
+>>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
   "prevId": "309f173b-5384-445e-821a-133185ea8500",
   "version": "7",
   "dialect": "postgresql",
@@ -471,8 +475,13 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
     "public.cap_hits": {
       "name": "cap_hits",
+=======
+    "public.catalog_collections": {
+      "name": "catalog_collections",
+>>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
       "schema": "",
       "columns": {
         "id": {
@@ -482,6 +491,7 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
         "user_id": {
           "name": "user_id",
           "type": "uuid",
@@ -523,6 +533,45 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+=======
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtitle": {
+          "name": "subtitle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "season": {
+          "name": "season",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recipe_ids": {
+          "name": "recipe_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "published": {
+          "name": "published",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+>>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
         },
         "created_at": {
           "name": "created_at",
@@ -532,6 +581,7 @@
           "default": "now()"
         }
       },
+<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
       "indexes": {
         "uq_cap_hits_user_month": {
           "name": "uq_cap_hits_user_month",
@@ -611,6 +661,22 @@
           "value": "channel IN ('app','whatsapp')"
         }
       },
+=======
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "catalog_collections_slug_unique": {
+          "name": "catalog_collections_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+>>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
       "isRLSEnabled": false
     },
     "public.catalog_import_jobs": {
@@ -4510,6 +4576,155 @@
       },
       "isRLSEnabled": false
     },
+<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
+=======
+    "public.newsletter_tip_log": {
+      "name": "newsletter_tip_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "household_id": {
+          "name": "household_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tip": {
+          "name": "tip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recipe_id": {
+          "name": "recipe_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shown_at": {
+          "name": "shown_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "clicked_at": {
+          "name": "clicked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adopted_at": {
+          "name": "adopted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "uq_newsletter_tip_log_issue_user": {
+          "name": "uq_newsletter_tip_log_issue_user",
+          "columns": [
+            {
+              "expression": "issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_newsletter_tip_log_user": {
+          "name": "idx_newsletter_tip_log_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "newsletter_tip_log_user_id_users_id_fk": {
+          "name": "newsletter_tip_log_user_id_users_id_fk",
+          "tableFrom": "newsletter_tip_log",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "newsletter_tip_log_household_id_households_id_fk": {
+          "name": "newsletter_tip_log_household_id_households_id_fk",
+          "tableFrom": "newsletter_tip_log",
+          "tableTo": "households",
+          "columnsFrom": [
+            "household_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "newsletter_tip_log_recipe_id_recipes_id_fk": {
+          "name": "newsletter_tip_log_recipe_id_recipes_id_fk",
+          "tableFrom": "newsletter_tip_log",
+          "tableTo": "recipes",
+          "columnsFrom": [
+            "recipe_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+>>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
     "public.newsletter_unsubscribes": {
       "name": "newsletter_unsubscribes",
       "schema": "",
@@ -6914,6 +7129,21 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< b879eba051d2d236bbb25bc1dd1665f43db364c0
+=======
+        "freezable": {
+          "name": "freezable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fridge_days": {
+          "name": "fridge_days",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+>>>>>>> afa19275adefdf3a9c5ba49a1aea54b224ce4122
         "advance_prep": {
           "name": "advance_prep",
           "type": "jsonb",

@@ -52,13 +52,16 @@ import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
+import catalogCollectionsRoutes from './routes/catalogCollections.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
+import { startCatalogStorageLabels } from './services/catalogStorageLabels.js'
 import { startMenuRecipeRecheck } from './services/menuRecipeRecheck.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
 import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
 import blindComparisonRoutes from './routes/blindComparison.js'
+import monthMenusRoutes from './routes/monthMenus.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { warnDroppedExtraRefSources } from './services/agentView.js'
@@ -162,6 +165,7 @@ app.use(feedbackRoutes)
 app.use(tasteRoutes)
 app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
+app.use(catalogCollectionsRoutes)
 // How the household cooks (PRO-217): per-route auth.
 app.use(householdHabitsRoutes)
 // «Tu ficha» (PRO-317): per-route auth.
@@ -170,6 +174,8 @@ app.use(householdProfileRoutes)
 app.use(schoolMenuRoutes)
 // Menú inteligente: comparación a ciegas en los hogares de prueba (PRO-256).
 app.use(blindComparisonRoutes)
+// Menú del mes (PRO-378): per-route auth.
+app.use(monthMenusRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the
@@ -230,6 +236,8 @@ app.listen(env.PORT, () => {
   void interruptStaleCatalogImports()
   // Catalogue photos are made before a recipe goes out (and for any published without one).
   startCatalogPhotos()
+  // PRO-372: catalogue recipes without «se congela» / «días en nevera» get them, 20 at a time.
+  startCatalogStorageLabels()
   // PRO-345: saved menus whose recipe changed (catalogue fixes on deploy, scripts) or was deleted.
   startMenuRecipeRecheck()
 })

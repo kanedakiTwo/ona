@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
-import { CalendarDays, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic, MailPlus, MessageSquareHeart, ClipboardCheck, LogOut } from "lucide-react"
+import { CalendarDays, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic, MailPlus, MessageSquareHeart, ClipboardCheck, BarChart3, LogOut } from "lucide-react"
 import { ADMIN_MENU, adminAreaFromPath, type AdminArea } from "@/lib/adminNav"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
 
@@ -22,6 +22,7 @@ const ADMIN_ICONS: Record<AdminArea, typeof User> = {
   invitaciones: Ticket,
   "lista-espera": MailPlus,
   opiniones: MessageSquareHeart,
+  funciones: BarChart3,
   auditoria: ScrollText,
   voz: Mic,
 }

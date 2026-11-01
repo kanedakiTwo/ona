@@ -252,8 +252,14 @@ export {
   recipeMinutes,
   filterCatalogRecipes,
   pickFeaturedRecipes,
+  CATALOG_INTENTS,
+  QUICK_DINNER_MAX_TIME,
+  isQuickDinner,
+  isNibbles,
+  isGlutenFree,
+  matchesCatalogIntent,
 } from './utils/catalog.js'
-export type { CatalogScope, CatalogRecipeLike, CatalogFilterState } from './utils/catalog.js'
+export type { CatalogScope, CatalogRecipeLike, CatalogFilterState, CatalogIntent } from './utils/catalog.js'
 export { menuShareText, recipeSharePayload, withOnaFooter } from './utils/sharePayloads.js'
 export { shoppingProgress, parseShoppingAmount } from './utils/shoppingProgress.js'
 export type { ShoppingProgress } from './utils/shoppingProgress.js'
@@ -652,4 +658,20 @@ export type {
   CatalogImportJobView,
   CatalogImportCheckView,
 } from './types/catalogImport.js'
+// Catalogue collections (PRO-374, specs/recipes.md → «Colecciones»)
+export {
+  CATALOG_COLLECTION_SLUG_RE,
+  CATALOG_COLLECTION_MAX_RECIPES,
+  CATALOG_COLLECTION_PATH,
+  HEALTH_CLAIM_WORDS,
+  healthClaimWordsIn,
+  catalogCollectionFileSchema,
+  checkCatalogCollection,
+} from './types/catalogCollections.js'
+export type {
+  CatalogCollectionFile,
+  CatalogCollectionCheck,
+  CatalogCollectionCard,
+  CatalogCollectionAdminView,
+} from './types/catalogCollections.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'

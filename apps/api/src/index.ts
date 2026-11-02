@@ -47,6 +47,7 @@ import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import priceSurveyRoutes from './routes/priceSurvey.js'
 import feedbackRoutes from './routes/feedback.js'
+import whatsappQuestionRoutes from './routes/whatsappQuestion.js'
 import tasteRoutes from './routes/taste.js'
 import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
@@ -161,6 +162,8 @@ app.use(emailSinkRoutes)
 app.use(billingRoutes)
 app.use(priceSurveyRoutes)
 app.use(feedbackRoutes)
+// «Pregunta única por WhatsApp» (PRO-1091): per-route admin auth.
+app.use(whatsappQuestionRoutes)
 // «Afina tu menú» (PRO-146): per-route auth.
 app.use(tasteRoutes)
 app.use(noticesRoutes)

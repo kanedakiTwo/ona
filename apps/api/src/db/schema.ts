@@ -1676,6 +1676,36 @@ export const userFeedback = pgTable('user_feedback', {
   check('user_feedback_channel_check', sql.raw("channel IN ('app','chat','whatsapp')")),
 ])
 
+// ─── Pregunta única por WhatsApp (PRO-1091, specs/whatsapp.md) ──
+// Customer Success's one-off question to a group of households, sent from
+// Admin by the `pregunta_unica` template. One question = one text; each
+// household gets it at most once (unique question + household). The reply
+// lands in `user_feedback` with the tag `pregunta_unica`.
+export const whatsappQuestions = pgTable('whatsapp_questions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** The `{{1}}` of the template, as the admin wrote it. */
+  text: text('text').notNull().unique(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const whatsappQuestionSends = pgTable('whatsapp_question_sends', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  questionId: uuid('question_id').notNull().references(() => whatsappQuestions.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  phone: text('phone').notNull(),
+  /** 'sent' | 'failed' (a failed one is not retried: never twice to a household). */
+  status: text('status').notNull().default('sent'),
+  errorMessage: text('error_message'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  /** The person's next message after it, saved in `user_feedback`. */
+  answeredAt: timestamp('answered_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_whatsapp_question_send').on(t.questionId, t.householdId),
+  index('idx_whatsapp_question_sends_user').on(t.userId),
+])
+
 // ─── «Afina tu menú» (specs/taste.md, PRO-146) ──────────────
 // One row per user and recipe: the last verdict wins. «nope» keeps the
 // recipe out of the automatic menu of the whole household; «love» weighs

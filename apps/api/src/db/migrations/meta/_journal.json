@@ -680,6 +680,13 @@
       "when": 1793365700000,
       "tag": "0099_catalog_collections_month_menu",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1793636449802,
+      "tag": "0102_whatsapp_questions",
+      "breakpoints": true
     }
   ]
 }

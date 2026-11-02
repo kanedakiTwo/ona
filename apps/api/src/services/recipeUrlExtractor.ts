@@ -20,6 +20,7 @@ import {
 } from './sources/article.js'
 import {
   extractYouTubeRecipe,
+  NoExtractableContentError,
   type YouTubeFetchers,
 } from './sources/youtube.js'
 import {
@@ -38,6 +39,9 @@ export {
 const VALID_MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack']
 const VALID_SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter']
 const VALID_DIFFICULTIES = new Set<string>(['easy', 'medium', 'hard'])
+
+export const EMPTY_RECIPE_MESSAGE =
+  'No he podido sacar los ingredientes y los pasos de ese enlace. Prueba con una foto de la receta o escríbela a mano.'
 
 /**
  * Thrown when the source extractor (or the LLM) decides the URL doesn't
@@ -97,6 +101,13 @@ export async function extractRecipeFromUrl(
     })
     if (!result.isRecipe) throw new NotARecipeError(result.reason)
     raw = result.raw
+  }
+
+  // A recipe without ingredients can't even be edited afterwards (the write
+  // schema needs at least one), so an empty extraction is an error, never a
+  // saved shell.
+  if (raw.ingredients.length === 0 || raw.steps.length === 0) {
+    throw new NoExtractableContentError(EMPTY_RECIPE_MESSAGE)
   }
 
   const { matched: matchedIngredients, warnings: matchWarnings } =

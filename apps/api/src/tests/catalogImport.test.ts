@@ -10,6 +10,7 @@ import {
   catalogSourceCredit,
   catalogSourceRecord,
   copiedPhrases,
+  cleanSourceUrl,
   draftsFromCocinaJson,
   findDuplicate,
   importCatalogBatch,
@@ -447,6 +448,25 @@ describe('where the recipe comes from (D-067)', () => {
     // No `source.credit` anywhere in the file → the command's --credit.
     const [plain] = draftsFromCocinaJson([{ name: 'Puré inventado', ingredients: [{ name: 'patata', qty: 500, unit: 'g' }] }], { origin: 'miguel', credit: 'Receta de la Yaya inventada' })
     expect(plain.source.credit).toBe('Receta de la Yaya inventada')
+  })
+
+  it('draftsFromCocinaJson keeps the original\'s address (PRO-1015): the recipe\'s over the file\'s; anything but http(s) is dropped', () => {
+    const drafts = draftsFromCocinaJson(
+      {
+        source: { origin: 'cocina', book: 'Blogs inventados', url: 'https://blog-inventado.es/' },
+        recipes: [
+          { name: 'Sopa inventada', source: { url: ' https://blog-inventado.es/sopa/ ' }, ingredients: [{ name: 'ajo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Guiso inventado', ingredients: [{ name: 'ajo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Caldo inventado', source: { url: 'Cuaderno azul, página 3' }, ingredients: [{ name: 'agua', qty: 1, unit: 'l' }], steps: ['Paso inventado.'] },
+          { name: 'Puré inventado', source: { url: 'javascript:alert(1)' }, ingredients: [{ name: 'patata', qty: 500, unit: 'g' }], steps: ['Paso inventado.'] },
+        ],
+      },
+      { origin: 'cocina' },
+    )
+    expect(drafts.map((d) => d.source.url)).toEqual(['https://blog-inventado.es/sopa/', 'https://blog-inventado.es/', null, null])
+    expect(cleanSourceUrl('https://www.youtube.com/watch?v=abc')).toBe('https://www.youtube.com/watch?v=abc')
+    expect(cleanSourceUrl(42)).toBeNull()
+    expect(cleanSourceUrl('')).toBeNull()
   })
 
   it('the credit reaches recipes.catalog_source, with the book and page and no text of the source', async () => {

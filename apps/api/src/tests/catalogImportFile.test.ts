@@ -152,6 +152,19 @@ describe('contract: what the page sends is what the route and the importer read'
     expect(fromPayload[0].sourceSteps).toHaveLength(2)
   })
 
+  it('the link to the original survives the route schema (PRO-1015: it was stripped, so no ficha linked its creator)', () => {
+    const json = clone()
+    json.recipes[0].source = { ...(json.recipes[0].source ?? {}), url: 'https://blog-inventado.es/guiso/' }
+    const parsed = catalogImportRequestSchema.safeParse({ batch: 'cocina-09', fileName: 'tanda.json', file: json })
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    const [first] = draftsFromCocinaJson(parsed.data.file, { origin: 'cocina' })
+    expect(first.source.url).toBe('https://blog-inventado.es/guiso/')
+    // A link that isn't one is told in Spanish, with where it is.
+    json.recipes[0].source.url = 'blog inventado'
+    expect(problemsOf(json).some((p) => p.includes('el enlace al original (source.url)'))).toBe(true)
+  })
+
   it('a bad batch name or a bad file never builds a payload', () => {
     const badBatch = buildCatalogImportPayload({ text: TEXT, fileName: null, batch: 'tanda con espacios!' })
     expect(badBatch.ok).toBe(false)

@@ -45,6 +45,7 @@ export type AdminAction =
   | 'catalog_batch.publish'
   | 'catalog_import.start'
   | 'catalog_collection.import'
+  | 'catalog_recipe.source'
 
 export type AuditTargetType =
   | 'ingredient'

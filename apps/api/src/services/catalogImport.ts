@@ -50,6 +50,12 @@ export interface CatalogSourceRef {
    * Without it, `catalogSourceCredit` falls back to the book for Miguel's sources.
    */
   credit?: string | null
+  /**
+   * The original's web address (a creator's blog post or video). It goes to
+   * `recipes.source_url`, so the ficha links it («Ver fuente» and the credit
+   * line, PRO-1075) — not to `catalog_source`.
+   */
+  url?: string | null
 }
 
 export interface DraftIngredient {
@@ -593,9 +599,23 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
         page: src.page != null ? String(src.page) : null,
         file: src.file ?? null,
         credit: cleanText(src.credit),
+        url: cleanSourceUrl(src.url),
       },
     }
   })
+}
+
+/** Pure: an http(s) address for `recipes.source_url`, or null (a blank, a book title, a broken link). */
+export function cleanSourceUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const value = raw.trim()
+  if (!value || /\s/.test(value)) return null
+  try {
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null
+  } catch {
+    return null
+  }
 }
 
 // ─── Publishing ─────────────────────────────────────────────────

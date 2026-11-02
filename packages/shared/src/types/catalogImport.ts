@@ -36,6 +36,7 @@ const sourceSchema = z.object({
   page: z.union([z.string().max(40), z.number()]).nullish(),
   file: z.string().max(200).nullish(),
   credit: z.string().max(300).nullish(),
+  url: z.string().max(500).url().nullish(),
 })
 
 const ingredientSchema = z
@@ -126,6 +127,7 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   page: { label: 'la página (source.page)' },
   file: { label: 'el fichero (source.file)' },
   credit: { label: 'el crédito (source.credit)' },
+  url: { label: 'el enlace al original (source.url)' },
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -216,6 +218,8 @@ function phrase(issue: z.ZodIssue, rest: Array<string | number>, path: ReadonlyA
     }
     case z.ZodIssueCode.invalid_union:
       return `${label} no tiene un formato válido`
+    case z.ZodIssueCode.invalid_string:
+      return issue.validation === 'url' ? `${label} no es un enlace (empieza por https://)` : `${label} no tiene un formato válido`
     case z.ZodIssueCode.custom:
       if (issue.message === 'missing') return `falta ${label}`
       if (issue.message === 'positive') return `${label} tiene que ser mayor que 0`

@@ -49,7 +49,7 @@ test("Alérgenos sugeridos: a za'atar without sesame shows with the recipe that 
       seasons: ['autumn'],
       equipment: ['cazo'],
       ingredients: [{ ingredientId: ingredient.id, quantity: 5, unit: 'g' }],
-      steps: [{ index: 0, text: 'Espolvorea el za’atar por encima.' }],
+      steps: [{ index: 0, text: `Espolvorea el ${name} por encima.` }],
       force: true,
     },
   })
@@ -65,7 +65,10 @@ test("Alérgenos sugeridos: a za'atar without sesame shows with the recipe that 
     )
 
     await page.goto('/admin')
-    await page.getByRole('button', { name: /Alérgenos sugeridos/ }).click()
+    await page
+      .getByRole('navigation', { name: 'Secciones del admin' })
+      .getByRole('button', { name: /Alérgenos sugeridos/ })
+      .click()
     const section = page.getByRole('region', { name: 'Sin sésamo' })
     await expect(section).toBeVisible({ timeout: 15_000 })
     await expect(section).toContainText(name)

@@ -261,7 +261,7 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     const analysis = trackOnboardingAnalysis(
       userId,
       analyzeOnboardingIntoMemory(userId, {
-        adults, kidsCount, cookingFreq, favoriteDishes, priority, weekdayCooking, cookingNote,
+        adults, kidsCount, cookingFreq, cookingStyle, favoriteDishes, priority, weekdayCooking, cookingNote,
       }),
     )
     analysis.catch((err) => console.warn('[onboarding-analysis] failed:', err?.message ?? err))

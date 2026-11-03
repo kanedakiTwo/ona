@@ -100,8 +100,8 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await expect(web.or(firstQuestion)).toBeVisible({ timeout: 15_000 })
   if (await web.isVisible()) await web.click()
   await expect(firstQuestion).toBeVisible()
-  // Allergies already answered: five questions, not six.
-  await expect(page.getByText('Primeros pasos · 1 de 5')).toBeVisible()
+  // Allergies already answered: three questions (2026-11-03: no frequency, no priority).
+  await expect(page.getByText('Primeros pasos · 1 de 3')).toBeVisible()
 
   const headers = await auth(page)
   const memory = await (await page.request.get(`${API_URL}/memory`, { headers })).json()
@@ -119,17 +119,13 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
-  await page.getByRole('button', { name: /sin prisa/i }).click() // PRO-138
-  await next.click()
-  // No «¿Hay algo que no comas?» again: straight to the last question.
+  // PRO-138, the last question: no «¿Hay algo que no comas?» again.
+  await expect(page.getByText('Primeros pasos · 3 de 3')).toBeVisible()
+  await page.getByRole('button', { name: /sin prisa/i }).click()
   await expect(page.getByRole('heading', { name: /hay algo que no comas/i })).toHaveCount(0)
-  await expect(page.getByText('Primeros pasos · 5 de 5')).toBeVisible()
-  await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 45_000 })
 

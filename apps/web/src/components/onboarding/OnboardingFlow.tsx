@@ -3,9 +3,12 @@
 /**
  * «Afina tu menú» first (PRO-146): 10 recipe cards with «Saltar» always
  * visible, right after creating the account and before choosing WhatsApp or
- * the web, so everyone does it. Then the five-question onboarding (the
- * three favourite dishes went away: «Me encanta» replaces them; the weekday
- * time question is PRO-138).
+ * the web, so everyone does it. Then the questions: household, how they cook,
+ * weekday time and, unless answered before the cards, allergies (the three
+ * favourite dishes went away: «Me encanta» replaces them; the weekday time
+ * question is PRO-138). Since 2026-11-03 (Miguel: they overlapped) there is no
+ * «¿Cuántas veces a la semana cocinas?» (it comes from how they cook) and no
+ * «¿Qué quieres que Mimoia priorice?» (it barely changed the menu).
  *
  * The questions ("D · Luz y foto", PRO-37): one question per
  * screen with a compact header (eyebrow + Fraunces h1 with a terracotta
@@ -42,6 +45,7 @@ import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
 import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
 import { TasteSwiper } from "@/components/taste/TasteSwiper"
 import { onboardingStepKey, trackUsage, type OnboardingStep } from "@/lib/usageEvents"
+import { RESTRICTIONS_STEP, onboardingOrder, resumeStep } from "@/lib/onboardingSteps"
 import { FamilyInviteOffer, useFamilyOfferOnce } from "@/components/household/FamilyInviteOffer"
 
 const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
@@ -49,13 +53,11 @@ const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
 interface OnboardingData {
   adults: number
   kidsCount: number
-  cookingFreq: string | null
-  /** PRO-217 «¿Cómo cocináis en casa?» */
+  /** PRO-217 «¿Cómo cocináis en casa?» (the API reads how often they cook from it) */
   cookingStyle: CookingStyle | null
   /** PRO-221 «¿Congeláis la carne o el pescado cuando compráis?» (optional) */
   freezesMeatFish: FreezeAnswer | null
   restrictions: string[]
-  priority: string | null
   weekdayCooking: WeekdayCookingChoice | null
   cookingNote: string
 }
@@ -149,31 +151,16 @@ function Lead({ children }: { children: ReactNode }) {
   return <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">{children}</p>
 }
 
-/** The restrictions step (allergies): 5 since PRO-217 added «¿Cómo cocináis en casa?» as step 3. */
-export const RESTRICTIONS_STEP = 5
-
-/**
- * PRO-178: the step to resume on. Allergies are never in the draft (health
- * data, only stored with the consent at the end), so a sign-up left on the
- * last question resumes on «¿Hay algo que no comas?» instead of skipping it.
- */
-export function resumeStep(draft: OnboardingDraft | null): number {
-  if (!draft) return 1
-  return Math.min(Math.max(1, draft.step), RESTRICTIONS_STEP)
-}
-
 /** PRO-178: what «Siguiente» saves (`PUT /user/:id/onboarding-draft`). */
 export function onboardingDraftPayload(step: number, data: OnboardingData): OnboardingDraft {
   return {
     step,
     adults: data.adults,
     kidsCount: data.kidsCount,
-    cookingFreq: data.cookingFreq as OnboardingDraft["cookingFreq"],
     cookingStyle: data.cookingStyle,
     freezesMeatFish: data.freezesMeatFish,
     weekdayCooking: data.weekdayCooking,
     cookingNote: data.cookingNote.slice(0, 500),
-    priority: data.priority as OnboardingDraft["priority"],
   }
 }
 
@@ -189,11 +176,9 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   const [data, setData] = useState<OnboardingData>(() => ({
     adults: draft?.adults ?? 2,
     kidsCount: draft?.kidsCount ?? 0,
-    cookingFreq: draft?.cookingFreq ?? null,
     cookingStyle: draft?.cookingStyle ?? null,
     freezesMeatFish: draft?.freezesMeatFish ?? null,
     restrictions: [],
-    priority: draft?.priority ?? null,
     weekdayCooking: draft?.weekdayCooking ?? null,
     cookingNote: draft?.cookingNote ?? "",
   }))
@@ -212,11 +197,10 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   /** Typed in the allergies box and not added yet: it counts as added (2026-10-22). */
   const [typedRestriction, setTypedRestriction] = useState("")
   const restrictionsWithTyped = withTyped(data.restrictions, typedRestriction)
-  const order = allergiesAnswered ? [1, 2, 3, 4, 6] : [1, 2, 3, 4, RESTRICTIONS_STEP, 6]
+  const order = onboardingOrder(allergiesAnswered)
   const position = (s: number) => order.indexOf(s) + 1
   const visibleTotal = order.length
-
-  const totalSteps = 6
+  const isLastStep = order.indexOf(step) === order.length - 1
 
   // WhatsApp-first (2026-10-10): when the channel is available, the first
   // screen offers to do the first steps with Mimo in WhatsApp. Already linked
@@ -308,21 +292,21 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     stepDone("dieta")
     setAllergiesAnswered(true)
     setAllergiesFirst("done")
+    // Answered now, so the allergies step leaves the questions: never stay on it.
+    setStep((s) => (s === RESTRICTIONS_STEP ? 4 : s))
   }
 
   async function handleComplete() {
     if (!user) return
     setIsSubmitting(true)
     setError("")
-    stepDone("prioridad")
+    stepDone(onboardingStepKey(step))
 
     try {
       const payload = {
         adults: data.adults,
         kidsCount: data.kidsCount,
-        cookingFreq: data.cookingFreq,
         restrictions: healthConsent ? restrictionsWithTyped : [],
-        priority: data.priority,
         healthConsent,
         weekdayCooking: data.weekdayCooking ?? undefined,
         cookingNote: data.cookingNote.trim() || undefined,
@@ -361,16 +345,12 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     switch (step) {
       case 1:
         return data.adults >= 1 && data.kidsCount >= 0
-      case 2:
-        return data.cookingFreq !== null
       case 3:
         return data.cookingStyle !== null
       case 4:
         return data.weekdayCooking !== null
-      case 5:
+      case RESTRICTIONS_STEP:
         return true
-      case 6:
-        return data.priority !== null
       default:
         return false
     }
@@ -540,31 +520,6 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
               </section>
             )}
 
-            {/* Step 2: Cooking frequency */}
-            {step === 2 && (
-              <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · ${position(2)} de ${visibleTotal}`}>
-                  ¿Cuántas veces a la semana cocinas <Accent>de verdad</Accent>?
-                </OnboardingHeader>
-                <Lead>No cuenta calentar sobras.</Lead>
-                <div className="mt-6 space-y-3">
-                  {[
-                    { value: "rarely", label: "Poco", desc: "Prefiero recetas rápidas" },
-                    { value: "3_4_times", label: "3-4 veces", desc: "Lo normal" },
-                    { value: "daily", label: "Todos los días", desc: "Me encanta cocinar" },
-                  ].map((opt) => (
-                    <OptionCard
-                      key={opt.value}
-                      selected={data.cookingFreq === opt.value}
-                      onClick={() => setData({ ...data, cookingFreq: opt.value })}
-                      label={opt.label}
-                      desc={opt.desc}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
             {/* Step 3: How the household cooks (PRO-217) */}
             {step === 3 && (
               <section data-testid="onboarding-cooking-style">
@@ -664,37 +619,11 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
               </section>
             )}
 
-            {/* Step 6: Priority */}
-            {step === 6 && (
-              <section>
-                <OnboardingHeader eyebrow={`Primeros pasos · ${position(6)} de ${visibleTotal}`}>
-                  ¿Qué quieres que Mimoia <Accent>priorice</Accent>?
-                </OnboardingHeader>
-                <Lead>Elegimos el enfoque de tus menús.</Lead>
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                  {[
-                    { value: "healthy", label: "Salud", desc: "Equilibrio nutricional" },
-                    { value: "quick", label: "Rapidez", desc: "Recetas sencillas" },
-                    { value: "varied", label: "Variedad", desc: "Probar cosas nuevas" },
-                    { value: "cheap", label: "Ahorro", desc: "Máximo con poco" },
-                  ].map((opt) => (
-                    <OptionCard
-                      key={opt.value}
-                      stacked
-                      selected={data.priority === opt.value}
-                      onClick={() => setData({ ...data, priority: opt.value })}
-                      label={opt.label}
-                      desc={opt.desc}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
           </div>
 
           {/* Ink pill pinned to the bottom of the column */}
           <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">
-            {step < totalSteps ? (
+            {!isLastStep ? (
               <button type="button" onClick={next} disabled={!canAdvance()} className={pill}>
                 Siguiente
               </button>

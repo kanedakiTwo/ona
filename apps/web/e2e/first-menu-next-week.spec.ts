@@ -53,17 +53,13 @@ test('a weekend sign-up gets this week and the next, and /menu opens the next', 
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   // PRO-138: «Entre semana, ¿cómo te gusta cocinar?»
   await page.getByRole('button', { name: /sin prisa/i }).click()
   await next.click()
-  await next.click() // no restrictions
-  await page.getByRole('button', { name: /salud/i }).click()
-  await page.getByRole('button', { name: /empezar/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click() // no restrictions
 
   await expect(page).toHaveURL(new RegExp(`/menu\\?week=${nextWeek}`), { timeout: 60_000 })
   expect(generated).toEqual([current, nextWeek])

@@ -30,6 +30,14 @@ export interface IngredientGapsResponse {
     currentTags: string[]
     suggestedTags: string[]
   }>
+  /** PRO-1096: za'atar & co. stored without «sesamo», with the published recipes using them. */
+  sesameMissing: Array<{
+    id: string
+    name: string
+    currentTags: string[]
+    recipes: Array<{ id: string; name: string }>
+    householdRecipes: number
+  }>
 }
 
 export interface RecipeGapsResponse {

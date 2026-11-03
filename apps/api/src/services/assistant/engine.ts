@@ -18,6 +18,7 @@ import {
   type TokenUsage,
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+import { dbTurnStore, remoteMessagesClient } from './mimoRemoto.js'
 
 let client: Anthropic | null = null
 
@@ -68,7 +69,8 @@ export async function chat(
   db: any,
   opts: ChatOptions = {},
 ): Promise<AssistantResponse & { usage: TokenUsage }> {
-  const anthropic = getClient()
+  // PRO-1102: staging's «Mimo remoto» — the office answers each round, not Anthropic.
+  const anthropic: MessagesClient = env.MIMO_REMOTO ? remoteMessagesClient(dbTurnStore(db)) : getClient()
   const mode = opts.mode ?? 'text'
 
   // 1. Load user context

@@ -1323,6 +1323,24 @@ export const capHits = pgTable('cap_hits', {
   check('cap_hits_channel_check', sql.raw("channel IN ('app','whatsapp')")),
 ])
 
+// ─── «Mimo remoto» en staging (PRO-1102, D-157) ─────────────────────
+// With MIMO_REMOTO=1 each round Mimo would send to Anthropic waits here for
+// the office to answer it (services/assistant/mimoRemoto.ts). Never used in
+// production: the API refuses to boot there with the mode on.
+export const mimoTurnosRemotos = pgTable('mimo_turnos_remotos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  creado: timestamp('creado', { withTimezone: true }).notNull().defaultNow(),
+  /** 'pendiente' | 'cogido' | 'respondido' | 'caducado'. */
+  estado: text('estado').notNull().default('pendiente'),
+  /** The Messages request as it would go to Anthropic: model, system, messages, tools… */
+  peticion: jsonb('peticion').notNull(),
+  /** `{ content, stop_reason }` in the Messages API format, once answered. */
+  respuesta: jsonb('respuesta'),
+}, (t) => [
+  index('idx_mimo_turnos_remotos_estado').on(t.estado, t.creado),
+  check('mimo_turnos_remotos_estado_check', sql.raw("estado IN ('pendiente','cogido','respondido','caducado')")),
+])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and

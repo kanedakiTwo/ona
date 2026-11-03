@@ -64,7 +64,8 @@ async function nothingStored(userId: string) {
 describe.skipIf(!reachable)('allergies said without the consent (PRO-1041)', () => {
   it('WhatsApp sign-up: «soy celíaca» in the first message → first menu without gluten, nothing stored, link marked', async () => {
     const userId = await register(1)
-    const phone = `34600000${String(Date.now()).slice(-3)}`
+    // The fictitious 600 000 NNN block, clear of the 000–012 other smokes use.
+    const phone = `34600000${100 + Math.floor(Math.random() * 900)}`
     await db.insert(whatsappLinks).values({ userId, phone })
     await db.insert(whatsappMessages).values({ phone, direction: 'in', kind: 'text', body: 'Hola! Soy celíaca. Somos dos en casa y cocinamos cada día', status: 'processed' })
 

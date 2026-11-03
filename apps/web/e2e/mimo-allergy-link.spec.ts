@@ -59,6 +59,10 @@ test('enlace de Mimo → login → «sin gluten» ya marcado → casilla → gua
   const before = await (await request.get(`${API}/user/${user.id}`, { headers })).json()
   expect(before.restrictions).toEqual([])
 
+  // Until saved, no request carried it: Playwright's request URL keeps the
+  // fragment, which the browser never sends, so only what goes before `#`.
+  expect(urls.map((u) => decodeURIComponent(u.split('#')[0])).filter((u) => /gluten|marcar/i.test(u))).toEqual([])
+
   await box.check()
   await screen.getByRole('button', { name: 'Guardar y ver el menú' }).click()
   await page.waitForURL((u) => u.pathname === '/menu', { timeout: 20_000 })
@@ -67,6 +71,4 @@ test('enlace de Mimo → login → «sin gluten» ya marcado → casilla → gua
   expect(after.restrictions).toEqual(['sin gluten'])
   const consent = await (await request.get(`${API}/user/${user.id}/health-consent`, { headers })).json()
   expect(consent.active).toBe(true)
-
-  expect(urls.filter((u) => /gluten|marcar/i.test(decodeURIComponent(u)))).toEqual([])
 })

@@ -265,13 +265,13 @@ export interface FeedbackLike {
   page: string | null
   text: string
   createdAt: Date
-  /** What it answers ('sobras', PRO-285), or null. */
+  /** What it answers ('sobras', PRO-285; 'pregunta_unica', PRO-1091), or null. */
   tag?: string | null
 }
 
 const FEEDBACK_CHANNELS = ['app', 'chat', 'whatsapp'] as const
 /** Tags the counts may name (anything else counts as 'otra'). */
-export const FEEDBACK_TAGS = ['sobras'] as const
+export const FEEDBACK_TAGS = ['sobras', 'pregunta_unica'] as const
 
 /** Counts by tag (PRO-285: the answers to Mimo's leftovers question); untagged rows aren't counted. */
 export function feedbackTagCounts(rows: ReadonlyArray<Pick<FeedbackLike, 'tag'>>): Record<string, number> {

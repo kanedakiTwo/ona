@@ -11,6 +11,7 @@ import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
 import { maybeAppendLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
+import { recordQuestionAnswer } from '../whatsapp/oneOffQuestion.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -108,6 +109,8 @@ export async function chat(
   if (familyOfferMode) await recordFamilyInviteAnswer(userId, message, history)
   // PRO-285: the message right after Mimo's leftovers question is its answer (tagged `sobras`).
   if (mode === 'whatsapp' && offersOn) await recordLeftoversAnswer(userId, message, history)
+  // PRO-1091: the next message after the «pregunta única» is its answer (tagged `pregunta_unica`).
+  if (mode === 'whatsapp' && opts.surface !== 'telegram') await recordQuestionAnswer(userId, message, db)
 
   // 5. Model ↔ tools loop (see runToolLoop).
   const result = await runToolLoop({

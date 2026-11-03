@@ -27,6 +27,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'catalog_batch.publish': 'Tanda del catálogo publicada',
   'catalog_import.start': 'Importación de una tanda lanzada',
   'catalog_collection.import': 'Colección del catálogo subida',
+  'whatsapp_question.send': 'Pregunta única enviada por WhatsApp',
 }
 
 export function actionLabel(code: string): string {

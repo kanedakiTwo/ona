@@ -22,6 +22,8 @@
  *      (specs/catalog-import.md)
  *  13. Uso de funciones — one row per Mimoia feature, filters and the
  *      newsletter tricks, aggregates only (PRO-1025, specs/feature-usage.md)
+ *  14. Pregunta por WhatsApp — one question to a group of households, the
+ *      count before sending, once per household (PRO-1091, specs/whatsapp.md)
  *
  * Each row offers an inline edit (PATCH) or a "Re-mapear a USDA" modal.
  * Access is gated to `user.role === 'admin'`. The full server check is
@@ -61,6 +63,7 @@ import { CatalogWishesSection } from "../sections/CatalogWishesSection"
 import { WaitlistAdminSection } from "../sections/WaitlistAdminSection"
 import { PendingRecipesSection } from "../sections/PendingRecipesSection"
 import { FeatureUsageSection } from "../sections/FeatureUsageSection"
+import { WhatsAppQuestionSection } from "../sections/WhatsAppQuestionSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 type SectionKey =
@@ -80,6 +83,7 @@ type SectionKey =
   | "feedback"
   | "drafts"
   | "features"
+  | "question"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "fdc", label: "Ingredientes sin USDA" },
@@ -97,6 +101,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "invites", label: "Invitaciones" },
   { key: "waitlist", label: "Lista de espera" },
   { key: "feedback", label: "Opiniones" },
+  { key: "question", label: "Pregunta por WhatsApp" },
   { key: "features", label: "Uso de funciones" },
 ]
 
@@ -106,6 +111,7 @@ const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
   invitaciones: "invites",
   "lista-espera": "waitlist",
   opiniones: "feedback",
+  "pregunta-whatsapp": "question",
   funciones: "features",
   auditoria: "audit",
   voz: "voice",
@@ -118,6 +124,7 @@ const AREA_HEADER: Record<AdminArea, { title: string; intro: string }> = {
   invitaciones: { title: "Invitaciones", intro: "Enlaces de invitación por campaña para entrar en la beta cerrada, con sus altas y su uso." },
   "lista-espera": { title: "Lista de espera", intro: "Quién se ha apuntado, de qué canal viene y la siguiente tanda para invitar por correo." },
   opiniones: { title: "Opiniones", intro: "Lo que nos cuentan los hogares de la beta, desde el botón «Opinión», el chat o WhatsApp." },
+  "pregunta-whatsapp": { title: "Pregunta por WhatsApp", intro: "Una pregunta única a un grupo de hogares, con la plantilla aprobada en Meta. Ves cuántos la recibirán antes de enviar; cada hogar, una sola vez. Las respuestas llegan a Opiniones." },
   funciones: { title: "Uso de funciones", intro: "Cuántos hogares usan cada función de Mimoia y a quién proponerle cada truco en la newsletter. Solo cifras; los grupos de menos de 5 no llevan número." },
   auditoria: { title: "Auditoría", intro: "Lo que ha hecho cada admin y cuándo. Cada acción queda registrada." },
   voz: { title: "Voz", intro: "Histórico del antiguo modo de voz (retirado el 2026-10-09). Ya no entran conversaciones nuevas." },
@@ -129,6 +136,7 @@ const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
   invites: "/admin/invitaciones",
   waitlist: "/admin/lista-espera",
   feedback: "/admin/opiniones",
+  question: "/admin/pregunta-whatsapp",
   features: "/admin/funciones",
   audit: "/admin/auditoria",
   voice: "/admin/voz",
@@ -208,6 +216,7 @@ export default function AdminPage() {
     feedback: 0,
     drafts: 0,
     features: 0,
+    question: 0,
   }
 
   const isCatalogTab =
@@ -289,7 +298,7 @@ export default function AdminPage() {
               }`}
             >
               {s.label}
-              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && s.key !== "wishes" && s.key !== "drafts" && s.key !== "features" && (
+              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && s.key !== "wishes" && s.key !== "drafts" && s.key !== "features" && s.key !== "question" && (
                 <span className="ml-1.5 text-[10px] opacity-60">
                   {counts[s.key]}
                 </span>
@@ -337,6 +346,7 @@ export default function AdminPage() {
         {active === "wishes" && <CatalogWishesSection />}
         {active === "drafts" && <PendingRecipesSection />}
         {active === "features" && <FeatureUsageSection />}
+        {active === "question" && <WhatsAppQuestionSection />}
       </main>
 
       {remapTarget && (

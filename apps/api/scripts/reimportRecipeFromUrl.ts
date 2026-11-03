@@ -11,7 +11,10 @@
  *   railway ssh --service ona-api --environment production -- \
  *     pnpm --filter @ona/api exec tsx scripts/reimportRecipeFromUrl.ts <id> [<id>…]            # dry-run
  *   … tsx scripts/reimportRecipeFromUrl.ts <id> --execute                                        # commit
+ *   … tsx scripts/reimportRecipeFromUrl.ts <id> --html=<file> --execute   # page saved from a browser,
+ *       for sites that show our server an anti-bot wall (one id at a time)
  */
+import { readFileSync } from 'node:fs'
 import { inArray } from 'drizzle-orm'
 import { db, pool } from '../src/db/connection.js'
 import { recipes } from '../src/db/schema.js'
@@ -22,9 +25,12 @@ import { persistRecipe } from '../src/services/recipePersistence.js'
 
 const EXECUTE = process.argv.includes('--execute')
 const IDS = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+const HTML_FILE = process.argv.find((a) => a.startsWith('--html='))?.slice('--html='.length) ?? null
 
 async function main() {
-  if (IDS.length === 0) throw new Error('Usage: reimportRecipeFromUrl.ts <recipeId> [<recipeId>…] [--execute]')
+  if (IDS.length === 0) throw new Error('Usage: reimportRecipeFromUrl.ts <recipeId> [<recipeId>…] [--html=<file>] [--execute]')
+  if (HTML_FILE && IDS.length > 1) throw new Error('--html takes a single recipe id')
+  const fetchArticle = HTML_FILE ? async () => readFileSync(HTML_FILE, 'utf8') : undefined
   console.log(`Mode: ${EXECUTE ? 'EXECUTE' : 'DRY-RUN'}`)
 
   const rows = await db
@@ -44,7 +50,7 @@ async function main() {
     if (!row) { console.log(`✗ ${id}: no existe`); continue }
     if (!row.sourceUrl) { console.log(`✗ ${id} «${row.name}»: sin enlace de origen`); continue }
 
-    const extracted = await extractRecipeFromUrl(row.sourceUrl, { provider })
+    const extracted = await extractRecipeFromUrl(row.sourceUrl, { provider, fetchArticle })
     console.log(`\n${id} «${row.name}» → «${extracted.name}»`)
     for (const i of extracted.ingredients) {
       console.log(`  ${i.matched ? '·' : '✗'} ${i.quantity} ${i.unit} ${i.ingredientName ?? i.extractedName}`)

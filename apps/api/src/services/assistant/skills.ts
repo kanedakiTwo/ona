@@ -55,7 +55,7 @@ import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotice
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
-import { NotARecipeError, SocialCaptionUnavailableError } from '../recipeUrlExtractor.js'
+import { NotARecipeError, NeedsScreenshotError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
@@ -2951,8 +2951,8 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
         uiHint: 'recipe',
       }
     } catch (err: any) {
-      if (err instanceof SocialCaptionUnavailableError) {
-        // Plan B for Instagram/TikTok: a screenshot, which the photo import
+      if (err instanceof NeedsScreenshotError) {
+        // Plan B for Instagram/TikTok and unreadable pages: a screenshot, which the photo import
         // reads (a WhatsApp photo is imported directly).
         return {
           data: null,

@@ -33,7 +33,7 @@ import type {
   TextExtractionResult,
 } from '../services/recipeExtractor.js'
 import { extractArticleRecipe } from '../services/sources/article.js'
-import { extractRecipeFromUrl } from '../services/recipeUrlExtractor.js'
+import { extractRecipeFromUrl, NeedsScreenshotError } from '../services/recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../services/sources/youtube.js'
 
 const URL = 'https://www.casanoguera.com/ca/recepta-botifarra-amb-seques/'
@@ -160,6 +160,22 @@ describe('extractArticleRecipe — empty JSON-LD shell', () => {
     expect(llm.calls).toHaveLength(0)
     expect(out.isRecipe && out.raw.name).toBe('Recepta de botifarra amb seques')
     expect(out.isRecipe && out.raw.steps).toEqual(['Haz la butifarra a la plancha.'])
+  })
+})
+
+describe('extractArticleRecipe — a page we are not let in to read', () => {
+  // What casanoguera.com (SiteGround) answered the production server on
+  // 2026-11-03: an anti-bot redirect, no recipe in it.
+  const BOT_WALL =
+    '<html><head><link rel="icon" href="data:;"><meta http-equiv="refresh" content="0;/.well-known/sgcaptcha/?r=%2Fca%2Frecepta-botifarra-amb-seques%2F&y=ipc:208.77.244.82:1793697277.873"></meta></head></html>'
+
+  it('asks for a screenshot instead of calling it "not a recipe"', async () => {
+    const llm = provider({ isRecipe: true, raw: LLM_RECIPE })
+    const run = extractArticleRecipe(URL, { provider: llm, fetchArticle: async () => BOT_WALL })
+
+    await expect(run).rejects.toBeInstanceOf(NeedsScreenshotError)
+    await expect(run).rejects.toThrow(/mándame una captura/)
+    expect(llm.calls).toHaveLength(0)
   })
 })
 

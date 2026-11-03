@@ -1,5 +1,6 @@
 import type { HistoryRow } from './history.js'
 import { SOCIAL_SCREENSHOT_MESSAGE } from '../sources/social.js'
+import { PAGE_SCREENSHOT_MESSAGE } from '../sources/article.js'
 
 /**
  * PRO-66: the link to the original of a recipe imported from a screenshot.
@@ -7,8 +8,8 @@ import { SOCIAL_SCREENSHOT_MESSAGE } from '../sources/social.js'
  * `whatsappPhotoSource.test.ts`; `inbound.ts` wires it.
  *
  * Three cases:
- *  1. The user sent an Instagram/TikTok link we couldn't read («mándame una
- *     captura», PRO-30) in the last 30 minutes → the recipe of the next photo
+ *  1. The user sent an Instagram/TikTok link or a recipe page we couldn't
+ *     read («mándame una captura», PRO-30) in the last 30 minutes → the recipe of the next photo
  *     is saved with that link as its source, without asking.
  *  2. No such link, and the photo looks like a screenshot of a web page or a
  *     social network → Mimo asks «¿Tienes el enlace del original?»; a link
@@ -62,8 +63,8 @@ function recentInbound(rows: readonly HistoryRow[], now: Date): HistoryRow[] {
 }
 
 /**
- * Case 1: the Instagram/TikTok link of the last 30 minutes that got «mándame
- * una captura», unless a later photo already took it as its source.
+ * Case 1: the Instagram/TikTok link or page of the last 30 minutes that got
+ * «mándame una captura», unless a later photo already took it as its source.
  */
 export function unreadLinkForScreenshot(rows: readonly HistoryRow[], now: Date): string | null {
   const inbound = recentInbound(rows, now)
@@ -73,7 +74,8 @@ export function unreadLinkForScreenshot(rows: readonly HistoryRow[], now: Date):
     const failed = trace.find(
       (t) =>
         t && t.name === 'import_recipe_from_url' &&
-        typeof t.summary === 'string' && t.summary.includes(SOCIAL_SCREENSHOT_MESSAGE),
+        typeof t.summary === 'string' &&
+        (t.summary.includes(SOCIAL_SCREENSHOT_MESSAGE) || t.summary.includes(PAGE_SCREENSHOT_MESSAGE)),
     )
     const url = failed ? firstUrl(String(failed.input ?? '')) : null
     if (!url) continue

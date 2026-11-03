@@ -18,6 +18,11 @@ import type {
   TextExtractionProvider,
 } from '../recipeExtractor.js'
 import { fetchPublicPage } from '../net/publicFetch.js'
+import { NeedsScreenshotError } from './needsScreenshot.js'
+
+/** The answer when a page gives us no readable text (bot wall, JS-only page…). */
+export const PAGE_SCREENSHOT_MESSAGE =
+  'No he podido leer la receta de esta página; mándame una captura'
 
 // ─── ISO 8601 duration → minutes ─────────────────────────────────
 
@@ -404,13 +409,11 @@ export async function extractArticleRecipe(
 
   // Tier 2: Readability + LLM. The LLM never returns an image (it only
   // sees plain text), so we attach the page's image directly.
+  // Almost no text isn't "not a recipe": the site didn't let us read it (an
+  // anti-bot page — casanoguera.com's SiteGround captcha for our server IP —
+  // or a JS-only page). The user can still send a screenshot.
   const text = await readableText(html)
-  if (text.length < 200) {
-    return {
-      isRecipe: false,
-      reason: 'No se pudo extraer suficiente contenido del artículo.',
-    }
-  }
+  if (text.length < 200) throw new NeedsScreenshotError(PAGE_SCREENSHOT_MESSAGE)
   const llm = await deps.provider.extractRecipeFromText(text, 'article')
   if (!llm.isRecipe) return llm
   return { isRecipe: true, raw: { ...llm.raw, imageUrl: pageImage } }

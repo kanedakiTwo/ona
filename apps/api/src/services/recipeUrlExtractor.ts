@@ -31,10 +31,12 @@ import {
 
 export { detectSourceType } from './sources/sourceType.js'
 export type { UrlSourceType } from './sources/sourceType.js'
+export { NeedsScreenshotError } from './sources/needsScreenshot.js'
 export {
   SocialCaptionUnavailableError,
   SOCIAL_SCREENSHOT_MESSAGE,
 } from './sources/social.js'
+export { PAGE_SCREENSHOT_MESSAGE } from './sources/article.js'
 
 const VALID_MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack']
 const VALID_SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter']

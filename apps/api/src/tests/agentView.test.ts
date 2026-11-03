@@ -178,7 +178,9 @@ describe('errorType', () => {
     // Never the rest of the message: a fixed word, or React's number.
     expect(stored('Failed to fetch de Ana García, calle Mayor 5')).toBe('other')
     expect(stored('Minified React error #31; visit https://react.dev/errors/31?args[]=Ana for the full message')).toBe('React #31')
-    for (const t of MESSAGE_ERROR_TYPES) expect(t).toMatch(/^[A-Za-z]{1,32}$/)
+    // PRO-1101: `saldo_api` is the one with an underscore (the type the office reads).
+    expect(stored('saldo_api: la API de Anthropic no tiene saldo (credit balance is too low)')).toBe('saldo_api')
+    for (const t of MESSAGE_ERROR_TYPES) expect(t).toMatch(/^[A-Za-z_]{1,32}$/)
   })
 
   it('PRO-306: the stored message keeps React’s error code, and only that number', () => {

@@ -140,6 +140,8 @@ function apiProblemType(text: string): string | null {
  * «Uncaught » and a leading class name. Each value is fixed text (≤ 32 characters).
  */
 const MESSAGE_KINDS: ReadonlyArray<readonly [type: string, test: RegExp]> = [
+  // PRO-1101: Anthropic answered «credit balance is too low» (services/apiSaldo.ts, one group).
+  ['saldo_api', /^saldo_api:/],
   // A tab older than the last publish asks for a JS/CSS chunk the new build no longer serves
   // (webpack, turbopack and native dynamic import wordings; isChunkLoadError in @ona/shared).
   ['ChunkLoadError', /Loading (?:CSS )?chunk \S+ failed|Failed to load chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i],

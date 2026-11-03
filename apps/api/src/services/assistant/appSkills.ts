@@ -24,7 +24,7 @@ import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
-import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
@@ -1324,9 +1324,11 @@ const updateProfile: SkillDefinition = {
       const health = ['sex', 'age', 'weight', 'height', 'activityLevel'].some((k) => p[k] != null) ||
         !!p.addRestrictions?.length || !!p.removeRestrictions?.length
       if (health) {
-        if (!p.priority) return text(WHATSAPP_HEALTH_DATA_REPLY)
+        // PRO-1041: an allergy said here goes to the web link, already marked.
+        const reply = p.addRestrictions?.length ? saidAllergyReply(p.addRestrictions, 'whatsapp') : WHATSAPP_HEALTH_DATA_REPLY
+        if (!p.priority) return text(reply)
         await api(ctx)('PUT', `/user/${ctx.userId}`, { priority: p.priority })
-        return text(`Hecho: perfil actualizado (priority: ${p.priority}). ${WHATSAPP_HEALTH_DATA_REPLY}`)
+        return text(`Hecho: perfil actualizado (priority: ${p.priority}). ${reply}`)
       }
     }
     const body: Record<string, unknown> = {}
@@ -1349,7 +1351,7 @@ const updateProfile: SkillDefinition = {
       const consent = await api(ctx)<{ active?: boolean; version?: string | null }>('GET', `/user/${ctx.userId}/health-consent`)
       if (!consent?.active) {
         for (const k of health) delete body[k]
-        if (Object.keys(body).length === 0) return text(HEALTH_CONSENT_SKILL_REPLY)
+        if (Object.keys(body).length === 0) return text(p.addRestrictions?.length ? saidAllergyReply(p.addRestrictions, ctx.channel) : HEALTH_CONSENT_SKILL_REPLY)
       } else if (Array.isArray(body.restrictions) && !consentCoversReligiousDiet(consent.version)) {
         // «halal» under a v1 consent: the current text first, in the profile (Legal, E-19).
         const kept = (body.restrictions as string[]).filter((r) => !isReligiousDiet(r))

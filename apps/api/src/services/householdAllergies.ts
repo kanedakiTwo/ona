@@ -22,6 +22,7 @@ import { isHealthConsentActive } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { userMemories, users } from '../db/schema.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
+import { menuOnlyRestrictions } from './menuOnlyRestrictions.js'
 import { householdMemberIds } from './tasteStore.js'
 
 /** `GET /households/me/allergies` (mirrored in the web's `HouseholdAllergiesNotice`). */
@@ -124,7 +125,9 @@ export async function loadHouseholdRestrictions(userId: string, db: typeof defau
  * plus every other member's, for every path that picks a recipe for the
  * household's menu — the weekly generator, «Cambiar al azar», adding a meal,
  * regenerating one dish and Mimo's `swap_meal`. A read error of the household
- * keeps the owner's own (never fails the pick).
+ * keeps the owner's own (never fails the pick). PRO-1041: plus the allergies
+ * said to Mimo and not saved, while Mimo generates a menu with them
+ * (`withMenuOnlyRestrictions`).
  */
 export async function withHouseholdRestrictions(
   own: readonly string[],
@@ -132,5 +135,5 @@ export async function withHouseholdRestrictions(
   db: typeof defaultDb = defaultDb,
   load: (userId: string, db: typeof defaultDb) => Promise<string[]> = loadHouseholdRestrictions,
 ): Promise<string[]> {
-  return mergeRestrictions([...own, ...(await load(userId, db).catch(() => [] as string[]))])
+  return mergeRestrictions([...own, ...(await load(userId, db).catch(() => [] as string[])), ...menuOnlyRestrictions()])
 }

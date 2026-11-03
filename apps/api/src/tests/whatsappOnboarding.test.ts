@@ -63,10 +63,11 @@ describe('WhatsApp onboarding prompt', () => {
 })
 
 describe('complete_onboarding', () => {
-  it('exists, and takes no health fields', () => {
+  it('exists, and takes no health fields to save (PRO-1041: the said allergies only shape the first menu)', () => {
     expect(completeOnboarding).toBeDefined()
     const props = Object.keys((completeOnboarding.parameters as any).properties)
-    expect(props.sort()).toEqual(['adults', 'cookingFreq', 'cookingStyle', 'favoriteDishes', 'kidsCount', 'priority'])
+    expect(props.sort()).toEqual(['adults', 'cookingFreq', 'cookingStyle', 'favoriteDishes', 'kidsCount', 'priority', 'restrictions_said'])
+    expect((completeOnboarding.parameters as any).properties.restrictions_said.description).toMatch(/solo a este menu y no se guardan/)
   })
 
   it('2026-11-03: how they cook is the web\'s four answers; the priority has no default', () => {

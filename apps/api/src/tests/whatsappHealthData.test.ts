@@ -32,7 +32,8 @@ describe('WhatsApp never stores health data', () => {
     )
     expect(writes(f.calls)).toEqual([])
     expect(r.summary).toMatch(/Por WhatsApp no guardo datos de salud/)
-    expect(r.summary).toMatch(/\/profile$/)
+    // PRO-1041: the web link, with what was said already marked.
+    expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten ')
   })
 
   it('update_profile: a non-health change in the same message still goes through', async () => {

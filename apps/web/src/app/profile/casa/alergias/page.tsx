@@ -24,6 +24,11 @@
  * If the household's current week already has dishes and something was
  * added, it offers to remake the week (locked meals stay) before the menu.
  * Also opened from the warning above «Generar mi menú» (`?next=/menu`).
+ *
+ * PRO-1041: and from Mimo's link when someone told it an allergy by the chat
+ * or WhatsApp (`#marcar=sin%20gluten`, lib/markedRestrictions.ts): what they
+ * said opens already marked and the box stays unticked; saving still needs
+ * it ticked, and «No tengo ninguna» is not offered over what they said.
  */
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -41,6 +46,7 @@ import { useAuth } from "@/lib/auth"
 import { safeNext } from "@/lib/safeNext"
 import { RestrictionsPicker } from "@/components/onboarding/RestrictionsPicker"
 import { withTyped } from "@/lib/restrictionText"
+import { clearMarkedRestrictions, readMarkedRestrictions } from "@/lib/markedRestrictions"
 import { Accent, PILL_INK, PILL_OUTLINE, SubPage } from "@/components/profile/SubPage"
 
 /** Mirrors `RestrictionReading` in apps/api/src/services/restrictionReader.ts. */
@@ -79,6 +85,10 @@ export default function HouseholdAllergiesPage() {
   const [offerRemake, setOfferRemake] = useState(false)
   /** Written by hand and not understood (PRO-347): asked, not saved. */
   const [unclear, setUnclear] = useState<string[]>([])
+  /** PRO-1041: what Mimo's link marked (told in the chat or WhatsApp, not saved). */
+  const [marked, setMarked] = useState<string[]>([])
+  /** Marked by the link and the box still unticked: it can't be saved yet. */
+  const markedWaiting = !consent && toSave.length > 0
 
   const next = (() => {
     if (typeof window === "undefined") return "/menu"
@@ -95,11 +105,15 @@ export default function HouseholdAllergiesPage() {
       api.get<{ restrictions?: string[] }>(`/user/${user.id}`).catch(() => null),
     ]).then(([h, c, u]) => {
       if (cancelled) return
+      const fromLink = readMarkedRestrictions()
+      setMarked(fromLink)
       setHouseholdName(h?.name ?? null)
       if (c?.active) {
         setConsentState(c)
         setConsent(true)
-        setRestrictions(unionRestrictions(u?.restrictions))
+        setRestrictions(unionRestrictions(u?.restrictions, fromLink))
+      } else {
+        setRestrictions(fromLink)
       }
       setLoaded(true)
     })
@@ -115,6 +129,7 @@ export default function HouseholdAllergiesPage() {
     setError("")
     try {
       await api.post(`/user/${user.id}/allergies-none`)
+      clearMarkedRestrictions()
       await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
     } catch {
       setSaving(false)
@@ -164,6 +179,7 @@ export default function HouseholdAllergiesPage() {
       const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: final })
       updateUser({ restrictions: updated.restrictions ?? final })
       if (final.length === 0) await api.post(`/user/${user.id}/allergies-none`)
+      clearMarkedRestrictions()
       await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
       // The «Alergias e intolerancias» card on /profile reads it.
       await queryClient.invalidateQueries({ queryKey: ["user", user.id] })
@@ -204,7 +220,15 @@ export default function HouseholdAllergiesPage() {
   const fromProfile = next.startsWith("/profile")
   const noneLabel = fromProfile ? "No tengo ninguna" : "No tengo ninguna, ver el menú"
   // PRO-347: «No tengo ninguna» also without the box — it stores no health data.
-  const primaryLabel = consent && toSave.length > 0 ? (fromProfile ? "Guardar" : "Guardar y ver el menú") : noneLabel
+  const saveLabel = fromProfile ? "Guardar" : "Guardar y ver el menú"
+  // PRO-1041: over what Mimo's link marked, never «No tengo ninguna».
+  const primaryLabel = (consent || markedWaiting) && toSave.length > 0 ? saveLabel : noneLabel
+
+  function onPrimary() {
+    if (consent) return void save()
+    if (markedWaiting) return setError("Para guardarlo, marca antes la casilla del consentimiento.")
+    void sayNone()
+  }
 
   return (
     <SubPage
@@ -245,6 +269,15 @@ export default function HouseholdAllergiesPage() {
           </div>
         ) : (
           <>
+            {marked.length > 0 && !consentState?.active && (
+              <div
+                data-testid="household-allergies-marked"
+                className="mt-6 rounded-[20px] border border-border-soft bg-paper p-4 text-[14px] leading-relaxed text-ink"
+              >
+                Lo que le contaste a Mimo ya va marcado: <strong>{marked.join(", ")}</strong>. Para guardarlo, marca la
+                casilla del consentimiento y pulsa «{saveLabel}».
+              </div>
+            )}
             <RestrictionsPicker
               consent={consent}
               onConsentChange={setConsent}
@@ -268,12 +301,7 @@ export default function HouseholdAllergiesPage() {
               </div>
             )}
             <div className="mt-8 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => void (consent ? save() : sayNone())}
-                disabled={saving || !loaded}
-                className={PILL_INK}
-              >
+              <button type="button" onClick={onPrimary} disabled={saving || !loaded} className={PILL_INK}>
                 {saving ? "Guardando…" : primaryLabel}
               </button>
               {!consent && (

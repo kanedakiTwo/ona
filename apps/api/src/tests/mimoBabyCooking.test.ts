@@ -140,6 +140,8 @@ describe('PRO-104: cooking questions for a baby get the cooking first', () => {
       'merluza-adaptar-bebe',
       'onigirazu-bebe-segunda-vez',
       'cacas-blandas-bebe',
+      // PRO-1035, tested in mimoBabyWeek.test.ts.
+      'acelgas-adaptar-bebe',
     ])
   })
 

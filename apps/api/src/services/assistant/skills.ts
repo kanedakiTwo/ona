@@ -45,6 +45,7 @@ import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
+import { babyMenuSkills } from './babyMenuSkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { unlistedDietMentions } from '../stepDietMentions.js'
@@ -3039,6 +3040,8 @@ export const skills: SkillDefinition[] = [
   ...schoolMenuSkills,
   // PRO-228: «Sí, mételo» al repaso mensual del congelador.
   ...freezerSkills,
+  // PRO-1035: los platos de la semana, mirados para la ración del bebé.
+  ...babyMenuSkills,
 ]
 
 /**

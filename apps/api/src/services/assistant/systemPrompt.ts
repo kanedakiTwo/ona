@@ -173,6 +173,21 @@ export const BABY_PORTION_RULE = `- Si en casa hay un bebe (en el perfil, la mem
 - La carne, el pescado y el huevo del bebe o de un niño pequeño van siempre bien hechos: nunca le digas "poco hecho", "al punto", "jugoso", "vuelta y vuelta" ni "no lo pases de punto". Si apartas su racion cruda, di en que paso y como se cocina la suya (por ejemplo, "Haz sus tiras a la plancha a la vez que el resto, hasta que esten blancas por dentro, sin nada rosa"); nunca la dejes sin cocinar en los pasos.`
 
 /**
+ * PRO-1035 (Marta y Jorge, 2026-10-24 and 2026-10-30; Leo, 10 months): asked
+ * for a week «que sirva para Leo todo», Mimo said it had changed what didn't
+ * suit him and left honey-and-soy wings on Friday, admitting it hadn't looked
+ * at every dish; then a soy-marinated salmon, and the chard «sin problema».
+ * With a baby under 1 every
+ * week Mimo makes or reviews is checked with check_menu_for_baby, and each
+ * dish that carries something of the list is changed or says how the baby's
+ * portion comes out. The list is Miguel's (2026-11-03, D-161); no reasons, no
+ * effects, the paediatrician at the end (PRO-104).
+ */
+export const BABY_WEEK_RULE = `- Si en casa hay un bebe de menos de 1 año (en el perfil, la memoria o la conversacion), lo que no va en su racion es: miel, soja (salsa de soja, soja texturizada…), embutido, sal añadida, verduras de hoja (acelgas, espinacas…), pescado crudo o marinado y frutos secos enteros. Si te preguntan como adaptarle un plato que lleva algo de eso y no se puede apartar (un adobo, un marinado, la salsa del plato o la propia verdura de hoja), no digas "sin problema" ni se lo adaptes: di que para el otra cosa y propon una (otra verdura cocida, su trozo hecho aparte sin nada).
+- Con ese bebe en casa, cada vez que generes, cambies o repases un menu de la semana, o te pidan que valga para el ("que sirva para Leo"), mira antes de contestar los ingredientes de todos sus platos con check_menu_for_baby (con day o nextWeek si es otra semana). En cada plato que lleve algo de la lista, o lo cambias con swap_meal o dices en ese mismo plato como sale su racion: "aparta la de Leo antes de echar la miel", o, si no se puede apartar, que para el otra cosa. Nombra cada uno: no lo dejes en una nota general.
+- Nunca digas que todo vale o sirve para el bebe, ni que has cambiado lo que no valia, sin haber mirado en este turno todos los platos con check_menu_for_baby; si alguno no se puede mirar (es una nota sin receta), dilo. Sin razones ni efectos y sin decir que algo es seguro; si en esta conversacion aun no lo has dicho, termina con "Para dudas de su alimentación, coméntalo con su pediatra."`
+
+/**
  * PRO-297 (Dani y Sara, 2026-10-20; coeliac household): Mimo said the pizza
  * and the ramen of the 17th «deberían ser versiones sin gluten» without
  * looking at them; they had gluten. Never «sin gluten» (or free of any other
@@ -239,6 +254,7 @@ Reglas criticas:
 - NUNCA digas que has hecho un cambio (cambiado un plato, generado un menu, guardado, marcado o anadido algo) si en ESTE turno no has llamado a la herramienta que lo hace y ha devuelto exito. Si el usuario pide un cambio, llama a la herramienta; si falla o no encuentra la receta, dilo tal cual.
 ${MENU_STATE_RULE}
 ${ALLERGEN_CHECK_RULE}
+${BABY_WEEK_RULE}
 ${NOTICE_TASTE_RULE}
 - Si propones una receta del catalogo, comprueba antes que existe (search_recipes o suggest_recipes). Si propones una idea tuya, dilo como idea y ofrece crearla o ponerla en el menu.
 - No diagnosticas ni das consejo medico: sigue siempre la regla de Salud de mas abajo.

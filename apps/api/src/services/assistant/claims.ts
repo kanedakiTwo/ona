@@ -24,6 +24,7 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'get_week_balance', 'start_cooking_mode', 'set_timer', 'cooking_step', 'get_shopping_list', 'get_shop_orders', 'get_fixed_meals', 'get_school_menu', 'get_alerts',
   'get_ficha', 'explain_ficha_fact', 'get_ficha_question',
   'list_taste_verdicts',
+  'check_menu_for_baby',
 ])
 
 /** A tool that ran but reported that nothing changed. */

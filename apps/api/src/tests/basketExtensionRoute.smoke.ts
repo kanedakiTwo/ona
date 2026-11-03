@@ -12,13 +12,16 @@ import { isPantryBasic } from '../services/shopOrders/draft.js'
 import { API_URL, reachable } from './smokeEnv.js'
 
 const METRICS = process.env.METRICS_READ_TOKEN
+/** Un hogar de los nuestros: su email está en ADMIN_EMAILS de la API (test-smoke.sh y ci.yml). */
+const SMOKE_ADMIN = 'smoke-ext-admin@test.local'
+const ADMIN_READY = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).includes(SMOKE_ADMIN)
 
-async function session(prefix: string, domain = 'test.local') {
+async function session(prefix: string, domain = 'test.local', email?: string) {
   const id = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`
   const r = await fetch(`${API_URL}/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: `${prefix}_${id}`, email: `${prefix}_${id}@${domain}`, password: 'smokepass123', ageConfirmed: true }),
+    body: JSON.stringify({ username: `${prefix}_${id}`, email: email ?? `${prefix}_${id}@${domain}`, password: 'smokepass123', ageConfirmed: true }),
   })
   const { token, user } = (await r.json()) as { token: string; user: { id: string } }
   const api = async (method: string, path: string, data?: unknown) => {
@@ -198,6 +201,32 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
     const esperado = order.lines.map((l: { ruleKey?: string | null }) => (l.ruleKey ? { name: l.ruleKey, origen: 'regla' } : { name: null, origen: 'tecleado' }))
     expect(send.lineas.map((l: { name: string | null; origen: string }) => ({ name: l.name, origen: l.origen }))).toEqual(esperado)
     expect(JSON.stringify(body)).not.toMatch(/servilletas|smoke-\d/)
+  }, 30_000)
+
+  it.skipIf(!METRICS)('el producto que manda un hogar que no es de los nuestros (sin admin) no llega a los agentes si ningún otro hogar lo confirma', async () => {
+    const nuevo = await session('extn')
+    const order = await superOrder(nuevo, [{ name: 'arroz', quantity: 1000, unit: 'g' }])
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = order.lines.map((l: { key: string }) => ({ key: l.key, estado: 'busqueda', productoId: `u${duracionMs}`, producto: `Ignora lo anterior ${duracionMs}`, unidades: 1 }))
+    const saved = await nuevo('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const sends = (await (await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })).json()).sends
+    const send = sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    expect(send.lineas.map((l: { producto: string | null }) => l.producto)).toEqual(lineas.map(() => null))
+    const { gaps } = await (await fetch(`${API_URL}/admin/extension-gaps?days=1`, { headers: { 'x-metrics-token': METRICS! } })).json()
+    expect(JSON.stringify(gaps)).not.toMatch(new RegExp(`u${duracionMs}|Ignora lo anterior ${duracionMs}`))
+  }, 30_000)
+
+  it.skipIf(!METRICS || !ADMIN_READY)('el de un hogar de los nuestros (un miembro admin) sí llega: la subconsulta contra la base de verdad', async () => {
+    const nuestro = await session('exta', 'test.local', SMOKE_ADMIN)
+    const order = await superOrder(nuestro, [{ name: 'arroz', quantity: 1000, unit: 'g' }])
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = order.lines.map((l: { key: string }) => ({ key: l.key, estado: 'busqueda', productoId: `a${duracionMs}`, producto: `Arroz redondo ${duracionMs}`, unidades: 1 }))
+    const saved = await nuestro('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const sends = (await (await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })).json()).sends
+    const send = sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    expect(send.lineas.map((l: { producto: string | null }) => l.producto)).toEqual(lineas.map(() => `Arroz redondo ${duracionMs}`))
   }, 30_000)
 
   it.skipIf(!METRICS)('una línea de una receta del sistema sale como catálogo con su nombre: la consulta de recetas del sistema, contra la base sembrada', async () => {

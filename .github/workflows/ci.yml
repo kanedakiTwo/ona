@@ -111,6 +111,8 @@ jobs:
       METRICS_READ_TOKEN: ci-smoke-metrics-token
       # «Enviar la cesta a la extensión del navegador»: los usuarios de smoke y e2e son @test.local.
       BASKET_EXTENSION_EMAILS: '@test.local'
+      # Un hogar de los nuestros (admin) en basketExtensionRoute.smoke.ts.
+      ADMIN_EMAILS: smoke-ext-admin@test.local
       API_PORT: 8765
       API_URL: http://localhost:8765
 

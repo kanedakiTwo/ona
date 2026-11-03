@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { Search, X, Plus } from "lucide-react"
 import { useRecipes } from "@/hooks/useRecipes"
@@ -40,10 +40,17 @@ export function RecipePickerSheet({
   const [query, setQuery] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch the full catalog (server already paginates; perPage=300 covers
-  // the seeded set + any user-created recipes for now), minus what breaks
-  // the user's allergies or diet.
-  const { data: recipes = [], isLoading } = useRecipes({ perPage: 300, fitsMe: true })
+  // The API searches the whole catalogue, minus what breaks the user's
+  // allergies or diet. It returns 100 at most, and the newest recipes come
+  // last: searching inside that first page left them out (2026-11-03, a
+  // recipe found by /recipes but not here — 382nd of 382).
+  const search = useDeferredValue(query.trim())
+  const { data: recipes = [], isLoading, isPlaceholderData } = useRecipes(
+    { perPage: 100, fitsMe: true, search: search || undefined },
+    { keepPrevious: true },
+  )
+  // The list on screen is for an older query: don't say «Sin resultados» yet.
+  const searching = isPlaceholderData || search !== query.trim()
 
   useEffect(() => {
     if (open) {
@@ -53,6 +60,7 @@ export function RecipePickerSheet({
     }
   }, [open])
 
+  // Narrows the previous results at once while the server's answer arrives.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (q.length === 0) return recipes
@@ -110,12 +118,12 @@ export function RecipePickerSheet({
         </div>
 
         <div className="mt-4 max-h-[60vh] overflow-y-auto px-5">
-          {isLoading && (
+          {(isLoading || (searching && filtered.length === 0)) && (
             <div className="py-8 text-center text-[12px] italic text-[#7A7066]">
-              Cargando catálogo…
+              {isLoading ? "Cargando catálogo…" : "Buscando…"}
             </div>
           )}
-          {!isLoading && filtered.length === 0 && (
+          {!isLoading && !searching && filtered.length === 0 && (
             <div className="py-8 text-center">
               <p className="text-[12px] italic text-[#7A7066]">
                 {query.trim()
@@ -148,7 +156,7 @@ export function RecipePickerSheet({
             </div>
           )}
           <ul className="divide-y divide-[#DDD6C5]">
-            {filtered.slice(0, 100).map((r: Recipe) => (
+            {filtered.map((r: Recipe) => (
               <li key={r.id}>
                 <button
                   type="button"

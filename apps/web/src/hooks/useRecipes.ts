@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { z } from "zod"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
@@ -9,10 +9,12 @@ export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 
 import { buildQueryString, type RecipeFilters } from "@/lib/recipeQuery"
 
-export function useRecipes(filters?: RecipeFilters) {
+export function useRecipes(filters?: RecipeFilters, opts?: { keepPrevious?: boolean }) {
   return useQuery<Recipe[]>({
     queryKey: ["recipes", filters],
     queryFn: () => api.get(`/recipes${buildQueryString(filters)}`),
+    // Search-as-you-type: keep the last list on screen while the next loads.
+    ...(opts?.keepPrevious ? { placeholderData: keepPreviousData } : {}),
   })
 }
 

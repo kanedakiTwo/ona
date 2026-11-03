@@ -24,6 +24,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/admin/catalog-import/check',
   '/admin/catalog-import/jobs',
   '/admin/catalog-import/jobs/:x',
+  '/admin/catalog-recipes/:x/source',
   '/admin/catalog-wishes',
   '/admin/errors',
   '/admin/errors/:x/resolve',

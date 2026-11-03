@@ -9,6 +9,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { ingredients, recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { matchIngredients } from './recipeExtractor.js'
 import { persistRecipe } from './recipePersistence.js'
+import { detectSourceType } from './sources/sourceType.js'
 import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
@@ -88,6 +89,9 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
         tags: input.tags,
         internalTags: input.internalTags,
         tips: input.tips,
+        // PRO-1015: the original's address from the batch file, so the ficha links it.
+        sourceUrl: input.catalogSource.url ?? null,
+        sourceType: input.catalogSource.url ? detectSourceType(input.catalogSource.url) : null,
         ingredients: input.ingredients,
         steps: input.steps,
       },

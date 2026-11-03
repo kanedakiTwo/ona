@@ -45,6 +45,7 @@ export type AdminAction =
   | 'catalog_batch.publish'
   | 'catalog_import.start'
   | 'catalog_collection.import'
+  | 'catalog_recipe.source'
   // «Pregunta única por WhatsApp» (PRO-1091)
   | 'whatsapp_question.send'
 

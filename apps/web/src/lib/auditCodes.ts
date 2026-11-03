@@ -27,6 +27,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'catalog_batch.publish': 'Tanda del catálogo publicada',
   'catalog_import.start': 'Importación de una tanda lanzada',
   'catalog_collection.import': 'Colección del catálogo subida',
+  'catalog_recipe.source': 'Enlace o crédito de una receta cambiado',
   'whatsapp_question.send': 'Pregunta única enviada por WhatsApp',
 }
 

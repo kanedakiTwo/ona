@@ -10,6 +10,7 @@
  *   POST /admin/catalog-drafts/:id/discard      Miguel's «no»
  *   POST /admin/catalog-drafts/:id/restore      verdict taken back
  *   POST /admin/catalog-batches/:batch/publish  what the rule allows in the batch
+ *   PATCH /admin/catalog-recipes/:id/source     the link to the original and the credit line (PRO-1015)
  *   POST /admin/catalog-import/check            the file checked, with what it would skip
  *   POST /admin/catalog-import/jobs             202: import in the background (audited)
  *   GET  /admin/catalog-import/jobs[/:id]       progress
@@ -73,6 +74,9 @@ function fakes(over: Partial<CatalogReviewDeps> = {}) {
     discardDraft: vi.fn(async (id: string) => ({ ok: true as const, id, name: 'Guiso', batch: 'cocina-01' })),
     restoreDraft: vi.fn(async (id: string) => ({ ok: true as const, id, name: 'Guiso', batch: 'cocina-01' })),
     publishBatch: vi.fn(async () => ({ published: 2, wishesCovered: 0, held: [{ id: 'x', name: 'Otra', reason: 'sin_revisar' as const }] })),
+    updateSource: vi.fn(async (id: string, patch: { sourceUrl?: string | null; credit?: string | null }) =>
+      id === ID ? { ok: true as const, id, name: 'Sopa alpujarreña', sourceUrl: patch.sourceUrl ?? null, sourceCredit: patch.credit ?? null } : { ok: false as const, code: 'NOT_FOUND' as const },
+    ),
     previewImport: vi.fn(async (names: readonly string[]) => ({ recipes: names.map((name, i) => ({ name, duplicateOf: i === 0 ? 'Guiso de garbanzos' : null })), alreadyInBatch: 3 })),
     canImport: vi.fn(() => true),
     startImport: vi.fn(async (_input: any, opts?: { beforeRun?: (job: ImportJobRow) => Promise<void> }) => {
@@ -116,6 +120,7 @@ describe('access', () => {
       ['POST', `/admin/catalog-drafts/${ID}/discard`],
       ['POST', `/admin/catalog-drafts/${ID}/restore`],
       ['POST', '/admin/catalog-batches/cocina-01/publish'],
+      ['PATCH', `/admin/catalog-recipes/${ID}/source`],
       ['POST', '/admin/catalog-import/check'],
       ['POST', '/admin/catalog-import/jobs'],
       ['GET', '/admin/catalog-import/jobs'],
@@ -125,6 +130,40 @@ describe('access', () => {
       const r = await fetch(`${base}${p}`, { method, headers: { 'x-metrics-token': 'anything' } })
       expect(r.status, `${method} ${p}`).toBe(401)
     }
+  })
+})
+
+describe('source of a catalogue recipe (PRO-1015)', () => {
+  const patch = (base: string, id: string, body: unknown) =>
+    fetch(`${base}/admin/catalog-recipes/${id}/source`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+
+  it('changes the link and the credit, with the admin id; answers what the ficha will show', async () => {
+    const { base, deps } = await app()
+    const body = { sourceUrl: 'https://cocinaconsalero.es/sopa-alpujarrena/', credit: 'Inspirada en una receta de Maribel Reig' }
+    const r = await patch(base, ID, body)
+    expect(r.status).toBe(200)
+    expect(await r.json()).toEqual({ id: ID, name: 'Sopa alpujarreña', sourceUrl: body.sourceUrl, sourceCredit: body.credit })
+    expect(deps.updateSource).toHaveBeenCalledWith(ID, body, ADMIN)
+  })
+
+  it('one of the two is enough, and null clears it', async () => {
+    const { base, deps } = await app()
+    expect((await patch(base, ID, { credit: 'Inspirada en una receta de Maribel Reig' })).status).toBe(200)
+    expect(deps.updateSource).toHaveBeenLastCalledWith(ID, { credit: 'Inspirada en una receta de Maribel Reig' }, ADMIN)
+    expect((await patch(base, ID, { sourceUrl: null })).status).toBe(200)
+    expect(deps.updateSource).toHaveBeenLastCalledWith(ID, { sourceUrl: null }, ADMIN)
+  })
+
+  it('400 with the reason for an empty body, a non-web link or an unknown field; 404 for a bad id or a recipe outside the catalogue', async () => {
+    const { base, deps } = await app()
+    for (const body of [{}, { sourceUrl: 'ftp://ejemplo.es/receta' }, { sourceUrl: 'no es un enlace' }, { credit: 'x'.repeat(301) }, { name: 'Otra' }]) {
+      const r = await patch(base, ID, body)
+      expect(r.status, JSON.stringify(body)).toBe(400)
+      expect((await r.json()).code).toBe('INVALID_SOURCE')
+    }
+    expect((await patch(base, 'no-es-un-id', { credit: 'x' })).status).toBe(404)
+    expect((await patch(base, '22222222-2222-4222-8222-222222222222', { credit: 'x' })).status).toBe(404)
+    expect(deps.updateSource).toHaveBeenCalledTimes(1)
   })
 })
 

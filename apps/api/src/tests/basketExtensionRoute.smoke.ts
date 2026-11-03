@@ -104,7 +104,7 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
   }, 30_000)
 
   it('status: permitido por @test.local', async () => {
-    expect((await api('GET', '/shop-extension/status')).body).toEqual({ enabled: true })
+    expect((await api('GET', '/shop-extension/status')).body).toEqual({ enabled: true, consents: [] })
   })
 
   it('resultado bueno → sent; uno vacío no lo pisa; el mismo envioId otra vez no cambia nada; cuenta una vez', async () => {
@@ -280,9 +280,23 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
     expect(linea(tecleada!.key)).toMatchObject({ origen: 'tecleado', name: null })
   }, 60_000)
 
+  it('el aviso de una cadena: se acepta (otra versión lo sustituye), sale en el estado y se desactiva', async () => {
+    const hogar = await session('extconsent')
+    const v1 = await hogar('POST', '/shop-extension/consent', { cadena: 'Tienda.Example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+generico' })
+    expect(v1.status).toBe(200)
+    const v2 = await hogar('POST', '/shop-extension/consent', { cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+ext-v2' })
+    expect(v2.status).toBe(200)
+    const { consents } = (await hogar('GET', '/shop-extension/status')).body
+    expect(consents).toEqual([{ cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+ext-v2', acceptedAt: v2.body.consent.acceptedAt }])
+    expect((await hogar('DELETE', '/shop-extension/consent/tienda.example')).body).toEqual({ removed: true })
+    expect((await hogar('GET', '/shop-extension/status')).body.consents).toEqual([])
+    expect((await hogar('DELETE', '/shop-extension/consent/tienda.example')).body).toEqual({ removed: false })
+  }, 30_000)
+
   it('sin permiso: status false y 403 al guardar un resultado', async () => {
     const fuera = await session('noext', 'otro.example')
-    expect((await fuera('GET', '/shop-extension/status')).body).toEqual({ enabled: false })
+    expect((await fuera('GET', '/shop-extension/status')).body).toEqual({ enabled: false, consents: [] })
+    expect((await fuera('POST', '/shop-extension/consent', { cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'v1' })).status).toBe(403)
     const order = await superOrder(fuera, [{ name: 'arroz', quantity: 1000, unit: 'g' }])
     expect((await fuera('POST', `/shop-orders/${order.id}/extension-result`, result())).status).toBe(403)
   }, 30_000)

@@ -2,10 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  BASKET_CONSENT_GENERIC_RISK,
   BASKET_EXTENSION_PROTOCOL,
+  basketConsentVersion,
   basketSendResultSchema,
   buildExtensionBasket,
   extensionForHost,
+  pingAviso,
+  type BasketConsent,
+  type BasketConsentInput,
   type BasketSendResult,
   type BasketUndoResult,
   type ShopOrder,
@@ -19,9 +24,9 @@ import { askExtension, BASKET_EXTENSION_IDS, hostOf, messageExtension, pingExten
  */
 export function useBasketExtension(shopWebUrl: string | null) {
   const host = hostOf(shopWebUrl)
-  const status = useQuery<{ enabled: boolean }>({
+  const status = useQuery<ExtensionStatus>({
     queryKey: ["shop-extension-status"],
-    queryFn: () => api.get<{ enabled: boolean }>("/shop-extension/status"),
+    queryFn: () => api.get<ExtensionStatus>("/shop-extension/status"),
     // Sin id de extensión en la build no hay a quién hablar: ni se pregunta (y los enlaces de Carrefour no esperan).
     // TODO(test): sin test; la web no tiene tests unitarios y los e2e se construyen con id.
     enabled: !!host && BASKET_EXTENSION_IDS.length > 0,
@@ -35,14 +40,60 @@ export function useBasketExtension(shopWebUrl: string | null) {
     retry: false,
   })
   const ext = extensionForHost(ping.data ?? [], host)
+  const etiqueta = ext?.ping.etiqueta ?? null
+  const version = ext ? basketConsentVersion(ext.ping) : null
   return {
     available: !!(status.data?.enabled && ext),
-    etiqueta: ext?.ping.etiqueta ?? null,
+    etiqueta,
     /** La extensión que llena esta web (null si no hay). */
     extensionId: ext?.id ?? null,
+    /**
+     * El aviso antes del primer envío a esta cadena (D-154): qué se acepta y si ya está aceptado con esta
+     * versión del texto. Otra versión (un texto nuevo) lo vuelve a pedir.
+     */
+    consent:
+      host && etiqueta && version
+        ? {
+            input: { cadena: host, etiqueta, version } satisfies BasketConsentInput,
+            riesgo: pingAviso(ext!.ping)?.riesgo ?? BASKET_CONSENT_GENERIC_RISK.replaceAll("{cadena}", etiqueta),
+            accepted: !!status.data?.consents?.some((c) => c.cadena === host && c.version === version),
+          }
+        : null,
     /** Se está comprobando (el estado o el ping): mientras tanto no se pinta nada de la extensión. */
     checking: status.isLoading || ping.isLoading,
   }
+}
+
+type ExtensionStatus = { enabled: boolean; consents?: BasketConsent[] }
+
+/** El aviso de una cadena (`useBasketExtension().consent`). */
+export type BasketExtensionConsent = { input: BasketConsentInput; riesgo: string; accepted: boolean }
+
+/** Acepta el aviso de una cadena antes del primer envío (D-154). */
+export function useAcceptBasketConsent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: BasketConsentInput) => api.post<{ consent: BasketConsent }>("/shop-extension/consent", input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shop-extension-status"] }),
+  })
+}
+
+/** «Desactivar» en Perfil: borra lo aceptado; el siguiente envío vuelve a enseñar el aviso. */
+export function useRevokeBasketConsent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cadena: string) => api.delete<{ removed: boolean }>(`/shop-extension/consent/${encodeURIComponent(cadena)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shop-extension-status"] }),
+  })
+}
+
+/** Los avisos aceptados de esta cuenta, para Perfil (sin mirar la extensión). */
+export function useBasketConsents() {
+  return useQuery<ExtensionStatus>({
+    queryKey: ["shop-extension-status"],
+    queryFn: () => api.get<ExtensionStatus>("/shop-extension/status"),
+    staleTime: 5 * 60_000,
+  })
 }
 
 /**

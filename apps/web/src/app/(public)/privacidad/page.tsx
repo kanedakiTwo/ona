@@ -27,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 25 de octubre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 3 de noviembre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -54,6 +54,21 @@ export default function PrivacidadPage() {
               para conocer los gustos de tu hogar y ajustar tu menú. Los analiza una inteligencia artificial de Anthropic,
               que trabaja para nosotros como encargada del tratamiento. No escribas ahí datos de salud: para alergias e
               intolerancias está el apartado de salud, que pide tu permiso. Lo guardamos mientras tengas la cuenta.
+            </li>
+            <li data-testid="privacy-basket-extension">
+              <strong>Envíos al carro del súper (si activas «Enviar a» tu súper).</strong> Si instalas nuestra extensión
+              del navegador y activas el envío, la extensión añade a tu carro de la web del súper los productos de tu
+              lista, usando la sesión que ya tienes abierta en esa web. Funciona solo en tu navegador: Mimoia no ve ni
+              guarda tu contraseña ni tu sesión del súper, no confirma el pedido y no paga. La extensión nos devuelve qué
+              productos entraron en tu carro (nombre, referencia de la tienda, unidades y precio que marca la tienda) y
+              cuáles no encontró, y lo guardamos en ese pedido para enseñarte el resultado, deshacer el envío si lo pides
+              y mejorar nuestra lista de productos de cada tienda (esto último, sin unirlo a tu hogar). También guardamos
+              qué versión del aviso aceptaste y cuándo. No recibimos tu dirección, tus datos de pago ni tus pedidos
+              anteriores en el súper. Lo hacemos para darte el servicio que pides (art. 6.1.b RGPD); estos datos solo se
+              usan para esto, no se venden ni se usan para publicidad, se borran si borras el pedido o tu cuenta, y puedes
+              desactivar el envío cuando quieras en tu perfil. Lo que pase en tu cuenta del súper lo rigen sus propias
+              condiciones y su política de privacidad: el súper no es encargado de Mimoia ni recibe nada de nosotros,
+              salvo los productos que la extensión añade a tu carro desde tu navegador.
             </li>
             <li>
               <strong>Tus opiniones sobre Mimoia:</strong> lo que nos cuentas desde el botón «Opinión» o le dices a Mimo

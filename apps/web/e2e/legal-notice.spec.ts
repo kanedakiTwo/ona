@@ -40,6 +40,9 @@ test('footer → /aviso-legal shows the holder; /privacidad names the controller
   // PRO-151: Legal's text for the free sign-up note and the products ticked in the list.
   await expect(page.getByTestId('privacy-signup-shopping')).toContainText('Lo que nos cuentas al darte de alta y lo que compras')
   await expect(page.getByTestId('privacy-signup-shopping')).toContainText('Anthropic')
+  // D-154: sends to the supermarket cart, naming no chain (the repo is public).
+  await expect(page.getByTestId('privacy-basket-extension')).toContainText('no ve ni guarda tu contraseña')
+  await expect(page.getByTestId('privacy-basket-extension')).toContainText('qué versión del aviso aceptaste')
   await expect(page.locator('script[src*="cloudflareinsights"]')).toHaveCount(0)
 })
 
@@ -73,7 +76,7 @@ test('/privacidad: AiKit says its images are made with OpenAI models and its tra
   )
   const main = page.getByTestId('reading-column')
   await expect(main).not.toContainText('cuando lo pides')
-  await expect(main).toContainText('Última actualización: 25 de octubre de 2026')
+  await expect(main).toContainText('Última actualización: 3 de noviembre de 2026')
 })
 
 // 2026-10-25: Groq transcribes voice notes and Mimo's voice first (console.groq.com/docs/your-data).

@@ -12,6 +12,8 @@ import {
   buyRuleByKey,
   isLiveBasketSend,
   normalizeBuyName,
+  type BasketConsent,
+  type BasketConsentInput,
   type BasketLineOrigin,
   type BasketLineState,
   type BasketSendError,
@@ -21,7 +23,7 @@ import {
   type StoredBasketResult,
 } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { recipeIngredients, recipes, shopOrders, users } from '../db/schema.js'
+import { basketExtensionConsents, recipeIngredients, recipes, shopOrders, users } from '../db/schema.js'
 import { env } from '../config/env.js'
 import { madridParts } from './madridTime.js'
 
@@ -37,6 +39,41 @@ export function isBasketExtensionAllowed(email: string | null | undefined, allow
 export async function basketExtensionEnabledFor(userId: string, db: Db = defaultDb): Promise<boolean> {
   const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1)
   return isBasketExtensionAllowed(row?.email)
+}
+
+// ─── El aviso antes del primer envío a una cadena (D-154) ───────────
+
+/** Los avisos que aceptó esta cuenta, uno por cadena. */
+export async function listBasketConsents(userId: string, db: Db = defaultDb): Promise<BasketConsent[]> {
+  const rows = await db
+    .select({ cadena: basketExtensionConsents.cadena, etiqueta: basketExtensionConsents.etiqueta, version: basketExtensionConsents.version, acceptedAt: basketExtensionConsents.acceptedAt })
+    .from(basketExtensionConsents)
+    .where(eq(basketExtensionConsents.userId, userId))
+    .orderBy(basketExtensionConsents.cadena)
+  return rows.map((r) => ({ ...r, acceptedAt: r.acceptedAt.toISOString() }))
+}
+
+/** Acepta el aviso de una cadena: una fila por cuenta y cadena; otra versión la sustituye, con su fecha. */
+export async function acceptBasketConsent(userId: string, input: BasketConsentInput, db: Db = defaultDb): Promise<BasketConsent> {
+  const now = new Date()
+  const [row] = await db
+    .insert(basketExtensionConsents)
+    .values({ userId, ...input, acceptedAt: now })
+    .onConflictDoUpdate({
+      target: [basketExtensionConsents.userId, basketExtensionConsents.cadena],
+      set: { etiqueta: input.etiqueta, version: input.version, acceptedAt: now },
+    })
+    .returning()
+  return { cadena: row.cadena, etiqueta: row.etiqueta, version: row.version, acceptedAt: row.acceptedAt.toISOString() }
+}
+
+/** «Desactivar» en Perfil: borra lo aceptado; el siguiente envío vuelve a enseñar el aviso. */
+export async function revokeBasketConsent(userId: string, cadena: string, db: Db = defaultDb): Promise<boolean> {
+  const rows = await db
+    .delete(basketExtensionConsents)
+    .where(and(eq(basketExtensionConsents.userId, userId), eq(basketExtensionConsents.cadena, cadena.trim().toLowerCase())))
+    .returning({ id: basketExtensionConsents.id })
+  return rows.length > 0
 }
 
 export type BasketDecision =

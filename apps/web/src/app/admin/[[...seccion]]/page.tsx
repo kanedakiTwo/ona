@@ -9,7 +9,8 @@
  *   2. Ingredients in the "otros" aisle bucket
  *   3. Ingredients missing density (oils, sauces, milks…)
  *   4. Ingredients missing unitWeight (produce items that ship per-unit)
- *   5. Allergen tag suggestions (heuristic > current)
+ *   5. Allergen tag suggestions (heuristic > current), with the za'atar &
+ *      co. stored without sesame and their published recipes on top (PRO-1096)
  *   6. Recipes with incomplete nutrition (kcal == 0 / null)
  *   7. Recent regen output (failed/skipped JSONL)
  *   8. Usuarios — search + suspend + reset-link generator
@@ -51,6 +52,7 @@ import {
   DensitySection,
   UnitWeightSection,
   AllergenSection,
+  SesameMissingSection,
 } from "../sections/IngredientSections"
 import { RecipesSection, RegenSection } from "../sections/RecipeSections"
 import { RemapModal } from "../sections/RemapModal"
@@ -329,7 +331,10 @@ export default function AdminPage() {
           <UnitWeightSection rows={ingredientGaps.data?.missingUnitWeight ?? []} />
         )}
         {!isLoading && active === "allergens" && (
-          <AllergenSection rows={ingredientGaps.data?.allergenSuggestions ?? []} />
+          <>
+            <SesameMissingSection rows={ingredientGaps.data?.sesameMissing ?? []} />
+            <AllergenSection rows={ingredientGaps.data?.allergenSuggestions ?? []} />
+          </>
         )}
         {!isLoading && active === "recipes" && (
           <RecipesSection rows={recipeGaps.data?.missingNutrition ?? []} />

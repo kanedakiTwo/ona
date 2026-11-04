@@ -1,0 +1,152 @@
+/**
+ * Red de tiendas: the database side (ona-hq D-165). Settings, active shops,
+ * the household's postal code and «al súper» answers, the household's own
+ * shops that joined the Red (same WhatsApp) and the copies Mimoia assigns.
+ */
+import { and, eq, isNull } from 'drizzle-orm'
+import { DEFAULT_RED_SETTINGS, type RedKind, type RedSettings } from '@ona/shared'
+import { db as defaultDb } from '../../db/connection.js'
+import { households, householdShops, redSettings, redShops, shopOrders } from '../../db/schema.js'
+import { redCandidates, type RedShopLite } from './assign.js'
+
+type Db = typeof defaultDb
+export type RedShopRow = typeof redShops.$inferSelect
+
+export async function getRedSettings(db: Pick<Db, 'select'> = defaultDb): Promise<RedSettings> {
+  const [row] = await db.select().from(redSettings).where(eq(redSettings.id, 1)).limit(1)
+  if (!row) return DEFAULT_RED_SETTINGS
+  return {
+    discountPct: row.discountPct,
+    commissionPct: row.commissionPct,
+    commissionVatIncluded: row.commissionVatIncluded,
+    marginKnownPct: row.marginKnownPct,
+    marginReferencePct: row.marginReferencePct,
+    marginWildFishExtraPct: row.marginWildFishExtraPct,
+    termsVersion: row.termsVersion,
+  }
+}
+
+/** Same numbers and conditions? (an order drafted with other terms is checked again at «Pedir»). */
+export function sameTerms(a: RedSettings | null | undefined, b: RedSettings): boolean {
+  if (!a) return false
+  return (Object.keys(b) as Array<keyof RedSettings>).every((k) => a[k] === b[k])
+}
+
+export async function activeRedShops(db: Db = defaultDb): Promise<RedShopRow[]> {
+  return db.select().from(redShops).where(eq(redShops.status, 'activa'))
+}
+
+export const toLite = (r: RedShopRow): RedShopLite => ({
+  id: r.id, name: r.name, kind: r.kind, postalCode: r.postalCode, deliveryPostalCodes: r.deliveryPostalCodes ?? [], status: r.status, joinedAt: r.joinedAt,
+})
+
+export async function getHouseholdRed(householdId: string, db: Db = defaultDb): Promise<{ postalCode: string | null; choices: Partial<Record<RedKind, 'super'>> }> {
+  const [row] = await db.select({ postalCode: households.postalCode, redChoices: households.redChoices }).from(households).where(eq(households.id, householdId)).limit(1)
+  return { postalCode: row?.postalCode ?? null, choices: (row?.redChoices ?? {}) as Partial<Record<RedKind, 'super'>> }
+}
+
+/**
+ * The household's own shops with a Red shop's WhatsApp (same kind) are
+ * linked: from now on their orders go through the Red (design §5).
+ */
+export async function linkOwnShopsToRed(householdId: string, red: RedShopRow[], db: Db = defaultDb): Promise<number> {
+  const byPhone = new Map(red.map((r) => [r.whatsapp, r]))
+  const own = await db
+    .select()
+    .from(householdShops)
+    .where(and(eq(householdShops.householdId, householdId), eq(householdShops.origin, 'propia'), isNull(householdShops.redShopId)))
+  let linked = 0
+  for (const s of own) {
+    const r = s.whatsapp ? byPhone.get(s.whatsapp) : undefined
+    if (!r || r.kind !== s.kind) continue
+    await db.update(householdShops).set({ redShopId: r.id, updatedAt: new Date() }).where(eq(householdShops.id, s.id))
+    linked++
+  }
+  return linked
+}
+
+/**
+ * Give the household a Red shop of that kind: a copy in household_shops
+ * (origin `red`), or re-point the copy it already has (its drafts go). The
+ * copy delivers iff the Red shop delivers to the household's postal code: then
+ * it carries the fee (0 = free), otherwise the fee is null. null = the
+ * household already has 20 shops.
+ */
+export async function assignRedShop(householdId: string, red: RedShopRow, postalCode: string, db: Db = defaultDb): Promise<string | null> {
+  const delivers = (red.deliveryPostalCodes ?? []).includes(postalCode)
+  const values = {
+    name: red.name,
+    kind: red.kind,
+    channel: 'whatsapp',
+    whatsapp: red.whatsapp,
+    email: null,
+    webUrl: null,
+    phone: null,
+    fulfilment: 'recoger',
+    notes: [red.address, red.notes].filter(Boolean).join(' · ') || null,
+    deliveryMinEur: delivers ? red.deliveryMinEur : null,
+    deliveryFeeEur: delivers ? red.deliveryFeeEur ?? 0 : null,
+    redShopId: red.id,
+    origin: 'red',
+    updatedAt: new Date(),
+  }
+  const [copy] = await db
+    .select()
+    .from(householdShops)
+    .where(and(eq(householdShops.householdId, householdId), eq(householdShops.kind, red.kind), eq(householdShops.origin, 'red')))
+    .limit(1)
+  if (copy) {
+    if (copy.redShopId !== red.id) await db.delete(shopOrders).where(and(eq(shopOrders.shopId, copy.id), eq(shopOrders.status, 'draft')))
+    await db.update(householdShops).set(values).where(eq(householdShops.id, copy.id))
+    return copy.id
+  }
+  const all = await db.select({ id: householdShops.id }).from(householdShops).where(eq(householdShops.householdId, householdId))
+  if (all.length >= 20) return null
+  const [row] = await db.insert(householdShops).values({ ...values, householdId, position: all.length }).returning({ id: householdShops.id })
+  return row.id
+}
+
+/** Remove the Red copy of a kind (and its drafts). */
+async function dropRedCopy(householdId: string, kind: string, db: Db) {
+  const copies = await db
+    .select({ id: householdShops.id })
+    .from(householdShops)
+    .where(and(eq(householdShops.householdId, householdId), eq(householdShops.kind, kind), eq(householdShops.origin, 'red')))
+  for (const c of copies) {
+    await db.delete(shopOrders).where(and(eq(shopOrders.shopId, c.id), eq(shopOrders.status, 'draft')))
+    await db.delete(householdShops).where(eq(householdShops.id, c.id))
+  }
+}
+
+/** «La sigo pidiendo en el súper»: remembered so it's asked once; any Red copy of that kind goes. */
+export async function keepKindAtSuper(householdId: string, kind: RedKind, db: Db = defaultDb): Promise<void> {
+  const { choices } = await getHouseholdRed(householdId, db)
+  await db.update(households).set({ redChoices: { ...choices, [kind]: 'super' } }).where(eq(households.id, householdId))
+  await dropRedCopy(householdId, kind, db)
+}
+
+/** The household picked a Red shop for that kind: forget any «al súper» for it. */
+export async function forgetSuperChoice(householdId: string, kind: RedKind, db: Db = defaultDb): Promise<void> {
+  const { choices } = await getHouseholdRed(householdId, db)
+  if (!choices[kind]) return
+  const next = { ...choices }
+  delete next[kind]
+  await db.update(households).set({ redChoices: next }).where(eq(households.id, householdId))
+}
+
+/**
+ * New postal code: saved, and every Red copy is checked again. The ones whose
+ * shop doesn't cover it any more go; the rest get the delivery of the new one.
+ */
+export async function setHouseholdPostalCode(householdId: string, postalCode: string, db: Db = defaultDb): Promise<void> {
+  await db.update(households).set({ postalCode }).where(eq(households.id, householdId))
+  const copies = await db.select().from(householdShops).where(and(eq(householdShops.householdId, householdId), eq(householdShops.origin, 'red')))
+  if (!copies.length) return
+  const red = await activeRedShops(db)
+  for (const c of copies) {
+    const shop = red.find((r) => r.id === c.redShopId)
+    const covers = shop && redCandidates(shop.kind as RedKind, postalCode, [toLite(shop)]).length > 0
+    if (shop && covers) await assignRedShop(householdId, shop, postalCode, db)
+    else await dropRedCopy(householdId, c.kind, db)
+  }
+}

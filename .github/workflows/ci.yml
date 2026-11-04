@@ -218,9 +218,12 @@ jobs:
   # (2026-10-15: serial on one runner it took 16 of the CI's ~20 minutes;
   # 2026-10-22: with 4, shard 2 — menu-redesign.spec.ts and friends — passed
   # 20 minutes and master's CI was cancelled twice, so 6 shards and 30 minutes).
+  # Pinned to 24.04: since 2026-11-03 ubuntu-latest is 26.04 and Playwright
+  # 1.59 can't install Chromium there ("does not support chromium on
+  # ubuntu26.04-x64"), so every CI went red.
   e2e-shard:
     name: E2E (Playwright) ${{ matrix.shard }}/6
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: test
     timeout-minutes: 30
     strategy:

@@ -72,6 +72,7 @@ import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subsc
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
 import { ReligionConsentNote } from '@/components/ReligionConsentNote'
+import { FieldLabel, RequiredNote, type FieldMarkProps } from '@/components/FieldLabel'
 
 interface PhysicalData {
   sex: 'male' | 'female' | ''
@@ -544,8 +545,9 @@ export default function ProfilePage() {
               </div>
               <fieldset disabled={!healthActive} className={`mt-5 space-y-5 ${healthActive ? '' : 'opacity-40'}`}>
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Sexo" className="col-span-2">
-                    <div className="flex gap-1.5 pt-1">
+                  <div className="col-span-2">
+                    <Label optional>Sexo</Label>
+                    <div className="mt-1 flex gap-1.5 pt-1">
                       <SexPill
                         active={physical.sex === 'male'}
                         onClick={() => setPhysical((p) => ({ ...p, sex: 'male' }))}
@@ -559,7 +561,7 @@ export default function ProfilePage() {
                         Femenino
                       </SexPill>
                     </div>
-                  </Field>
+                  </div>
                   <Field label="Edad">
                     <input
                       type="number" min={1} max={120}
@@ -590,7 +592,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div>
-                  <Label>Nivel de actividad</Label>
+                  <Label optional>Nivel de actividad</Label>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
                       <Pill
@@ -631,7 +633,7 @@ export default function ProfilePage() {
             >
               <div className="mt-4 space-y-6">
                 <div>
-                  <Label>Hogar (para escalar la compra)</Label>
+                  <Label required>Hogar (para escalar la compra)</Label>
                   <p className="mt-1 text-[12px] italic leading-snug text-ink-muted">
                     Adultos cuenta a partir de 11 años. Niños son 2 a 10. Menores de 2 no cuentan. Cada niño cuenta como media ración.
                   </p>
@@ -656,7 +658,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div>
-                  <Label>Prioridad nutricional</Label>
+                  <Label required>Prioridad nutricional</Label>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
                       <Pill
@@ -671,7 +673,7 @@ export default function ProfilePage() {
                 </div>
 
                 <fieldset disabled={!healthActive} className={healthActive ? '' : 'opacity-40'}>
-                  <Label>Alergias, intolerancias y dieta</Label>
+                  <Label optional plural>Alergias, intolerancias y dieta</Label>
                   {preferences.restrictions.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {preferences.restrictions.map((r) => (
@@ -716,6 +718,7 @@ export default function ProfilePage() {
                         if (e.key === 'Enter') { e.preventDefault(); addRestriction(restrictionInput) }
                       }}
                       placeholder="Otra, p. ej. pimiento"
+                      aria-label="Otra alergia o restricción (opcional)"
                       className="input-line flex-1"
                     />
                     <button
@@ -906,7 +909,8 @@ export default function ProfilePage() {
         </div>
 
         {/* Save bar */}
-        <div className="mt-6 px-5 lg:flex lg:justify-end lg:px-0">
+        <div className="mt-6 px-5 lg:flex lg:items-center lg:justify-end lg:gap-4 lg:px-0">
+          <RequiredNote className="mb-2 lg:mb-0" />
           <button
             type="button"
             onClick={handleSave}
@@ -1244,18 +1248,21 @@ function PushNotificationsCard() {
   )
 }
 
+/** A labelled body-data field: all of them are optional (PRO-1103). */
 function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={className}>
-      <Label>{label}</Label>
-      <div className="mt-1">{children}</div>
-    </div>
+    <label className={`block ${className}`}>
+      <Label optional>{label}</Label>
+      <span className="mt-1 block">{children}</span>
+    </label>
   )
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+function Label({ children, ...mark }: { children: React.ReactNode } & FieldMarkProps) {
   return (
-    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{children}</div>
+    <FieldLabel as="span" className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted" {...(mark as FieldMarkProps)}>
+      {children}
+    </FieldLabel>
   )
 }
 

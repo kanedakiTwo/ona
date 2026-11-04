@@ -21,9 +21,12 @@ import {
   type FixedMeal,
   type FixedMealType,
 } from "@ona/shared"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 
 const DAY_SHORT: Record<CookingWeekday, string> = { lunes: "L", martes: "M", miercoles: "X", jueves: "J", viernes: "V", sabado: "S", domingo: "D" }
 const DAY_NAME: Record<CookingWeekday, string> = { lunes: "lunes", martes: "martes", miercoles: "miércoles", jueves: "jueves", viernes: "viernes", sabado: "sábado", domingo: "domingo" }
+
+const LABEL = "block text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted"
 
 const INPUT = "min-h-[44px] w-full rounded-xl border border-border-soft bg-paper px-3 text-[15px] text-ink focus:border-ink focus:outline-none"
 
@@ -120,9 +123,10 @@ export function FixedMealsEditor({ value, onChange }: { value: FixedMeal[]; onCh
 
       {open && (
         <div className="mt-3 space-y-3 rounded-2xl border border-border-soft bg-paper p-4">
+          {/* All four are required (fixedMealSchema); `add` says what's missing. */}
           <label className="block">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Comida</span>
-            <select className={`${INPUT} mt-1`} value={meal} onChange={(e) => setMeal(e.target.value as FixedMealType)} aria-label="Comida fija">
+            <FieldLabel as="span" required className={LABEL}>Comida</FieldLabel>
+            <select className={`${INPUT} mt-1`} value={meal} onChange={(e) => setMeal(e.target.value as FixedMealType)} aria-label="Comida fija" aria-required="true">
               {free.map((m) => (
                 <option key={m} value={m}>
                   {FIXED_MEAL_LABELS[m]}
@@ -131,8 +135,8 @@ export function FixedMealsEditor({ value, onChange }: { value: FixedMeal[]; onCh
             </select>
           </label>
           <div>
-            <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Días</span>
-            <div className="mt-1 flex gap-1.5">
+            <FieldLabel as="span" id="fixed-meal-days" required className={LABEL}>Días</FieldLabel>
+            <div className="mt-1 flex gap-1.5" role="group" aria-labelledby="fixed-meal-days">
               {COOKING_WEEKDAYS.map((d) => {
                 const on = days.includes(d)
                 return (
@@ -151,11 +155,15 @@ export function FixedMealsEditor({ value, onChange }: { value: FixedMeal[]; onCh
             </div>
           </div>
           <label className="block">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Nombre</span>
-            <input className={`${INPUT} mt-1`} value={label} maxLength={60} placeholder="Yogur con cereales" onChange={(e) => setLabel(e.target.value)} />
+            <FieldLabel as="span" required className={LABEL}>Nombre</FieldLabel>
+            <input className={`${INPUT} mt-1`} value={label} maxLength={60} placeholder="Yogur con cereales" onChange={(e) => setLabel(e.target.value)} aria-required="true" />
           </label>
-          <div>
-            <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Qué lleva, por persona</span>
+          <div data-field-group>
+            <span data-field-group-label>
+              <FieldLabel as="span" required className={LABEL}>
+                Qué lleva, por persona
+              </FieldLabel>
+            </span>
             <ul className="mt-1 space-y-2">
               {items.map((it, i) => (
                 <li key={i} className="flex items-center gap-2">
@@ -214,6 +222,7 @@ export function FixedMealsEditor({ value, onChange }: { value: FixedMeal[]; onCh
               {error}
             </p>
           )}
+          <RequiredNote />
           <div className="flex gap-2">
             <button type="button" onClick={add} className="min-h-[44px] rounded-full bg-ink px-4 text-[14px] font-medium text-cream">
               Marcar como fija

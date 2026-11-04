@@ -17,6 +17,7 @@
 import { useEffect, useId, useState, type FormEvent } from "react"
 import type { FichaFactView, FichaPersonView } from "@ona/shared"
 import { MenuSheet } from "@/components/menu/MenuSheet"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import { useFichaWhy } from "@/hooks/useFicha"
 import { AGE_BANDS, ageBandPill, endOfDayIso, localDay, longDate, shortDate, todayLocal } from "@/lib/ficha"
 import { OriginBadge, TemporaryBadge } from "./FichaUI"
@@ -180,11 +181,12 @@ export function CorrectSheet({
     <MenuSheet open={open} onClose={onClose} eyebrow="Corregir" title={fact.sentence}>
       <form onSubmit={submit} className="flex flex-col gap-[18px]" data-testid="ficha-correct">
         <div className="flex flex-col gap-2">
-          <label htmlFor={textId} className={LABEL}>
+          <FieldLabel htmlFor={textId} required className={LABEL}>
             ¿Cómo es en realidad?
-          </label>
+          </FieldLabel>
           <textarea
             id={textId}
+            required
             rows={4}
             value={text}
             maxLength={600}
@@ -198,7 +200,9 @@ export function CorrectSheet({
         </div>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className={`${LABEL} pb-2`}>¿Hasta cuándo?</legend>
+          <FieldLabel as="legend" required className={`${LABEL} pb-2`}>
+            ¿Hasta cuándo?
+          </FieldLabel>
           <div className="flex flex-wrap gap-2">
             <ChoicePill name={`hasta-${fact.id}`} checked={until === "siempre"} onChange={() => setUntil("siempre")}>
               Siempre
@@ -221,6 +225,8 @@ export function CorrectSheet({
         </fieldset>
 
         <SheetError message={error} />
+
+        <RequiredNote />
 
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onClose} className={`${PILL_OUTLINE} flex-1`}>
@@ -253,7 +259,8 @@ function ChoicePill({
         checked ? "bg-ink text-cream" : "border border-border bg-paper text-ink hover:border-ink"
       }`}
     >
-      <input type="radio" name={name} checked={checked} onChange={onChange} className={`m-0 h-4 w-4 ${checked ? "accent-cream" : "accent-ink"}`} />
+      {/* Both pill groups are required (PRO-1103). */}
+      <input type="radio" name={name} checked={checked} onChange={onChange} required className={`m-0 h-4 w-4 ${checked ? "accent-cream" : "accent-ink"}`} />
       {children}
     </label>
   )
@@ -303,11 +310,12 @@ export function PersonSheet({
     >
       <form onSubmit={submit} className="flex flex-col gap-[18px]" data-testid="ficha-person-form">
         <div className="flex flex-col gap-2">
-          <label htmlFor={aliasId} className={LABEL}>
+          <FieldLabel htmlFor={aliasId} required className={LABEL}>
             Apodo
-          </label>
+          </FieldLabel>
           <input
             id={aliasId}
+            required
             value={alias}
             maxLength={40}
             onChange={(e) => setAlias(e.target.value)}
@@ -321,7 +329,9 @@ export function PersonSheet({
         </div>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className={`${LABEL} pb-2`}>Edad</legend>
+          <FieldLabel as="legend" required className={`${LABEL} pb-2`}>
+            Edad
+          </FieldLabel>
           <div className="flex flex-wrap gap-2">
             {AGE_BANDS.map((b) => (
               <ChoicePill key={b} name={`edad-${person?.key ?? "nueva"}`} checked={band === b} onChange={() => setBand(b)}>
@@ -332,6 +342,8 @@ export function PersonSheet({
         </fieldset>
 
         <SheetError message={error} />
+
+        <RequiredNote />
 
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onClose} className={`${PILL_OUTLINE} flex-1`}>

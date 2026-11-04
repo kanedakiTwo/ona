@@ -13,6 +13,7 @@ import {
 import { ApiError, apiPublic } from "@/lib/api"
 import { ArrowRight } from "lucide-react"
 import { Accent, AUTH_PILL, AuthError, AuthField, AuthFooterLink, AuthHeading, AuthShell } from "@/components/auth/AuthShell"
+import { FieldMark, RequiredNote } from "@/components/FieldLabel"
 import { useAuth } from "@/lib/auth"
 import { NEWSLETTER_OPT_IN_HINT, NEWSLETTER_OPT_IN_LABEL } from "@ona/shared"
 import { signupAttributionForRegister } from "@/lib/signupAttribution"
@@ -199,9 +200,13 @@ export default function RegisterPage() {
             name="ageConfirmed"
             checked={ageConfirmed}
             onChange={(e) => setAgeConfirmed(e.target.checked)}
+            required
             className="h-5 w-5 shrink-0 accent-ink"
           />
-          <span>Tengo 14 años o más</span>
+          <span>
+            Tengo 14 años o más
+            <FieldMark required />
+          </span>
         </label>
 
         {/* Friday menu email (PRO-95): separate, optional, unticked (LSSI art. 21). */}
@@ -216,11 +221,14 @@ export default function RegisterPage() {
           />
           <span>
             {NEWSLETTER_OPT_IN_LABEL}
+            <FieldMark optional />
             <span id="register-newsletter-hint" className="mt-0.5 block text-[12px] text-ink-muted">
               {NEWSLETTER_OPT_IN_HINT} Opcional; te das de baja con un clic.
             </span>
           </span>
         </label>
+
+        <RequiredNote className="-mt-2" />
 
         <button
           type="submit"

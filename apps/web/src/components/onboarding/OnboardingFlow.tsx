@@ -38,6 +38,7 @@ import {
   type WeekdayCookingChoice,
 } from "@ona/shared"
 import { RestrictionsPicker } from "./RestrictionsPicker"
+import { FieldLabel } from "@/components/FieldLabel"
 import { withTyped } from "@/lib/restrictionText"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
@@ -587,9 +588,9 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                     />
                   ))}
                 </div>
-                <label htmlFor="onboarding-cooking-note" className="mt-6 block text-[14px] font-semibold text-ink">
-                  ¿Algo más? Cuéntanos tu caso <span className="font-normal text-ink-muted">(opcional)</span>
-                </label>
+                <FieldLabel htmlFor="onboarding-cooking-note" optional className="mt-6 block text-[14px] font-semibold text-ink">
+                  ¿Algo más? Cuéntanos tu caso
+                </FieldLabel>
                 <textarea
                   id="onboarding-cooking-note"
                   value={data.cookingNote}

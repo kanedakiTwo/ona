@@ -15,6 +15,7 @@ import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
 import { ArrowLeft } from "lucide-react"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
+import { FieldLabel } from "@/components/FieldLabel"
 
 export const AUTH_TITLE = "font-serif-text font-[650] text-[30px] leading-[1.1] tracking-[-0.01em] text-ink lg:text-[38px] lg:leading-[1.05]"
 
@@ -143,9 +144,10 @@ export function AuthField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-[13px] font-medium text-ink-mid">
+      {/* Every access field is required (PRO-1103). */}
+      <FieldLabel htmlFor={id} required className="text-[13px] font-medium text-ink-mid">
         {label}
-      </label>
+      </FieldLabel>
       <input
         id={id}
         type={type}

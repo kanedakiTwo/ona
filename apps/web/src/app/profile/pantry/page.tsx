@@ -23,6 +23,7 @@ import {
   type PantryItem,
 } from "@/hooks/usePantry"
 import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import {
   Accent,
   MoreButton,
@@ -112,18 +113,25 @@ export default function PantryPage() {
         <section className="lg:sticky lg:top-6">
           <form onSubmit={handleAdd} className={`${SUB_CARD} space-y-3 p-4`}>
             <h2 className={SUB_EYEBROW}>Nuevo item</h2>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Arroz, Yogur natural…"
-              maxLength={80}
-              aria-label="Nombre"
-              className={SUB_INPUT}
-            />
+            <label className="block">
+              <FieldLabel as="span" required className={FIELD_LABEL}>
+                Nombre
+              </FieldLabel>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Arroz, Yogur natural…"
+                maxLength={80}
+                required
+                className={SUB_INPUT}
+              />
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <label>
-                <span className={FIELD_LABEL}>Cantidad</span>
+                <FieldLabel as="span" required className={FIELD_LABEL}>
+                  Cantidad
+                </FieldLabel>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -131,14 +139,18 @@ export default function PantryPage() {
                   step={0.5}
                   value={qty}
                   onChange={(e) => setQty(e.target.value)}
+                  required
                   className={SUB_INPUT}
                 />
               </label>
               <label>
-                <span className={FIELD_LABEL}>Unidad</span>
+                <FieldLabel as="span" required className={FIELD_LABEL}>
+                  Unidad
+                </FieldLabel>
                 <select
                   value={unit}
                   onChange={(e) => setUnit(e.target.value as BuyableUnit)}
+                  required
                   className={SUB_INPUT}
                 >
                   {UNIT_OPTIONS.map((u) => (
@@ -150,22 +162,25 @@ export default function PantryPage() {
               </label>
             </div>
             <label className="block">
-              <span className={FIELD_LABEL}>Caducidad (opcional)</span>
+              <FieldLabel as="span" optional className={FIELD_LABEL}>
+                Caducidad
+              </FieldLabel>
               <input
                 type="date"
                 value={exp}
                 onChange={(e) => setExp(e.target.value)}
                 className={SUB_INPUT}
-                aria-label="Caducidad (opcional)"
               />
             </label>
             <label className="block">
-              <span className={FIELD_LABEL}>Dónde está</span>
+              <FieldLabel as="span" required className={FIELD_LABEL}>
+                Dónde está
+              </FieldLabel>
               <select
                 value={location}
                 onChange={(e) => setLocation(e.target.value as PantryLocation)}
+                required
                 className={SUB_INPUT}
-                aria-label="Dónde está"
               >
                 {PANTRY_LOCATIONS.map((l) => (
                   <option key={l} value={l}>
@@ -174,6 +189,7 @@ export default function PantryPage() {
                 ))}
               </select>
             </label>
+            <RequiredNote />
             <button type="submit" disabled={!name.trim() || add.isPending} className={`${PILL_INK} w-full`}>
               <Plus size={16} /> {add.isPending ? "Añadiendo…" : "Añadir a despensa"}
             </button>

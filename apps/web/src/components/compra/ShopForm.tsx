@@ -19,6 +19,7 @@ import {
   type ShopFormState,
 } from "@ona/shared"
 import { useSaveShop } from "@/hooks/useShopOrders"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 
 function formFromShop(s: Shop): ShopFormState {
   return {
@@ -70,23 +71,25 @@ export function ShopForm({ shop, onDone }: { shop?: Shop; onDone: () => void }) 
 
   return (
     <form onSubmit={submit} className="space-y-4 rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] p-4" aria-label={shop ? "Editar tienda" : "Nueva tienda"}>
+      {/* Marks (PRO-1103): `aria-required`, not `required` — the schema
+          check above gives the message, not the browser's bubble. */}
       <div>
-        <label className={label} htmlFor="shop-name">Nombre</label>
-        <input id="shop-name" className={input} value={form.name} maxLength={80} onChange={(e) => set("name", e.target.value)} placeholder="Ej: Frutería del barrio" />
+        <FieldLabel className={label} htmlFor="shop-name" required>Nombre</FieldLabel>
+        <input id="shop-name" className={input} value={form.name} maxLength={80} onChange={(e) => set("name", e.target.value)} placeholder="Ej: Frutería del barrio" aria-required="true" />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={label} htmlFor="shop-kind">Tipo</label>
-          <select id="shop-kind" className={input} value={form.kind} onChange={(e) => set("kind", e.target.value as ShopFormState["kind"])}>
+          <FieldLabel className={label} htmlFor="shop-kind" required>Tipo</FieldLabel>
+          <select id="shop-kind" className={input} value={form.kind} onChange={(e) => set("kind", e.target.value as ShopFormState["kind"])} aria-required="true">
             {SHOP_KINDS.map((k) => (
               <option key={k} value={k}>{SHOP_KIND_LABELS[k]}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className={label} htmlFor="shop-channel">Cómo pides</label>
-          <select id="shop-channel" className={input} value={form.channel} onChange={(e) => set("channel", e.target.value as ShopChannel)}>
+          <FieldLabel className={label} htmlFor="shop-channel" required>Cómo pides</FieldLabel>
+          <select id="shop-channel" className={input} value={form.channel} onChange={(e) => set("channel", e.target.value as ShopChannel)} aria-required="true">
             {SHOP_CHANNELS.map((c) => (
               <option key={c} value={c}>{SHOP_CHANNEL_LABELS[c]}</option>
             ))}
@@ -95,10 +98,11 @@ export function ShopForm({ shop, onDone }: { shop?: Shop; onDone: () => void }) 
       </div>
 
       <div>
-        <label className={label} htmlFor="shop-contact">{contact.label}</label>
+        <FieldLabel className={label} htmlFor="shop-contact" required>{contact.label}</FieldLabel>
         <input
           id="shop-contact"
           className={input}
+          aria-required="true"
           type={contact.type}
           inputMode={contact.type === "tel" ? "tel" : undefined}
           value={form[contact.key]}
@@ -108,12 +112,12 @@ export function ShopForm({ shop, onDone }: { shop?: Shop; onDone: () => void }) 
       </div>
 
       <div>
-        <label className={label} htmlFor="shop-customer">Tu nombre para la tienda</label>
+        <FieldLabel className={label} htmlFor="shop-customer" optional>Tu nombre para la tienda</FieldLabel>
         <input id="shop-customer" className={input} value={form.customerName} maxLength={80} onChange={(e) => set("customerName", e.target.value)} placeholder="Como te conocen: Ana, la del 3.º B…" />
       </div>
 
       <fieldset>
-        <legend className={label}>Entrega</legend>
+        <FieldLabel as="legend" className={label} required>Entrega</FieldLabel>
         <div className="mt-2 flex gap-2">
           {(["recoger", "domicilio"] as const).map((f) => (
             <button
@@ -131,28 +135,30 @@ export function ShopForm({ shop, onDone }: { shop?: Shop; onDone: () => void }) 
 
       {form.fulfilment === "domicilio" && (
         <div>
-          <label className={label} htmlFor="shop-address">Dirección de entrega</label>
-          <input id="shop-address" className={input} value={form.address} maxLength={200} onChange={(e) => set("address", e.target.value)} placeholder="Calle, número, piso, localidad" />
+          <FieldLabel className={label} htmlFor="shop-address" required>Dirección de entrega</FieldLabel>
+          <input id="shop-address" className={input} aria-required="true" value={form.address} maxLength={200} onChange={(e) => set("address", e.target.value)} placeholder="Calle, número, piso, localidad" />
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={label} htmlFor="shop-min">Pedido mínimo a domicilio (€)</label>
+          <FieldLabel className={label} htmlFor="shop-min" optional>Pedido mínimo a domicilio (€)</FieldLabel>
           <input id="shop-min" className={input} inputMode="decimal" value={form.deliveryMin} onChange={(e) => set("deliveryMin", e.target.value)} placeholder="Ej: 20" />
         </div>
         <div>
-          <label className={label} htmlFor="shop-fee">Gastos de envío (€)</label>
+          <FieldLabel className={label} htmlFor="shop-fee" optional plural>Gastos de envío (€)</FieldLabel>
           <input id="shop-fee" className={input} inputMode="decimal" value={form.deliveryFee} onChange={(e) => set("deliveryFee", e.target.value)} placeholder="Ej: 0 o 4,95" />
         </div>
       </div>
 
       <div>
-        <label className={label} htmlFor="shop-notes">Notas (horario, pedido mínimo…)</label>
+        <FieldLabel className={label} htmlFor="shop-notes" optional plural>Notas: horario, pedido mínimo…</FieldLabel>
         <input id="shop-notes" className={input} value={form.notes} maxLength={300} onChange={(e) => set("notes", e.target.value)} placeholder="Ej: pedidos antes de las 14:00 para el día siguiente" />
       </div>
 
       {error && <p role="alert" className="text-[12px] text-[#C65D38]">{error}</p>}
+
+      <RequiredNote />
 
       <div className="flex items-center gap-3">
         <button

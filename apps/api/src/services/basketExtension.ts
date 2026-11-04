@@ -12,6 +12,8 @@ import {
   buyRuleByKey,
   isLiveBasketSend,
   normalizeBuyName,
+  type BasketConsent,
+  type BasketConsentInput,
   type BasketLineOrigin,
   type BasketLineState,
   type BasketSendError,
@@ -21,7 +23,7 @@ import {
   type StoredBasketResult,
 } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { recipeIngredients, recipes, shopOrders, users } from '../db/schema.js'
+import { basketExtensionConsents, recipeIngredients, recipes, shopOrders, users } from '../db/schema.js'
 import { env } from '../config/env.js'
 import { madridParts } from './madridTime.js'
 
@@ -37,6 +39,41 @@ export function isBasketExtensionAllowed(email: string | null | undefined, allow
 export async function basketExtensionEnabledFor(userId: string, db: Db = defaultDb): Promise<boolean> {
   const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1)
   return isBasketExtensionAllowed(row?.email)
+}
+
+// ─── El aviso antes del primer envío a una cadena (D-154) ───────────
+
+/** Los avisos que aceptó esta cuenta, uno por cadena. */
+export async function listBasketConsents(userId: string, db: Db = defaultDb): Promise<BasketConsent[]> {
+  const rows = await db
+    .select({ cadena: basketExtensionConsents.cadena, etiqueta: basketExtensionConsents.etiqueta, version: basketExtensionConsents.version, acceptedAt: basketExtensionConsents.acceptedAt })
+    .from(basketExtensionConsents)
+    .where(eq(basketExtensionConsents.userId, userId))
+    .orderBy(basketExtensionConsents.cadena)
+  return rows.map((r) => ({ ...r, acceptedAt: r.acceptedAt.toISOString() }))
+}
+
+/** Acepta el aviso de una cadena: una fila por cuenta y cadena; otra versión la sustituye, con su fecha. */
+export async function acceptBasketConsent(userId: string, input: BasketConsentInput, db: Db = defaultDb): Promise<BasketConsent> {
+  const now = new Date()
+  const [row] = await db
+    .insert(basketExtensionConsents)
+    .values({ userId, ...input, acceptedAt: now })
+    .onConflictDoUpdate({
+      target: [basketExtensionConsents.userId, basketExtensionConsents.cadena],
+      set: { etiqueta: input.etiqueta, version: input.version, acceptedAt: now },
+    })
+    .returning()
+  return { cadena: row.cadena, etiqueta: row.etiqueta, version: row.version, acceptedAt: row.acceptedAt.toISOString() }
+}
+
+/** «Desactivar» en Perfil: borra lo aceptado; el siguiente envío vuelve a enseñar el aviso. */
+export async function revokeBasketConsent(userId: string, cadena: string, db: Db = defaultDb): Promise<boolean> {
+  const rows = await db
+    .delete(basketExtensionConsents)
+    .where(and(eq(basketExtensionConsents.userId, userId), eq(basketExtensionConsents.cadena, cadena.trim().toLowerCase())))
+    .returning({ id: basketExtensionConsents.id })
+  return rows.length > 0
 }
 
 export type BasketDecision =
@@ -202,7 +239,11 @@ export async function ingredientsInSystemRecipes(ids: readonly string[], db: Pic
   return new Set(rows.map((r) => r.id))
 }
 
-type ExtensionRow = { lines: ShopOrderLine[]; result: StoredBasketResult }
+/**
+ * `householdId` y `trusted` dicen de quién viene el producto: el cuerpo del resultado lo escribe
+ * el navegador del hogar. Sin `trusted`, el hogar no es de los nuestros (`loadExtensionResults`).
+ */
+type ExtensionRow = { lines: ShopOrderLine[]; result: StoredBasketResult; householdId?: string; trusted?: boolean }
 
 /**
  * La foto de un resultado, por clave: la guardada o, si es de antes de la foto, la de las líneas
@@ -211,6 +252,35 @@ type ExtensionRow = { lines: ShopOrderLine[]; result: StoredBasketResult }
  */
 function snapshotByKey({ lines, result }: ExtensionRow): Map<string, BasketSnapshotLine> {
   return new Map((result.cesta ?? basketSnapshot(lines)).map((b) => [b.key, b]))
+}
+
+/** El producto de la tienda, ya con su filtro, o null si no pasa. */
+type ShopProduct = { productoId: string | null; producto: string | null }
+
+const productKey = (p: ShopProduct) => JSON.stringify([p.productoId, p.producto && normalizeBuyName(p.producto)])
+
+/**
+ * Qué productos de la tienda pueden llegar a los agentes. Un hogar puede escribir lo que quiera en
+ * el cuerpo del resultado, y la lista blanca no para una frase hecha solo de letras. Por eso pasan
+ * los de un hogar de los nuestros (`trusted`) o los que han mandado igual (id y nombre) dos hogares
+ * o más. Los demás llegan sin producto ni id: se ve la línea, su estado y su motivo.
+ */
+function confirmedProducts(rows: ExtensionRow[]): (p: ShopProduct) => ShopProduct {
+  const trusted = new Set<string>()
+  const households = new Map<string, Set<string>>()
+  for (const row of rows) {
+    for (const r of row.result.lineas) {
+      const p = { productoId: agentSafeId(r.productoId), producto: agentSafeText(r.producto, 160) }
+      if (p.productoId === null && p.producto === null) continue
+      const k = productKey(p)
+      if (row.trusted) trusted.add(k)
+      if (row.householdId) households.set(k, (households.get(k) ?? new Set()).add(row.householdId))
+    }
+  }
+  return (p) => {
+    const k = productKey(p)
+    return trusted.has(k) || (households.get(k)?.size ?? 0) >= 2 ? p : { productoId: null, producto: null }
+  }
 }
 
 export interface BasketGap extends PublicBasketLine {
@@ -226,10 +296,12 @@ export interface BasketGap extends PublicBasketLine {
  * (origen, nombre normalizado y elección), producto, estado y motivo. Nunca
  * lleva el texto tecleado ni su búsqueda. Cada clave se lee en la foto de la
  * cesta; los resultados de antes de la foto, en las líneas actuales del
- * pedido. Las claves que ya no están se saltan.
+ * pedido. Las claves que ya no están se saltan. El producto, solo si está
+ * confirmado (`confirmedProducts`).
  */
 export function aggregateBasketGaps(rows: ExtensionRow[]): BasketGap[] {
   const out = new Map<string, BasketGap>()
+  const confirmed = confirmedProducts(rows)
   for (const row of rows) {
     const basket = snapshotByKey(row)
     for (const r of row.result.lineas) {
@@ -237,11 +309,11 @@ export function aggregateBasketGaps(rows: ExtensionRow[]): BasketGap[] {
       const b = basket.get(r.key)
       if (!b) continue
       const pub = publicBasketLine(b)
-      const productoId = agentSafeId(r.productoId)
+      const { productoId, producto } = confirmed({ productoId: agentSafeId(r.productoId), producto: agentSafeText(r.producto, 160) })
       const k = JSON.stringify([pub.origen, pub.name && normalizeBuyName(pub.name), pub.choice, productoId, r.estado, r.motivo ?? null])
       const g = out.get(k)
       if (g) g.veces += 1
-      else out.set(k, { ...pub, estado: r.estado, productoId, producto: agentSafeText(r.producto, 160), motivo: r.motivo ?? null, veces: 1 })
+      else out.set(k, { ...pub, estado: r.estado, productoId, producto, motivo: r.motivo ?? null, veces: 1 })
     }
   }
   return [...out.values()].sort(
@@ -273,9 +345,11 @@ export interface BasketSendForAgents {
  * fecha, ok, error, añadidas, deshecho, duración y cada línea pública con su
  * estado, motivo, producto de la tienda y unidades. Sin hogar, usuario,
  * `envioId`, total del carro ni texto tecleado. Una clave que ya no está en la
- * foto ni en las líneas sale como `tecleado`.
+ * foto ni en las líneas sale como `tecleado`. El producto, solo si está
+ * confirmado (`confirmedProducts`).
  */
 export function basketSendsForAgents(rows: ExtensionRow[]): BasketSendForAgents[] {
+  const confirmed = confirmedProducts(rows)
   return rows
     .map((row) => {
       const { result } = row
@@ -293,7 +367,7 @@ export function basketSendsForAgents(rows: ExtensionRow[]): BasketSendForAgents[
             ...(b ? publicBasketLine(b) : { name: null, choice: null, origen: 'tecleado' as const }),
             estado: r.estado,
             motivo: r.motivo ?? null,
-            producto: agentSafeText(r.producto, 160),
+            producto: confirmed({ productoId: agentSafeId(r.productoId), producto: agentSafeText(r.producto, 160) }).producto,
             unidades: r.unidades ?? null,
           }
         }),
@@ -303,14 +377,32 @@ export function basketSendsForAgents(rows: ExtensionRow[]): BasketSendForAgents[
 }
 
 /**
+ * ¿Es el hogar del pedido de los nuestros? Algún miembro tiene su email en `ADMIN_EMAILS`, la misma
+ * fuente que el rol de admin (`routes/auth.ts` lo reconcilia al entrar). Con alias y a mano: en un
+ * select de una sola tabla, drizzle quita el nombre de la tabla a las columnas y la subconsulta
+ * saldría ambigua.
+ */
+function ourHousehold(admins: readonly string[] = env.ADMIN_EMAILS) {
+  if (admins.length === 0) return sql<boolean>`false`
+  const emails = sql.join(admins.map((e) => sql`${e.trim().toLowerCase()}`), sql`, `)
+  return sql<boolean>`exists (select 1 from household_members hm join users u on u.id = hm.user_id where hm.household_id = "shop_orders"."household_id" and lower(u.email) in (${emails}))`
+}
+
+/**
  * Los resultados recibidos en los últimos `days` días, con las líneas de su
- * pedido. Se filtra por `recibidoAt` del resultado guardado, no por
- * `updated_at` del pedido: cualquier cambio posterior en el pedido (editarlo,
- * cerrarlo) lo volvería a meter en la ventana.
+ * pedido, su hogar y si el hogar es de los nuestros (`ourHousehold`).
+ * Se filtra por `recibidoAt` del resultado guardado, no por `updated_at` del
+ * pedido: cualquier cambio posterior en el pedido (editarlo, cerrarlo) lo
+ * volvería a meter en la ventana.
  */
 async function loadExtensionResults(days: number, db: Db): Promise<ExtensionRow[]> {
   const rows = await db
-    .select({ lines: shopOrders.lines, result: shopOrders.extensionResult })
+    .select({
+      lines: shopOrders.lines,
+      result: shopOrders.extensionResult,
+      householdId: shopOrders.householdId,
+      trusted: ourHousehold(),
+    })
     .from(shopOrders)
     .where(
       and(
@@ -319,7 +411,7 @@ async function loadExtensionResults(days: number, db: Db): Promise<ExtensionRow[
         sql`(case when ${shopOrders.extensionResult}->>'recibidoAt' ~ '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}' then (${shopOrders.extensionResult}->>'recibidoAt')::timestamptz end) >= now() - make_interval(days => ${days})`,
       ),
     )
-  return rows.map((r) => ({ lines: r.lines as ShopOrderLine[], result: r.result as StoredBasketResult }))
+  return rows.map((r) => ({ lines: r.lines as ShopOrderLine[], result: r.result as StoredBasketResult, householdId: r.householdId, trusted: r.trusted === true }))
 }
 
 export async function loadBasketGaps(days: number, db: Db = defaultDb): Promise<BasketGap[]> {

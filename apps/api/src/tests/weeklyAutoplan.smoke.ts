@@ -55,13 +55,17 @@ function farThursday(): { now: Date; nextMonday: string } {
   return { now: d, nextMonday: monday.toISOString().slice(0, 10) }
 }
 
-/** The real DB deps, with the read limited to these test households. */
+/**
+ * The real DB deps, with the read limited to these test households. The
+ * Thursday is years after launch day, when these fresh accounts' trial is
+ * long over (paused): the plan rule is the unit test's, here they count as paying.
+ */
 function only(userIds: string[]): AutoplanDeps {
   return {
     ...defaultAutoplanDeps,
     async load(weekStart, now) {
       const r = await defaultAutoplanDeps.load(weekStart, now)
-      return { people: r.people.filter((p) => userIds.includes(p.userId)), weeks: r.weeks }
+      return { people: r.people.filter((p) => userIds.includes(p.userId)).map((p) => ({ ...p, freePlan: false })), weeks: r.weeks }
     },
   }
 }

@@ -20,6 +20,7 @@ import type {
   DeliveryCheck,
   ShopFulfilment,
   QuoteSummary,
+  RedSettings,
   Shop,
   ShopInput,
   ShopKind,
@@ -54,6 +55,7 @@ import { assessQuote } from './validation.js'
 import { buildLine, inputOf } from './lines.js'
 import { capitalize, prettyName } from './format.js'
 import { parseShopReply, type ParsedReply } from './quoteParser.js'
+import { minimumMax, redBlockers, redDelivers, redView } from '../red/view.js'
 
 type Db = typeof defaultDb
 /** `db` o una transacción: con lo que se lee y se escribe un pedido. */
@@ -214,6 +216,7 @@ function snapshotOf(shop: ShopRow): ShopSnapshot {
     phone: shop.phone,
     deliveryMinEur: shop.deliveryMinEur ?? null,
     deliveryFeeEur: shop.deliveryFeeEur ?? null,
+    red: shop.redShopId ? { shopId: shop.redShopId, origin: shop.origin === 'red' ? 'red' : 'propia' } : null,
   }
 }
 
@@ -279,7 +282,15 @@ export function presentOrder(r: OrderRow): ShopOrder {
   const lines = r.lines as ShopOrderLine[]
   const messaging = shop.channel === 'whatsapp' || shop.channel === 'email'
   const fulfilment: ShopFulfilment = r.fulfilment === 'domicilio' ? 'domicilio' : 'recoger'
-  const blockers = r.status === 'draft' ? orderBlockers(lines, fulfilment, r.address ?? null) : []
+  const delivery = deliveryCheck(lines, fulfilment, shop)
+  const red =
+    r.redShopId && r.redTerms
+      ? redView({ redShopId: r.redShopId, terms: r.redTerms as RedSettings, lines, fulfilment, snapshot: shop, maxEur: r.maxEur ?? null })
+      : null
+  const blockers =
+    r.status === 'draft'
+      ? [...orderBlockers(lines, fulfilment, r.address ?? null), ...(red ? redBlockers(red, delivery, fulfilment) : [])]
+      : []
   const searchLinks: Record<string, string> = {}
   if (shop.channel === 'web') {
     for (const l of lines) {
@@ -301,19 +312,31 @@ export function presentOrder(r: OrderRow): ShopOrder {
     quoteSummary: (r.quoteSummary as QuoteSummary | null) ?? null,
     confirmationText: r.confirmationText,
     finalTotalEur: r.finalTotalEur,
-    links: {
-      order: blocked ? null : contactLink(shop, r.messageText, 'Pedido'),
-      confirmation: r.confirmationText && messaging ? contactLink(shop, r.confirmationText, 'Re: Pedido') : null,
-      shortOrder: messaging && !blocked ? `${env.WEB_PUBLIC_URL}/c/${r.token}` : null,
-      shortConfirmation: r.confirmationText && messaging ? `${env.WEB_PUBLIC_URL}/c/${r.token}?m=ok` : null,
-      tooLong: messaging && isTooLongToPrefill(r.messageText),
-    },
+    links: red
+      ? {
+          // Red orders are never sent from the household's WhatsApp: they're ordered on /compra.
+          order: null,
+          confirmation: null,
+          shortOrder: `${env.WEB_PUBLIC_URL}/c/${r.token}`,
+          shortConfirmation: null,
+          tooLong: false,
+          view: `${env.WEB_PUBLIC_URL}/compra?pedido=${r.id}`,
+        }
+      : {
+          order: blocked ? null : contactLink(shop, r.messageText, 'Pedido'),
+          confirmation: r.confirmationText && messaging ? contactLink(shop, r.confirmationText, 'Re: Pedido') : null,
+          shortOrder: messaging && !blocked ? `${env.WEB_PUBLIC_URL}/c/${r.token}` : null,
+          shortConfirmation: r.confirmationText && messaging ? `${env.WEB_PUBLIC_URL}/c/${r.token}?m=ok` : null,
+          tooLong: messaging && isTooLongToPrefill(r.messageText),
+          view: null,
+        },
     fulfilment,
     address: r.address ?? null,
     blockers,
-    delivery: deliveryCheck(lines, fulfilment, shop),
+    delivery,
     searchLinks,
     extensionResult: (r.extensionResult as StoredBasketResult | null) ?? null,
+    red,
     createdAt: r.createdAt.toISOString(),
     sentAt: r.sentAt?.toISOString() ?? null,
     quotedAt: r.quotedAt?.toISOString() ?? null,
@@ -327,6 +350,8 @@ export async function resolveShortLink(token: string, which: 'order' | 'confirma
   if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return null
   const [row] = await db.select().from(shopOrders).where(eq(shopOrders.token, token)).limit(1)
   if (!row || row.status === 'cancelled' || row.status === 'closed') return null
+  // Red orders: the short link opens their card on /compra (relative: our own site, never an open redirect).
+  if (row.redShopId) return which === 'order' ? `/compra?pedido=${row.id}` : null
   const o = presentOrder(row)
   // Only messaging links: a web shop's URL is user-typed and must not turn
   // Mimoia's domain into an open redirect.

@@ -65,6 +65,7 @@ import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
+import { BasketConsentsCard } from '@/components/profile/BasketConsentsCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import type { Meal } from '@ona/shared'
 import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
@@ -886,6 +887,9 @@ export default function ProfilePage() {
 
               {/* Friday menu email (PRO-95): its own consent, saved on tap. */}
               <NewsletterToggle />
+
+              {/* «Enviar a <cadena>» (D-154): lo aceptado por cadena, con «Desactivar». Sin nada aceptado, nada. */}
+              <BasketConsentsCard />
             </ProfileCard>
 
             {/* Mis recetas */}

@@ -613,10 +613,12 @@ export {
   alertKindOn,
   buildAlertRows,
   isAlertKind,
+  WEEKLY_NUDGE_AUTOPLAN_NOTE,
   type AlertChannel,
   type AlertKind,
   type AlertRow,
   type AlertsOverview,
+  type AutoplanNotice,
 } from './types/alerts.js'
 export type {
   FichaTopic,

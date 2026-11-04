@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { DEFAULT_RED_SETTINGS as S, type ShopOrderLine, type ShopSnapshot } from '@ona/shared'
 import { minimumMax, redBlockers, redView } from '../services/red/view.js'
-import { presentOrder } from '../services/shopOrders/store.js'
+import { isRedOrderRow, presentOrder, resolveShortLink } from '../services/shopOrders/store.js'
 
 const line = (over: Partial<ShopOrderLine> = {}): ShopOrderLine => ({
   key: 'l1', sourceItemId: 'manual:m', ingredientId: null, name: 'manzanas', quantity: 1000, unit: 'g', note: null,
@@ -75,5 +75,19 @@ describe('presentOrder with a Red order', () => {
     const o = presentOrder({ ...row, redShopId: null, redTerms: null, shopSnapshot: snap({ red: null }) })
     expect(o.red ?? null).toBeNull()
     expect(o.links.order).toMatch(/^https:\/\/wa\.me\//)
+  })
+
+  // resolveShortLink reads one row: db.select().from().where().limit().
+  const oneRow = (r: unknown) => ({ select: () => ({ from: () => ({ where: () => ({ limit: async () => [r] }) }) }) }) as any
+  it('its short link opens the card on /compra (relative), and there is no confirmation link', async () => {
+    expect(await resolveShortLink(row.token, 'order', oneRow(row))).toBe(`/compra?pedido=${row.id}`)
+    expect(await resolveShortLink(row.token, 'confirmation', oneRow(row))).toBeNull()
+  })
+  it('one rule for what a Red order is: a red_shop_id without frozen terms is not one, for the card nor the short link', async () => {
+    const r = { ...row, redTerms: null }
+    expect(isRedOrderRow(r)).toBe(false)
+    expect(isRedOrderRow(row)).toBe(true)
+    expect(presentOrder(r).red ?? null).toBeNull()
+    expect(await resolveShortLink(r.token, 'order', oneRow(r))).toMatch(/^https:\/\/wa\.me\//)
   })
 })

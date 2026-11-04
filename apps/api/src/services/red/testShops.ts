@@ -19,17 +19,15 @@ export const RED_TEST_SHOPS = [
 export async function seedRedTestShops(input: { postalCode: string; deliversTo?: string[] }, db: Db = defaultDb) {
   const out: Array<{ id: string; kind: string; name: string }> = []
   for (const s of RED_TEST_SHOPS) {
-    const deliveryPostalCodes = s.delivers ? [input.postalCode, ...(input.deliversTo ?? [])] : []
+    const fields = {
+      name: s.name, postalCode: input.postalCode, deliveryPostalCodes: s.delivers ? [input.postalCode, ...(input.deliversTo ?? [])] : [],
+      deliveryMinEur: s.deliveryMinEur, deliveryFeeEur: s.deliveryFeeEur, notes: 'Tienda de prueba: no existe.', isTest: true,
+    }
     const [row] = await db
       .insert(redShops)
-      .values({
-        name: s.name, kind: s.kind, postalCode: input.postalCode, whatsapp: s.whatsapp, deliveryPostalCodes,
-        deliveryMinEur: s.deliveryMinEur, deliveryFeeEur: s.deliveryFeeEur, notes: 'Tienda de prueba: no existe.', isTest: true,
-      })
-      .onConflictDoUpdate({
-        target: redShops.whatsapp,
-        set: { postalCode: input.postalCode, deliveryPostalCodes, status: 'activa', updatedAt: sql`now()` },
-      })
+      .values({ ...fields, kind: s.kind, whatsapp: s.whatsapp })
+      // Seeding again refreshes everything: an older seed never lingers.
+      .onConflictDoUpdate({ target: redShops.whatsapp, set: { ...fields, status: 'activa', updatedAt: sql`now()` } })
       .returning({ id: redShops.id, kind: redShops.kind, name: redShops.name })
     out.push(row)
   }

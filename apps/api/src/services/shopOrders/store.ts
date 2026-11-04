@@ -277,16 +277,20 @@ function contactLink(shop: ShopSnapshot, text: string | null, subject: string): 
   }
 }
 
+/** A Red order: it has a Red shop and the terms it was drafted with. The one rule for the card and the short link. */
+export function isRedOrderRow<T extends Pick<OrderRow, 'redShopId' | 'redTerms'>>(row: T): row is T & { redShopId: string } {
+  return !!row.redShopId && !!row.redTerms
+}
+
 export function presentOrder(r: OrderRow): ShopOrder {
   const shop = r.shopSnapshot as ShopSnapshot
   const lines = r.lines as ShopOrderLine[]
   const messaging = shop.channel === 'whatsapp' || shop.channel === 'email'
   const fulfilment: ShopFulfilment = r.fulfilment === 'domicilio' ? 'domicilio' : 'recoger'
   const delivery = deliveryCheck(lines, fulfilment, shop)
-  const red =
-    r.redShopId && r.redTerms
-      ? redView({ redShopId: r.redShopId, terms: r.redTerms as RedSettings, lines, fulfilment, snapshot: shop, maxEur: r.maxEur ?? null })
-      : null
+  const red = isRedOrderRow(r)
+    ? redView({ redShopId: r.redShopId, terms: r.redTerms as RedSettings, lines, fulfilment, snapshot: shop, maxEur: r.maxEur ?? null })
+    : null
   const blockers =
     r.status === 'draft'
       ? [...orderBlockers(lines, fulfilment, r.address ?? null), ...(red ? redBlockers(red, delivery, fulfilment) : [])]
@@ -351,7 +355,7 @@ export async function resolveShortLink(token: string, which: 'order' | 'confirma
   const [row] = await db.select().from(shopOrders).where(eq(shopOrders.token, token)).limit(1)
   if (!row || row.status === 'cancelled' || row.status === 'closed') return null
   // Red orders: the short link opens their card on /compra (relative: our own site, never an open redirect).
-  if (row.redShopId) return which === 'order' ? `/compra?pedido=${row.id}` : null
+  if (isRedOrderRow(row)) return which === 'order' ? `/compra?pedido=${row.id}` : null
   const o = presentOrder(row)
   // Only messaging links: a web shop's URL is user-typed and must not turn
   // Mimoia's domain into an open redirect.

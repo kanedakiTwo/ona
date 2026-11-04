@@ -4,6 +4,7 @@
 
 import { expect, type Locator, type Page } from '@playwright/test'
 import { listSafeDay, pinnedDay } from './_clock'
+import { putAwayWeekSteps } from './_nextStep'
 
 /** Unique-per-run identifier — keeps DB state from colliding between specs. */
 export function uniqueId(): string {
@@ -80,13 +81,17 @@ export async function submitLoginForm(page: Page, creds: Pick<TestCreds, 'userna
  *
  * New accounts get the «Primeros pasos» guide over /menu (PRO-07). It would
  * cover the screen in every spec that isn't about it, so it is marked as
- * seen here; `first-steps.spec.ts` passes `{ keepFirstSteps: true }`.
+ * seen here; `first-steps.spec.ts` passes `{ keepFirstSteps: true }`. The
+ * same for «Manda la lista» / «¿Qué tal la cena de ayer?» on /menu (PRO-387;
+ * `menu-next-step.spec.ts` passes `{ keepNextSteps: true }`).
  */
 export async function registerFreshUser(
   page: Page,
-  opts: { keepFirstSteps?: boolean; keepTaste?: boolean } = {},
+  opts: { keepFirstSteps?: boolean; keepTaste?: boolean; keepNextSteps?: boolean } = {},
 ): Promise<TestCreds> {
   const creds = freshCreds()
+  // PRO-387: «Manda la lista» / «¿Qué tal la cena de ayer?» over /menu, see _nextStep.ts.
+  if (!opts.keepNextSteps) await putAwayWeekSteps(page)
   await page.goto('/register')
   await Promise.all([
     page.waitForURL(/\/onboarding|\/menu/, { timeout: 20_000 }),

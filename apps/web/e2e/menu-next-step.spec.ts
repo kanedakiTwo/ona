@@ -1,9 +1,10 @@
 /**
  * PRO-387 (D-158, «camino recto»): /menu shows one next step above the menu,
  * never a stack (apps/web/src/lib/nextStep.ts; the order is unit-tested in
- * apps/api/src/tests/nextStepCard.test.ts). On a phone, a new account sees
- * one card: «Manda la lista a quien hace la compra». «Ahora no» puts it away
- * for the week, and at most one card takes its place.
+ * apps/api/src/tests/nextStepCard.test.ts). On a phone, a new account (here
+ * without the health-data consent) sees one card at a time: «No tenemos tus
+ * alergias», then «Manda la lista a quien hace la compra». «Ahora no» puts it
+ * away for the week, and at most one card takes its place.
  */
 import { test, expect } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
@@ -25,12 +26,20 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
 })
 
-test('a new account sees a single card above the menu: «Manda la lista»', async ({ page }) => {
+test('a new account sees a single card above the menu: safety first, then «Manda la lista»', async ({ page }) => {
   test.setTimeout(90_000)
-  await registerFreshUser(page)
+  await registerFreshUser(page, { keepNextSteps: true })
   await completeOnboarding(page)
   await page.goto('/menu')
   await expect(page.getByTestId('menu-week-range')).toBeVisible({ timeout: 20_000 })
+
+  // Signed up without the health-data consent: «No tenemos tus alergias» first, alone.
+  const health = page.getByTestId('no-health-data-notice')
+  await expect(health).toBeVisible({ timeout: 20_000 })
+  await page.waitForTimeout(2_000)
+  await expect(page.locator('[data-next-step]')).toHaveCount(1)
+  await expect(page.getByTestId('next-step-send-list')).toHaveCount(0)
+  await health.getByRole('button', { name: 'Entendido' }).click()
 
   const sendList = page.getByTestId('next-step-send-list')
   await expect(sendList).toBeVisible({ timeout: 20_000 })

@@ -10,6 +10,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -23,6 +24,8 @@ async function firstStepsPending(page: Page): Promise<boolean> {
 
 test('a new account sees the three steps on /menu, skips them, reloads and they are gone', async ({ page }) => {
   test.setTimeout(90_000)
+  // PRO-387: without the health-data consent, «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page, { keepFirstSteps: true })
   await completeOnboarding(page, { keepFirstSteps: true })
   await expect(page).toHaveURL(/\/menu/)

@@ -9,7 +9,7 @@ export type UsageScreen = "menu" | "lista" | "compra" | "receta" | "recetas" | "
 export type RecipeViewFrom = "menu" | "catalogo" | "mimo" | "lista" | "otro"
 export type OnboardingStep = "afina" | "canal" | "hogar" | "frecuencia" | "cocina" | "tiempo" | "dieta" | "prioridad"
 
-/** The web sign-up's numbered steps (OnboardingFlow 1…6). */
+/** The web sign-up's numbered steps (OnboardingFlow 1…6; 2 and 6 not asked since 2026-11-03, lib/onboardingSteps.ts). */
 const NUMBERED_STEPS: OnboardingStep[] = ["hogar", "frecuencia", "cocina", "tiempo", "dieta", "prioridad"]
 
 /** Pure: the step name of onboarding step 1…6. */

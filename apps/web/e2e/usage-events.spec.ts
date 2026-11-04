@@ -28,22 +28,20 @@ test('the web sign-up records every step, seen and done', async ({ page }) => {
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click()
   await next.click()
-  await next.click() // no restrictions
-  await page.getByRole('button', { name: /salud/i }).click()
-  await page.getByRole('button', { name: /empezar/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click() // no restrictions
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
 
   const steps = () => sent.filter((e) => e.name === 'onboarding_step').map((e) => `${e.props.step}:${e.props.action}`)
-  for (const step of ['hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad']) {
+  for (const step of ['hogar', 'cocina', 'tiempo', 'dieta']) {
     await expect.poll(steps, { timeout: 10_000 }).toContain(`${step}:visto`)
     await expect.poll(steps, { timeout: 10_000 }).toContain(`${step}:hecho`)
   }
+  // Not asked since 2026-11-03.
+  expect(steps().filter((s) => s.startsWith('frecuencia:') || s.startsWith('prioridad:'))).toEqual([])
   // Only closed words travel: no answers, no text.
   for (const e of sent) expect(Object.keys(e.props).every((k) => ['step', 'action', 'via', 'screen', 'from'].includes(k))).toBe(true)
   // Landing on /menu counts the screen.

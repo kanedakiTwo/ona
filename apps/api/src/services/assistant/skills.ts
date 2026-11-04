@@ -16,7 +16,7 @@ import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, is
 import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
 import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
 import { describeWeekPlan } from '../weekPlan.js'
-import { householdMultiplier } from '@ona/shared'
+import { COOKING_STYLES, householdMultiplier, isCookingStyle } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
 import { findRecipeForSlot, type RecipeWithIngredients } from '../recipeMatcher.js'
 import { calculateMenuCaloriesFromDB } from '../calorieCalculator.js'
@@ -1055,38 +1055,46 @@ const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 /**
  * WhatsApp-first sign-up (2026-10-10): Mimo asks the first-steps questions in
  * the chat and, with the answers, saves them (same as the web onboarding,
- * without health data) and builds the first week's menu in one go.
+ * without health data) and builds the first week's menu in one go. Since
+ * 2026-11-03 it asks how they cook (`cookingStyle`, like the web) instead of
+ * how often; `cookingFreq` is only for an answer that says how often and fits
+ * no way of cooking («poco»).
  */
 const completeOnboarding: SkillDefinition = {
   name: 'complete_onboarding',
   description:
-    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, cuanto cocinan (y los platos o la prioridad, solo si los ha dicho), marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y frecuencia.',
+    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa y como cocinan (y los platos o la prioridad, solo si los ha dicho), marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y como cocinan.',
   parameters: {
     type: 'object',
     properties: {
       adults: { type: 'integer', minimum: 1, maximum: 20, description: 'Adultos en casa (a partir de 11 años).' },
       kidsCount: { type: 'integer', minimum: 0, maximum: 20, description: 'Niños de 2 a 10 años; los menores de 2 no cuentan. 0 si no hay.' },
+      cookingStyle: {
+        type: 'string',
+        enum: [...COOKING_STYLES],
+        description: 'Como cocinan en casa: daily = cada dia (o casi); cook_and_reuse = unos dias y aprovechan para otros; batch = cocinan una o dos veces y dejan hecha la semana; improvise = improvisan, deciden cada dia. La que mas se parezca a lo que dice.',
+      },
       cookingFreq: {
         type: 'string',
         enum: [...COOKING_FREQS],
-        description: 'daily = cocinan casi a diario; 3_4_times = unos 3-4 dias por semana; rarely = poco.',
+        description: 'Solo si dice cuanto cocinan y eso no encaja en ningun cookingStyle (p. ej. "poco", "casi nunca"): rarely = poco; 3_4_times = unos 3-4 dias; daily = casi a diario. Si has puesto cookingStyle, omitelo.',
       },
       favoriteDishes: {
         type: 'array',
         items: { type: 'string' },
         maxItems: 30,
-        description: 'Solo si los ha dicho sin preguntarle (el alta ya no los pide, D-064): platos que les gustan, tal como los dice, todos los que diga (no hay tope de cinco). Si no, omitelo.',
+        description: 'Platos que les gustan, tal como los dice, todos los que diga (no hay tope de cinco): los que conteste si se los has preguntado o los que diga sin preguntarle. Si no ha dicho ninguno, omitelo.',
       },
       priority: {
         type: 'string',
         enum: [...PRIORITIES],
-        description: 'Lo que mas le importa (quick = rapido, varied = variado, healthy = sano, cheap = barato). Si no lo ha dicho, varied.',
+        description: 'Solo si dice lo que mas le importa (quick = rapido, varied = variado, healthy = sano, cheap = barato). No lo preguntes; si no lo ha dicho, omitelo.',
       },
     },
-    required: ['adults', 'kidsCount', 'cookingFreq'],
+    required: ['adults', 'kidsCount'],
   },
   async handler(
-    params: { adults?: number; kidsCount?: number; cookingFreq?: string; favoriteDishes?: string[]; priority?: string },
+    params: { adults?: number; kidsCount?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; priority?: string },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -1096,8 +1104,9 @@ const completeOnboarding: SkillDefinition = {
     }
     const adults = Number.isInteger(params?.adults) ? Number(params.adults) : NaN
     const kidsCount = Number.isInteger(params?.kidsCount) ? Number(params.kidsCount) : 0
-    const cookingFreq = (COOKING_FREQS as readonly string[]).includes(String(params?.cookingFreq)) ? (params.cookingFreq as (typeof COOKING_FREQS)[number]) : null
-    const priority = (PRIORITIES as readonly string[]).includes(String(params?.priority)) ? (params.priority as (typeof PRIORITIES)[number]) : 'varied'
+    const cookingStyle = isCookingStyle(params?.cookingStyle) ? params.cookingStyle : undefined
+    const cookingFreq = !cookingStyle && (COOKING_FREQS as readonly string[]).includes(String(params?.cookingFreq)) ? (params.cookingFreq as (typeof COOKING_FREQS)[number]) : undefined
+    const priority = (PRIORITIES as readonly string[]).includes(String(params?.priority)) ? (params.priority as (typeof PRIORITIES)[number]) : undefined
     const favoriteDishes = (Array.isArray(params?.favoriteDishes) ? params.favoriteDishes : [])
       .map((d) => String(d).trim())
       .filter(Boolean)
@@ -1105,13 +1114,13 @@ const completeOnboarding: SkillDefinition = {
     const missing = [
       !(adults >= 1 && adults <= 20) && 'cuantos adultos son',
       !(kidsCount >= 0 && kidsCount <= 20) && 'cuantos niños',
-      !cookingFreq && 'cuanto cocinan',
+      !cookingStyle && !cookingFreq && 'como cocinan',
     ].filter(Boolean)
     if (missing.length > 0) {
       return { data: null, summary: `No he guardado nada: falta ${missing.join(', ')}. Preguntaselo.` }
     }
     // No restrictions or consent here: health data never goes through WhatsApp.
-    await saveOnboarding(userId, { adults, kidsCount, cookingFreq: cookingFreq!, favoriteDishes, priority }, db)
+    await saveOnboarding(userId, { adults, kidsCount, cookingStyle, cookingFreq, favoriteDishes, priority }, db)
     // PRO-320: a pass of the ficha's refiner at the moment (in the background).
     void import('../profile/refiner.js').then((m) => m.refineHouseholdSoon(userId, 'onboarding')).catch(() => undefined)
     // Same first menu as the web sign-up (PRO-65, PRO-244): it starts today

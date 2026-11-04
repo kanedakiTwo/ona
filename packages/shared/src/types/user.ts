@@ -96,15 +96,21 @@ export const loginSchema = z.object({
 export const onboardingSchema = z.object({
   adults: z.number().int().min(1).max(20),
   kidsCount: z.number().int().min(0).max(20),
-  cookingFreq: z.enum(['daily', '3_4_times', 'rarely']),
+  /**
+   * Not asked since 2026-11-03: it comes from `cookingStyle`
+   * (`cookingFreqForStyle`). Still accepted from a cached older app.
+   */
+  cookingFreq: z.enum(['daily', '3_4_times', 'rarely']).optional(),
   restrictions: z.array(z.string()),
   /**
    * Legacy (PRO-146): «Afina tu menú» replaced the three favourite dishes on the
-   * web; Mimo's WhatsApp sign-up still asks. No cap of 5 any more (PRO-155): 30 is
-   * only a sanity bound.
+   * web; Mimo's WhatsApp sign-up asks for a few only when the cards got no
+   * «Me apetece» or «Me encanta». No cap of 5 any more (PRO-155): 30 is only a
+   * sanity bound.
    */
   favoriteDishes: z.array(z.string()).max(30).default([]),
-  priority: z.enum(['quick', 'varied', 'healthy', 'cheap']),
+  /** Not asked since 2026-11-03 (it barely changed the menu). Still accepted from a cached older app. */
+  priority: z.enum(['quick', 'varied', 'healthy', 'cheap']).optional(),
   /**
    * The separate, unticked health-data box (RGPD art. 9, PRO-21). Without it
    * `restrictions` is not stored.
@@ -120,7 +126,8 @@ export const onboardingSchema = z.object({
   cookingNote: z.string().trim().max(500).optional(),
   /**
    * PRO-217 «¿Cómo cocináis en casa?» — stored in the household's ficha
-   * (`cooking_style`). Optional: Mimo's WhatsApp sign-up doesn't ask it.
+   * (`cooking_style`) and, since 2026-11-03, where `cookingFreq` comes from.
+   * One of the two is required.
    */
   cookingStyle: z.enum(COOKING_STYLES).optional(),
   /**
@@ -128,6 +135,9 @@ export const onboardingSchema = z.object({
    * `prep_habits` (freezeHabit.ts). Optional: «No» or absent saves nothing.
    */
   freezesMeatFish: z.enum(FREEZE_ANSWERS).optional(),
+}).refine((b) => b.cookingStyle !== undefined || b.cookingFreq !== undefined, {
+  message: 'Falta cómo cocináis en casa.',
+  path: ['cookingStyle'],
 })
 
 /**
@@ -140,14 +150,16 @@ export const onboardingDraftSchema = z.object({
   step: z.number().int().min(1).max(6),
   adults: z.number().int().min(1).max(20),
   kidsCount: z.number().int().min(0).max(20),
-  cookingFreq: z.enum(['daily', '3_4_times', 'rarely']).nullable(),
+  /** No longer asked (2026-11-03); optional so drafts saved before still resume. */
+  cookingFreq: z.enum(['daily', '3_4_times', 'rarely']).nullable().optional(),
   /** PRO-217. Optional so a draft saved before the question still resumes. */
   cookingStyle: z.enum(COOKING_STYLES).nullable().optional(),
   /** PRO-221. Optional for the same reason. */
   freezesMeatFish: z.enum(FREEZE_ANSWERS).nullable().optional(),
   weekdayCooking: z.enum(WEEKDAY_COOKING_CHOICES).nullable(),
   cookingNote: z.string().max(500),
-  priority: z.enum(['quick', 'varied', 'healthy', 'cheap']).nullable(),
+  /** No longer asked (2026-11-03); optional for the same reason. */
+  priority: z.enum(['quick', 'varied', 'healthy', 'cheap']).nullable().optional(),
 }).strict()
 
 export type OnboardingDraft = z.infer<typeof onboardingDraftSchema>

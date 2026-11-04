@@ -68,6 +68,7 @@ export {
   COOKING_STYLE_PATH,
   COOKING_STYLE_LABELS,
   cookingStyleParts,
+  cookingFreqForStyle,
   isCookingStyle,
   cookingStyleSchema,
   cookingStyleFactValueSchema,

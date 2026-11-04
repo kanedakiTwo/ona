@@ -1,6 +1,6 @@
 import { and, eq, desc } from 'drizzle-orm'
 import { users, menus, userNutrientBalance } from '../../db/schema.js'
-import { COOKING_STYLE_LABELS, nutrientsToPercentages, TARGET_MACROS } from '@ona/shared'
+import { COOKING_STYLE_LABELS, nutrientsToPercentages, TARGET_MACROS, type CookingStyle } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 import { buildMemoryDigest } from '../userMemoryStore.js'
 import { buildFichaDigest, loadHouseholdFicha } from '../profile/reader.js'
@@ -57,6 +57,25 @@ export async function weekMenuContext(weekStart: string, rawDays: unknown, db: a
   return menuLines.length > 0 ? `Menu de esta semana (${weekStart}):\n${menuLines.join('\n')}` : null
 }
 
+const COOKING_FREQ_LABELS: Record<string, string> = {
+  daily: 'cocina a diario',
+  '3_4_times': 'cocina 3-4 veces/semana',
+  '3-4': 'cocina 3-4 veces/semana',
+  '1-2': 'cocina 1-2 veces/semana',
+  rarely: 'cocina raramente',
+}
+
+/**
+ * Pure: how the household cooks, for Mimo's «Hogar» line. The ficha's answer
+ * wins; the frequency only shows without it, because since 2026-11-03 the
+ * sign-up reads the frequency from that answer (batch cooking would also read
+ * «cocina raramente»).
+ */
+export function cookingContextLine(style: CookingStyle | null, cookingFreq: string | null | undefined): string | null {
+  if (style) return `como cocinan: «${COOKING_STYLE_LABELS[style]}»`
+  return cookingFreq ? COOKING_FREQ_LABELS[cookingFreq] ?? cookingFreq : null
+}
+
 export async function loadUserContext(userId: string, db: any): Promise<string> {
   const parts: string[] = []
 
@@ -99,12 +118,6 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     // The context never fails for this line.
   }
 
-  const cookingLabels: Record<string, string> = {
-    daily: 'cocina a diario',
-    '3-4': 'cocina 3-4 veces/semana',
-    '1-2': 'cocina 1-2 veces/semana',
-    rarely: 'cocina raramente',
-  }
   // Render the household as "<adults> adultos + <kidsCount> niños (2–10 años)"
   // so the assistant can reason about portions per person. Falls back to the
   // legacy enum label for users who haven't yet updated to the new schema.
@@ -128,15 +141,18 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   } else if (user.householdSize) {
     contextParts.push(legacyHouseholdLabels[user.householdSize] ?? user.householdSize)
   }
-  if (user.cookingFreq) contextParts.push(cookingLabels[user.cookingFreq] ?? user.cookingFreq)
   // PRO-217: how they cook, from the household's ficha (set_cooking_style changes it).
+  // With it, no frequency line: since 2026-11-03 the sign-up reads the frequency
+  // from this answer, so batch cooking would also read «cocina raramente».
+  let style: CookingStyle | null = null
   try {
     const householdId = (user as { primaryHouseholdId?: string | null }).primaryHouseholdId
-    const style = householdId ? await getCookingStyle(householdId, db) : null
-    if (style) contextParts.push(`como cocinan: «${COOKING_STYLE_LABELS[style]}»`)
+    style = householdId ? await getCookingStyle(householdId, db) : null
   } catch {
     // The context never fails for this line.
   }
+  const cooking = cookingContextLine(style, user.cookingFreq)
+  if (cooking) contextParts.push(cooking)
   if (contextParts.length > 0) {
     parts.push(`Hogar: ${contextParts.join(', ')}`)
   }

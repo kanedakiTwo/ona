@@ -2,7 +2,8 @@
  * PRO-178: a sign-up left halfway resumes where it was. Before, someone who
  * answered two questions, closed the browser and came back through «Iniciar
  * sesión» landed on /menu with «Tu semana está en blanco» (a menu without
- * their answers), and /onboarding started again at «1 de 5».
+ * their answers), and /onboarding started again at «1 de 5» (four questions
+ * since 2026-11-03).
  * Now every «Siguiente» saves the step and the answers on the account, and
  * /menu without the sign-up finished goes to /onboarding. At 390×844.
  */
@@ -29,38 +30,39 @@ async function logOutAndIn(page: Page, creds: { username: string; password: stri
   await submitLoginForm(page, creds)
 }
 
-test('two questions answered, log out, log in → /onboarding on step 3 with the answers', async ({ page }) => {
+test('two questions answered, log out, log in → /onboarding on the third with the answers', async ({ page }) => {
   test.setTimeout(90_000)
   const creds = await registerFreshUser(page)
   await page.goto('/onboarding')
   await startWebQuestions(page)
 
   const next = page.getByRole('button', { name: /siguiente/i })
-  // Step 1: three adults, one child.
+  // 1 de 4: three adults, one child.
   await page.getByRole('button', { name: 'Añadir adulto' }).click()
   await page.getByRole('button', { name: 'Añadir niño' }).click()
   await next.click()
-  // Step 2: every day. «Siguiente» saves step 3 with both answers.
-  await page.getByRole('button', { name: /todos los días/i }).click()
+  // 2 de 4 (PRO-217; since 2026-11-03 no «¿Cuántas veces…?» before it): batch
+  // cooking. «Siguiente» saves the next step with both answers.
+  await expect(page.getByText('Primeros pasos · 2 de 4')).toBeVisible()
+  await page.getByRole('button', { name: /^batch cooking/i }).click()
   const saved = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/onboarding-draft$/.test(r.url()))
   await next.click()
   expect((await saved).ok()).toBe(true)
-  await expect(page.getByText('Primeros pasos · 3 de 6')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 4')).toBeVisible()
 
   await logOutAndIn(page, creds)
 
-  // Not /menu with a blank week: back to the sign-up, on step 3.
+  // Not /menu with a blank week: back to the sign-up, on the weekday time question.
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 20_000 })
-  await expect(page.getByText('Primeros pasos · 3 de 6')).toBeVisible({ timeout: 15_000 })
-  // PRO-217: step 3 is «¿Cómo cocináis en casa?».
-  await expect(page.getByRole('heading', { name: /cómo cocináis en casa/i })).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 4')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('heading', { name: /entre semana, ¿cómo te gusta cocinar/i })).toBeVisible()
 
   // What they answered is still there.
   await page.getByRole('button', { name: 'Atrás' }).click()
-  await expect(page.getByText('Primeros pasos · 2 de 6')).toBeVisible()
-  await expect(page.getByRole('button', { name: /todos los días/i })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Primeros pasos · 2 de 4')).toBeVisible()
+  await expect(page.getByRole('button', { name: /^batch cooking/i })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: 'Atrás' }).click()
-  await expect(page.getByText('Primeros pasos · 1 de 6')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 1 de 4')).toBeVisible()
   const counters = page.locator('[aria-live="polite"]')
   await expect(counters.nth(0)).toHaveText('3')
   await expect(counters.nth(1)).toHaveText('1')
@@ -69,13 +71,9 @@ test('two questions answered, log out, log in → /onboarding on step 3 with the
   // Finishing the sign-up still lands on the menu, and /menu then stays.
   await next.click()
   await next.click()
-  await page.getByRole('button', { name: /^batch cooking/i }).click()
-  await next.click()
   await page.getByRole('button', { name: /^rápido/i }).click()
   await next.click()
-  await next.click() // no restrictions
-  await page.getByRole('button', { name: /salud/i }).click()
-  await page.getByRole('button', { name: /empezar/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click() // no restrictions
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
   await logOutAndIn(page, creds)
   await expect(page).toHaveURL(/\/menu/, { timeout: 20_000 })

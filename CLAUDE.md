@@ -89,6 +89,20 @@ When in doubt: open `specs/index.md`, grep for keywords related to your change, 
 
 A code-only PR that touches user-observable behavior with no corresponding test is a bug, equivalent to a missing spec update. The spec-gate above and the test-gate here are sibling checks — both run before a task is reported done.
 
+### Definition of done — growth gate
+
+**A user-visible change says which step of the growth line it moves, and how we will see it** (D-158, 2026-11-03). The growth line: signup → first menu → first strike (cooks a dish from the menu and sends or uses the shopping list within 7 days) → two weeks in a row with the menu ready before Monday (within 21 days) → pays. Until the launch (2026-12-15) this line is the product's first priority, right after diet safety.
+
+```
+[ ] Which step of the growth line does this change move or protect?
+[ ] Which `usage_events` event shows it? If none does, add the event and
+    its count in /admin/usage (specs/metrics.md) with a unit test, in the
+    same PR.
+[ ] Does it add a step, a card, a question or a wait between signup and
+    the first resolved week? Then say why in the PR: every extra step
+    costs households. One next step at a time on /menu.
+```
+
 ## What Mimoia is
 
 Mimoia is a **mobile-first meal planner** for Spanish speakers. It generates a weekly menu from a recipe catalog, produces a shopping list, manages pantry stock, and provides an AI advisor for nutrition questions. The app is currently mid-migration toward an **editorial visual style** (cream/warm-black palette, Fraunces serif, motion/react animations) — see [`specs/design-system.md`](./specs/design-system.md) for which pages are migrated and which still use the legacy "app mode" green palette.

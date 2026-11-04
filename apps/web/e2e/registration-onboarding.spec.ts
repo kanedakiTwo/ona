@@ -35,8 +35,6 @@ test('the onboarding answers produce a real first menu (not an empty week)', asy
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click() // 1 adult (default)
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
@@ -45,8 +43,6 @@ test('the onboarding answers produce a real first menu (not an empty week)', asy
   // Restrictions are health data: the separate consent box comes first (PRO-21).
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await page.getByRole('button', { name: /sin gluten/i }).click()
-  await next.click()
-  await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
 
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
@@ -67,14 +63,10 @@ test('reaching /menu before finishing the sign-up: after it, /menu stays (no bou
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click()
   await next.click()
-  await next.click()
-  await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
 
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })

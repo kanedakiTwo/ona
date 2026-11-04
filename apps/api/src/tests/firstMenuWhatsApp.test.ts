@@ -35,6 +35,7 @@ vi.mock('../services/menuFit.js', async (orig) => ({
 }))
 
 const { skills } = await import('../services/assistant/skills.js')
+const { saveOnboarding } = await import('../services/onboarding.js')
 const completeOnboarding = skills.find((s) => s.name === 'complete_onboarding')!
 
 function fakeDb() {
@@ -91,5 +92,37 @@ describe('complete_onboarding — first menu from today (PRO-244)', () => {
     // The reply (and the WhatsApp picture) is this week, from today.
     expect((r.data as any).weekStart).toBe('2026-10-12')
     expect(r.summary).toMatch(/semana que viene/)
+  })
+})
+
+describe('complete_onboarding — how they cook (2026-11-03)', () => {
+  beforeEach(() => {
+    generateCalls.length = 0
+    vi.mocked(saveOnboarding).mockClear()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-14T16:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('saves the web\'s «¿Cómo cocináis en casa?» answer, with no priority when none was said', async () => {
+    await completeOnboarding.handler({ adults: 2, kidsCount: 1, cookingStyle: 'batch' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[0][1]).toEqual({
+      adults: 2, kidsCount: 1, cookingStyle: 'batch', cookingFreq: undefined, favoriteDishes: [], priority: undefined,
+    })
+  })
+
+  it('a «poco» that fits no way of cooking goes as how often; with a style, the style wins', async () => {
+    await completeOnboarding.handler({ adults: 1, kidsCount: 0, cookingFreq: 'rarely' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[0][1]).toMatchObject({ cookingStyle: undefined, cookingFreq: 'rarely' })
+    await completeOnboarding.handler({ adults: 1, kidsCount: 0, cookingStyle: 'daily', cookingFreq: 'rarely' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[1][1]).toMatchObject({ cookingStyle: 'daily', cookingFreq: undefined })
+  })
+
+  it('the dishes asked when «Afina tu menú» got no «Me apetece» go in', async () => {
+    await completeOnboarding.handler(
+      { adults: 2, kidsCount: 0, cookingStyle: 'improvise', favoriteDishes: [' lentejas ', 'tortilla de patatas', ''] },
+      { userId: 'u1', db: fakeDb() } as any,
+    )
+    expect(vi.mocked(saveOnboarding).mock.calls[0][1].favoriteDishes).toEqual(['lentejas', 'tortilla de patatas'])
   })
 })

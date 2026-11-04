@@ -12,15 +12,20 @@
  * draggable WeekGridView. Desktop (lg+) renders MenuDesktop: hero row +
  * "La semana" columns with drag & drop.
  */
-import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
-import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
+import { NoHealthDataNotice, useNoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
+import { FirstStepsGuide, useFirstStepsPending } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
-import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { WhatsAppNudgeCard, useWhatsAppNudge } from "@/components/menu/WhatsAppNudgeCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
-import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
-import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"
+import { TasteIntroScreen, TasteMenuCard, useTasteMenuCard } from "@/components/taste/TasteOffers"
+import { AfinaNoticeCard, useAfinaNotice } from "@/components/taste/AfinaNoticeCard"
+import { LastNightCard, SendListCard } from "@/components/menu/NextStepCards"
 import { useTasteStatus } from "@/hooks/useTaste"
+import { useBilling } from "@/hooks/useBilling"
+import { useRecentCookLogs } from "@/hooks/useCookLogs"
+import { accountNoticeTier, pickNextStepCard, type NextStepCard } from "@/lib/nextStep"
+import { WEEK_STEPS_EVENT, lastNightAnswered, lastNightDish, listUsed, localIsoDate, weekHasCooked } from "@/lib/weekSteps"
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
@@ -458,6 +463,22 @@ export default function MenuPage() {
     [menu],
   )
 
+  // PRO-387 (D-158): one next step above the menu at a time (lib/nextStep.ts).
+  const noHealthData = useNoHealthDataNotice()
+  const afinaNotice = useAfinaNotice()
+  const billing = useBilling()
+  const firstStepsPending = useFirstStepsPending(user?.id)
+  const tasteCard = useTasteMenuCard()
+  const whatsappNudge = useWhatsAppNudge()
+  const lastCook = useRecentCookLogs(1)
+  // The list / yesterday's dinner are put away in localStorage: re-read on every mark.
+  const [, setWeekStepsTick] = useState(0)
+  useEffect(() => {
+    const onMark = () => setWeekStepsTick((n) => n + 1)
+    window.addEventListener(WEEK_STEPS_EVENT, onMark)
+    return () => window.removeEventListener(WEEK_STEPS_EVENT, onMark)
+  }, [])
+
   if (authLoading || !user || onboardingGate !== "ok") {
     // Not `return null`: a blank cream screen while auth re-hydrates read as
     // a broken page. Quiet, in place — no full-screen splash.
@@ -479,9 +500,46 @@ export default function MenuPage() {
   // «Primeros pasos» (PRO-07): once the week is on screen, so step 1 has a dish to light up.
   // The «Novedad» screen (PRO-146) covers the menu: the first-steps guide waits until it's answered.
   const tasteIntroOpen = Boolean(tasteStatus.data?.showIntro)
-  const firstSteps = (
-    <FirstStepsGuide userId={user.id} ready={Boolean(menu) && !menuLoading && !isPastWeek && !tasteStatus.isPending && !tasteIntroOpen} />
-  )
+  const firstStepsReady = Boolean(menu) && !menuLoading && !isPastWeek && !tasteStatus.isPending && !tasteIntroOpen
+
+  // PRO-387: which one next step shows (specs/menus.md → «Un solo paso siguiente»).
+  const accountTier = accountNoticeTier(billing.data)
+  const todayIso = localIsoDate(new Date())
+  const yesterday = menu && isCurrentWeek ? lastNightDish(days, todayIndex, skippedDays) : null
+  const nextStep: NextStepCard | null = pickNextStepCard({
+    noHealthData: noHealthData.show,
+    afinaNotice,
+    accountPaused: accountTier === "paused",
+    firstSteps: firstStepsReady && firstStepsPending.data === true,
+    billing: accountTier === "billing",
+    sendList: Boolean(menu) && isCurrentWeek && weekHasDishes(days) && !listUsed(weekStart),
+    lastNight:
+      Boolean(yesterday) &&
+      lastCook.isSuccess &&
+      !weekHasCooked(days, weekStart, lastCook.data?.[0]?.cookedAt) &&
+      !lastNightAnswered(todayIso),
+    tasteCard,
+    whatsappNudge,
+  })
+  const firstSteps = <FirstStepsGuide userId={user.id} ready={firstStepsReady && nextStep === "first_steps"} />
+  const nextStepBody =
+    nextStep === "no_health_data" ? (
+      <NoHealthDataNotice onDismiss={noHealthData.dismiss} />
+    ) : nextStep === "afina_notice" ? (
+      <AfinaNoticeCard />
+    ) : nextStep === "account_paused" || nextStep === "billing" ? (
+      <AccountAccessNotice />
+    ) : nextStep === "send_list" ? (
+      <SendListCard weekStart={weekStart} />
+    ) : nextStep === "last_night" && menu && yesterday ? (
+      <LastNightCard menuId={menu.id} dish={yesterday} today={todayIso} />
+    ) : nextStep === "taste_card" ? (
+      <TasteMenuCard />
+    ) : nextStep === "whatsapp_nudge" ? (
+      <WhatsAppNudgeCard />
+    ) : null
+  // `data-next-step`: the price survey and the install prompt wait while it is on screen.
+  const nextStepCard = nextStepBody && <div data-next-step={nextStep}>{nextStepBody}</div>
 
   const weekSheet = (
     <>
@@ -727,11 +785,7 @@ export default function MenuPage() {
             header={
               <>
                 {header}
-                <AccountAccessNotice />
-                <NoHealthDataNotice />
-                <AfinaNoticeCard />
-                <TasteMenuCard />
-                <WhatsAppNudgeCard />
+                {nextStepCard}
                 {favoritesNotice}
                 {statusCard}
               </>
@@ -767,11 +821,7 @@ export default function MenuPage() {
         ) : (
           <div className="mx-auto flex max-w-[var(--page-max)] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
-            <AccountAccessNotice />
-            <NoHealthDataNotice />
-            <AfinaNoticeCard />
-            <TasteMenuCard />
-            <WhatsAppNudgeCard />
+            {nextStepCard}
             {statusCard}
           </div>
         )}
@@ -799,12 +849,7 @@ export default function MenuPage() {
         {moreButton}
       </header>
 
-      <AccountAccessNotice />
-
-      <NoHealthDataNotice />
-      <AfinaNoticeCard />
-      <TasteMenuCard />
-      <WhatsAppNudgeCard />
+      {nextStepCard}
 
       {!showWeekGrid && (
         <WeekStrip

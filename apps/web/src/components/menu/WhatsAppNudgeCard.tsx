@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import Link from "next/link"
+import { useQueryClient } from "@tanstack/react-query"
 import { MessageCircle } from "lucide-react"
 import { api } from "@/lib/api"
-import { useWhatsAppStatus } from "@/hooks/useWhatsApp"
+import { useWhatsAppStatus, type WhatsAppStatus } from "@/hooks/useWhatsApp"
 
 /**
  * The one WhatsApp reminder (PRO-107, specs/whatsapp.md): whoever didn't
@@ -32,10 +33,17 @@ function markStamped() {
   } catch {}
 }
 
+/** PRO-387: whether the card wants to show (/menu picks one card, lib/nextStep.ts). */
+export function useWhatsAppNudge(): boolean {
+  return Boolean(useWhatsAppStatus().data?.nudge)
+}
+
 export function WhatsAppNudgeCard() {
   const status = useWhatsAppStatus()
-  const [hidden, setHidden] = useState(false)
-  const show = Boolean(status.data?.nudge) && !hidden
+  const qc = useQueryClient()
+  const show = Boolean(status.data?.nudge)
+  // «Ahora no» clears it from the cached status, so the next card can take its place.
+  const hide = () => qc.setQueryData<WhatsAppStatus>(["whatsapp", "status"], (old) => (old ? { ...old, nudge: false } : old))
 
   useEffect(() => {
     if (!show || alreadyStamped()) return
@@ -61,7 +69,7 @@ export function WhatsAppNudgeCard() {
         >
           <MessageCircle size={16} aria-hidden="true" /> Conectar WhatsApp
         </Link>
-        <button type="button" onClick={() => setHidden(true)} className="text-[14px] font-semibold text-ink-muted">
+        <button type="button" onClick={hide} className="text-[14px] font-semibold text-ink-muted">
           Ahora no
         </button>
       </div>

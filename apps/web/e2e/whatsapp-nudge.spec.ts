@@ -7,6 +7,7 @@
  */
 import { test, expect, type Page, type Route } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayFirstWeekSteps } from './_nextStep'
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
@@ -32,6 +33,7 @@ test('not connected: the card shows once, is stamped as seen, and «Ahora no» r
   await registerFreshUser(page)
   await completeOnboarding(page)
   const seen = await mockStatus(page, { linked: false, nudge: true })
+  await putAwayFirstWeekSteps(page)
   await page.goto('/menu')
 
   const card = page.getByTestId('whatsapp-nudge')

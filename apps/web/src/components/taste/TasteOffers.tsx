@@ -57,6 +57,11 @@ export function TasteIntroScreen() {
   )
 }
 
+/** PRO-387: whether the card wants to show (/menu picks one card, lib/nextStep.ts). */
+export function useTasteMenuCard(): boolean {
+  return Boolean(useTasteStatus().data?.showCard)
+}
+
 export function TasteMenuCard() {
   const status = useTasteStatus()
   const offer = useTasteOffer()

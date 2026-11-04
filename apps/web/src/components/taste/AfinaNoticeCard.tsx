@@ -13,14 +13,23 @@ import { api } from "@/lib/api"
 
 type Notice = { show: false } | { show: true; text: string }
 
-export function AfinaNoticeCard() {
-  const qc = useQueryClient()
-  const notice = useQuery<Notice>({
+function useAfinaNoticeQuery() {
+  return useQuery<Notice>({
     queryKey: ["notices", "afina"],
     queryFn: () => api.get<Notice>("/notices/afina"),
     staleTime: 5 * 60_000,
     retry: false,
   })
+}
+
+/** PRO-387: whether the notice wants to show (/menu picks one card, lib/nextStep.ts). */
+export function useAfinaNotice(): boolean {
+  return Boolean(useAfinaNoticeQuery().data?.show)
+}
+
+export function AfinaNoticeCard() {
+  const qc = useQueryClient()
+  const notice = useAfinaNoticeQuery()
   const dismiss = useMutation({
     mutationFn: () => api.post("/notices/afina/dismiss", {}),
     onSuccess: () => qc.setQueryData<Notice>(["notices", "afina"], { show: false }),

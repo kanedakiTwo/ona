@@ -2,17 +2,19 @@
 
 /**
  * «Primeros pasos» (PRO-07): the first time a new account lands on /menu,
- * three steps over the real screen (two for who talks to Mimo by WhatsApp, PRO-161) — the «···» button of the day's dish
- * (tapping the dish opens the recipe; changing it goes through «···»), the
- * shopping tab and Mimo's button — each lit up with the rest dimmed. Skippable at any step;
- * finishing or skipping calls POST /user/:id/first-steps, so it never comes
- * back on any device. Only accounts created after the feature see it
- * (`users.first_steps_pending`, set by POST /register; see specs/auth.md).
+ * the three steps of the way to the first success (PRO-387, D-158) over the
+ * real screen, each lit up with the rest dimmed: «Tu menú ✓» (the «···» of
+ * the day's dish), «Manda la lista» (the shopping tab) and «Cocina el primer
+ * plato» («Empezar a cocinar»). The same for everyone, WhatsApp or not.
+ * Skippable at any step; finishing or skipping calls POST /user/:id/first-steps,
+ * so it never comes back on any device. Only accounts created after the
+ * feature see it (`users.first_steps_pending`, set by POST /register; see
+ * specs/auth.md). /menu opens it only when it is the one next step
+ * (lib/nextStep.ts): `useFirstStepsPending` tells the page it wants to show.
  */
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { useWhatsAppStatus } from "@/hooks/useWhatsApp"
 
 /** Each step lights up the first selector that is on screen (fallbacks after the first). */
 export const FIRST_STEPS = [
@@ -20,20 +22,34 @@ export const FIRST_STEPS = [
     // PRO-68: the «···» of the day's dish; with the day still empty, the
     // first «···» on screen (an empty slot's); read-only, the whole dish.
     targets: ['[data-first-steps="dish"] [data-meal-options]', "[data-meal-options]", '[data-first-steps="dish"]'],
-    text: "Toca «···» en un plato para cambiarlo",
+    title: "Tu menú ✓",
+    text: "Tu semana ya está hecha. Toca «···» en un plato para cambiarlo.",
   },
-  { targets: ['[data-first-steps="shopping"]'], text: "Aquí tienes la lista de la compra: se hace sola" },
-  { targets: ['[data-testid="mimo-button"]'], text: "Este es Mimo: pídele lo que quieras" },
+  {
+    targets: ['[data-first-steps="shopping"]'],
+    title: "Manda la lista",
+    text: "La lista de la compra sale sola del menú: mándasela a quien hace la compra.",
+  },
+  {
+    // The day's «Empezar a cocinar»; without one (an empty or eaten day), the dish.
+    targets: ['[data-first-steps="cook"]', '[data-first-steps="dish"]'],
+    title: "Cocina el primer plato",
+    text: "Toca «Empezar a cocinar» y te guío paso a paso.",
+  },
 ] as const
 
-/**
- * PRO-161: who talks to Mimo by WhatsApp (linked) gets the first two steps,
- * without the one about Mimo's button in the web.
- */
-const FIRST_STEPS_WHATSAPP = FIRST_STEPS.slice(0, 2)
-
-export function firstStepsFor(whatsappLinked: boolean): readonly (typeof FIRST_STEPS)[number][] {
-  return whatsappLinked ? FIRST_STEPS_WHATSAPP : FIRST_STEPS
+/** Whether the account still has the guide to see (its own key, always fresh). */
+export function useFirstStepsPending(userId: string | undefined) {
+  // A cached profile from before the guide was dismissed (on another page
+  // or device) must not bring it back.
+  return useQuery({
+    queryKey: ["first-steps", userId],
+    queryFn: async () => Boolean((await api.get<{ firstStepsPending?: boolean }>(`/user/${userId}`)).firstStepsPending),
+    enabled: Boolean(userId),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+  })
 }
 
 type Rect = { top: number; left: number; width: number; height: number }
@@ -51,21 +67,12 @@ function findTarget(selectors: readonly string[]): HTMLElement | null {
 
 export function FirstStepsGuide({ userId, ready }: { userId: string; ready: boolean }) {
   const queryClient = useQueryClient()
-  // Its own key and always fresh: a cached profile from before the guide was
-  // dismissed (on another page or device) must not bring it back.
-  const { data: pending } = useQuery({
-    queryKey: ["first-steps", userId],
-    queryFn: async () => Boolean((await api.get<{ firstStepsPending?: boolean }>(`/user/${userId}`)).firstStepsPending),
-    staleTime: 0,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: false,
-  })
+  const { data: pending } = useFirstStepsPending(userId)
   const [step, setStep] = useState(0)
   const [closed, setClosed] = useState(false)
   const [rect, setRect] = useState<Rect | null>(null)
-  const whatsapp = useWhatsAppStatus()
-  const steps = firstStepsFor(Boolean(whatsapp.data?.linked))
-  const open = ready && pending === true && !closed && !whatsapp.isPending
+  const steps = FIRST_STEPS
+  const open = ready && pending === true && !closed
 
   // `outcome` only feeds the product analytics (first_steps_completed / _skipped).
   const finish = useCallback((outcome: "completed" | "skipped") => {
@@ -151,8 +158,9 @@ export function FirstStepsGuide({ userId, ready }: { userId: string; ready: bool
           Primeros pasos · {step + 1} de {steps.length}
         </p>
         <h2 id="first-steps-title" className="mt-1.5 font-serif-text text-[22px] font-[650] leading-[1.2] text-ink">
-          {steps[step].text}
+          {steps[step].title}
         </h2>
+        <p className="mt-1 text-[14px] leading-relaxed text-ink-mid">{steps[step].text}</p>
         <div className="mt-4 flex items-center justify-between gap-3">
           <button
             type="button"

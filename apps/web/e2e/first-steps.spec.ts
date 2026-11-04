@@ -1,7 +1,7 @@
 /**
  * «Primeros pasos» (PRO-07): the first time a new account lands on /menu,
- * three steps over the real screen (the «···» of the day's dish, the shopping
- * tab, Mimo's button).
+ * the three steps of the way (PRO-387): «Tu menú ✓» (the «···» of the day's
+ * dish), «Manda la lista» (the shopping tab), «Cocina el primer plato».
  * Skippable; saved on the account (not the browser), so after skipping and
  * reloading it doesn't come back.
  * Accounts that predate it never see it: the column defaults to "seen", which
@@ -31,7 +31,10 @@ test('a new account sees the three steps on /menu, skips them, reloads and they 
   await expect(guide).toBeVisible({ timeout: 20_000 })
   const dialog = guide.getByRole('dialog')
   await expect(dialog).toContainText('1 de 3')
-  await expect(dialog.getByRole('heading')).toHaveText('Toca «···» en un plato para cambiarlo')
+  await expect(dialog.getByRole('heading')).toHaveText('Tu menú ✓')
+  await expect(dialog).toContainText('Toca «···» en un plato para cambiarlo')
+  // PRO-387: while the guide is open, no other next step shows above the menu.
+  await expect(page.locator('[data-next-step]')).toHaveCount(0)
 
   // PRO-68: step 1 lights up a «···» button — the day's dish's, or the first
   // empty slot's while the week is still blank — never the whole dish
@@ -63,11 +66,11 @@ test('a new account sees the three steps on /menu, skips them, reloads and they 
 
   await dialog.getByRole('button', { name: 'Siguiente' }).click()
   await expect(dialog).toContainText('2 de 3')
-  await expect(dialog.getByRole('heading')).toHaveText('Aquí tienes la lista de la compra: se hace sola')
+  await expect(dialog.getByRole('heading')).toHaveText('Manda la lista')
 
   await dialog.getByRole('button', { name: 'Siguiente' }).click()
   await expect(dialog).toContainText('3 de 3')
-  await expect(dialog.getByRole('heading')).toHaveText('Este es Mimo: pídele lo que quieras')
+  await expect(dialog.getByRole('heading')).toHaveText('Cocina el primer plato')
   await expect(dialog.getByRole('button', { name: 'Entendido' })).toBeVisible()
 
   // Skip → gone, saved on the account. The request says it was skipped (not

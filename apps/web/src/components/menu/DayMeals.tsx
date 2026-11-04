@@ -187,6 +187,7 @@ export function MealHero({
       ) : (
       <Link
         href={cookHref(first.recipeId, servingsOf(ctx))}
+        data-first-steps="cook"
         className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full bg-ink px-[22px] text-[15px] font-semibold text-cream transition-colors hover:bg-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-none"
       >
         <Play size={15} fill="currentColor" strokeWidth={0} />

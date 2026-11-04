@@ -259,6 +259,21 @@ A saved menu holds recipe ids; the recipe behind one can change or be deleted la
 - **When**: right after `PUT /recipes/:id` and `DELETE /recipes/:id` (that recipe only, without making the response wait), and a full pass a minute after boot and every hour (`startMenuRecipeRecheck`), which catches the catalogue fixes of a deploy (`catalogRecipeFixes.ts`) and scripts. A menu changed meanwhile is not overwritten (the next pass retries).
 - Tests: `menuRecipeRecheck.test.ts` (fajitas edited to carry gluten in a gluten-free household, the deleted crema, hand picks, tápers, notes, lentils whose step adds chorizo in a vegetarian household), `menuRecipeRecheck.smoke.ts` (real Postgres), `dietCatalog.test.ts` (the fajitas of 2026-10-22).
 
+## Un solo paso siguiente (PRO-387)
+
+D-158, «camino recto»: above the menu `/menu` shows **one** card at a time (mobile and desktop), never a stack. Before, the guide, up to five cards, the price survey and the install prompt could pile up. `pickNextStepCard` (`apps/web/src/lib/nextStep.ts`, pure) picks the first that wants to show, in this order:
+1. **Safety**: no health data (`NoHealthDataNotice`), the «Afina tu menú» allergy notice (`AfinaNoticeCard`, [Taste](./taste.md); in this tier because it is about allergies, D-070) and the paused account (`AccountAccessNotice`).
+2. **«Primeros pasos»** ([Auth](./auth.md)): the guide covers the screen, so it opens only when it is the one picked; nothing else shows while it is open.
+3. **Billing** (`AccountAccessNotice`): the last days of the trial, the founder offer, the first-charge notice, a pending payment (`accountNoticeTier`: any access state it doesn't know counts as billing, so a new one never hides behind later steps).
+4. **«Manda la lista a quien hace la compra»** (`SendListCard`, current week with dishes): «Ver y mandar la lista» → `/shopping`, «Ahora no». Goes away for the week when tapped, put off or when an item of the list is ticked (`markListUsed`, `apps/web/src/lib/weekSteps.ts`; localStorage `ona.list.used.<lunes>`, on this device). The list's own «Mandar» (PRO-380) is meant to mark it too.
+5. **«¿Qué tal la cena de ayer?»** (`LastNightCard`, current week, from Tuesday): yesterday's dinner (or lunch, without dinner) when it is a catalogue recipe not eaten, and nothing of the week is marked cooked yet (no eaten meal, no cook log since Monday). «La hicimos» = «Marcar como cocinada» (the meal eaten + `POST /cook-logs`); «No la hicimos» puts it off until tomorrow (`ona.lastNight.answered.<día>`).
+6. **The rest, in their old order**: «Afina tu menú» (`TasteMenuCard`), WhatsApp (`WhatsAppNudgeCard`).
+7. **Sheets**: the price survey (`PriceSurveySheet`) and the install prompt (`InstallSheet`) open only when there is no other: they wait while a modal **or a next-step card** (`[data-next-step]`) is on screen.
+
+Each card says whether it wants to show through a hook (`useNoHealthDataNotice`, `useAfinaNotice`, `useFirstStepsPending`, `useTasteMenuCard`, `useWhatsAppNudge`, `useBilling`); the page renders only the one picked, inside `<div data-next-step="<card>">`. What a card stamps on show (the health notice per device, the WhatsApp reminder on the account) is stamped only when it is really on screen. Not part of it: the blank week's card, «Menú del mes», the «Novedad» intro of «Afina» (full screen, it goes before everything) and the lines under the week.
+
+Tests: `apps/api/src/tests/nextStepCard.test.ts` (each tier against the next, the sheets last, `accountNoticeTier`, yesterday's dish, «something cooked»), `e2e/menu-next-step.spec.ts` (mobile: a new account sees only «Manda la lista»; «Ahora no» puts it away for the week), `e2e/first-steps.spec.ts` (no card while the guide is open).
+
 ## Constraints
 
 - All menu routes require auth (including `POST /menu/generate`, which also
@@ -307,6 +322,7 @@ A saved menu holds recipe ids; the recipe behind one can change or be deleted la
 - [apps/api/src/services/calorieCalculator.ts](../apps/api/src/services/calorieCalculator.ts) · [nutrientCalculator.ts](../apps/api/src/services/nutrientCalculator.ts)
 - [apps/api/src/services/catalogRecipeAudit.ts](../apps/api/src/services/catalogRecipeAudit.ts) — catalogue quality gate (PRO-73) · report [scripts/auditCatalogRecipes.ts](../apps/api/scripts/auditCatalogRecipes.ts)
 - [apps/web/src/app/menu/page.tsx](../apps/web/src/app/menu/page.tsx)
+- [apps/web/src/lib/nextStep.ts](../apps/web/src/lib/nextStep.ts) — `pickNextStepCard`, one next step at a time (PRO-387) · [apps/web/src/lib/weekSteps.ts](../apps/web/src/lib/weekSteps.ts) · [apps/web/src/components/menu/NextStepCards.tsx](../apps/web/src/components/menu/NextStepCards.tsx) — «Manda la lista», «¿Qué tal la cena de ayer?»
 - [apps/web/src/components/menu/WeekStrip.tsx](../apps/web/src/components/menu/WeekStrip.tsx) — day strip
 - [apps/web/src/components/menu/DayMeals.tsx](../apps/web/src/components/menu/DayMeals.tsx) — hero, rows, empty card, day footer · [MealOptions.tsx](../apps/web/src/components/menu/MealOptions.tsx) — meal sheet · [MenuSheet.tsx](../apps/web/src/components/menu/MenuSheet.tsx) — sheet, `SheetAction`, `ConfirmSheet` · [WeekActionsSheet.tsx](../apps/web/src/components/menu/WeekActionsSheet.tsx) · [MenuDesktop.tsx](../apps/web/src/components/menu/MenuDesktop.tsx) · [WeekGridView.tsx](../apps/web/src/components/menu/WeekGridView.tsx) — mobile Vista semana
 - [apps/web/src/components/menu/FreezerDishSheets.tsx](../apps/web/src/components/menu/FreezerDishSheets.tsx) — «Añadir comida → Del congelador / Táper de la nevera» (PRO-82, PRO-240)

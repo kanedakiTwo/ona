@@ -4,18 +4,19 @@
  * «* Obligatorio». Fails as soon as a field of either screen loses its mark.
  */
 import { test, expect } from '@playwright/test'
-import { completeOnboarding, registerFreshUser, useE2ECampaign } from './_helpers'
+import { completeOnboarding, registerFreshUser } from './_helpers'
 import { unmarkedFields } from './_fieldMarks'
 
 test('/register: every field is marked', async ({ page }) => {
-  await useE2ECampaign(page)
   await page.goto('/register')
   const form = page.locator('form')
   await expect(form.getByRole('checkbox', { name: 'Tengo 14 años o más' })).toBeVisible()
 
   expect(await unmarkedFields(form)).toEqual([])
-  // The asterisk is aria-hidden: the accessible names stay as they were.
+  // The asterisk is CSS with empty alt text: labels and names stay as they were.
   await expect(form.getByLabel('Email', { exact: true })).toHaveAttribute('required', '')
+  const star = await form.locator('label [data-field-mark="required"]').first().evaluate((el) => getComputedStyle(el, '::after').content)
+  expect(star).toContain('*')
   await expect(form.locator('[data-field-mark="required"]')).toHaveCount(4)
   await expect(form.locator('[data-field-mark="optional"]')).toHaveCount(1)
   await expect(form.locator('[data-required-note]')).toHaveText('* Obligatorio')

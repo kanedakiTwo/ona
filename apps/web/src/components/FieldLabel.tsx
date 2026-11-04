@@ -14,7 +14,10 @@ export type FieldMarkProps =
   | { required: true; optional?: never; plural?: never }
   | { optional: true; plural?: boolean; required?: never }
 
-/** The visible mark text, with its leading space: « *», « (opcional)», « (opcionales)». */
+/**
+ * The visible mark, with its leading space: « *», « (opcional)», « (opcionales)».
+ * The asterisk itself is CSS (see `FieldMark`); this is its text for anything else.
+ */
 export function fieldMarkText(mark: FieldMarkProps): string {
   if (mark.required) return " *"
   return mark.plural ? " (opcionales)" : " (opcional)"
@@ -23,11 +26,9 @@ export function fieldMarkText(mark: FieldMarkProps): string {
 /** The mark alone, for labels that are not a `FieldLabel` (checkbox rows, card titles). */
 export function FieldMark(props: FieldMarkProps) {
   if (props.required) {
-    return (
-      <span data-field-mark="required" aria-hidden="true" className="font-semibold text-terracotta-deep">
-        {fieldMarkText(props)}
-      </span>
-    )
+    // The « *» is drawn by `.field-mark-required::after` (globals.css): kept
+    // out of the label's text so the field's name stays «Email», not «Email *».
+    return <span data-field-mark="required" aria-hidden="true" className="field-mark-required font-semibold text-terracotta-deep" />
   }
   return (
     <span data-field-mark="optional" className="font-normal normal-case tracking-normal text-ink-muted">

@@ -3,6 +3,7 @@
  * optional « (opcional)» / « (opcionales)», and the «* Obligatorio» foot line.
  * The screens themselves are guarded by apps/web/e2e/form-field-marks.spec.ts.
  */
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 import {
@@ -29,10 +30,19 @@ describe('fieldMarkText', () => {
 })
 
 describe('FieldLabel', () => {
-  it('a required label ends in a hidden terracotta asterisk', () => {
+  it('a required label ends in a hidden terracotta asterisk, drawn by CSS', () => {
     const html = renderToStaticMarkup(h(FieldLabel, { htmlFor: 'name', required: true, children: 'Nombre' }))
     expect(html).toContain('<label for="name"')
-    expect(html).toMatch(/Nombre<span data-field-mark="required" aria-hidden="true" class="[^"]*text-terracotta-deep[^"]*"> \*<\/span><\/label>/)
+    expect(html).toMatch(
+      /Nombre<span data-field-mark="required" aria-hidden="true" class="field-mark-required [^"]*text-terracotta-deep[^"]*"><\/span><\/label>/,
+    )
+    // The label's text stays «Nombre» (getByLabel exact, screen readers).
+    expect(html.replace(/<[^>]+>/g, '')).toBe('Nombre')
+  })
+
+  it('globals.css draws the asterisk with empty alt text', () => {
+    const css = readFileSync(new URL('../../../web/src/app/globals.css', import.meta.url), 'utf8')
+    expect(css).toMatch(/\.field-mark-required::after\s*\{[^}]*content:\s*" \*"\s*\/\s*"";/)
   })
 
   it('an optional label ends in «(opcional)», read aloud', () => {

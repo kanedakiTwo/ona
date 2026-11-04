@@ -6,5 +6,10 @@
 export function isEmailAllowed(email: string | null | undefined, allowed: readonly string[]): boolean {
   if (!email || allowed.length === 0) return false
   const e = email.trim().toLowerCase()
-  return allowed.some((a) => (a.startsWith('@') ? e.endsWith(a) : e === a))
+  if (!e) return false
+  return allowed.some((raw) => {
+    const a = raw.trim().toLowerCase()
+    if (!a) return false
+    return a.startsWith('@') ? e.endsWith(a) : e === a
+  })
 }

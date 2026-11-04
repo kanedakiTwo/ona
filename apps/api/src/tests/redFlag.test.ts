@@ -61,11 +61,17 @@ describe('RED_TIENDAS_EMAILS', () => {
     expect(isRedAllowed('ana@test.local', [])).toBe(false)
     expect(isRedAllowed('Ana@Red.Test.Local', ['@red.test.local'])).toBe(true)
     expect(isRedAllowed('ana@test.local', ['@red.test.local'])).toBe(false)
-    expect(isRedAllowed('miguel@x.es', ['miguel@x.es'])).toBe(true)
+    expect(isRedAllowed('pruebas@red.test.local', ['pruebas@red.test.local'])).toBe(true)
     expect(isRedAllowed(null, ['@red.test.local'])).toBe(false)
   })
   it('the extension’s switch keeps the same rule', () => {
     expect(isBasketExtensionAllowed('a@test.local', ['@test.local'])).toBe(true)
     expect(isEmailAllowed('a@test.local', [])).toBe(false)
+  })
+  it('normalises the list entries too (the helper is shared)', () => {
+    expect(isEmailAllowed('pruebas@red.test.local', [' @RED.Test.Local '])).toBe(true)
+    expect(isEmailAllowed('pruebas@red.test.local', ['PRUEBAS@red.test.local'])).toBe(true)
+    expect(isEmailAllowed('pruebas@red.test.local', ['', '  '])).toBe(false)
+    expect(isEmailAllowed('   ', [''])).toBe(false)
   })
 })

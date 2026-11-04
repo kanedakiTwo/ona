@@ -20,6 +20,10 @@ describe('lineMarginPct', () => {
     expect(lineMarginPct(line({ estimateSource: 'referencia' }), S)).toBe(30)
     expect(lineMarginPct(line({ estimateSource: 'referencia', volatile: true }), S)).toBe(40)
   })
+  it('an unknown price source gets the wider reference margin', () => {
+    expect(lineMarginPct(line({ estimateSource: null }), S)).toBe(30)
+    expect(lineMarginPct(line({ estimateSource: null, volatile: true }), S)).toBe(40)
+  })
 })
 
 describe('productsEstimate / productsCeiling', () => {
@@ -45,8 +49,9 @@ describe('productsEstimate / productsCeiling', () => {
 })
 
 describe('householdMax / shopCeiling / householdAmount', () => {
-  it('design example: ceiling 20,70 → 19,67 with the discount → max 20 €; the shop may reach 21,05 €', () => {
-    expect(householdAmount(20.7, S)).toBe(19.67)
+  it('design example: ceiling 20,70 → 19,66 with the discount → max 20 €; the shop may reach 21,05 €', () => {
+    // Design §2: the discount is rounded to the cent on its own (1,035 → 1,04), then subtracted: 20,70 − 1,04.
+    expect(householdAmount(20.7, S)).toBe(19.66)
     expect(householdMax(20.7, null, S)).toBe(20)
     expect(shopCeiling(20, null, S)).toBe(21.05)
   })
@@ -63,9 +68,29 @@ describe('householdMax / shopCeiling / householdAmount', () => {
       expect(householdAmount(top, S) + 2).toBeLessThanOrEqual(max)
     }
   })
+  it('nor does the charge: max 3…200 € (to the cent), fee 0 / 2 / 3,50', () => {
+    const over: string[] = []
+    for (let maxCents = 300; maxCents <= 20_000; maxCents++) {
+      const max = maxCents / 100
+      for (const fee of [null, 2, 3.5]) {
+        const paid = splitCharge(shopCeiling(max, fee, S), fee, S).householdPaysEur
+        if (paid > max) over.push(`max ${max}, fee ${fee}: ${paid}`)
+      }
+    }
+    expect(over).toEqual([])
+  })
 })
 
 describe('splitCharge', () => {
+  it('charges exactly what the household was shown, also on half cents', () => {
+    expect(householdAmount(20.5, S)).toBe(19.47) // 1,025 → 1,03
+    expect(splitCharge(20.5, null, S).householdPaysEur).toBe(19.47)
+    expect(splitCharge(5.7, null, S).discountEur).toBe(0.29) // 0,285 rounds up
+    for (let cents = 1; cents <= 10_000; cents++) {
+      const shop = cents / 100
+      if (splitCharge(shop, null, S).householdPaysEur !== householdAmount(shop, S)) throw new Error(`disagree at ${shop}`)
+    }
+  })
   it('design example: 18 € of products → the household pays 17,10; Mimoia 0,90; the shop 16,20 before the card fee', () => {
     expect(splitCharge(18, null, S)).toEqual({ discountEur: 0.9, commissionEur: 0.9, householdPaysEur: 17.1, shopGetsEur: 16.2 })
   })

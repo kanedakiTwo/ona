@@ -115,7 +115,7 @@ export interface RedPrepareInfo {
   needsPostalCode: boolean
   /** Household with a súper and no shop of that kind: asked once. */
   questions: Array<{ kind: RedKind; redShop: RedShopRef; superName: string }>
-  /** Assigned on its own («Tu frutería: Frutas Luisa»), with the others for «¿Prefieres otra?». */
+  /** Assigned on its own («Tu frutería: Frutería del barrio»), with the others for «¿Prefieres otra?». */
   assigned: Array<{ kind: RedKind; shopId: string; name: string; alternatives: RedShopRef[] }>
   /** Not assigned on its own for halal or allergies (fase 1); the household may pick one. */
   heldBack: Array<{ kind: RedKind; reason: 'halal' | 'alergias'; candidates: RedShopRef[] }>

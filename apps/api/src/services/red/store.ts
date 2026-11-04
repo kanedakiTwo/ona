@@ -159,6 +159,18 @@ export async function keepKindAtSuper(householdId: string, kind: RedKind, db: Db
   })
 }
 
+/**
+ * The household removed its Red copy of a kind: remember it, like «al súper», so it's never
+ * assigned or asked again. Merged in the database, like keepKindAtSuper; the copy itself is
+ * deleted by deleteShop.
+ */
+export async function rememberOutOfRed(householdId: string, kind: RedKind, db: DbOrTx = defaultDb): Promise<void> {
+  await db
+    .update(households)
+    .set({ redChoices: sql`${households.redChoices} || jsonb_build_object(${kind}::text, 'super')` })
+    .where(eq(households.id, householdId))
+}
+
 /** The household picked a Red shop for that kind: forget any «al súper» for it (in the database, like keepKindAtSuper). */
 export async function forgetSuperChoice(householdId: string, kind: RedKind, db: DbOrTx = defaultDb): Promise<void> {
   await db.update(households).set({ redChoices: sql`${households.redChoices} - ${kind}::text` }).where(eq(households.id, householdId))

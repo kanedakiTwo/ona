@@ -38,6 +38,7 @@ import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
+import redRoutes from './routes/red.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
 import newsletterRoutes from './routes/newsletter.js'
@@ -219,6 +220,7 @@ app.use(pantryRoutes)
 app.use(cookbooksRoutes)
 app.use(recipePhotosRoutes)
 app.use(shopOrdersRoutes)
+app.use(redRoutes)
 
 // Error handler — captureServerErrors records the error, then hands it to
 // errorHandler unchanged.

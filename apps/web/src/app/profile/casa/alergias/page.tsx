@@ -112,8 +112,9 @@ export default function HouseholdAllergiesPage() {
         setConsentState(c)
         setConsent(true)
         setRestrictions(unionRestrictions(u?.restrictions, fromLink))
-      } else {
-        setRestrictions(fromLink)
+      } else if (fromLink.length > 0) {
+        // Added, never replacing: what was picked while this loaded stays.
+        setRestrictions((picked) => unionRestrictions(picked, fromLink))
       }
       setLoaded(true)
     })

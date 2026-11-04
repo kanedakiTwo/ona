@@ -74,6 +74,18 @@ export {
   cookingStyleFactValueSchema,
   setCookingStyleSchema,
 } from './types/cookingStyle.js'
+export type { Shopper } from './types/shopper.js'
+export {
+  SHOPPERS,
+  SHOPPER_QUESTION,
+  SHOPPER_LABELS,
+  isShopper,
+  asksShopper,
+  shopperInvites,
+  shopperSchema,
+  shopperFactValueSchema,
+  shopperInviteText,
+} from './types/shopper.js'
 export type { FreezeAnswer } from './types/freezeHabit.js'
 export {
   FREEZE_ANSWERS,

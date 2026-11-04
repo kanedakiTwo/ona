@@ -3,9 +3,11 @@ import { db as defaultDb } from '../db/connection.js'
 import { households, users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent, healthConsentCoversReligion } from './healthConsent.js'
 import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
-import { applyFreezeAnswer, cookingFreqForStyle, isReligiousDiet, timeAvailableForChoice, type CookingFrequency, type CookingStyle, type FreezeAnswer, type Priority, type WeekdayCookingChoice } from '@ona/shared'
+import { applyFreezeAnswer, asksShopper, cookingFreqForStyle, isReligiousDiet, timeAvailableForChoice, type CookingFrequency, type CookingStyle, type FreezeAnswer, type Priority, type Shopper, type WeekdayCookingChoice } from '@ona/shared'
 import { getMemoryForUser, setMemoryFact } from './userMemoryStore.js'
 import { cookingStyleHousehold, setCookingStyle } from './profile/cookingStyle.js'
+import { setShopper } from './profile/shopper.js'
+import { trackEvent } from './usageEvents.js'
 
 /**
  * Save the first-steps answers and mark the user onboarded. Shared by the web
@@ -51,6 +53,14 @@ export interface OnboardingInput {
    * «No» saves nothing. Absent leaves it as it is.
    */
   freezesMeatFish?: FreezeAnswer
+  /**
+   * PRO-383 «¿Quién hace la compra?» → the household's ficha (`shopper`,
+   * origin onboarding) and the event `shopper_answered`. Only kept with 2
+   * adults or more (only they are asked). Absent saves nothing.
+   */
+  shopper?: Shopper
+  /** Where the sign-up happened, for the shopper's evidence and event (default the web). */
+  via?: 'web' | 'whatsapp'
 }
 
 export const ONBOARDING_NOTE_MAX = 500
@@ -121,6 +131,14 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
     if (home?.canEdit) {
       await setCookingStyle({ householdId: home.householdId, style: input.cookingStyle, origin: 'onboarding', actorUserId: userId, signal: 'onboarding' })
     }
+  }
+  if (updated && input.shopper && asksShopper(adults) && database === defaultDb) {
+    const via = input.via ?? 'web'
+    const home = await cookingStyleHousehold(userId)
+    if (home?.canEdit) {
+      await setShopper({ householdId: home.householdId, who: input.shopper, actorUserId: userId, signal: via === 'whatsapp' ? 'whatsapp' : 'onboarding' })
+    }
+    trackEvent('shopper_answered', { userId, channel: via, props: { value: input.shopper } })
   }
   return updated ?? null
 }

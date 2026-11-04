@@ -22,7 +22,7 @@ export function redCandidates(kind: RedKind, postalCode: string, shops: RedShopL
   const score = (s: RedShopLite) => (s.postalCode === postalCode ? 0 : 2) + (s.deliveryPostalCodes.includes(postalCode) ? 0 : 1)
   return shops
     .filter((s) => s.kind === kind && s.status === 'activa' && (s.postalCode === postalCode || s.deliveryPostalCodes.includes(postalCode)))
-    .sort((a, b) => score(a) - score(b) || a.joinedAt.getTime() - b.joinedAt.getTime() || a.id.localeCompare(b.id))
+    .sort((a, b) => score(a) - score(b) || a.joinedAt.getTime() - b.joinedAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 }
 
 export interface PlanInput {

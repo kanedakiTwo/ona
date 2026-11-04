@@ -41,7 +41,10 @@ export interface DraftResult<S extends DraftShop> {
   skipped: Array<{ name: string; reason: string }>
   /** Pantry staples the recipes use, left out ("¿Te falta algo de esto?"). */
   pantry: string[]
-  /** Kinds whose lines had no shop of their kind (went to the súper or nowhere). */
+  /**
+   * Kinds whose lines had no shop of their kind (went to the súper or nowhere). It can include
+   * `supermercado` (when there is no súper either); callers keep the Red ones with `isRedKind`.
+   */
   fellBack: ShopKind[]
 }
 

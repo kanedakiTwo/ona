@@ -1,5 +1,5 @@
 {
-  "id": "6de3361f-e73c-43ce-95f1-972babe05bc5",
+  "id": "0b5dc55f-2fb4-438b-9f77-ebb364c317a1",
   "prevId": "5051ef9e-5a08-4e63-a637-83c20e341d6d",
   "version": "7",
   "dialect": "postgresql",
@@ -2943,6 +2943,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "uq_household_shops_red_copy": {
+          "name": "uq_household_shops_red_copy",
+          "columns": [
+            {
+              "expression": "household_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "origin = 'red'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2976,7 +2998,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "household_shops_origin_check": {
+          "name": "household_shops_origin_check",
+          "value": "origin IN ('propia','red')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.household_staples": {
@@ -8152,6 +8179,36 @@
             },
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_shop_orders_red_shop": {
+          "name": "idx_shop_orders_red_shop",
+          "columns": [
+            {
+              "expression": "red_shop_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_shop_orders_ordered_by": {
+          "name": "idx_shop_orders_ordered_by",
+          "columns": [
+            {
+              "expression": "ordered_by_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

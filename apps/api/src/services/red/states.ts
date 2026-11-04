@@ -2,9 +2,10 @@
  * Red de tiendas: the life of a Red order (ona-hq D-165, design §4). Pure.
  * draft, cancelled and closed are the same states every order has.
  */
-import type { ShopOrderStatus } from '@ona/shared'
+import type { RedOrderStatus, ShopOrderStatus } from '@ona/shared'
 
-const NEXT: Partial<Record<ShopOrderStatus, ShopOrderStatus[]>> = {
+/** Every state a Red order can be in → where it may go next. */
+const NEXT: Record<'draft' | 'cancelled' | 'closed' | RedOrderStatus, ShopOrderStatus[]> = {
   draft: ['ordered', 'cancelled'],
   ordered: ['accepted', 'rejected', 'cancelled'],
   accepted: ['preparing', 'cancelled'],
@@ -15,10 +16,13 @@ const NEXT: Partial<Record<ShopOrderStatus, ShopOrderStatus[]>> = {
   charged: ['delivered'],
   delivered: ['closed', 'incident'],
   incident: ['closed'],
+  rejected: [],
+  cancelled: [],
+  closed: [],
 }
 
 export function canRedTransition(from: string, to: string): boolean {
-  return (NEXT[from as ShopOrderStatus] ?? []).includes(to as ShopOrderStatus)
+  return (NEXT[from as keyof typeof NEXT] ?? []).includes(to as ShopOrderStatus)
 }
 
 /** The household cancels by itself only before the shop starts. */
@@ -27,7 +31,7 @@ export function householdCanCancelRed(status: string): boolean {
 }
 
 /** Its lines count as «ya está en un pedido abierto» (design §4, the list). */
-export const RED_IN_FLIGHT: ShopOrderStatus[] = ['ordered', 'accepted', 'preparing', 'ready', 'payment_pending']
+export const RED_IN_FLIGHT: readonly ShopOrderStatus[] = ['ordered', 'accepted', 'preparing', 'ready', 'payment_pending']
 
 /** Still shown among the open orders on /compra. */
-export const RED_LISTED_OPEN: ShopOrderStatus[] = [...RED_IN_FLIGHT, 'charged', 'delivered', 'incident']
+export const RED_LISTED_OPEN: readonly ShopOrderStatus[] = [...RED_IN_FLIGHT, 'charged', 'delivered', 'incident']

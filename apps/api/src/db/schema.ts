@@ -1327,13 +1327,8 @@ export const capHits = pgTable('cap_hits', {
   check('cap_hits_channel_check', sql.raw("channel IN ('app','whatsapp')")),
 ])
 
-// ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
-//
-// The household's own shops (frutería, carnicería, pescadería, súper) and
-// the per-shop orders Mimoia drafts from the shopping list. v1 never messages
-// a shop itself: the user sends Mimoia's ready-made message from their own
-// WhatsApp / mail (wa.me / mailto), pastes or forwards the shop's reply,
-// approves, and pays the shop directly.
+// ─── Red de tiendas v2 (D-165) ───────────────────────────────────────
+
 /**
  * Red de tiendas v2 (ona-hq D-165; specs/shop-orders.md → «Red de tiendas»):
  * Mimoia's shops. A household gets a copy in `household_shops` (origin `red`)
@@ -1385,6 +1380,13 @@ export const redSettings = pgTable('red_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [check('red_settings_single_row', sql.raw('id = 1'))])
 
+// ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
+//
+// The household's own shops (frutería, carnicería, pescadería, súper) and
+// the per-shop orders Mimoia drafts from the shopping list. v1 never messages
+// a shop itself: the user sends Mimoia's ready-made message from their own
+// WhatsApp / mail (wa.me / mailto), pastes or forwards the shop's reply,
+// approves, and pays the shop directly.
 export const householdShops = pgTable('household_shops', {
   id: uuid('id').primaryKey().defaultRandom(),
   householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
@@ -1419,6 +1421,9 @@ export const householdShops = pgTable('household_shops', {
 }, (t) => [
   index('idx_household_shops_household').on(t.householdId),
   index('idx_household_shops_red').on(t.redShopId),
+  // At most one Red copy per household and kind: two concurrent «Preparar» can't make two.
+  uniqueIndex('uq_household_shops_red_copy').on(t.householdId, t.kind).where(sql`origin = 'red'`),
+  check('household_shops_origin_check', sql.raw("origin IN ('propia','red')")),
 ])
 
 export const shopOrders = pgTable('shop_orders', {
@@ -1468,6 +1473,8 @@ export const shopOrders = pgTable('shop_orders', {
 }, (t) => [
   uniqueIndex('uq_shop_orders_token').on(t.token),
   index('idx_shop_orders_household_status').on(t.householdId, t.status),
+  index('idx_shop_orders_red_shop').on(t.redShopId),
+  index('idx_shop_orders_ordered_by').on(t.orderedByUserId),
 ])
 
 // «Enviar a <cadena>» (specs/shop-orders.md, D-154): el aviso que aceptó cada

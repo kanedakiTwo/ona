@@ -47,4 +47,8 @@ ALTER TABLE "household_shops" ADD CONSTRAINT "household_shops_red_shop_id_red_sh
 ALTER TABLE "shop_orders" ADD CONSTRAINT "shop_orders_red_shop_id_red_shops_id_fk" FOREIGN KEY ("red_shop_id") REFERENCES "public"."red_shops"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "shop_orders" ADD CONSTRAINT "shop_orders_ordered_by_user_id_users_id_fk" FOREIGN KEY ("ordered_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_household_shops_red" ON "household_shops" USING btree ("red_shop_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_household_shops_red_copy" ON "household_shops" USING btree ("household_id","kind") WHERE origin = 'red';--> statement-breakpoint
+CREATE INDEX "idx_shop_orders_red_shop" ON "shop_orders" USING btree ("red_shop_id");--> statement-breakpoint
+CREATE INDEX "idx_shop_orders_ordered_by" ON "shop_orders" USING btree ("ordered_by_user_id");--> statement-breakpoint
+ALTER TABLE "household_shops" ADD CONSTRAINT "household_shops_origin_check" CHECK (origin IN ('propia','red'));--> statement-breakpoint
 INSERT INTO "red_settings" ("id") VALUES (1) ON CONFLICT ("id") DO NOTHING;

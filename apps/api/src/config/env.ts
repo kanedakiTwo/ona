@@ -230,6 +230,15 @@ export const env = {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
   /**
+   * Emails (o `@dominio`) que tienen la Red de tiendas v2 (specs/shop-orders.md
+   * → «Red de tiendas», ona-hq D-165). Vacía = nadie: hasta que estén los cinco
+   * tramos, solo cuentas de prueba.
+   */
+  RED_TIENDAS_EMAILS: (process.env.RED_TIENDAS_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+  /**
    * Optional approved utility template (one `{{1}}` body variable) used for
    * proactive messages outside Meta's 24 h customer-service window. Without
    * it, proactive messages only go out while the window is open.

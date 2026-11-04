@@ -6,6 +6,9 @@
  */
 import { describe, it, expect } from 'vitest'
 import { isPostalCode, patchShopOrderSchema, placeRedOrderSchema, postalCodeSchema, redChoiceSchema, redMaxBody, SHOP_ORDER_STATUSES, SHOP_ORDER_STATUS_LABELS } from '@ona/shared'
+import { isEmailAllowed } from '../services/emailAllowList.js'
+import { isRedAllowed } from '../services/red/flag.js'
+import { isBasketExtensionAllowed } from '../services/basketExtension.js'
 
 describe('isPostalCode', () => {
   it('takes 5 digits with a real province (01–52)', () => {
@@ -50,5 +53,19 @@ describe('order states', () => {
       expect(SHOP_ORDER_STATUSES).toContain(s)
     }
     for (const s of SHOP_ORDER_STATUSES) expect(SHOP_ORDER_STATUS_LABELS[s]).toBeTruthy()
+  })
+})
+
+describe('RED_TIENDAS_EMAILS', () => {
+  it('empty list = nobody; exact email or @domain, ignoring case', () => {
+    expect(isRedAllowed('ana@test.local', [])).toBe(false)
+    expect(isRedAllowed('Ana@Red.Test.Local', ['@red.test.local'])).toBe(true)
+    expect(isRedAllowed('ana@test.local', ['@red.test.local'])).toBe(false)
+    expect(isRedAllowed('miguel@x.es', ['miguel@x.es'])).toBe(true)
+    expect(isRedAllowed(null, ['@red.test.local'])).toBe(false)
+  })
+  it('the extension’s switch keeps the same rule', () => {
+    expect(isBasketExtensionAllowed('a@test.local', ['@test.local'])).toBe(true)
+    expect(isEmailAllowed('a@test.local', [])).toBe(false)
   })
 })

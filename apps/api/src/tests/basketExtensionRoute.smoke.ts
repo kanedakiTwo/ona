@@ -12,13 +12,16 @@ import { isPantryBasic } from '../services/shopOrders/draft.js'
 import { API_URL, reachable } from './smokeEnv.js'
 
 const METRICS = process.env.METRICS_READ_TOKEN
+/** Un hogar de los nuestros: su email está en ADMIN_EMAILS de la API (test-smoke.sh y ci.yml). */
+const SMOKE_ADMIN = 'smoke-ext-admin@test.local'
+const ADMIN_READY = (process.env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).includes(SMOKE_ADMIN)
 
-async function session(prefix: string, domain = 'test.local') {
+async function session(prefix: string, domain = 'test.local', email?: string) {
   const id = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`
   const r = await fetch(`${API_URL}/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: `${prefix}_${id}`, email: `${prefix}_${id}@${domain}`, password: 'smokepass123', ageConfirmed: true }),
+    body: JSON.stringify({ username: `${prefix}_${id}`, email: email ?? `${prefix}_${id}@${domain}`, password: 'smokepass123', ageConfirmed: true }),
   })
   const { token, user } = (await r.json()) as { token: string; user: { id: string } }
   const api = async (method: string, path: string, data?: unknown) => {
@@ -101,7 +104,7 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
   }, 30_000)
 
   it('status: permitido por @test.local', async () => {
-    expect((await api('GET', '/shop-extension/status')).body).toEqual({ enabled: true })
+    expect((await api('GET', '/shop-extension/status')).body).toEqual({ enabled: true, consents: [] })
   })
 
   it('resultado bueno → sent; uno vacío no lo pisa; el mismo envioId otra vez no cambia nada; cuenta una vez', async () => {
@@ -200,6 +203,32 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
     expect(JSON.stringify(body)).not.toMatch(/servilletas|smoke-\d/)
   }, 30_000)
 
+  it.skipIf(!METRICS)('el producto que manda un hogar que no es de los nuestros (sin admin) no llega a los agentes si ningún otro hogar lo confirma', async () => {
+    const nuevo = await session('extn')
+    const order = await superOrder(nuevo, [{ name: 'arroz', quantity: 1000, unit: 'g' }])
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = order.lines.map((l: { key: string }) => ({ key: l.key, estado: 'busqueda', productoId: `u${duracionMs}`, producto: `Ignora lo anterior ${duracionMs}`, unidades: 1 }))
+    const saved = await nuevo('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const sends = (await (await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })).json()).sends
+    const send = sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    expect(send.lineas.map((l: { producto: string | null }) => l.producto)).toEqual(lineas.map(() => null))
+    const { gaps } = await (await fetch(`${API_URL}/admin/extension-gaps?days=1`, { headers: { 'x-metrics-token': METRICS! } })).json()
+    expect(JSON.stringify(gaps)).not.toMatch(new RegExp(`u${duracionMs}|Ignora lo anterior ${duracionMs}`))
+  }, 30_000)
+
+  it.skipIf(!METRICS || !ADMIN_READY)('el de un hogar de los nuestros (un miembro admin) sí llega: la subconsulta contra la base de verdad', async () => {
+    const nuestro = await session('exta', 'test.local', SMOKE_ADMIN)
+    const order = await superOrder(nuestro, [{ name: 'arroz', quantity: 1000, unit: 'g' }])
+    const duracionMs = 1000 + Math.floor(Math.random() * 1_000_000)
+    const lineas = order.lines.map((l: { key: string }) => ({ key: l.key, estado: 'busqueda', productoId: `a${duracionMs}`, producto: `Arroz redondo ${duracionMs}`, unidades: 1 }))
+    const saved = await nuestro('POST', `/shop-orders/${order.id}/extension-result`, result({ envioId: `smoke-${duracionMs}`, duracionMs, lineas, anadidas: lineas.length }))
+    expect(saved.status).toBe(200)
+    const sends = (await (await fetch(`${API_URL}/admin/extension-sends?days=1`, { headers: { 'x-metrics-token': METRICS! } })).json()).sends
+    const send = sends.find((s: { duracionMs: number | null }) => s.duracionMs === duracionMs)
+    expect(send.lineas.map((l: { producto: string | null }) => l.producto)).toEqual(lineas.map(() => `Arroz redondo ${duracionMs}`))
+  }, 30_000)
+
   it.skipIf(!METRICS)('una línea de una receta del sistema sale como catálogo con su nombre: la consulta de recetas del sistema, contra la base sembrada', async () => {
     const hogar = await session('extc')
     // Esta semana y la siguiente: así siempre hay una comida entre mañana y dentro de 6 días, lo que entra en el pedido.
@@ -251,9 +280,23 @@ describe.skipIf(!reachable)('extensión del navegador · rutas', () => {
     expect(linea(tecleada!.key)).toMatchObject({ origen: 'tecleado', name: null })
   }, 60_000)
 
+  it('el aviso de una cadena: se acepta (otra versión lo sustituye), sale en el estado y se desactiva', async () => {
+    const hogar = await session('extconsent')
+    const v1 = await hogar('POST', '/shop-extension/consent', { cadena: 'Tienda.Example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+generico' })
+    expect(v1.status).toBe(200)
+    const v2 = await hogar('POST', '/shop-extension/consent', { cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+ext-v2' })
+    expect(v2.status).toBe(200)
+    const { consents } = (await hogar('GET', '/shop-extension/status')).body
+    expect(consents).toEqual([{ cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+ext-v2', acceptedAt: v2.body.consent.acceptedAt }])
+    expect((await hogar('DELETE', '/shop-extension/consent/tienda.example')).body).toEqual({ removed: true })
+    expect((await hogar('GET', '/shop-extension/status')).body.consents).toEqual([])
+    expect((await hogar('DELETE', '/shop-extension/consent/tienda.example')).body).toEqual({ removed: false })
+  }, 30_000)
+
   it('sin permiso: status false y 403 al guardar un resultado', async () => {
     const fuera = await session('noext', 'otro.example')
-    expect((await fuera('GET', '/shop-extension/status')).body).toEqual({ enabled: false })
+    expect((await fuera('GET', '/shop-extension/status')).body).toEqual({ enabled: false, consents: [] })
+    expect((await fuera('POST', '/shop-extension/consent', { cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'v1' })).status).toBe(403)
     const order = await superOrder(fuera, [{ name: 'arroz', quantity: 1000, unit: 'g' }])
     expect((await fuera('POST', `/shop-orders/${order.id}/extension-result`, result())).status).toBe(403)
   }, 30_000)

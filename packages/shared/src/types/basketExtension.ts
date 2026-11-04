@@ -48,6 +48,56 @@ export interface BasketPing {
   hosts: string[]
   /** Nombre de la cadena para el botón («Enviar a …»). */
   etiqueta: string
+  /**
+   * Opcional (las versiones viejas no lo mandan): la frase del riesgo de esa cadena para el aviso antes del
+   * primer envío y la versión de esa frase (D-154). Sin él, la web usa `BASKET_CONSENT_GENERIC_RISK`.
+   */
+  aviso?: { version: string; riesgo: string }
+}
+
+// ─── El aviso antes del primer envío a una cadena (D-154) ───────────
+
+/** Versión del texto del aviso de la web; con la de la frase de la extensión forma la versión aceptada. */
+export const BASKET_CONSENT_WEB_VERSION = 'web-v1-2026-11'
+
+/** La frase del riesgo cuando la extensión no manda la suya. `{cadena}` es la etiqueta. */
+export const BASKET_CONSENT_GENERIC_RISK =
+  '{cadena} no tiene nada que ver con Mimoia y puede bloquear tu cuenta si ve que usas un programa en su web.'
+
+const AVISO_VERSION = /^[A-Za-z0-9._:+-]{1,60}$/
+
+/**
+ * El aviso de un ping, si viene bien formado (versión corta de letras, cifras y `._:+-`; frase de 10 a 400
+ * caracteres); si no, null y la web usa el genérico. Nunca lanza.
+ */
+export function pingAviso(ping: { aviso?: unknown }): { version: string; riesgo: string } | null {
+  const a = ping.aviso as { version?: unknown; riesgo?: unknown } | null | undefined
+  if (!a || typeof a !== 'object') return null
+  if (typeof a.version !== 'string' || !AVISO_VERSION.test(a.version)) return null
+  if (typeof a.riesgo !== 'string') return null
+  const riesgo = a.riesgo.trim()
+  return riesgo.length >= 10 && riesgo.length <= 400 ? { version: a.version, riesgo } : null
+}
+
+/** La versión que se guarda al aceptar: la del texto de la web y la de la frase de la extensión (o `generico`). */
+export function basketConsentVersion(ping: { aviso?: unknown }): string {
+  return `${BASKET_CONSENT_WEB_VERSION}+${pingAviso(ping)?.version ?? 'generico'}`
+}
+
+/** Lo que manda la web al aceptar el aviso (`POST /shop-extension/consent`). */
+export const basketConsentSchema = z.object({
+  /** El host de la web de la tienda, en minúsculas. */
+  cadena: z.string().trim().toLowerCase().min(3).max(253).regex(/^[a-z0-9.-]+$/),
+  etiqueta: z.string().trim().min(1).max(60),
+  version: z.string().min(1).max(140).regex(/^[A-Za-z0-9._:+-]+$/),
+})
+export type BasketConsentInput = z.infer<typeof basketConsentSchema>
+
+export interface BasketConsent {
+  cadena: string
+  etiqueta: string
+  version: string
+  acceptedAt: string
 }
 
 /**

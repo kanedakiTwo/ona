@@ -41,6 +41,8 @@ export interface DraftResult<S extends DraftShop> {
   skipped: Array<{ name: string; reason: string }>
   /** Pantry staples the recipes use, left out ("¿Te falta algo de esto?"). */
   pantry: string[]
+  /** Kinds whose lines had no shop of their kind (went to the súper or nowhere). */
+  fellBack: ShopKind[]
 }
 
 export function isPantryBasic(item: Pick<ShoppingItem, 'name' | 'unit' | 'quantity' | 'kind'>): boolean {
@@ -139,7 +141,8 @@ export function draftOrdersFromItems<S extends DraftShop>(
   opts: { alreadyOrdered?: Set<string>; prefs?: Record<string, string> } = {},
 ): DraftResult<S> {
   const prefs = opts.prefs ?? {}
-  const result: DraftResult<S> = { byShop: [], unassigned: [], skipped: [], pantry: [] }
+  const result: DraftResult<S> = { byShop: [], unassigned: [], skipped: [], pantry: [], fellBack: [] }
+  const fellBack = new Set<ShopKind>()
   const groups = new Map<string, { shop: S; kind: ShopKind; members: Entry[]; ruleKey: string | null; order: number }>()
   let order = 0
 
@@ -160,6 +163,7 @@ export function draftOrdersFromItems<S extends DraftShop>(
       }
       const kind = conv.shop ? kindForBuyShop(conv.shop) : classifyShopKind(e.name, e.aisle)
       const shop = pickShopForKind(kind, shops)
+      if (!shop || shop.kind !== kind) fellBack.add(kind)
       if (!shop) {
         result.unassigned.push({ name: e.name, quantity: e.quantity, unit: e.unit, kind })
         continue
@@ -186,6 +190,7 @@ export function draftOrdersFromItems<S extends DraftShop>(
   }
   result.byShop = [...byShop.values()].sort((a, b) => a.shop.position - b.shop.position)
   result.pantry = [...new Set(result.pantry)]
+  result.fellBack = [...fellBack]
   return result
 }
 

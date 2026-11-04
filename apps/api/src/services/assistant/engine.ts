@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../../config/env.js'
 import { clockNote, loadUserContext } from './contextLoader.js'
-import { buildSystemParts, type AssistantMode, type ChatSurface } from './systemPrompt.js'
+import { buildSystemParts, knowledgeBaseReady, type AssistantMode, type ChatSurface } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
@@ -16,6 +16,7 @@ import {
   EMPTY_USAGE,
   addAnthropicUsage,
   type TokenUsage,
+  type TurnUsage,
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
 import { hasLikedRecipes } from '../tasteStore.js'
@@ -68,40 +69,29 @@ export async function chat(
   history: ChatMessage[],
   db: any,
   opts: ChatOptions = {},
-): Promise<AssistantResponse & { usage: TokenUsage }> {
+): Promise<AssistantResponse & { usage: TurnUsage }> {
   const anthropic = getClient()
   const mode = opts.mode ?? 'text'
 
-  // 1. Load user context
-  const userContext = await loadUserContext(userId, db)
+  // 1. Load user context (and the kb/ files: the fixed block must be the same
+  // on the first turn after a restart as on every other one).
+  const [userContext] = await Promise.all([loadUserContext(userId, db), knowledgeBaseReady])
 
-  // 2. System prompt in two blocks: the instructions (identical for every
-  // user of a channel → cached) and this user's data (date, menu, memory →
-  // changes when the menu or memory does, so it goes after the instructions'
-  // breakpoint). Until 2026-10-12 it was one block with "son las HH:MM"
-  // inside, so the cache never survived from one message to the next; until
-  // 2026-10-16 the time was still in the context block, which re-wrote the
-  // context and the history on every message. The clock now rides on the
-  // newest message (buildTurnMessages).
+  // 2–4. System, tools and messages (see buildChatRequest).
   // WhatsApp sign-up: ask for a few favourite dishes only when «Afina tu menú»
   // got no «Me apetece» / «Me encanta» (2026-11-03). On a failed read, don't ask.
   const askFavorites = opts.onboarding === true && !(await hasLikedRecipes(userId, db).catch(() => true))
-  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, askFavorites, surface: opts.surface })
-  const system = [
-    { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
-    { type: 'text' as const, text: context },
-  ]
-
-  // 3. History (cache breakpoint at its end) + the new message with the clock.
-  const messages = buildTurnMessages(history, message, opts.images ?? [], new Date())
-
-  // 4. Tools for this channel, the last one marked as a cache breakpoint.
-  const baseTools = getToolDefinitions({ mode, onboarding: opts.onboarding === true })
-  const tools = baseTools.map((t, i) =>
-    i === baseTools.length - 1
-      ? { ...t, cache_control: { type: 'ephemeral' as const } }
-      : t,
-  )
+  const { system, tools, messages } = buildChatRequest({
+    userContext,
+    history,
+    message,
+    images: opts.images ?? [],
+    now: new Date(),
+    mode,
+    onboarding: opts.onboarding === true,
+    askFavorites,
+    surface: opts.surface,
+  })
 
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
   // PRO-313: none of the reply offers on Telegram (their texts and budgets are WhatsApp's).
@@ -212,13 +202,70 @@ const REFUSAL_REPLY = 'Perdona, con eso no te puedo ayudar. ¿Te echo una mano c
 type MessagesClient = { messages: { create: (args: any, options?: any) => Promise<any> } }
 
 /**
+ * PRO-393: the fixed block (tools + instructions, ~38 000 tokens) is cached
+ * for an hour. It has nothing of the household in it, so one entry serves
+ * every household of a channel. With the 5-minute cache, a reply more than
+ * 5 minutes after the previous one wrote the whole block again (5 $/MTok on
+ * Opus 5.5, ≈0,18 € a reply: most of the 0,20 € of E-45); a 1-hour write
+ * costs 2× input once, and every turn of the hour reads it at 0,2 $/MTok.
+ * 1-hour entries must come before 5-minute ones: tools, then system.
+ */
+export const FIXED_BLOCK_CACHE = { type: 'ephemeral' as const, ttl: '1h' as const }
+/** The household's context and history: 5 minutes (the default), it changes with the menu. */
+const TURN_CACHE = { type: 'ephemeral' as const }
+
+export interface FixedBlockOptions {
+  mode: AssistantMode
+  onboarding?: boolean
+  askFavorites?: boolean
+  surface?: ChatSurface
+}
+
+/**
+ * The part of the request that must be byte-identical between two turns of
+ * the same household (and of every household of a channel): the tools, the
+ * last one a breakpoint, and the instructions block. It depends only on the
+ * channel and the sign-up flags, never on the user, the date or the time
+ * (`mimoFixedBlock.test.ts`). Anything per household goes in `context`.
+ */
+export function buildFixedBlock(opts: FixedBlockOptions) {
+  const baseTools = getToolDefinitions({ mode: opts.mode, onboarding: opts.onboarding === true })
+  const tools = baseTools.map((t, i) => (i === baseTools.length - 1 ? { ...t, cache_control: FIXED_BLOCK_CACHE } : t))
+  const { instructions } = buildSystemParts('', opts.mode, { onboarding: opts.onboarding === true, askFavorites: opts.askFavorites, surface: opts.surface })
+  return { tools, instructions: { type: 'text' as const, text: instructions, cache_control: FIXED_BLOCK_CACHE } }
+}
+
+/**
+ * One turn's request, without calling the model. The system prompt goes in
+ * two blocks: the instructions (fixed block, cached for an hour) and this
+ * household's data (date, menu, memory: changes when the menu or memory
+ * does, so it goes after the instructions' breakpoint and is never cached on
+ * its own). Until 2026-10-12 it was one block with "son las HH:MM" inside;
+ * until 2026-10-16 the time was in the context block. The clock rides on the
+ * newest message (buildTurnMessages).
+ */
+export function buildChatRequest(input: FixedBlockOptions & {
+  userContext: string
+  history: readonly { role: 'user' | 'assistant'; content: string }[]
+  message: string
+  images: readonly { mediaType: string; data: string }[]
+  now: Date
+}) {
+  const { tools, instructions } = buildFixedBlock(input)
+  const { context } = buildSystemParts(input.userContext, input.mode, { onboarding: input.onboarding === true, askFavorites: input.askFavorites, surface: input.surface })
+  const system = [instructions, { type: 'text' as const, text: context }]
+  const messages = buildTurnMessages(input.history, input.message, input.images, input.now)
+  return { system, tools, messages }
+}
+
+/**
  * Messages for one turn: the history, with a cache breakpoint on its last
  * block, then the new user message: the clock first (`clockNote`), up to 4
  * photos, then the text. The next turn's history starts with exactly the same
  * messages, so it reads context + history from the cache written here (as
  * long as the 5-minute cache is alive and the menu/memory didn't change).
- * Breakpoints in a request: tools, instructions, history end and the newest
- * block (`withLastMessageCached`) — the API's maximum of 4.
+ * Breakpoints in a request: tools and instructions (1 hour), history end and
+ * the newest block (`withLastMessageCached`, 5 minutes) — the API's maximum of 4.
  */
 export function buildTurnMessages(
   history: readonly { role: 'user' | 'assistant'; content: string }[],
@@ -249,7 +296,7 @@ export function withLastMessageCached(messages: Anthropic.MessageParam[]): Anthr
   const blocks: any[] = typeof last.content === 'string' ? [{ type: 'text', text: last.content }] : [...(last.content as any[])]
   const i = blocks.length - 1
   if (i >= 0 && blocks[i] && blocks[i].type !== 'thinking' && blocks[i].type !== 'redacted_thinking') {
-    blocks[i] = { ...blocks[i], cache_control: { type: 'ephemeral' } }
+    blocks[i] = { ...blocks[i], cache_control: TURN_CACHE }
   }
   out.push({ role: last.role, content: blocks } as Anthropic.MessageParam)
   return out
@@ -276,13 +323,13 @@ export async function runToolLoop(params: {
   /** Model and effort for this turn (default `ASSISTANT_MODEL` / `ASSISTANT_EFFORT`); `scripts/compareMimoModels.ts` runs the same turn on several. */
   model?: string
   effort?: string
-}): Promise<AssistantResponse & { usage: TokenUsage }> {
+}): Promise<AssistantResponse & { usage: TurnUsage }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
   const model = params.model ?? ASSISTANT_MODEL
   const effort = params.effort ?? ASSISTANT_EFFORT
   const messages = [...params.messages]
   const executed: ExecutedTool[] = []
-  let usage: TokenUsage = EMPTY_USAGE
+  let usage: TurnUsage = EMPTY_USAGE
   let retriedTruncation = false
   let retriedClaim = false
   const flags: string[] = []
@@ -301,7 +348,9 @@ export async function runToolLoop(params: {
       },
       { headers: { 'anthropic-beta': FALLBACK_BETA } },
     )
-    usage = addAnthropicUsage(usage, response.usage)
+    // PRO-393: model calls and tools run so far ride along to `cost_events`
+    // (every return below happens before this round's tools run).
+    usage = { ...addAnthropicUsage(usage, response.usage), rounds: round + 1, toolCalls: executed.length }
 
     if (response.stop_reason === 'refusal') {
       flags.push('refusal')

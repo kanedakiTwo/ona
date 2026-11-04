@@ -29,7 +29,8 @@ export const ADVISOR_PRICE_MODEL = CLAUDE_MODEL
  * The assistant model's list price, USD per million tokens, read from the
  * shared price table (config/pricing.ts): Sonnet 5.5 is $2.00 input / $10.00
  * output; prompt-cache writes bill at 1.25× the input rate (5-minute
- * ephemeral, which `engine.ts` uses) and cache reads at 0.1×. A
+ * ephemeral: each household's context and history), 2× with the 1-hour TTL
+ * (the fixed block, PRO-393), and cache reads at 0.1× (0.05× on Opus 5.5). A
  * `COST_PRICE_OVERRIDES` entry moves both the budget and the ledger, so they
  * never disagree.
  */
@@ -38,6 +39,7 @@ export const ASSISTANT_USD_PER_MTOK = {
   input: MODEL_PRICE.inputPerMTok!,
   output: MODEL_PRICE.outputPerMTok!,
   cacheWrite: MODEL_PRICE.cacheWritePerMTok!,
+  cacheWrite1h: MODEL_PRICE.cacheWrite1hPerMTok ?? 2 * MODEL_PRICE.inputPerMTok!,
   cacheRead: MODEL_PRICE.cacheReadPerMTok!,
 } as const
 
@@ -45,14 +47,24 @@ export const ASSISTANT_USD_PER_MTOK = {
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
+  /** Every cache write, both TTLs. */
   cacheWriteTokens: number
+  /** The part of `cacheWriteTokens` written with the 1-hour TTL (Mimo's fixed block, PRO-393). */
+  cacheWrite1hTokens?: number
   cacheReadTokens: number
+}
+
+/** One Mimo turn (PRO-393): its tokens plus how many model calls and tools it took. */
+export interface TurnUsage extends TokenUsage {
+  rounds?: number
+  toolCalls?: number
 }
 
 export const EMPTY_USAGE: TokenUsage = {
   inputTokens: 0,
   outputTokens: 0,
   cacheWriteTokens: 0,
+  cacheWrite1hTokens: 0,
   cacheReadTokens: 0,
 }
 
@@ -67,6 +79,8 @@ export function addAnthropicUsage(
     output_tokens?: number
     cache_creation_input_tokens?: number | null
     cache_read_input_tokens?: number | null
+    /** Split of `cache_creation_input_tokens` by TTL. */
+    cache_creation?: { ephemeral_1h_input_tokens?: number | null } | null
   } | null
   | undefined,
 ): TokenUsage {
@@ -75,16 +89,19 @@ export function addAnthropicUsage(
     inputTokens: acc.inputTokens + (usage.input_tokens ?? 0),
     outputTokens: acc.outputTokens + (usage.output_tokens ?? 0),
     cacheWriteTokens: acc.cacheWriteTokens + (usage.cache_creation_input_tokens ?? 0),
+    cacheWrite1hTokens: (acc.cacheWrite1hTokens ?? 0) + (usage.cache_creation?.ephemeral_1h_input_tokens ?? 0),
     cacheReadTokens: acc.cacheReadTokens + (usage.cache_read_input_tokens ?? 0),
   }
 }
 
-/** Pure: cost of a usage block in USD (Haiku 4.5 list price). */
+/** Pure: cost of a usage block in USD (the assistant model's list price). */
 export function usageCostUsd(usage: TokenUsage): number {
+  const write1h = Math.min(usage.cacheWrite1hTokens ?? 0, usage.cacheWriteTokens)
   return (
     (usage.inputTokens * ASSISTANT_USD_PER_MTOK.input +
       usage.outputTokens * ASSISTANT_USD_PER_MTOK.output +
-      usage.cacheWriteTokens * ASSISTANT_USD_PER_MTOK.cacheWrite +
+      (usage.cacheWriteTokens - write1h) * ASSISTANT_USD_PER_MTOK.cacheWrite +
+      write1h * ASSISTANT_USD_PER_MTOK.cacheWrite1h +
       usage.cacheReadTokens * ASSISTANT_USD_PER_MTOK.cacheRead) /
     1_000_000
   )
@@ -164,7 +181,7 @@ export function chatFeatureFor(channel: string | null): 'assistant_chat' | 'what
 
 export async function recordAdvisorUsage(
   userId: string,
-  usage: TokenUsage,
+  usage: TurnUsage,
   db: Db = defaultDb,
   feature: 'assistant_chat' | 'whatsapp_chat' | 'telegram_chat' = chatFeatureFor(currentCostChannel()),
 ): Promise<void> {

@@ -242,7 +242,11 @@ export function noticesContextBlock(rows: Array<Pick<NoticeRow, 'userId' | 'crea
   const since = now.getTime() - NOTICE_CONTEXT_DAYS * DAY
   const day = (d: Date) => madridParts(d).isoDate
   const lines: string[] = []
-  for (const r of rows) {
+  // PRO-393: the query has no ORDER BY and Postgres moves a row it updates, so
+  // the same notices could come in another order and rewrite Mimo's cached
+  // context and history. Always by key, then by date.
+  const ordered = [...rows].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()))
+  for (const r of ordered) {
     const d = noticeDeliveries(r, now)
     const sent = [d.whatsappAt, d.appAt].filter((x): x is Date => !!x && x.getTime() <= now.getTime())
     if (!sent.length || !sent.some((x) => x.getTime() >= since)) continue

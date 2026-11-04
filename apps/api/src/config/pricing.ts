@@ -25,8 +25,10 @@ export interface Price {
   /** Per million tokens. */
   inputPerMTok?: number
   outputPerMTok?: number
-  /** 5-minute ephemeral cache write (what engine.ts uses). */
+  /** 5-minute ephemeral cache write. */
   cacheWritePerMTok?: number
+  /** 1-hour cache write (Mimo's fixed block since PRO-393); absent = 2× `inputPerMTok`, the list rule. */
+  cacheWrite1hPerMTok?: number
   cacheReadPerMTok?: number
   /** Audio input tokens (transcription); falls back to `inputPerMTok`. */
   audioInputPerMTok?: number
@@ -41,8 +43,14 @@ export interface Price {
 export interface CostUnits {
   inputTokens?: number
   outputTokens?: number
+  /** Every cache write, both TTLs (Anthropic's `cache_creation_input_tokens`). */
   cacheWriteTokens?: number
+  /** The part of `cacheWriteTokens` written with the 1-hour TTL (priced at `cacheWrite1hPerMTok`). */
+  cacheWrite1hTokens?: number
   cacheReadTokens?: number
+  /** Mimo turns (PRO-393): model calls of the turn and tools run. Counted, never priced. */
+  rounds?: number
+  toolCalls?: number
   audioInputTokens?: number
   minutes?: number
   messages?: number
@@ -61,13 +69,15 @@ export const PRICES: PriceTable = {
   // 2026-10-16. Cache writes (5 min) = 1.25× input; cache reads = 0.1× input
   // except Opus 5.5 and Sonnet 5.5 (0.05×: Sonnet 5.5 reads were priced at
   // 0.2 until 2026-10-16, double the real rate). Haiku 5.5: prompts up to
-  // 100 000 tokens (Mimo's are ~60 000 at most).
+  // 100 000 tokens (Mimo's are ~60 000 at most). 1-hour cache writes = 2×
+  // input (platform.claude.com/docs/en/build-with-claude/prompt-caching,
+  // checked 2026-11-05): `cacheWrite1hPerMTok` only where it's set, else 2×.
   'anthropic/claude-haiku-4-5': { currency: 'USD', inputPerMTok: 1, outputPerMTok: 5, cacheWritePerMTok: 1.25, cacheReadPerMTok: 0.1 },
   'anthropic/claude-haiku-5-5': { currency: 'USD', inputPerMTok: 0.1, outputPerMTok: 0.5, cacheWritePerMTok: 0.125, cacheReadPerMTok: 0.01 },
   'anthropic/claude-sonnet-4-6': { currency: 'USD', inputPerMTok: 3, outputPerMTok: 15, cacheWritePerMTok: 3.75, cacheReadPerMTok: 0.3 },
   'anthropic/claude-sonnet-5-5': { currency: 'USD', inputPerMTok: 2, outputPerMTok: 10, cacheWritePerMTok: 2.5, cacheReadPerMTok: 0.1 },
   'anthropic/claude-opus-4-6': { currency: 'USD', inputPerMTok: 5, outputPerMTok: 25, cacheWritePerMTok: 6.25, cacheReadPerMTok: 0.5 },
-  'anthropic/claude-opus-5-5': { currency: 'USD', inputPerMTok: 4, outputPerMTok: 20, cacheWritePerMTok: 5, cacheReadPerMTok: 0.2 },
+  'anthropic/claude-opus-5-5': { currency: 'USD', inputPerMTok: 4, outputPerMTok: 20, cacheWritePerMTok: 5, cacheWrite1hPerMTok: 8, cacheReadPerMTok: 0.2 },
 
   // ── OpenAI ───────────────────────────────────────────────────
   // Source: developers.openai.com/api/docs/pricing + the gpt-4o-transcribe
@@ -154,6 +164,7 @@ const NUMERIC_FIELDS: Array<keyof Price> = [
   'inputPerMTok',
   'outputPerMTok',
   'cacheWritePerMTok',
+  'cacheWrite1hPerMTok',
   'cacheReadPerMTok',
   'audioInputPerMTok',
   'perMinute',
@@ -213,10 +224,12 @@ export function computeCostMicros(
   const price = priceFor(provider, model, opts.table)
   if (!price) return null
   const n = (x: number | undefined) => (Number.isFinite(x) ? (x as number) : 0)
+  const write1h = Math.min(n(units.cacheWrite1hTokens), n(units.cacheWriteTokens))
   const native =
     (n(units.inputTokens) * n(price.inputPerMTok) +
       n(units.outputTokens) * n(price.outputPerMTok) +
-      n(units.cacheWriteTokens) * n(price.cacheWritePerMTok) +
+      (n(units.cacheWriteTokens) - write1h) * n(price.cacheWritePerMTok) +
+      write1h * n(price.cacheWrite1hPerMTok ?? 2 * n(price.inputPerMTok)) +
       n(units.cacheReadTokens) * n(price.cacheReadPerMTok) +
       n(units.audioInputTokens) * n(price.audioInputPerMTok ?? price.inputPerMTok)) /
       1_000_000 +

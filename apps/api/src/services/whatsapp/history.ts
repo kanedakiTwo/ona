@@ -47,6 +47,13 @@ export function traceLine(meta: unknown): string | null {
 
 
 export const HISTORY_MAX_MESSAGES = 20
+/**
+ * PRO-393: past `HISTORY_MAX_MESSAGES` the oldest messages go 10 at a time,
+ * not one per message: a window that slid by one changed its first message
+ * on every turn, so the whole history was written to the prompt cache again
+ * instead of read. Now it keeps 20 to 29 and its start holds for ~5 turns.
+ */
+export const HISTORY_TRIM_STEP = 10
 export const HISTORY_WINDOW_MS = 12 * 60 * 60 * 1000
 
 /**
@@ -66,13 +73,14 @@ export const ONA_STARTED_MARKER = '(Mimo me ha escrito primero)'
 export function buildChatHistory(
   rows: readonly HistoryRow[],
   now: Date = new Date(),
-  opts: { maxMessages?: number; windowMs?: number } = {},
+  opts: { maxMessages?: number; windowMs?: number; trimStep?: number } = {},
 ): ChatMessage[] {
   const maxMessages = opts.maxMessages ?? HISTORY_MAX_MESSAGES
+  const trimStep = Math.max(1, opts.trimStep ?? HISTORY_TRIM_STEP)
   const windowMs = opts.windowMs ?? HISTORY_WINDOW_MS
   const since = now.getTime() - windowMs
 
-  const usable = [...rows]
+  const inWindow = [...rows]
     .filter((r) => r.createdAt.getTime() >= since)
     .filter((r) => typeof r.body === 'string' && r.body.trim().length > 0)
     // Inbound rows count once answered. Outbound replies count even if
@@ -81,7 +89,8 @@ export function buildChatHistory(
     .filter((r) => (r.direction === 'in' ? r.status === 'processed' : r.status === 'sent' || r.kind === 'reply'))
     .filter((r) => !(r.direction === 'out' && NON_CONVERSATION_KINDS.has(r.kind ?? '')))
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-    .slice(-maxMessages)
+  const over = inWindow.length - maxMessages
+  const usable = over > 0 ? inWindow.slice(Math.floor(over / trimStep) * trimStep) : inWindow
 
   // Merge consecutive same-role turns (two quick messages from the user, or
   // a reply split across several WhatsApp messages) — the Messages API wants

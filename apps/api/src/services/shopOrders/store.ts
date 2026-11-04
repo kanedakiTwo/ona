@@ -972,7 +972,11 @@ export async function closeOrder(userId: string, id: string, body: { finalTotalE
 export async function cancelOrder(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
   if (isRedOrderRow(row)) {
-    if (!householdCanCancelRed(row.status)) throw new ShopOrderError(409, 'BAD_STATUS', 'La tienda ya lo está preparando: para cancelarlo, habla con ella.')
+    if (!householdCanCancelRed(row.status)) {
+      // «Habla con la tienda» only while the shop has it; a cancelled, rejected or closed order just can't.
+      const shopHasIt = RED_LISTED_OPEN.includes(row.status as ShopOrderStatus)
+      throw new ShopOrderError(409, 'BAD_STATUS', shopHasIt ? 'La tienda ya lo está preparando: para cancelarlo, habla con ella.' : `No se puede cancelar: el pedido está ${row.status}.`)
+    }
   } else requireStatus(row, OPEN_STATUSES, 'cancelar')
   return update(row.id, { status: 'cancelled' }, db)
 }

@@ -1398,6 +1398,22 @@ export const shopOrders = pgTable('shop_orders', {
   index('idx_shop_orders_household_status').on(t.householdId, t.status),
 ])
 
+// «Enviar a <cadena>» (specs/shop-orders.md, D-154): el aviso que aceptó cada
+// cuenta antes de su primer envío a una cadena. `cadena` es el host de la web
+// de la tienda (el repo nunca nombra la cadena); `version`, la del texto que
+// leyó. «Desactivar» en Perfil borra la fila; un texto nuevo pide aceptarlo otra vez.
+export const basketExtensionConsents = pgTable('basket_extension_consents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  cadena: text('cadena').notNull(),
+  /** Nombre de la cadena tal como lo dio la extensión, para enseñarlo en Perfil. */
+  etiqueta: text('etiqueta').notNull(),
+  version: text('version').notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_basket_extension_consent').on(t.userId, t.cadena),
+])
+
 // ─── In-house error tracker (specs/errors.md) ────────────────────────
 //
 // One row per error *group* (same kind + normalised message + top stack

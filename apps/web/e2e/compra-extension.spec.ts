@@ -200,14 +200,27 @@ async function dismissOverlays(page: Page) {
   if (await later.isVisible({ timeout: 1_000 }).catch(() => false)) await later.click()
 }
 
-/** Un súper con web en tienda.example, los ITEMS en la lista y los pedidos preparados: la tarjeta del súper. */
-async function superOrder(page: Page): Promise<Locator> {
+/** La versión del aviso que acepta la web con la extensión simulada (su ping no trae `aviso`). */
+const CONSENT_GENERIC = 'web-v1-2026-11+generico'
+
+/**
+ * Un súper con web en tienda.example, los ITEMS en la lista y los pedidos preparados: la tarjeta del súper.
+ * Con el aviso de la cadena ya aceptado (D-154), salvo `consent: false`.
+ */
+async function superOrder(page: Page, { consent = true }: { consent?: boolean } = {}): Promise<Locator> {
   const headers = await authHeaders(page)
   const shop = await page.request.post(`${API_URL}/shops`, {
     headers,
     data: { name: 'Súper del barrio', kind: 'supermercado', channel: 'web', webUrl: 'https://tienda.example/', customerName: 'Ana' },
   })
   expect(shop.ok()).toBe(true)
+  if (consent) {
+    const r = await page.request.post(`${API_URL}/shop-extension/consent`, {
+      headers,
+      data: { cadena: 'tienda.example', etiqueta: ETIQUETA, version: CONSENT_GENERIC },
+    })
+    expect(r.ok()).toBe(true)
+  }
   const list = await (await page.request.get(`${API_URL}/shopping-list`, { headers })).json()
   for (const name of ITEMS) {
     const r = await page.request.post(`${API_URL}/shopping-list/${list.id}/items`, { headers, data: { name, quantity: 1, unit: 'u', aisle: 'otros' } })
@@ -277,6 +290,43 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('móvil 390×844', () => {
   test.use({ viewport: { width: 390, height: 844 } })
+
+  // ─── el aviso antes del primer envío (D-154) ──────────────────
+
+  test('el aviso antes del primer envío: «Ahora no» no manda nada; aceptar guarda y envía; después no sale; en Perfil se desactiva', async ({ page }) => {
+    const RIESGO = 'La Cadena puede cerrar tu cuenta si ve un programa.'
+    await fakeExtension(page, { ping: { value: { ok: true, protocolo: 1, version: 'e2e', hosts: ['tienda.example'], etiqueta: ETIQUETA, aviso: { version: 'e2e-v1', riesgo: RIESGO } } } })
+    const consents = watchPosts(page, '/shop-extension/consent')
+    const card = await superOrder(page, { consent: false })
+    await sendButton(card).click()
+    const sheet = page.getByTestId('basket-consent')
+    await expect(sheet).toBeVisible()
+    await expect(sheet).toContainText(`Antes de enviar tu lista a ${ETIQUETA}`)
+    await expect(sheet).toContainText(RIESGO)
+    await expect(sheet).toContainText('no confirma el pedido y no paga')
+    await shot(page, 'aviso-antes-del-primer-envio')
+    await sheet.getByRole('button', { name: 'Ahora no' }).click()
+    await expect(sheet).toHaveCount(0)
+    expect(await extCalls(page)).not.toContain('enviar')
+    expect(consents).toEqual([])
+
+    await sendButton(card).click()
+    await page.getByTestId('basket-consent').getByRole('button', { name: 'Entiendo el riesgo, activar' }).click()
+    await expect(card.getByTestId('basket-extension-sent')).toBeVisible({ timeout: 10_000 })
+    expect(consents).toEqual([{ cadena: 'tienda.example', etiqueta: ETIQUETA, version: 'web-v1-2026-11+e2e-v1' }])
+    expect((await extCalls(page)).filter((t) => t === 'enviar')).toHaveLength(1)
+    const status = await (await page.request.get(`${API_URL}/shop-extension/status`, { headers: await authHeaders(page) })).json()
+    expect(status.consents).toEqual([expect.objectContaining({ cadena: 'tienda.example', version: 'web-v1-2026-11+e2e-v1' })])
+
+    // En Perfil: lo aceptado, con «Desactivar», que lo borra.
+    await page.goto('/profile')
+    const perfil = page.getByTestId('profile-basket-consents')
+    await expect(perfil).toContainText(ETIQUETA, { timeout: 15_000 })
+    await perfil.getByRole('button', { name: 'Desactivar' }).click()
+    await expect(perfil).toHaveCount(0)
+    const after = await (await page.request.get(`${API_URL}/shop-extension/status`, { headers: await authHeaders(page) })).json()
+    expect(after.consents).toEqual([])
+  })
 
   // ─── cuándo sale el botón ────────────────────────────────────
 

@@ -29,8 +29,8 @@ test.beforeEach(async ({ page }) => {
 test('a new account sees a single card above the menu: safety first, then «Manda la lista»', async ({ page }) => {
   test.setTimeout(90_000)
   await registerFreshUser(page, { keepNextSteps: true })
+  // Lands on /menu: the health notice is shown (and stamped) on this first visit.
   await completeOnboarding(page)
-  await page.goto('/menu')
   await expect(page.getByTestId('menu-week-range')).toBeVisible({ timeout: 20_000 })
 
   // Signed up without the health-data consent: «No tenemos tus alergias» first, alone.

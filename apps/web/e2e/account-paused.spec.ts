@@ -7,6 +7,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 type Access = {
   state: 'beta' | 'trial' | 'paused' | 'subscribed'
@@ -37,6 +38,8 @@ async function billingAs(page: Page, access: Access) {
 test('paused account: /menu says so, Mimo is off, «Elegir plan» opens the plans', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  // PRO-387: one next step at a time; without the consent «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
@@ -63,6 +66,7 @@ test('paused account: /menu says so, Mimo is off, «Elegir plan» opens the plan
 test('two days left: /menu warns once, with the last day', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 

@@ -5,6 +5,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { canRedTransition, householdCanCancelRed, RED_IN_FLIGHT, RED_LISTED_OPEN } from '../services/red/states.js'
+import { refuseRedInOldFlow, ShopOrderError } from '../services/shopOrders/store.js'
+import { DEFAULT_RED_SETTINGS } from '@ona/shared'
 
 describe('canRedTransition', () => {
   it('follows the design table', () => {
@@ -33,5 +35,15 @@ describe('what the household can do and what counts as ordered', () => {
   it('lines in ordered…payment_pending are «ya está en un pedido abierto»; charged, delivered and incident are still listed', () => {
     expect(RED_IN_FLIGHT).toEqual(['ordered', 'accepted', 'preparing', 'ready', 'payment_pending'])
     expect(RED_LISTED_OPEN).toEqual([...RED_IN_FLIGHT, 'charged', 'delivered', 'incident'])
+  })
+})
+
+describe('refuseRedInOldFlow', () => {
+  it('a Red order can’t be marked sent, quoted or approved; the household’s own shops can', () => {
+    expect(() => refuseRedInOldFlow({ redShopId: 'r1', redTerms: DEFAULT_RED_SETTINGS }, 'envían por WhatsApp')).toThrow(ShopOrderError)
+    expect(() => refuseRedInOldFlow({ redShopId: null, redTerms: null }, 'envían por WhatsApp')).not.toThrow()
+  })
+  it('uses the one Red-order rule (isRedOrderRow): a Red shop without frozen terms is not a Red order', () => {
+    expect(() => refuseRedInOldFlow({ redShopId: 'r1', redTerms: null }, 'envían por WhatsApp')).not.toThrow()
   })
 })

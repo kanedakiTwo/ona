@@ -58,9 +58,9 @@ import { capitalize, prettyName } from './format.js'
 import { parseShopReply, type ParsedReply } from './quoteParser.js'
 import { minimumMax, redBlockers, redDelivers, redView } from '../red/view.js'
 import { emptyRedInfo, prepareRedShops } from '../red/prepare.js'
-import { getRedSettings, rememberOutOfRed } from '../red/store.js'
+import { getRedSettings, rememberOutOfRed, sameTerms } from '../red/store.js'
 import { redEnabledFor } from '../red/flag.js'
-import { RED_IN_FLIGHT, RED_LISTED_OPEN } from '../red/states.js'
+import { householdCanCancelRed, RED_IN_FLIGHT, RED_LISTED_OPEN } from '../red/states.js'
 
 type Db = typeof defaultDb
 /** `db` o una transacción: con lo que se lee y se escribe un pedido. */
@@ -774,10 +774,46 @@ async function appendToShopDraft(userId: string, householdId: string, shopId: st
   else await db.insert(shopOrders).values({ ...values, householdId, userId, shopId, shopSnapshot: snapshotOf(shop), status: 'draft', token: randomBytes(12).toString('base64url'), redShopId: terms ? shop.redShopId : null, redTerms: terms })
 }
 
+/** Red orders never go through the household's WhatsApp flow (sent → quoted → approved). */
+export function refuseRedInOldFlow(row: Pick<OrderRow, 'redShopId' | 'redTerms'>, what: string): void {
+  if (isRedOrderRow(row)) throw new ShopOrderError(409, 'RED_ORDER', `Los pedidos de la Red no se ${what}: se piden en la app.`)
+}
+
 export async function markSent(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
+  refuseRedInOldFlow(row, 'envían por WhatsApp')
   requireStatus(row, ['draft', 'sent'], 'marcar como enviado')
   return update(row.id, { status: 'sent', sentAt: row.sentAt ?? new Date() }, db)
+}
+
+/**
+ * «Pedir» a Red order (design §3–§4). The household accepts the max it saw;
+ * if the Red's terms changed since the draft, they're refreshed and it has to
+ * look again. Tramo 1a: no card hold yet and the shop isn't told (tramo 1b).
+ */
+export async function placeRedOrder(userId: string, id: string, body: { maxEur: number }, db: Db = defaultDb): Promise<ShopOrder> {
+  if (!(await redEnabledFor(userId, db))) throw new ShopOrderError(403, 'RED_OFF', 'No disponible.')
+  const { row } = await loadOrder(userId, id, db)
+  if (!isRedOrderRow(row)) throw new ShopOrderError(400, 'NOT_RED', 'Este pedido no es de la Red.')
+  requireStatus(row, ['draft'], 'pedir')
+  const terms = await getRedSettings(db)
+  if (!sameTerms(row.redTerms as RedSettings, terms)) {
+    // Only a draft's terms are refreshed: an order already placed keeps the ones it was placed with.
+    await db
+      .update(shopOrders)
+      .set({ redTerms: terms, updatedAt: new Date() })
+      .where(and(eq(shopOrders.id, row.id), eq(shopOrders.status, 'draft')))
+    throw new ShopOrderError(409, 'TERMS_CHANGED', 'Han cambiado las condiciones de la Red: revisa el pedido antes de pedirlo.')
+  }
+  return withLockedOrder(userId, id, db, async (locked, tx) => {
+    requireStatus(locked, ['draft'], 'pedir')
+    const current = presentOrder(locked)
+    if (!current.lines.some((l) => l.included !== false)) throw new ShopOrderError(409, 'EMPTY', 'El pedido está vacío.')
+    if (current.blockers.length) throw new ShopOrderError(409, 'BLOCKED', current.blockers[0])
+    const max = current.red?.maxEur ?? null
+    if (max == null || Math.abs(max - body.maxEur) > 0.004) throw new ShopOrderError(409, 'MAX_CHANGED', 'El máximo ha cambiado: revísalo antes de pedir.')
+    return update(locked.id, { status: 'ordered', orderedAt: new Date(), orderedByUserId: userId, maxEur: max }, tx)
+  })
 }
 
 /**
@@ -833,6 +869,8 @@ type Parser = (input: Parameters<typeof parseShopReply>[0]) => Promise<ParsedRep
 /** The shop answered: parse its reply, assess every line against estimate, band and cap. */
 export async function submitQuote(userId: string, id: string, text: string, deps: { parse?: Parser } = {}, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
+  // Before the model call: a Red order never spends API on a pasted reply.
+  refuseRedInOldFlow(row, 'contestan pegando el mensaje de la tienda')
   requireStatus(row, ['draft', 'sent', 'quoted'], 'registrar la respuesta')
   const snap = row.shopSnapshot as ShopSnapshot
   const lines = row.lines as ShopOrderLine[]
@@ -874,6 +912,7 @@ export async function approveOrder(
   db: Db = defaultDb,
 ): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
+  refuseRedInOldFlow(row, 'aprueban así')
   requireStatus(row, ['quoted', 'approved'], 'aprobar')
   const decisions = body.decisions ?? {}
   const lines = (row.lines as ShopOrderLine[]).map((l) => ({
@@ -906,6 +945,7 @@ export async function approveOrder(
  */
 export async function closeOrder(userId: string, id: string, body: { finalTotalEur?: number | null }, db: Db = defaultDb): Promise<ShopOrder> {
   return withLockedOrder(userId, id, db, async (row, tx) => {
+    if (isRedOrderRow(row)) throw new ShopOrderError(409, 'RED_ORDER', 'Los pedidos de la Red se cierran solos cuando la tienda lo entrega.')
     requireStatus(row, OPEN_STATUSES, 'cerrar')
     const lines = row.lines as ShopOrderLine[]
     const ext = (row.extensionResult as StoredBasketResult | null) ?? null
@@ -931,6 +971,8 @@ export async function closeOrder(userId: string, id: string, body: { finalTotalE
 
 export async function cancelOrder(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
-  requireStatus(row, OPEN_STATUSES, 'cancelar')
+  if (isRedOrderRow(row)) {
+    if (!householdCanCancelRed(row.status)) throw new ShopOrderError(409, 'BAD_STATUS', 'La tienda ya lo está preparando: para cancelarlo, habla con ella.')
+  } else requireStatus(row, OPEN_STATUSES, 'cancelar')
   return update(row.id, { status: 'cancelled' }, db)
 }

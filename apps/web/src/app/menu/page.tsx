@@ -17,6 +17,7 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
 import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"
@@ -728,6 +729,7 @@ export default function MenuPage() {
               <>
                 {header}
                 <AccountAccessNotice />
+                <PendingSignUpCard />
                 <NoHealthDataNotice />
                 <AfinaNoticeCard />
                 <TasteMenuCard />
@@ -800,6 +802,7 @@ export default function MenuPage() {
       </header>
 
       <AccountAccessNotice />
+      <PendingSignUpCard />
 
       <NoHealthDataNotice />
       <AfinaNoticeCard />

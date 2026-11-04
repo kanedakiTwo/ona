@@ -113,7 +113,8 @@ function SendListSheet({ open, onClose, items }: { open: boolean; onClose: () =>
           disabled={referral.isLoading}
           onClick={() => {
             countShare("whatsapp")
-            onClose()
+            // After the browser has followed the link (closing at once could take it out first).
+            setTimeout(onClose, 0)
           }}
           testId="send-list-whatsapp"
         />

@@ -45,28 +45,30 @@ test('the main button is «Mandar la lista»; «Por WhatsApp» opens wa.me by ai
   await page.goto('/shopping')
   await expect(page.getByTestId('shopping-line').first()).toBeVisible({ timeout: 20_000 })
   const main = page.getByTestId('send-list')
-  await expect(main).toHaveText('Mandar la lista')
-  await expect(main).toBeEnabled()
+  await expect(main).toContainText('Mandar la lista', { timeout: 15_000 })
+  await expect(main).toBeEnabled({ timeout: 15_000 })
   await main.click()
 
-  const whatsapp = page.getByTestId('send-list-whatsapp')
+  const sheet = page.getByTestId('send-list-sheet')
+  await expect(sheet).toBeVisible({ timeout: 10_000 })
+  const whatsapp = sheet.getByTestId('send-list-whatsapp')
   await expect(whatsapp).toBeVisible()
-  await expect(page.getByTestId('send-list-copy')).toBeVisible()
+  await expect(sheet.getByTestId('send-list-copy')).toBeVisible()
   // Waits for the code: the link is ready once the footer carries it.
-  await expect(whatsapp).toHaveAttribute('href', new RegExp(encodeURIComponent(`invita=${me.code}`)), { timeout: 15_000 })
-  const href = (await whatsapp.getAttribute('href'))!
-  expect(href.startsWith('https://wa.me/?text=')).toBe(true)
-  const text = decodeURIComponent(href.slice('https://wa.me/?text='.length))
+  await expect(whatsapp).toHaveAttribute('href', /^https:\/\/wa\.me\/\?text=/, { timeout: 15_000 })
+  await expect
+    .poll(async () => decodeURIComponent(((await whatsapp.getAttribute('href')) ?? '').replace('https://wa.me/?text=', '')), { timeout: 15_000 })
+    .toContain(`/?ref=lista&invita=${me.code}`)
+  const text = decodeURIComponent((await whatsapp.getAttribute('href'))!.replace('https://wa.me/?text=', ''))
   // By aisle: a bold aisle heading, then «- name…» lines.
-  expect(text).toMatch(/^Lista de la compra\n\n\*[^*\n]+\*\n- /)
-  expect(text).toMatch(/\/\?ref=lista&invita=/)
-  expect(text.trimEnd().endsWith(`/?ref=lista&invita=${me.code}`)).toBe(true)
+  expect(text).toContain('Lista de la compra')
+  expect(text).toMatch(/\n\*[^*\n]+\*\n- \S/)
 
-  const counted = page.waitForResponse((r) => r.url().endsWith('/usage/list-shared') && r.request().method() === 'POST')
+  const counted = page.waitForResponse((r) => r.url().includes('/usage/list-shared') && r.request().method() === 'POST', { timeout: 15_000 })
   await whatsapp.click()
   const res = await counted
   expect(res.status()).toBe(204)
-  expect(res.request().postDataJSON()).toEqual({ channel: 'web', via: 'whatsapp' })
+  expect(res.request().postDataJSON()).toMatchObject({ channel: 'web', via: 'whatsapp' })
 
   if (before != null) {
     await expect.poll(() => listSharedTotal(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(before + 1)

@@ -11,7 +11,7 @@ import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
 import { markRecipeFromMimo } from '@/lib/usageEvents'
 import { useBilling } from '@/hooks/useBilling'
-import { AccountAccessNotice, isPaused } from '@/components/billing/AccountAccessNotice'
+import { AccountAccessNotice, isOnGratis } from '@/components/billing/AccountAccessNotice'
 
 /** Suggestions for an empty conversation, by page. */
 export function suggestionsFor(pathname: string | null): string[] {
@@ -38,8 +38,8 @@ export default function MimoPanel() {
   const inputRef = useRef<HTMLInputElement>(null)
   const busy = mimo.status === 'thinking' || mimo.status === 'transcribing'
   const billing = useBilling()
-  const paused = isPaused(billing.data)
-  const offer = !paused && !!billing.data?.founder?.offer
+  const gratis = isOnGratis(billing.data)
+  const offer = !gratis && !!billing.data?.founder?.offer
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -217,8 +217,8 @@ export default function MimoPanel() {
           <div ref={bottomRef} />
         </div>
 
-        {/* PRO-135: a paused account can't talk to Mimo; the panel says why and offers the plans. */}
-        {paused ? (
+        {/* PRO-385: on Gratis Mimo rests; the panel says so and offers the plans. */}
+        {gratis ? (
         <div className="flex-none border-t border-[#DDD6C5] bg-[#FFFEFA] px-4 pb-[max(var(--safe-bottom),12px)] pt-3">
           <AccountAccessNotice variant="panel" />
         </div>

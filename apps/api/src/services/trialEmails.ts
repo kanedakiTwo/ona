@@ -49,8 +49,8 @@ export function trialEndingEmail(i: {
     paragraphs: [
       'Hola:',
       `Tu prueba de ${i.access.trialDays ?? TRIAL_DAYS} días en ${BRAND_NAME} dura hasta el ${day}, incluido. Hasta entonces lo tienes todo, como hasta ahora.`,
-      `Si después quieres seguir generando menús y hablando con Mimo, elige un plan antes de esa fecha. Esencial cuesta ${esencial} y Plus ${plus}, para todo tu hogar e IVA incluido.`,
-      'Si no eliges ninguno, no se te cobra nada. Tu cuenta queda en pausa: tu menú, tus recetas y tu lista siguen ahí, no se borra nada, y puedes elegir un plan cuando quieras.',
+      `Si después quieres seguir hablando con Mimo y que os haga la semana él solo, elige un plan antes de esa fecha. Esencial cuesta ${esencial} y Plus ${plus}, para todo tu hogar e IVA incluido.`,
+      'Si no eliges ninguno, no se te cobra nada y pasas al plan Gratis: sigues haciendo tu menú de la semana y tu lista en la web, sin Mimo ni avisos. Tu menú, tus recetas y tu lista siguen ahí, no se borra nada, y puedes elegir un plan cuando quieras.',
     ],
     button: { label: 'Ver los planes', url: `${web}/profile/suscripcion` },
     signoff: 'Un abrazo,',

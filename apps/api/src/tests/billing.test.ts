@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import type Stripe from 'stripe'
 import { afterAll, describe, expect, it } from 'vitest'
-import { FOUNDER_PLANS, PLANS, founderPriceIfSubscribing, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey, subscriptionSummary } from '@ona/shared'
+import { FOUNDER_PLANS, PAID_PLANS, founderPriceIfSubscribing, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey, subscriptionSummary } from '@ona/shared'
 import { createBillingRouter, createBillingWebhookRouter, type Payer } from '../routes/billing.js'
 import {
   billingStateFor,
@@ -31,15 +31,15 @@ const BETA_FIRST = new Date('2026-12-29T11:00:00Z')
 
 describe('plans (2026-10-15: Esencial featured, monthly or yearly)', () => {
   it('Esencial first and featured; Plus second', () => {
-    expect(PLANS.map((p) => [p.key, p.featured])).toEqual([['esencial', true], ['plus', false]])
+    expect(PAID_PLANS.map((p) => [p.key, p.featured])).toEqual([['esencial', true], ['plus', false]])
   })
 
   it('prices, VAT included', () => {
-    expect(PLANS.map((p) => [p.key, p.prices.mensual.cents, p.prices.anual.cents])).toEqual([
+    expect(PAID_PLANS.map((p) => [p.key, p.prices.mensual.cents, p.prices.anual.cents])).toEqual([
       ['esencial', 499, 4999],
       ['plus', 899, 5999],
     ])
-    expect(PLANS.map((p) => [p.prices.mensual.label, p.prices.anual.label])).toEqual([
+    expect(PAID_PLANS.map((p) => [p.prices.mensual.label, p.prices.anual.label])).toEqual([
       ['4,99 €/mes', '49,99 €/año'],
       ['8,99 €/mes', '59,99 €/año'],
     ])
@@ -416,10 +416,10 @@ describe('routes', () => {
     expect(repo.rows[0]).toMatchObject({ householdId: 'h1', plan: 'plus', period: 'anual', status: 'trialing' })
   })
 
-  it('PRO-135: after the trial the household is paused; paying (the webhook) takes it out of the pause', async () => {
+  it('PRO-385: after the trial the household is on Gratis; paying (the webhook) takes it to its plan', async () => {
     // The owner's household (created 2026-10-21, beta) after its trial: 2027-02-01.
     const { call } = await app({ now: AFTER_LAUNCH })
-    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'paused', trialLastDay: '2026-12-28' })
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'gratis', trialLastDay: '2026-12-28' })
     const event = { type: 'customer.subscription.created', data: { object: { id: 'sub_1' } } }
     expect((await call('POST', '/billing/webhook', undefined, event, { 'stripe-signature': 'good' })).status).toBe(200)
     expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'subscribed' })

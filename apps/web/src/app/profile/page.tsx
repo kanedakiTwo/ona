@@ -1109,7 +1109,7 @@ function ProfileHub() {
               ? billing.isError ? 'Tu plan' : loading
               : billing.data.subscription
                 ? subscriptionSummary(billing.data.subscription).hub
-                : billing.data.beta ? 'Beta: Plus gratis' : 'Sin plan'
+                : billing.data.beta ? 'Beta: Plus gratis' : billing.data.access?.state === 'gratis' ? 'Plan Gratis' : 'Sin plan'
           }
         />
       </div>

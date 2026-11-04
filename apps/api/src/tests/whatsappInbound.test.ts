@@ -204,17 +204,25 @@ describe('processInbound — unlinked numbers', () => {
 })
 
 describe('processInbound — gates', () => {
-  it('a paused account (PRO-135) gets only the notice to choose a plan: no Mimo, no budget check', async () => {
+  it('the Gratis plan (PRO-385) gets only the notice to choose a plan: no Mimo, no budget check', async () => {
     const t = setup({ paused: true })
     await processInbound(msg(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.paused(`${WEB}/profile/suscripcion`) }])
-    expect(t.outbound[0]).toMatchObject({ kind: 'paused' })
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.gratis(`${WEB}/profile/suscripcion`) }])
+    expect(t.outbound[0]).toMatchObject({ kind: 'gratis' })
     expect(t.chat).not.toHaveBeenCalled()
     expect(t.checkBudget).not.toHaveBeenCalled()
-    expect(COPY.paused('x')).toMatch(/No se ha borrado nada/)
+    expect(COPY.gratis('x')).toBe('En el plan Gratis, Mimo descansa. Con Esencial vuelve a haceros la semana él solo.\n\nElige tu plan aquí:\nx')
   })
 
-  it('an account that is not paused talks to Mimo as always', async () => {
+  it('the Gratis notice goes once a day: a second message the same day gets nothing', async () => {
+    const t = setup({ paused: true, recentLinkHint: true })
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([])
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', errorMessage: 'plan-gratis' })
+  })
+
+  it('an account that is not on Gratis talks to Mimo as always', async () => {
     const t = setup({ paused: false })
     await processInbound(msg(), t.deps)
     expect(t.chat).toHaveBeenCalledOnce()

@@ -1,6 +1,6 @@
 /**
- * PRO-135 (specs/billing.md): the 14-day trial without card and the paused
- * account at its end, only from launch day (2026-12-15). Pure rule, the
+ * PRO-135 (specs/billing.md): the 14-day trial without card and the Gratis
+ * plan at its end (PRO-385), only from launch day (2026-12-15). Pure rule, the
  * DB-backed checks with a fake loader, the 402 guard, and the day-12 email.
  */
 import express from 'express'
@@ -8,7 +8,7 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import {
-  ACCOUNT_PAUSED_MESSAGE,
+  PLAN_GRATIS_MESSAGE,
   CREATOR_TRIAL_DAYS,
   TRIAL_DAYS,
   accountAccess,
@@ -19,7 +19,7 @@ import {
   trialEndsAt,
   trialLastDayLabel,
 } from '@ona/shared'
-import { accessForUser, isAccountPaused, requireActiveAccount, type AccessFacts } from '../services/accountAccess.js'
+import { accessForUser, isOnFreePlan, requirePaidPlan, type AccessFacts } from '../services/accountAccess.js'
 import {
   isSendingHour,
   isTrialEndingEmailDue,
@@ -52,7 +52,7 @@ describe('accountAccess (pure rule)', () => {
     expect(at('2026-12-14T23:00:00Z')).toMatchObject({ state: 'trial', daysLeft: 13 }) // 00:00 Madrid on launch day
     expect(at('2026-12-26T10:00:00Z')).toMatchObject({ state: 'trial', daysLeft: 2 })
     expect(at('2026-12-28T22:59:00Z')).toMatchObject({ state: 'trial', daysLeft: 0 })
-    expect(at('2026-12-28T23:00:00Z')).toMatchObject({ state: 'paused', daysLeft: null })
+    expect(at('2026-12-28T23:00:00Z')).toMatchObject({ state: 'gratis', daysLeft: null })
   })
 
   it('signing up after launch day: day 13 active, day 15 paused', () => {
@@ -60,8 +60,8 @@ describe('accountAccess (pure rule)', () => {
     expect(at(0)).toMatchObject({ state: 'trial', daysLeft: 14, trialLastDay: '2027-01-24' })
     expect(at(12)).toMatchObject({ state: 'trial', daysLeft: 2 })
     expect(at(13)).toMatchObject({ state: 'trial', daysLeft: 1 })
-    expect(at(15)).toMatchObject({ state: 'paused' })
-    expect(at(400)).toMatchObject({ state: 'paused' })
+    expect(at(15)).toMatchObject({ state: 'gratis' })
+    expect(at(400)).toMatchObject({ state: 'gratis' })
   })
 
   it('a paid plan (trialing, active, past_due) means subscribed, even long after the trial', () => {
@@ -96,9 +96,9 @@ describe('creator link: 4 weeks free in all (PRO-353, D-130)', () => {
     expect(at(0, 28)).toMatchObject({ state: 'trial', trialDays: 28, daysLeft: 28, trialLastDay: '2027-02-07' })
     expect(at(15, 28)).toMatchObject({ state: 'trial', daysLeft: 13 })
     expect(at(26, 28)).toMatchObject({ state: 'trial', daysLeft: 2, trialDay: 26 })
-    expect(at(29, 28)).toMatchObject({ state: 'paused' })
+    expect(at(29, 28)).toMatchObject({ state: 'gratis' })
     expect(at(0)).toMatchObject({ state: 'trial', trialDays: 14, trialLastDay: '2027-01-24' })
-    expect(at(15)).toMatchObject({ state: 'paused' })
+    expect(at(15)).toMatchObject({ state: 'gratis' })
     expect(trialEndsAt(NEW_HOUSEHOLD, undefined, 28)).toMatchObject({ endsAt: new Date('2027-02-07T23:00:00Z'), lastDay: '2027-02-07' })
   })
 
@@ -108,8 +108,8 @@ describe('creator link: 4 weeks free in all (PRO-353, D-130)', () => {
     const at = (iso: string, trialDays?: number) => accountAccess({ householdCreatedAt: BETA_HOUSEHOLD, paid: false, now: new Date(iso), trialDays })
     expect(at('2026-11-01T10:00:00Z', 28)).toMatchObject({ state: 'beta', trialDays: 28, trialLastDay: '2027-01-11' })
     expect(at('2026-12-30T10:00:00Z', 28)).toMatchObject({ state: 'trial', daysLeft: 12 })
-    expect(at('2026-12-30T10:00:00Z')).toMatchObject({ state: 'paused' })
-    expect(at('2027-01-11T23:00:00Z', 28)).toMatchObject({ state: 'paused' })
+    expect(at('2026-12-30T10:00:00Z')).toMatchObject({ state: 'gratis' })
+    expect(at('2027-01-11T23:00:00Z', 28)).toMatchObject({ state: 'gratis' })
   })
 
   it('the founder price while the longer trial lasts', () => {
@@ -118,31 +118,31 @@ describe('creator link: 4 weeks free in all (PRO-353, D-130)', () => {
   })
 })
 
-describe('isAccountPaused / accessForUser (DB facts behind a loader)', () => {
+describe('isOnFreePlan / accessForUser (DB facts behind a loader)', () => {
   const facts = (f: Partial<AccessFacts>) => async () => ({ householdCreatedAt: NEW_HOUSEHOLD, latestStatus: null, ...f })
 
   it('before launch day it never reads the DB and never pauses', async () => {
     const load = vi.fn(async () => {
       throw new Error('no DB before launch')
     })
-    expect(await isAccountPaused('u1', new Date('2026-12-01T10:00:00Z'), load)).toBe(false)
+    expect(await isOnFreePlan('u1', new Date('2026-12-01T10:00:00Z'), load)).toBe(false)
     expect((await accessForUser('u1', new Date('2026-12-01T10:00:00Z'), load)).state).toBe('beta')
     expect(load).not.toHaveBeenCalled()
   })
 
   it('after the trial without plan: paused; with a live plan: not', async () => {
     const now = day(15, NEW_HOUSEHOLD)
-    expect(await isAccountPaused('u1', now, facts({}))).toBe(true)
-    expect(await isAccountPaused('u1', now, facts({ latestStatus: 'trialing' }))).toBe(false)
-    expect(await isAccountPaused('u1', now, facts({ latestStatus: 'active' }))).toBe(false)
-    expect(await isAccountPaused('u1', now, facts({ latestStatus: 'canceled' }))).toBe(true)
-    expect(await isAccountPaused('u1', now, facts({ latestStatus: 'unpaid' }))).toBe(true)
-    expect(await isAccountPaused('u1', day(13, NEW_HOUSEHOLD), facts({}))).toBe(false)
+    expect(await isOnFreePlan('u1', now, facts({}))).toBe(true)
+    expect(await isOnFreePlan('u1', now, facts({ latestStatus: 'trialing' }))).toBe(false)
+    expect(await isOnFreePlan('u1', now, facts({ latestStatus: 'active' }))).toBe(false)
+    expect(await isOnFreePlan('u1', now, facts({ latestStatus: 'canceled' }))).toBe(true)
+    expect(await isOnFreePlan('u1', now, facts({ latestStatus: 'unpaid' }))).toBe(true)
+    expect(await isOnFreePlan('u1', day(13, NEW_HOUSEHOLD), facts({}))).toBe(false)
   })
 
   it('a household from a creator link is not paused until its 4 weeks end (PRO-353)', async () => {
-    expect(await isAccountPaused('u1', day(20, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toBe(false)
-    expect(await isAccountPaused('u1', day(29, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toBe(true)
+    expect(await isOnFreePlan('u1', day(20, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toBe(false)
+    expect(await isOnFreePlan('u1', day(29, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toBe(true)
     expect(await accessForUser('u1', day(20, NEW_HOUSEHOLD), facts({ trialDays: 28 }))).toMatchObject({ state: 'trial', trialDays: 28, daysLeft: 8 })
   })
 
@@ -151,7 +151,7 @@ describe('isAccountPaused / accessForUser (DB facts behind a loader)', () => {
       throw new Error('db down')
     }
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(await isAccountPaused('u1', day(20, NEW_HOUSEHOLD), load)).toBe(false)
+    expect(await isOnFreePlan('u1', day(20, NEW_HOUSEHOLD), load)).toBe(false)
     err.mockRestore()
   })
 })
@@ -164,15 +164,15 @@ afterAll(() => {
   }
 })
 
-describe('requireActiveAccount (402 ACCOUNT_PAUSED)', () => {
-  async function serve(paused: boolean, role = 'user') {
+describe('requirePaidPlan (402 PLAN_GRATIS)', () => {
+  async function serve(gratis: boolean, role = 'user') {
     const a = express()
     a.use(express.json())
     a.use((req, _res, next) => {
       Object.assign(req, { userId: 'u1', user: { role } })
       next()
     })
-    a.post('/x', requireActiveAccount({ paused: async () => paused, skip: (req) => req.body?.empty === true }), (_req, res) => {
+    a.post('/x', requirePaidPlan({ gratis: async () => gratis }), (_req, res) => {
       res.json({ ok: true })
     })
     const server = await new Promise<Server>((resolve) => {
@@ -183,17 +183,16 @@ describe('requireActiveAccount (402 ACCOUNT_PAUSED)', () => {
     return (body: unknown = {}) => fetch(`${base}/x`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
   }
 
-  it('a paused account is told to choose a plan; nothing is deleted', async () => {
+  it('Gratis is told Mimo rests and to choose Esencial', async () => {
     const r = await (await serve(true))()
     expect(r.status).toBe(402)
-    expect(await r.json()).toEqual({ error: ACCOUNT_PAUSED_MESSAGE, code: 'ACCOUNT_PAUSED' })
-    expect(ACCOUNT_PAUSED_MESSAGE).toMatch(/No se ha borrado nada/)
+    expect(await r.json()).toEqual({ error: PLAN_GRATIS_MESSAGE, code: 'PLAN_GRATIS' })
+    expect(PLAN_GRATIS_MESSAGE).toBe('En el plan Gratis, Mimo descansa. Con Esencial vuelve a haceros la semana él solo.')
   })
 
-  it('an active account, an admin and a skipped request (empty week) go through', async () => {
+  it('a paid plan or the trial, and an admin, go through', async () => {
     expect((await (await serve(false))()).status).toBe(200)
     expect((await (await serve(true, 'admin'))()).status).toBe(200)
-    expect((await (await serve(true))({ empty: true })).status).toBe(200)
   })
 })
 
@@ -228,6 +227,7 @@ describe('«te quedan 2 días» email (day 12)', () => {
     expect(m.text).toContain('Esencial cuesta 4,99 €/mes y Plus 8,99 €/mes')
     expect(m.text).toContain('no se te cobra nada')
     expect(m.text).toContain('no se borra nada')
+    expect(m.text).toContain('pasas al plan Gratis')
     expect(m.text).toContain('https://mimoia.com/profile/suscripcion')
     expect(m.html).toContain('Ver los planes')
   })

@@ -60,13 +60,17 @@ async function loadKB() {
 /** Plans and prices as `/precios` shows them (packages/shared plans.ts, specs/billing.md). */
 export function pricingBlock(): string {
   const plans = PLANS.map((p) => {
+    if (!p.prices) {
+      // PRO-385 (D-158): Gratis, what a household has after the trial without a plan.
+      return `- ${p.name}: 0 €, sin tarjeta; es lo que queda al acabar la prueba sin elegir plan, o al acabarse un plan cancelado. ${p.tagline} Lo principal: ${p.highlights.join('; ')}. ${p.leavesOut}`
+    }
     const m = p.prices.mensual.label
     const a = p.prices.anual
     return `- ${p.name}${p.featured ? ' (el que recomendamos)' : ''}: ${m} o ${a.label} (sale a ${a.perMonth}), ${PLAN_HOUSEHOLD}. ${p.tagline} Lo principal: ${p.highlights.join('; ')}.`
   }).join('\n')
   const v = (x: FeatureValue) => (x === true ? 'si' : x === false ? 'no' : x)
   const table = PLAN_FEATURE_GROUPS.flatMap((g) => g.features)
-    .map((f) => `- ${f.label}: Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
+    .map((f) => `- ${f.label}: Gratis ${v(f.gratis)}; Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
     .join('\n')
   const payNow = isBillingConfigured()
     ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos; con el enlace de una creadora, 4 semanas: el ${CREATOR_BETA_FIRST_CHARGE_LABEL}); si cancela antes no paga nada.`

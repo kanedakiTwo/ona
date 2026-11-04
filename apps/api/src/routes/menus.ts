@@ -10,7 +10,6 @@ import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { requireActiveAccount } from '../services/accountAccess.js'
 import { validate } from '../middleware/validate.js'
 import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
@@ -175,8 +174,8 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
 // own menu. The `userId` in the body must match the authenticated user — the
 // route used to be open (anyone could overwrite any user's week by passing
 // their id), which is the IDOR this guard closes.
-// A paused account (PRO-135) can't generate a new menu; an empty week stays open.
-router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req) => req.body?.empty === true }), validate(generateMenuSchema), async (req: AuthRequest, res) => {
+// The Gratis plan (PRO-385, D-158) generates its week too: no plan guard here.
+router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
     const { userId, weekStart, customTemplate, empty, force, weekPlan, fromDate, onlyFavorites } = req.body
 

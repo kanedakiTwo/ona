@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { BuyableUnit } from './shopping.js'
 import type { StoredBasketResult } from './basketExtension.js'
+import { RED_ORDER_STATUSES, type RedOrderView } from './red.js'
 
 /**
  * "Compra en mis tiendas" — the household's own shops (frutería,
@@ -34,7 +35,7 @@ export const SHOP_CHANNEL_LABELS: Record<ShopChannel, string> = {
 export const SHOP_FULFILMENTS = ['recoger', 'domicilio'] as const
 export type ShopFulfilment = (typeof SHOP_FULFILMENTS)[number]
 
-export const SHOP_ORDER_STATUSES = ['draft', 'sent', 'quoted', 'approved', 'closed', 'cancelled'] as const
+export const SHOP_ORDER_STATUSES = ['draft', 'sent', 'quoted', 'approved', 'closed', 'cancelled', ...RED_ORDER_STATUSES] as const
 export type ShopOrderStatus = (typeof SHOP_ORDER_STATUSES)[number]
 
 export const SHOP_ORDER_STATUS_LABELS: Record<ShopOrderStatus, string> = {
@@ -44,6 +45,16 @@ export const SHOP_ORDER_STATUS_LABELS: Record<ShopOrderStatus, string> = {
   approved: 'Confirmado',
   closed: 'Cerrado',
   cancelled: 'Cancelado',
+  // Red de tiendas (D-165)
+  ordered: 'Pedido',
+  accepted: 'Aceptado',
+  preparing: 'Preparando',
+  ready: 'Listo',
+  payment_pending: 'Pendiente de pago',
+  charged: 'Cobrado',
+  delivered: 'Entregado',
+  rejected: 'Rechazado',
+  incident: 'Incidencia',
 }
 
 /** Where a line's € estimate comes from. Only `manual` and `historial` are
@@ -140,6 +151,8 @@ export interface ShopSnapshot {
   phone: string | null
   deliveryMinEur?: number | null
   deliveryFeeEur?: number | null
+  /** Red de tiendas: the Red shop behind this one, and whether it's a Mimoia copy or the household's own shop that joined. */
+  red?: { shopId: string; origin: 'propia' | 'red' } | null
 }
 
 /** Home-delivery minimum vs the estimate. `confident` = most of the basket has a price estimate. */
@@ -161,6 +174,8 @@ export interface ShopOrderLinks {
   shortConfirmation: string | null
   /** True when the order text is too long to prefill safely — copy it instead. */
   tooLong: boolean
+  /** Red orders: the card on /compra («Ver y pedir»). */
+  view?: string | null
 }
 
 export interface ShopOrder {
@@ -187,6 +202,8 @@ export interface ShopOrder {
   searchLinks: Record<string, string>
   /** Último envío a la extensión del navegador (tarjeta del súper); null si nunca. */
   extensionResult?: StoredBasketResult | null
+  /** Red de tiendas: discount, estimate and max; null/absent for the household's own shops. */
+  red?: RedOrderView | null
   createdAt: string
   sentAt: string | null
   quotedAt: string | null
@@ -211,6 +228,10 @@ export interface Shop {
   deliveryMinEur: number | null
   deliveryFeeEur: number | null
   position: number
+  /** Red de tiendas: the Red shop it is (copy) or joined (own shop); null = not in the Red. */
+  redShopId?: string | null
+  /** `red` = Mimoia assigned it from the Red; `propia` = the household added it. */
+  origin?: 'propia' | 'red'
   createdAt: string
 }
 
@@ -361,4 +382,6 @@ export const patchShopOrderSchema = z.object({
   fulfilment: z.enum(SHOP_FULFILMENTS).optional(),
   address: z.string().trim().max(200).nullable().optional(),
   capEur: z.number().positive().max(5000).nullable().optional(),
+  /** Red orders: raise «como mucho» (null = back to the computed one). */
+  maxEur: z.number().positive().max(5000).nullable().optional(),
 })

@@ -52,6 +52,15 @@ const STATUS_TONE: Record<ShopOrder["status"], string> = {
   approved: "bg-[#2D6A4F] text-[#FAF6EE]",
   closed: "bg-[#F2EDE0] text-[#7A7066]",
   cancelled: "bg-[#F2EDE0] text-[#A39A8E]",
+  ordered: "bg-[#2D6A4F]/10 text-[#2D6A4F]",
+  accepted: "bg-[#2D6A4F]/10 text-[#2D6A4F]",
+  preparing: "bg-[#2D6A4F]/10 text-[#2D6A4F]",
+  ready: "bg-[#2D6A4F]/15 text-[#2D6A4F]",
+  payment_pending: "bg-[#C65D38]/10 text-[#C65D38]",
+  charged: "bg-[#2D6A4F]/15 text-[#2D6A4F]",
+  delivered: "bg-[#F2EDE0] text-[#7A7066]",
+  rejected: "bg-[#C65D38]/10 text-[#C65D38]",
+  incident: "bg-[#C65D38]/10 text-[#C65D38]",
 }
 
 function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }) {

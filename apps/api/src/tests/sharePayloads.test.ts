@@ -3,7 +3,7 @@
  * link that opens without an account and says what Mimoia is.
  */
 import { describe, expect, it } from 'vitest'
-import { menuShareText, recipeSharePayload, withOnaFooter } from '@ona/shared'
+import { menuShareText, recipeSharePayload, shoppingListShareText, shoppingListShareUrl, withOnaFooter } from '@ona/shared'
 
 const ORIGIN = 'https://ona.example/'
 
@@ -59,5 +59,29 @@ describe('menuShareText', () => {
 
   it('withOnaFooter appends the link once', () => {
     expect(withOnaFooter('Lista\n\n', ORIGIN, 'lista')).toMatch(/^Lista\n\n— Hecho con Mimoia,.*\/\?ref=lista$/)
+  })
+})
+
+// PRO-380: «Mandar la lista».
+describe('shoppingListShareText', () => {
+  const items = [
+    { name: 'Tomate', aisle: 'produce', quantity: 1000, unit: 'g' },
+    { name: 'Pan', aisle: 'panaderia', quantity: 1, unit: 'u' },
+    { name: 'Cebolla', aisle: 'produce', quantity: 2, unit: 'u' },
+    { name: 'Pañales talla 4', aisle: 'raro', amountText: '2 paquetes' },
+    { name: 'Sal', aisle: 'despensa' },
+  ]
+
+  it('by aisle in the walk-through order, names sorted, amounts after the name', () => {
+    const text = shoppingListShareText(items, { origin: ORIGIN, code: 'abcd2345' })
+    expect(text).toContain('*Frutas y verduras*\n- Cebolla: 2 u\n- Tomate: 1000 g\n\n*Panadería*\n- Pan: 1 u\n\n*Despensa*\n- Sal\n\n*Otros*\n- Pañales talla 4: 2 paquetes')
+    expect(text.indexOf('Frutas')).toBeLessThan(text.indexOf('Panadería'))
+    expect(text).not.toContain('Lácteos')
+  })
+
+  it('the footer link carries ?ref=lista and the household code (K factor)', () => {
+    const text = shoppingListShareText(items, { origin: ORIGIN, code: 'abcd2345' })
+    expect(text).toMatch(/— Hecho con Mimoia, .*: https:\/\/ona\.example\/\?ref=lista&invita=abcd2345$/)
+    expect(shoppingListShareUrl(ORIGIN, null)).toBe('https://ona.example/?ref=lista')
   })
 })

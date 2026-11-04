@@ -17,6 +17,11 @@ import { clientEventProps, recordClientEvent, trackEvent } from '../services/usa
  *   «Copiar»), or Mimo handing out the link (PRO-163). Counted as
  *   `invite_shared`, only the number: no props. Body `{ channel? }`
  *   (`web` by default, `whatsapp` from Mimo there). 204 always.
+ *   POST /usage/list-shared — «Mandar la lista» on /shopping, or Mimo
+ *   handing out the whole list (PRO-380). Counted as `shopping_list_shared`;
+ *   it makes the week a resolved one (specs/metrics.md). Body `{ channel?,
+ *   via? }`: `channel` as above, `via` = whatsapp | copiar | compartir (the
+ *   web's option). 204 always.
  *   POST /usage/event — what the web sees and the API can't (PRO-120):
  *   `{ name, props }` with `name` one of CLIENT_USAGE_EVENTS (onboarding_step,
  *   screen_viewed, recipe_viewed, taste_tuning, push_opened) and props from
@@ -40,6 +45,18 @@ router.post('/usage/cook-mode-started', authMiddleware, (_req: AuthRequest, res)
 
 router.post('/usage/invite-shared', authMiddleware, (req: AuthRequest, res) => {
   trackEvent('invite_shared', { userId: req.userId!, channel: req.body?.channel === 'whatsapp' ? 'whatsapp' : 'web' })
+  res.status(204).end()
+})
+
+const LIST_SHARE_VIAS = ['whatsapp', 'copiar', 'compartir'] as const
+
+router.post('/usage/list-shared', authMiddleware, (req: AuthRequest, res) => {
+  const via = (LIST_SHARE_VIAS as readonly string[]).includes(req.body?.via) ? req.body.via : null
+  trackEvent('shopping_list_shared', {
+    userId: req.userId!,
+    channel: req.body?.channel === 'whatsapp' ? 'whatsapp' : 'web',
+    props: via ? { via } : null,
+  })
   res.status(204).end()
 })
 

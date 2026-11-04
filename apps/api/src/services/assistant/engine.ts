@@ -18,7 +18,11 @@ import {
   type TokenUsage,
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+<<<<<<< 2979b0b0c19bd776e6d5dd5d730c5aad39f06a7d
 import { dbTurnStore, remoteMessagesClient } from './mimoRemoto.js'
+=======
+import { noteApiCallOk } from '../apiSaldo.js'
+>>>>>>> 557ebdb211915c864882a02a4ff0aa0bf740b970
 
 let client: Anthropic | null = null
 
@@ -300,6 +304,8 @@ export async function runToolLoop(params: {
       { headers: { 'anthropic-beta': FALLBACK_BETA } },
     )
     usage = addAnthropicUsage(usage, response.usage)
+    // PRO-1101: Anthropic contesta, así que hay saldo: cierra la racha `saldo_api` si la había.
+    noteApiCallOk()
 
     if (response.stop_reason === 'refusal') {
       flags.push('refusal')

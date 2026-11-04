@@ -15,6 +15,13 @@
  * PRO-363 (2026-10-24): same step, two more rules — a broth («caldo de ave»,
  * «fondo oscuro de ternera»…, `isCeleryBroth`) gets «apio» and raisins
  * («pasas») get «sulfitos».
+ *
+ * PRO-1062 (2026-11-04): «aceite de sésamo», «semillas de sésamo», «tahini»…
+ * get «sesamo». And a recipe that uses a sesame ingredient gets «sesamo» in
+ * its stored union even when the ingredient already had the tag (a union
+ * saved before the tag, or by a path that skipped it): a test home's noodles
+ * showed no sesame with «aceite de sésamo» in the list. Every recipe fixed is
+ * logged by name, so the boot log is the list of what was wrong.
  */
 import { eq, inArray } from 'drizzle-orm'
 import { ingredients, recipeIngredients, recipes } from '../../db/schema.js'
@@ -31,8 +38,8 @@ type Db = typeof import('../../db/connection.js').db
 
 /**
  * The tags the boot step adds to a name: «lactosa» for a PRO-332 milk word,
- * «apio» for a broth and «sulfitos» for raisins (PRO-363), each only when
- * `stored` lacks it; else [].
+ * «apio» for a broth and «sulfitos» for raisins (PRO-363), «sesamo» for
+ * sesame (PRO-1062), each only when `stored` lacks it; else [].
  */
 export function missingNameAllergens(name: string, stored: readonly string[] | null | undefined): string[] {
   const have = new Set(stored ?? [])
@@ -44,7 +51,19 @@ export function missingNameAllergens(name: string, stored: readonly string[] | n
   if (!have.has('lactosa') && PRO332_MILK_TERMS.some((t) => nameHasTerm(n, t)) && inferred.includes('lactosa'))
     missing.push('lactosa')
   if (!have.has('sulfitos') && PRO363_SULFITE_TERMS.some((t) => nameHasTerm(n, t))) missing.push('sulfitos')
+  if (!have.has('sesamo') && inferred.includes('sesamo')) missing.push('sesamo')
   return missing
+}
+
+/**
+ * The tags the boot step makes sure every recipe using this ingredient
+ * carries: what it just added to the ingredient plus «sesamo» when the name
+ * says sesame, even if the ingredient already had it (PRO-1062).
+ */
+export function recipeNameAllergens(name: string, added: readonly string[]): string[] {
+  const tags = new Set(added)
+  if (inferAllergenTagsFromName(name).includes('sesamo')) tags.add('sesamo')
+  return [...tags].sort()
 }
 
 export interface AllergenBackfillResult {
@@ -52,6 +71,8 @@ export interface AllergenBackfillResult {
   ingredients: string[]
   /** Recipes whose stored union got a tag. */
   recipes: number
+  /** «recipe name» +tags, per recipe changed. */
+  recipeNames: string[]
   /** Of them, catalogue (system) recipes. */
   catalogRecipes: number
 }
@@ -63,19 +84,23 @@ export async function applyNameAllergenTags(
   const rows = await db
     .select({ id: ingredients.id, name: ingredients.name, allergenTags: ingredients.allergenTags })
     .from(ingredients)
+  // ingredient id → tags every recipe that uses it must carry.
   const added = new Map<string, string[]>()
   const changed: string[] = []
   for (const r of rows) {
     const missing = missingNameAllergens(r.name, r.allergenTags)
-    if (missing.length === 0) continue
-    const next = [...new Set([...(r.allergenTags ?? []), ...missing])].sort()
-    await db.update(ingredients).set({ allergenTags: next }).where(eq(ingredients.id, r.id))
-    added.set(r.id, missing)
-    changed.push(`«${r.name}» +${missing.join(', ')}`)
+    if (missing.length > 0) {
+      const next = [...new Set([...(r.allergenTags ?? []), ...missing])].sort()
+      await db.update(ingredients).set({ allergenTags: next }).where(eq(ingredients.id, r.id))
+      changed.push(`«${r.name}» +${missing.join(', ')}`)
+    }
+    const forRecipes = recipeNameAllergens(r.name, missing)
+    if (forRecipes.length > 0) added.set(r.id, forRecipes)
   }
+  const nothing: AllergenBackfillResult = { ingredients: [], recipes: 0, recipeNames: [], catalogRecipes: 0 }
   if (added.size === 0) {
     log('[allergen-names] nada que cambiar')
-    return { ingredients: [], recipes: 0, catalogRecipes: 0 }
+    return nothing
   }
 
   const uses = await db
@@ -91,9 +116,10 @@ export async function applyNameAllergenTags(
 
   let recipeCount = 0
   let catalogCount = 0
+  const recipeNames: string[] = []
   if (perRecipe.size > 0) {
     const recipeRows = await db
-      .select({ id: recipes.id, allergens: recipes.allergens, authorId: recipes.authorId })
+      .select({ id: recipes.id, name: recipes.name, allergens: recipes.allergens, authorId: recipes.authorId })
       .from(recipes)
       .where(inArray(recipes.id, [...perRecipe.keys()]))
     for (const r of recipeRows) {
@@ -106,10 +132,16 @@ export async function applyNameAllergenTags(
         .where(eq(recipes.id, r.id))
       recipeCount++
       if (r.authorId == null) catalogCount++
+      recipeNames.push(`«${r.name}» +${extra.sort().join(', ')}${r.authorId == null ? ' (catálogo)' : ''}`)
     }
   }
+  // Sesame ingredients already tagged, in recipes already right: nothing to say.
+  if (changed.length === 0 && recipeCount === 0) {
+    log('[allergen-names] nada que cambiar')
+    return nothing
+  }
   log(
-    `[allergen-names] ${changed.join('; ')}; ${recipeCount} receta(s) con alérgenos nuevos, ${catalogCount} del catálogo`,
+    `[allergen-names] ${changed.length > 0 ? `${changed.join('; ')}; ` : ''}${recipeCount} receta(s) con alérgenos nuevos, ${catalogCount} del catálogo${recipeNames.length > 0 ? `: ${recipeNames.join('; ')}` : ''}`,
   )
-  return { ingredients: changed, recipes: recipeCount, catalogRecipes: catalogCount }
+  return { ingredients: changed, recipes: recipeCount, recipeNames, catalogRecipes: catalogCount }
 }

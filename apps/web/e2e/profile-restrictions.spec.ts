@@ -123,3 +123,32 @@ test('halal (2026-10-25) is a chip in onboarding and in the profile, and it is s
   await page.reload()
   await expect(page.getByRole('button', { name: 'Quitar halal' })).toBeVisible({ timeout: 15_000 })
 })
+
+test('PRO-1038: «poca sal» is a chip in onboarding and in the profile, and it is saved', async ({ page }) => {
+  test.setTimeout(90_000)
+  await registerFreshUser(page)
+
+  await page.goto('/onboarding')
+  const next = page.getByRole('button', { name: /siguiente/i })
+  await next.click()
+  await page.getByRole('button', { name: /^cocino cada día/i }).click()
+  await next.click()
+  await page.getByRole('button', { name: /sin prisa/i }).click()
+  await next.click()
+  await page.getByRole('checkbox', { name: /datos de salud/i }).check()
+  await page.getByRole('button', { name: /^poca sal$/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click()
+  await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
+
+  // In the profile it shows as picked; add another one and save.
+  await page.goto('/profile')
+  await expect(page.getByRole('button', { name: 'Quitar poca sal' })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: /^sin lactosa$/i }).click()
+  await expect(page.getByRole('button', { name: 'Quitar sin lactosa' })).toBeVisible()
+  await page.getByRole('button', { name: /guardar/i }).click()
+  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+
+  const s = await session(page)
+  const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
+  expect(account.restrictions).toEqual(['poca sal', 'sin lactosa'])
+})

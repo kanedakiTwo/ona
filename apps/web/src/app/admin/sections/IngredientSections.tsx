@@ -236,3 +236,65 @@ export function AllergenSection({
     </ul>
   )
 }
+
+/**
+ * PRO-1096: ingredients named za'atar, dukkah, gomasio, halva… whose stored
+ * tags lack «sesamo», with the published recipes that use them. A list to fix
+ * by hand (the «Aceptar» of the suggestions below adds the tag).
+ */
+export function SesameMissingSection({
+  rows,
+}: {
+  rows: Array<{
+    id: string
+    name: string
+    currentTags: string[]
+    recipes: Array<{ id: string; name: string }>
+    householdRecipes: number
+  }>
+}) {
+  if (rows.length === 0) return null
+  return (
+    <section
+      aria-label="Sin sésamo"
+      className="mb-6 rounded-xl border border-terracotta-deep bg-paper p-3"
+    >
+      <h2 className="text-[13px] font-medium text-terracotta-deep">
+        Sin sésamo: {rows.length} {rows.length === 1 ? "ingrediente" : "ingredientes"}
+      </h2>
+      <p className="mt-1 text-[11px] text-ink-muted">
+        Su nombre dice za&apos;atar, dukkah, gomasio o halva y no llevan «sésamo» guardado.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {rows.map((row) => (
+          <li key={row.id} className="text-[12px]">
+            <div className="font-medium text-ink">
+              {row.name}
+              <span className="ml-1.5 text-ink-muted">
+                · {row.currentTags.length > 0 ? row.currentTags.join(", ") : "sin alérgenos"}
+              </span>
+            </div>
+            {row.recipes.length === 0 && row.householdRecipes === 0 ? (
+              <div className="text-ink-muted">Ninguna receta publicada lo usa.</div>
+            ) : (
+              <ul className="mt-1 ml-3 list-disc text-ink-mid">
+                {row.recipes.map((r) => (
+                  <li key={r.id}>
+                    <a href={`/recipes/${r.id}`} className="underline hover:text-ink">
+                      {r.name}
+                    </a>
+                  </li>
+                ))}
+                {row.householdRecipes > 0 && (
+                  <li>
+                    {row.householdRecipes} {row.householdRecipes === 1 ? "receta" : "recetas"} de hogares
+                  </li>
+                )}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}

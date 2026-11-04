@@ -241,6 +241,27 @@ export const TRIAL_ENDING_NOTICE_DAYS = 2
 /** Stripe statuses that give the plan (and so keep the account out of the pause). */
 export const PAID_ACCESS_STATUSES: readonly SubscriptionStatus[] = ['trialing', 'active', 'past_due']
 
+/** PRO-386 (D-158): days a failed payment (`past_due`) keeps the plan; then the household loses it until it pays. */
+export const PAST_DUE_GRACE_DAYS = 7
+
+/** When a `past_due` subscription stops giving the plan: `pastDueSince` + 7 days. Null when it isn't `past_due`. */
+export function paymentDueBy(status: SubscriptionStatus | null, pastDueSince: Date | string | null | undefined): Date | null {
+  if (status !== 'past_due' || pastDueSince == null) return null
+  const since = typeof pastDueSince === 'string' ? Date.parse(pastDueSince) : pastDueSince.getTime()
+  return Number.isFinite(since) ? new Date(since + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000) : null
+}
+
+/**
+ * The subscription gives the plan: `PAID_ACCESS_STATUSES`, except a payment
+ * that has failed for more than 7 days (PRO-386). Without `pastDueSince`
+ * (rows from before it existed) a `past_due` still counts.
+ */
+export function hasPaidAccess(status: SubscriptionStatus | null | undefined, pastDueSince: Date | string | null | undefined, now: Date): boolean {
+  if (!status || !PAID_ACCESS_STATUSES.includes(status)) return false
+  const dueBy = paymentDueBy(status, pastDueSince)
+  return !dueBy || now.getTime() < dueBy.getTime()
+}
+
 const ACCESS_DAY_MS = 24 * 60 * 60 * 1000
 
 function launchStart(launchDate: string): number {
@@ -359,6 +380,12 @@ export interface BillingState {
     founderPrice?: boolean
     /** First charge within 15 days (the legal notice, PRO-136): when and how much. */
     upcomingCharge?: { at: string; amount: string } | null
+    /**
+     * PRO-386: a payment failed (`past_due`): when the plan stops counting if
+     * it still isn't paid (`past_due_since` + `PAST_DUE_GRACE_DAYS`), ISO.
+     * Null otherwise.
+     */
+    paymentDueBy?: string | null
   } | null
 }
 

@@ -16,7 +16,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { CREATOR_TRIAL_DAYS, LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, TRIAL_DAYS, founderOfferText, trialLastDayLabel, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
 import { PlanCards } from '@/components/billing/PlanCards'
-import { chargeNoticeLine } from '@/components/billing/AccountAccessNotice'
+import { chargeNoticeLine, isPaymentPending } from '@/components/billing/AccountAccessNotice'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
 import { Accent, PILL_INK, PILL_OUTLINE, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from '@/components/profile/SubPage'
 import { SubLoadError, useQueryLoad } from '@/components/profile/SubLoadError'
@@ -56,6 +56,8 @@ function Suscripcion() {
   const state = billing.data
   const sub = state?.subscription
   const summary = sub ? subscriptionSummary(sub) : null
+  // PRO-386: a failed payment («Pago pendiente»); the notice's link is `?tarjeta=1`.
+  const paymentPending = isPaymentPending(state)
   const error = checkout.error ?? portal.error
 
   return (
@@ -69,6 +71,11 @@ function Suscripcion() {
       intro={
         state?.beta ? (
           `Durante la beta tienes Plus gratis hasta el ${LAUNCH_DATE_LABEL}.`
+        ) : state?.access?.state === 'paused' && paymentPending ? (
+          // PRO-386: 7 days after a failed payment.
+          <span data-testid="subscription-payment-paused">
+            El último pago no ha pasado y tu plan está en pausa hasta que se pague. Cambia la tarjeta y vuelve todo. No se ha borrado nada.
+          </span>
         ) : state?.access?.state === 'paused' ? (
           // PRO-135: texts for Legal to review.
           <span data-testid="subscription-paused">
@@ -140,6 +147,17 @@ function Suscripcion() {
               data-testid="cancel-subscription"
             >
               Cancelar mi suscripción
+            </button>
+          )}
+          {state.canManage && paymentPending && (
+            <button
+              type="button"
+              className={`${PILL_INK} mt-5 w-full sm:w-auto`}
+              disabled={portal.isPending}
+              onClick={() => portal.mutate({})}
+              data-testid="change-card"
+            >
+              Cambiar la tarjeta
             </button>
           )}
           {state.canManage ? (

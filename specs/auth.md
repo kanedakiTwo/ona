@@ -74,6 +74,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 
 **Open** (no account needed):
 - Marketing and legal: `/`, `/como-funciona`, `/precios`, `/blog`, `/blog/[slug]`, `/privacidad`, `/terminos`, `/aviso-legal`
+- La receta del día: `/receta-del-dia`, `/receta-del-dia/[fecha]` and its photos `/receta-del-dia/[fecha]/foto/[formato]` (PRO-1099, [Recipe of the day](./recipe-of-the-day.md))
 - `/login`, `/register` — `/register` stays reachable for invited households, but no public CTA links to it pre-launch (they lead to the [waitlist](./waitlist.md))
 - `/recuperar` (ask for the link), `/reset` (password recovery) and `/invites/[token]` (household invitation) — drawn like `/login` (no sidebar, bottom bar, Mimo button or desktop left margin), also for a signed-in user
 - `/lista/[code]`, `/lista/baja` (waitlist), `/newsletter/baja`, `/offline` (service-worker fallback)

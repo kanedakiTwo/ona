@@ -167,9 +167,6 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
   const close = useCloseShopOrder()
   const [cap, setCap] = useState(order.capEur != null ? String(order.capEur).replace(".", ",") : "")
   const [address, setAddress] = useState(order.address ?? "")
-  const [extra, setExtra] = useState("")
-  const others = shops.filter((s) => s.id !== order.shopId)
-  const wantsNotes = order.shop.kind === "carniceria" || order.shop.kind === "pescaderia"
   const { channel } = order.shop
   const blocked = order.blockers.length > 0
   const d = order.delivery
@@ -215,6 +212,86 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
         </div>
       )}
 
+      <DraftLines order={order} shops={shops} />
+
+      {channel !== "web" && (
+        <label className="flex items-center gap-2 text-[12px] text-[#7A7066]">
+          Tope del pedido: hasta
+          <input
+            inputMode="decimal"
+            value={cap}
+            onChange={(e) => setCap(e.target.value)}
+            onBlur={() => {
+              const v = parseEuros(cap)
+              if (v !== order.capEur) patch.mutate({ id: order.id, capEur: v })
+            }}
+            placeholder="—"
+            className="w-16 border-b border-[#DDD6C5] bg-transparent py-0.5 text-right text-[13px] text-[#1A1612] outline-none focus:border-[#1A1612]"
+            aria-label="Tope del pedido en euros"
+          />
+          €
+        </label>
+      )}
+
+      <details className="rounded-xl bg-[#F7F2E7] px-3 py-2">
+        <summary className="cursor-pointer text-[12px] text-[#7A7066]">{channel === "web" ? "Ver la lista" : "Ver el mensaje"}</summary>
+        <pre className="mt-2 whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-[#1A1612]">{order.messageText}</pre>
+      </details>
+
+      {blocked && (
+        <ul className="space-y-0.5 rounded-xl border border-[#C65D38]/40 px-3 py-2 text-[12px] text-[#C65D38]" data-testid="blockers">
+          <li className="text-[10px] uppercase tracking-[0.12em]">Antes de enviarlo</li>
+          {order.blockers.map((b) => (
+            <li key={b}>· {b}</li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3">
+        {channel === "whatsapp" && order.links.order && (
+          <a href={order.links.order} target="_blank" rel="noopener noreferrer" onClick={() => { haptic.light(); markSent.mutate({ id: order.id }) }} className={primaryBtn}>
+            <MessageCircle size={14} /> Enviar por WhatsApp
+          </a>
+        )}
+        {channel === "email" && order.links.order && (
+          <a href={order.links.order} onClick={() => markSent.mutate({ id: order.id })} className={primaryBtn}>
+            <Mail size={14} /> Enviar por email
+          </a>
+        )}
+        {channel === "telefono" && order.links.order && (
+          <a href={order.links.order} onClick={() => markSent.mutate({ id: order.id })} className={primaryBtn}>
+            <Phone size={14} /> Llamar
+          </a>
+        )}
+        {channel === "web" && order.links.order && (
+          <a href={order.links.order} target="_blank" rel="noopener noreferrer" className={primaryBtn}>
+            <Globe size={14} /> Abrir su web
+          </a>
+        )}
+        {(channel === "web" || !blocked) && <CopyButton text={order.messageText} label={channel === "web" ? "Copiar lista" : "Copiar mensaje"} />}
+        {(channel === "web" || channel === "telefono") && (
+          <button type="button" className={ghostBtn} onClick={() => close.mutate({ id: order.id })}>
+            <Check size={12} /> Ya está pedido
+          </button>
+        )}
+      </div>
+      {order.links.tooLong && !blocked && (
+        <p className="text-[11px] text-[#C65D38]">El pedido es largo para escribirlo solo: copia el mensaje y pégalo en el chat que se abre.</p>
+      )}
+      {order.shop.kind === "supermercado" && <SuperExtras order={order} />}
+    </div>
+  )
+}
+
+/** Las líneas del borrador y «¿Algo más?»: las mismas en la tarjeta de siempre y en la de la Red. */
+export function DraftLines({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
+  const patch = usePatchShopOrder()
+  const [extra, setExtra] = useState("")
+  const others = shops.filter((s) => s.id !== order.shopId)
+  const wantsNotes = order.shop.kind === "carniceria" || order.shop.kind === "pescaderia"
+
+  return (
+    <>
       <ul className="divide-y divide-[#EFE8D8]">
         {order.lines.map((l) => (
           <li key={l.key} className={`py-2 ${l.included === false ? "opacity-60" : ""}`} data-testid={`line-${l.key}`}>
@@ -315,73 +392,7 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
           <Plus size={12} /> Añadir
         </button>
       </form>
-
-      {channel !== "web" && (
-        <label className="flex items-center gap-2 text-[12px] text-[#7A7066]">
-          Tope del pedido: hasta
-          <input
-            inputMode="decimal"
-            value={cap}
-            onChange={(e) => setCap(e.target.value)}
-            onBlur={() => {
-              const v = parseEuros(cap)
-              if (v !== order.capEur) patch.mutate({ id: order.id, capEur: v })
-            }}
-            placeholder="—"
-            className="w-16 border-b border-[#DDD6C5] bg-transparent py-0.5 text-right text-[13px] text-[#1A1612] outline-none focus:border-[#1A1612]"
-            aria-label="Tope del pedido en euros"
-          />
-          €
-        </label>
-      )}
-
-      <details className="rounded-xl bg-[#F7F2E7] px-3 py-2">
-        <summary className="cursor-pointer text-[12px] text-[#7A7066]">{channel === "web" ? "Ver la lista" : "Ver el mensaje"}</summary>
-        <pre className="mt-2 whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-[#1A1612]">{order.messageText}</pre>
-      </details>
-
-      {blocked && (
-        <ul className="space-y-0.5 rounded-xl border border-[#C65D38]/40 px-3 py-2 text-[12px] text-[#C65D38]" data-testid="blockers">
-          <li className="text-[10px] uppercase tracking-[0.12em]">Antes de enviarlo</li>
-          {order.blockers.map((b) => (
-            <li key={b}>· {b}</li>
-          ))}
-        </ul>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3">
-        {channel === "whatsapp" && order.links.order && (
-          <a href={order.links.order} target="_blank" rel="noopener noreferrer" onClick={() => { haptic.light(); markSent.mutate({ id: order.id }) }} className={primaryBtn}>
-            <MessageCircle size={14} /> Enviar por WhatsApp
-          </a>
-        )}
-        {channel === "email" && order.links.order && (
-          <a href={order.links.order} onClick={() => markSent.mutate({ id: order.id })} className={primaryBtn}>
-            <Mail size={14} /> Enviar por email
-          </a>
-        )}
-        {channel === "telefono" && order.links.order && (
-          <a href={order.links.order} onClick={() => markSent.mutate({ id: order.id })} className={primaryBtn}>
-            <Phone size={14} /> Llamar
-          </a>
-        )}
-        {channel === "web" && order.links.order && (
-          <a href={order.links.order} target="_blank" rel="noopener noreferrer" className={primaryBtn}>
-            <Globe size={14} /> Abrir su web
-          </a>
-        )}
-        {(channel === "web" || !blocked) && <CopyButton text={order.messageText} label={channel === "web" ? "Copiar lista" : "Copiar mensaje"} />}
-        {(channel === "web" || channel === "telefono") && (
-          <button type="button" className={ghostBtn} onClick={() => close.mutate({ id: order.id })}>
-            <Check size={12} /> Ya está pedido
-          </button>
-        )}
-      </div>
-      {order.links.tooLong && !blocked && (
-        <p className="text-[11px] text-[#C65D38]">El pedido es largo para escribirlo solo: copia el mensaje y pégalo en el chat que se abre.</p>
-      )}
-      {order.shop.kind === "supermercado" && <SuperExtras order={order} />}
-    </div>
+    </>
   )
 }
 

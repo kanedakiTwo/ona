@@ -3,7 +3,7 @@
  * shops and the per-shop orders drafted from the shopping list.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { LineDecision, Shop, ShopInput, ShopOrder } from "@ona/shared"
+import type { LineDecision, RedPrepareInfo, Shop, ShopInput, ShopOrder } from "@ona/shared"
 import { api } from "@/lib/api"
 
 export function useShops() {
@@ -62,6 +62,8 @@ export interface PrepareResult {
   /** Pantry staples the recipes use, assumed at home ("¿Te falta algo de esto?"). */
   pantry: string[]
   hasShops: boolean
+  /** Red de tiendas: postal code, the once-asked choice, assigned shops (specs/shop-orders.md → «Red de tiendas»). */
+  red?: RedPrepareInfo
 }
 
 export function usePrepareShopOrders() {
@@ -104,6 +106,8 @@ export interface OrderPatchBody {
   fulfilment?: "recoger" | "domicilio"
   address?: string | null
   capEur?: number | null
+  /** Red orders: «como mucho» (null = back to the computed one). */
+  maxEur?: number | null
 }
 
 export const usePatchShopOrder = () =>

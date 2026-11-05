@@ -1,10 +1,7 @@
 import { z } from 'zod'
 import { DIFFICULTIES, MEALS, SEASONS, UNITS } from '../constants/enums.js'
-<<<<<<< 238700486dcf5591a1fca6549dc80746e43d3b3e
 import { isIsoDay } from './recipeOfTheDay.js'
-=======
 import { COURSES } from './recipe.js'
->>>>>>> 557ebdb211915c864882a02a4ff0aa0bf740b970
 
 /**
  * Catalogue import from the admin page «Recetas pendientes»

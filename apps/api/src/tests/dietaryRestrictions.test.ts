@@ -349,3 +349,46 @@ describe('PRO-333 — «sin lácteos» is the milk allergy', () => {
     for (const ok of ['bebida de avena', 'leche de coco', 'calabaza']) expect(blocks(['sin lácteos'], recipe([ok])), ok).toBe(false)
   })
 })
+
+describe('PRO-1038 — «poca sal» (hogares de prueba, 2026-10-24)', () => {
+  it('is a preset', () => {
+    expect(RESTRICTION_PRESETS).toContain('poca sal')
+  })
+
+  it('skips very salty ingredients: soy sauce, stock cubes, cured meats, salted fish, pickles, salty cheeses', () => {
+    for (const salty of [
+      'Salsa de soja', 'tamari', 'pasta de miso', 'salsa de ostras', 'Salsa worcestershire', 'caldo en pastilla',
+      'pastillas de caldo', 'cubitos de caldo', 'extracto de carne', 'jamón serrano', 'hueso de jamón', 'jamón de york',
+      'chorizo oreado', 'panceta salada curada', 'bacon ahumado', 'morcilla de cebolla', 'salchichas de Frankfurt',
+      'embutidos variados', 'anchoas en aceite', 'bacalao salado', 'salmón ahumado', 'mojama', 'aceitunas negras',
+      'alcaparras', 'pepinillos', 'cebolleta encurtida', 'chucrut', 'queso parmesano', 'feta', 'almendras saladas',
+    ]) {
+      expect(blocks(['poca sal'], recipe([salty])), salty).toBe(true)
+    }
+  })
+
+  it('keeps the rest: salt itself, bread, fresh fish and meat, plain stock, soy sprouts, smoked paprika', () => {
+    for (const ok of [
+      'sal', 'sal gorda', 'pan blanco', 'salmón', 'bacalao fresco', 'pollo', 'caldo de verduras', 'brotes de soja',
+      'bebida de soja', 'pimentón ahumado', 'ensalada verde', 'salsa de tomate', 'cubitos de hielo', 'lomo de cerdo',
+    ]) {
+      expect(blocks(['poca sal'], recipe([ok])), ok).toBe(false)
+    }
+  })
+
+  it('also as «bajo en sal», «dieta baja en sal», «menos sal», «hiposódica»', () => {
+    for (const r of ['Poca sal', 'bajo en sal', 'dieta baja en sal', 'menos sal', 'dieta hiposódica', 'poco sodio']) {
+      expect(blocks([r], recipe(['salsa de soja'])), r).toBe(true)
+    }
+  })
+
+  it('«sin sal» still skips the salt itself, and the salty ingredients too', () => {
+    expect(blocks(['sin sal'], recipe(['sal']))).toBe(true)
+    expect(blocks(['sin sal'], recipe(['jamón serrano']))).toBe(true)
+  })
+
+  it('a compound ingredient labelled «jamón» counts too', () => {
+    const r: RestrictableRecipe = { ingredients: [{ ingredientName: 'Caldo casero', containsTags: ['jamon'] }] }
+    expect(violatesRestrictions(r, compileRestrictions(['poca sal']))).toBe(true)
+  })
+})

@@ -66,6 +66,18 @@ const CANONICAL: Record<string, string> = {
   musulmana: 'halal',
   musulmanes: 'halal',
   musulmanas: 'halal',
+  'menos sal': 'poca sal',
+  'bajo en sal': 'poca sal',
+  'baja en sal': 'poca sal',
+  'bajo de sal': 'poca sal',
+  'baja de sal': 'poca sal',
+  'con poca sal': 'poca sal',
+  hiposodica: 'poca sal',
+  hiposodico: 'poca sal',
+  'poco sodio': 'poca sal',
+  'bajo en sodio': 'poca sal',
+  'baja en sodio': 'poca sal',
+  sodio: 'poca sal',
 }
 
 /** Words read with typos (allergens and diets), normalised. */

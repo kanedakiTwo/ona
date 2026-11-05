@@ -164,6 +164,14 @@ Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para l
 
 ---
 
+## [Cook now («Cocinar ahora»)](./cook-now.md)
+
+«Cocinar ahora» tab (in five phases, PRO-1105 to PRO-1109; phase 1 in): essential and secondary ingredients (imprescindibles y secundarios, `recipe_ingredients.role`), substitutes (sustitutos, `substitute_ingredient_ids`), the automatic rule (regla automática: protein/cereal/legume, 15 % of the weight, optional/al gusto/pizca secondary, `autoIngredientRole`, `roleOf`), marks kept on edit and on «Añadir a mis recetas» (`carryIngredientMarks`, `ingredientMarksOf`), Cocina marks the catalogue (`GET /admin/recipes/ingredient-roles/pending`, `PUT /admin/recipes/:id/ingredient-roles`, `x-cocina-token` / `COCINA_WRITE_TOKEN`, only catalogue recipes, households' own recipes never reach the office), batch file `imprescindible` / `sustitutos`.
+
+**Source**: `packages/shared/src/types/ingredientRole.ts`, `apps/api/src/services/ingredientRoles.ts`, `apps/api/src/routes/ingredientRoles.ts`, `apps/api/src/middleware/cocinaAuth.ts`, `apps/api/src/services/recipePersistence.ts`, `apps/api/src/services/catalogImport.ts`
+
+---
+
 ## [Cooking Mode](./cooking-mode.md)
 
 Hands-free fullscreen cook-along, step-by-step UX, per-step countdown timers, multiple concurrent timers, vibration + chime on timer fire, swipe between steps, ingredient checklist, inline scaled ingredient chips, temperature/technique badges, Wake Lock screen-on, live diner re-scaling inside cooking mode, «Mimo, manos libres» hands-free button (keeps listening through silences until turned off or leaving cook mode), exits cleanly without mutating the recipe, "Empezar a cocinar" entry point.

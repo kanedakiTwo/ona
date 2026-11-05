@@ -62,6 +62,8 @@ export const USAGE_EVENTS = [
   'feedback_left',
   // PRO-1022: every Mimo tool that returned data (`props.skill` = the tool's name, `props.canal`). Never text.
   'mimo_skill_used',
+  // PRO-383: «¿Quién hace la compra?» in the sign-up (`props.value` = me · other · shared; channel web or whatsapp).
+  'shopper_answered',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -369,7 +371,7 @@ export function recordSkillUsage(
 // ─── Events the web sends itself (PRO-120) ─────────────────────────
 
 /** «Primeros pasos» on the web, in the order they're shown (the WhatsApp sign-up is one conversation: see specs/metrics.md). */
-export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'] as const
+export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'quien_compra', 'invitar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'] as const
 export const ONBOARDING_STEP_ACTIONS = ['visto', 'hecho'] as const
 export const USAGE_SCREENS = ['menu', 'lista', 'compra', 'receta', 'recetas', 'perfil', 'despensa', 'avisos', 'casa'] as const
 export const RECIPE_VIEW_FROM = ['menu', 'catalogo', 'mimo', 'lista', 'otro'] as const

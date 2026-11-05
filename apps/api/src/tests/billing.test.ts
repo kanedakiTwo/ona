@@ -331,7 +331,15 @@ const PAYERS: Record<string, Payer> = {
   newOwner: { householdId: 'h2', email: 'eva@example.com', isOwner: true, createdAt: new Date('2027-01-10T14:00:00Z'), householdCreatedAt: new Date('2027-01-10T14:00:00Z') },
 }
 
-async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRepo>; gateway?: ReturnType<typeof fakeGateway>; now?: Date } = {}) {
+async function app(
+  opts: {
+    enabled?: boolean
+    repo?: ReturnType<typeof memoryRepo>
+    gateway?: ReturnType<typeof fakeGateway>
+    now?: Date
+    offerSignals?: { weekResolved: boolean; founderOfferAt: Date | null }
+  } = {},
+) {
   const repo = opts.repo ?? memoryRepo()
   const gateway = opts.gateway ?? fakeGateway()
   const enabled = () => opts.enabled ?? true
@@ -347,6 +355,7 @@ async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRep
       now: () => opts.now ?? BETA_NOW,
       webUrl: 'https://mimoia.com',
       auth: fakeAuth,
+      offerSignals: async () => opts.offerSignals ?? { weekResolved: false, founderOfferAt: null },
     }),
   )
   const base = await serve(a)
@@ -487,13 +496,18 @@ describe('PRO-136: founder price, the Stripe trial and the cancel link', () => {
     expect(c.gateway.checkouts[0].subscription_data?.metadata?.founder_price).toBe('true')
   })
 
-  it('GET /billing: the day-7 offer from day 7 and not before; not with a plan', async () => {
-    const at = async (n: number, repo = memoryRepo()) => (await (await (await app({ now: day(n), repo })).call('GET', '/billing', 'newOwner')).json()).founder
-    expect((await at(6)).offer).toBe(false)
-    expect((await at(7)).offer).toBe(true)
+  it('GET /billing: the offer once the week is resolved or from day 10 (PRO-384); not with a plan', async () => {
+    const at = async (n: number, repo = memoryRepo(), offerSignals?: { weekResolved: boolean; founderOfferAt: Date | null }) =>
+      (await (await (await app({ now: day(n), repo, offerSignals })).call('GET', '/billing', 'newOwner')).json()).founder
+    expect((await at(7)).offer).toBe(false)
+    expect((await at(9)).offer).toBe(false)
+    expect((await at(10)).offer).toBe(true)
     expect((await at(13)).offer).toBe(true)
     expect((await at(15)).offer).toBe(false)
-    expect((await at(8, memoryRepo([row({ householdId: 'h2' })]))).offer).toBe(false)
+    expect((await at(4, memoryRepo(), { weekResolved: true, founderOfferAt: null })).offer).toBe(true)
+    // Already sent (e.g. the week resolved, then a quiet day): it keeps standing.
+    expect((await at(5, memoryRepo(), { weekResolved: false, founderOfferAt: day(4) })).offer).toBe(true)
+    expect((await at(4, memoryRepo([row({ householdId: 'h2' })]), { weekResolved: true, founderOfferAt: null })).offer).toBe(false)
   })
 
   it('billingStateFor: the legal notice in the app from 15 days before the first charge, with the amount', () => {

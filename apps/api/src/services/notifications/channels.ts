@@ -13,7 +13,7 @@
  *
  * Email carries only account and legal messages (welcome, password, invites,
  * newsletter, trial day 12, the notice 15 days before the first charge). The
- * day-7 founder offer is in the app plus ONE message: WhatsApp if it gets
+ * founder offer (first resolved week or day 10, PRO-384) is in the app plus ONE message: WhatsApp if it gets
  * through, otherwise email (`founderOffer.ts`).
  */
 import { and, eq, like } from 'drizzle-orm'

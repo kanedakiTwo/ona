@@ -66,6 +66,19 @@ A skipped line (step 1: `u` without `unitWeight`, `ml` without `density`, no cat
 - Saving a recipe stores it in `recipes.nutrition_incomplete` (migration 0066). The cached figures are still stored (the menu generator keeps using them), but the ficha shows none: «Aún no podemos calcular la nutrición de esta receta» (see [Recipes](./recipes.md))
 - On every API boot, after `db:migrate`, `applyNutritionCompleteness` recomputes **only the mark** of every recipe from today's catalogue (a unit weight added by Cocina clears it); figures are not touched — `scripts/recomputeRecipeNutrition.ts` does that, and also writes the mark
 - The fix for a marked recipe is data: give the ingredient a `unitWeight` / `density` (the catalogue audit lists them, Constraints below), or write the line in grams
+- **An ingredient with no nutrition yet** (PRO-1125) is skipped too, with reason `no-nutrition`: no USDA id and every per-100 g value at zero (`lacksNutrition`, the row a household's «Añadir» creates or a stub saved when USDA was down). Counting it as 0 kcal hid the gap (2026-11-05: 45 of 485 ingredients at zero; the burekas went from 299 to 870 kcal once the puff pastry had values). A negligible one (water, salt, a spice) keeps the recipe complete; USDA's water and salt keep their id and BEDCA or estimated rows have values, so they are never caught. The boot mark reads the values too
+
+## Filling missing nutrition
+
+No API (D-156): the household's «Añadir» stores the name only, and the values come at night from an agent on the subscription (Cocina).
+
+- The list: `GET /admin/ingredients/missing-nutrition` (admin, read-only: id, name, aisle, created, catalogue and household recipes that use it, most used first) or `scripts/ingredientNutrition.ts --list`, which prints a JSON to complete
+- The agent looks each one up, in this order: **BEDCA**, **USDA Foundation or SR Legacy** without dishes, else an **estimate** marked as such, and writes `{ "<name>": { "kcal", "proteína", "hidratos", "grasa", "fibra", "sal", "fuente" } }` per 100 g. `fuente` starts with «BEDCA», «USDA …» (with the fdcId, which is then stored) or «estimación»; FNDDS is refused
+- `scripts/ingredientNutrition.ts --file=<json>` checks it (dry-run, every bad entry listed: out of range, macros over 100 g, unknown source); `--execute` writes the rows with the same name (accents and capitals aside) that still have no nutrition (`--overwrite` for the others) and recomputes the recipes that use them, logging «antes → después» kcal (`ingredientNutritionFill.ts`). A BEDCA or estimated row keeps `fdc_id` null: only the values say it has nutrition; the source stays in the agent's file and the log
+
+## Recompute after a catalogue change
+
+`recomputeRecipesUsing` (`nutrition/recomputeRecipes.ts`) recomputes `nutritionPerServing` and the «incompleta» mark of every recipe (system and household) that uses some ingredients, with the same calculation as `persistRecipe` (each line's note, the recipe's servings); allergens are not touched. It runs after the admin remap and the Mimoia estimate (PRO-1125), after the fill command, and in the edible-fraction boot step
 
 ## Edible weight
 
@@ -117,6 +130,8 @@ Warnings are surfaced to the recipe author / curator but do not block saving.
 - [apps/api/src/services/compoundIngredients.ts](../apps/api/src/services/compoundIngredients.ts) — what compound ingredients contain: allowed tags, known labels and their boot step, audit
 - [apps/api/scripts/auditCompoundIngredients.ts](../apps/api/scripts/auditCompoundIngredients.ts) — read-only list of compound ingredients with no contains tag, for Cocina
 - [apps/api/src/services/nutrition/usdaClient.ts](../apps/api/src/services/nutrition/usdaClient.ts) — USDA FDC API client with on-disk cache
+- [apps/api/src/services/nutrition/recomputeRecipes.ts](../apps/api/src/services/nutrition/recomputeRecipes.ts) — recompute the recipes that use some ingredients
+- [apps/api/src/services/nutrition/ingredientNutritionFill.ts](../apps/api/src/services/nutrition/ingredientNutritionFill.ts) + [apps/api/scripts/ingredientNutrition.ts](../apps/api/scripts/ingredientNutrition.ts) — fill missing nutrition from the night agent's JSON (PRO-1125)
 - [apps/api/src/services/nutrition/aggregate.ts](../apps/api/src/services/nutrition/aggregate.ts) — recipe-level aggregation
 - [apps/api/src/services/nutrition/negligible.ts](../apps/api/src/services/nutrition/negligible.ts) — salt, water, spices, «al gusto»: lines whose skip doesn't make a recipe incomplete
 - [apps/api/src/services/nutrition/edibleFraction.ts](../apps/api/src/services/nutrition/edibleFraction.ts) — edible share of bone-in cuts and its boot step

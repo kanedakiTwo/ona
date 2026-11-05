@@ -111,6 +111,8 @@ jobs:
       METRICS_READ_TOKEN: ci-smoke-metrics-token
       # «Enviar la cesta a la extensión del navegador»: los usuarios de smoke y e2e son @test.local.
       BASKET_EXTENSION_EMAILS: '@test.local'
+      # Red de tiendas v2 (D-165): solo las cuentas de prueba @red.test.local (redOrders.smoke.ts, compra-red.spec.ts).
+      RED_TIENDAS_EMAILS: '@red.test.local'
       # Un hogar de los nuestros (admin) en basketExtensionRoute.smoke.ts.
       ADMIN_EMAILS: smoke-ext-admin@test.local
       API_PORT: 8765
@@ -266,6 +268,8 @@ jobs:
       # los usuarios de e2e son @test.local y la web habla con una extensión
       # simulada con este id. Solo aquí: nunca en el despliegue.
       BASKET_EXTENSION_EMAILS: '@test.local'
+      # Red de tiendas v2 (D-165): solo las cuentas de prueba @red.test.local (redOrders.smoke.ts, compra-red.spec.ts).
+      RED_TIENDAS_EMAILS: '@red.test.local'
       NEXT_PUBLIC_BASKET_EXTENSION_ID: e2e-basket-extension
       API_PORT: 8765
       API_URL: http://localhost:8765
@@ -296,6 +300,10 @@ jobs:
         # the "ajo" ingredient. A failing seed must fail the job, not turn
         # those specs into silent skips.
         run: pnpm --filter @ona/api db:seed
+
+      - name: Seed Red test shops
+        # compra-red.spec.ts needs a frutería of the Red in 28001 (scripts/redTestShops.ts).
+        run: pnpm --filter @ona/api exec tsx scripts/redTestShops.ts --cp 28001
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4

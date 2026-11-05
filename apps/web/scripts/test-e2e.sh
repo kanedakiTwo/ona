@@ -50,6 +50,7 @@ export RATE_LIMIT_DISABLED="true"
 export ADMIN_EMAILS="e2e-admin@test.local"  # globalSetup creates the e2e campaign (PRO-27)
 # «Enviar a <cadena>» (compra-extension.spec.ts): API y web (la web, con una extensión simulada).
 export BASKET_EXTENSION_EMAILS="@test.local"
+export RED_TIENDAS_EMAILS="@red.test.local"   # compra-red.spec.ts
 export NEXT_PUBLIC_BASKET_EXTENSION_ID="e2e-basket-extension"
 # Simulated email (PRO-97): Playwright's globalSetup starts a fake Resend here.
 export RESEND_API_KEY="e2e-fake-key"
@@ -63,6 +64,7 @@ echo "── 3/6 Seed minimal catalog ──────────────
 # ingredient. Fatal on failure, same as CI — a missing seed would otherwise
 # turn those specs into silent skips.
 pnpm --filter @ona/api db:seed >/dev/null
+pnpm --filter @ona/api exec tsx scripts/redTestShops.ts --cp 28001 >/dev/null   # compra-red.spec.ts
 
 echo "── 4/6 Boot API on :${API_PORT} ─────────────────────────────────"
 API_PORT="$API_PORT" pnpm --filter @ona/api exec tsx src/index.ts > /tmp/ona-e2e-api.log 2>&1 &

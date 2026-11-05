@@ -59,6 +59,7 @@ export REGISTRATION_MODE="open"  # closed beta off for the smoke suite (PRO-27)
 # Lets waitlistRoute.smoke.ts read GET /admin/waitlist + /admin/metrics.
 export METRICS_READ_TOKEN="smoke-metrics-token"
 export BASKET_EXTENSION_EMAILS="@test.local"   # basketExtensionRoute.smoke.ts
+export RED_TIENDAS_EMAILS="@red.test.local"   # redOrders.smoke.ts
 export ADMIN_EMAILS="smoke-ext-admin@test.local"   # un hogar de los nuestros en basketExtensionRoute.smoke.ts
 export API_PORT
 # Same path production takes on deploy (not `drizzle-kit push`).

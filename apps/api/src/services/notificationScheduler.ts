@@ -64,7 +64,6 @@ import { budgetKeyFor, loadFullBudgetState, recordNotices } from './notification
 import { awakeFireAt, isAwakeInstant } from './notifications/hours.js'
 import { loadUserAlertPrefs } from './notifications/alertPrefs.js'
 import { channelsFor, deliverInOrder, pushOutcome, type WhatsAppAlertState } from './notifications/channels.js'
-import { runScheduledNewsletterIfDue } from './newsletterDrafts.js'
 
 // ─── Habit → method matcher ─────────────────────────────────────
 //
@@ -783,6 +782,8 @@ async function tickOnce(): Promise<true> {
   // Newsletter (PRO-1123): the issue Miguel scheduled for Friday 9:00, once,
   // only with the proof of the template he saved that week.
   try {
+    // Imported here: the newsletter's own imports reach back to this module.
+    const { runScheduledNewsletterIfDue } = await import('./newsletterDrafts.js')
     for (const r of await runScheduledNewsletterIfDue(now)) {
       console.log(`[newsletter] scheduled ${r.issueId}: ${r.skipped ? `not sent (${r.skipped})` : `${r.sent} sent`}`)
     }

@@ -80,6 +80,8 @@ describe.skipIf(!reachable)('la carta personal y el editor (PRO-1123)', () => {
       expect(JSON.stringify([...facts.values()])).not.toMatch(/gluten/i)
       expect((await repo.recipeSeasons([pollo.id])).get(pollo.id)).toEqual(['autumn'])
     } finally {
+      // Without an author they'd stay as catalogue recipes for the next smokes.
+      await db.delete(recipes).where(inArray(recipes.id, [pollo.id, lasana.id]))
       await db.delete(waitlistEntries).where(eq(waitlistEntries.email, ana.email))
       await db.delete(users).where(inArray(users.id, [ana.id, bea.id]))
     }

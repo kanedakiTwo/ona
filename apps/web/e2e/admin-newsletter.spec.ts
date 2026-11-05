@@ -51,8 +51,9 @@ test('con la API de verdad: guarda la plantilla, enseña la vista previa y sin l
   await number.fill(issue)
   await expect(page.getByText('Marketing aún no ha dejado su recomendación para este número.')).toBeVisible({ timeout: 15_000 })
 
-  await page.getByLabel('Asunto').fill('{nombre}, tu receta de esta semana')
-  await page.getByLabel('Saludo').fill('Hola, {nombre}:')
+  // `exact`: «Preheader (lo que se ve tras el asunto)» también dice «asunto».
+  await page.getByLabel('Asunto', { exact: true }).fill('{nombre}, tu receta de esta semana')
+  await page.getByLabel('Saludo', { exact: true }).fill('Hola, {nombre}:')
   await page.getByLabel('Carta', { exact: true }).fill('Esta semana te mando {receta}. {porque}')
   await page.getByLabel(/El resto del número/).fill(JSON.stringify(REST))
   await expect(page.getByTestId('newsletter-not-personal')).toHaveCount(0)
@@ -121,7 +122,7 @@ test('desde la recomendación, la prueba a tu correo y «Programar» para el vie
   const rec = page.getByTestId('newsletter-recommendation')
   await expect(rec.getByText('Tu receta de la semana')).toBeVisible({ timeout: 15_000 })
   await rec.getByRole('button', { name: 'Empezar desde la recomendación' }).click()
-  await expect(page.getByLabel('Asunto')).toHaveValue('Tu receta de la semana')
+  await expect(page.getByLabel('Asunto', { exact: true })).toHaveValue('Tu receta de la semana')
   // Sin huecos saldría igual para todos: lo avisa; Miguel lo corrige.
   await expect(page.getByTestId('newsletter-not-personal')).toBeVisible()
   await page.getByLabel('Carta', { exact: true }).fill('{nombre}, esta semana te mando {receta}. {porque}')

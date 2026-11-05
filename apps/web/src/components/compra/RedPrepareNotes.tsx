@@ -11,7 +11,12 @@ import type { RedKind, RedPrepareInfo } from "@ona/shared"
 import { useRedChoice, useSetPostalCode } from "@/hooks/useRed"
 import { ghostBtn, primaryBtn } from "./styles"
 
-const NOUN: Record<RedKind, string> = { fruteria: "la fruta y la verdura", carniceria: "la carne", pescaderia: "el pescado" }
+/** What each kind sells, with its pronoun: «¿La carne, a … o la sigues pidiendo en …?». */
+const NOUN: Record<RedKind, { noun: string; pron: string }> = {
+  fruteria: { noun: "la fruta y la verdura", pron: "las" },
+  carniceria: { noun: "la carne", pron: "la" },
+  pescaderia: { noun: "el pescado", pron: "lo" },
+}
 const SHOP: Record<RedKind, string> = { fruteria: "frutería", carniceria: "carnicería", pescaderia: "pescadería" }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const box = "rounded-xl border border-[#2D6A4F]/30 bg-[#2D6A4F]/5 px-3 py-3 text-[13px] text-[#1A1612]"
@@ -27,9 +32,16 @@ export function RedPrepareNotes({ info, onChanged }: { info: RedPrepareInfo; onC
 
       {info.questions.map((q) => (
         <div key={q.kind} className={box} data-testid={`red-question-${q.kind}`}>
-          <p>{cap(NOUN[q.kind])}, ¿a {q.redShop.name} (−{pct} %) o la sigues pidiendo en {q.superName}?</p>
+          <p>
+            ¿{cap(NOUN[q.kind].noun)}, a {q.redShop.name} (−{pct} %) o {NOUN[q.kind].pron} sigues pidiendo en {q.superName}?
+          </p>
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <button type="button" disabled={choose.isPending} className={primaryBtn} onClick={() => pick(q.kind, "red", q.redShop.id)}>
+            <button
+              type="button"
+              disabled={choose.isPending}
+              className={`${primaryBtn} whitespace-normal text-left`}
+              onClick={() => pick(q.kind, "red", q.redShop.id)}
+            >
               A {q.redShop.name}
             </button>
             <button type="button" disabled={choose.isPending} className={ghostBtn} onClick={() => pick(q.kind, "super")}>
@@ -64,8 +76,8 @@ export function RedPrepareNotes({ info, onChanged }: { info: RedPrepareInfo; onC
         <div key={h.kind} className={box} data-testid={`red-held-${h.kind}`}>
           <p>
             {h.reason === "halal"
-              ? "Como en casa coméis halal, no os asignamos sola una carnicería de la Red."
-              : `Por las alergias de casa, no os asignamos sola una ${SHOP[h.kind]} de la Red.`}{" "}
+              ? "Como en casa coméis halal, no elegimos una carnicería de la Red por vosotros."
+              : `Por las alergias de casa, no elegimos una ${SHOP[h.kind]} de la Red por vosotros.`}{" "}
             A las tiendas de la Red todavía no les pasamos lo del halal ni las alergias: si la eliges, díselo tú al recoger.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -79,7 +91,7 @@ export function RedPrepareNotes({ info, onChanged }: { info: RedPrepareInfo; onC
       ))}
 
       {info.uncovered.length > 0 && (
-        <p className="text-[12px] text-[#7A7066]">Aún no hay {info.uncovered.map((k) => SHOP[k]).join(", ")} de la Red en tu código postal.</p>
+        <p className="text-[12px] text-[#7A7066]">Aún no hay {info.uncovered.map((k) => SHOP[k]).join(" ni ")} de la Red en tu código postal.</p>
       )}
       {choose.error && <p role="alert" className="text-[12px] text-[#C65D38]">{choose.error.message}</p>}
     </div>

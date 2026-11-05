@@ -2,7 +2,7 @@
  * Red de tiendas v2 (specs/shop-orders.md → «Red de tiendas», ona-hq D-165).
  * Only for RED_TIENDAS_EMAILS: everyone else gets `enabled: false` or 403.
  *
- *   GET  /red/status       — { enabled, postalCode }
+ *   GET  /red/status       — { enabled, postalCode, discountPct? } (discountPct only when enabled)
  *   PUT  /red/postal-code  — { postalCode } → saved; Red copies checked against it
  *   POST /red/choice       — { kind, choice: red|super, redShopId? } → the household's shops
  */
@@ -12,7 +12,16 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
 import { redEnabledFor } from '../services/red/flag.js'
 import { redCandidates } from '../services/red/assign.js'
-import { activeRedShops, assignRedShop, forgetSuperChoice, getHouseholdRed, keepKindAtSuper, setHouseholdPostalCode, toLite } from '../services/red/store.js'
+import {
+  activeRedShops,
+  assignRedShop,
+  forgetSuperChoice,
+  getHouseholdRed,
+  getRedSettings,
+  keepKindAtSuper,
+  setHouseholdPostalCode,
+  toLite,
+} from '../services/red/store.js'
 import { listShops } from '../services/shopOrders/store.js'
 
 const router = Router()
@@ -39,8 +48,10 @@ async function gate(req: AuthRequest, res: Response): Promise<string | null> {
 router.get('/red/status', async (req: AuthRequest, res) => {
   try {
     const enabled = await redEnabledFor(req.userId!)
-    const hh = enabled ? await getPrimaryHouseholdId(req.userId!) : null
-    res.json({ enabled, postalCode: hh ? (await getHouseholdRed(hh)).postalCode : null })
+    if (!enabled) return void res.json({ enabled, postalCode: null })
+    const hh = await getPrimaryHouseholdId(req.userId!)
+    const { discountPct } = await getRedSettings()
+    res.json({ enabled, postalCode: hh ? (await getHouseholdRed(hh)).postalCode : null, discountPct })
   } catch (err) {
     fail(res, err, 'GET /red/status')
   }

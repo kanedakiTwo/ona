@@ -127,4 +127,6 @@ export interface RedPrepareInfo {
 export interface RedStatus {
   enabled: boolean
   postalCode: string | null
+  /** % off with the Red's shops; only when enabled. */
+  discountPct?: number
 }

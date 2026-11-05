@@ -70,12 +70,14 @@ export default function CompraPage() {
   const [result, setResult] = useState<PrepareResult | null>(null)
   const { data: redStatus } = useRedStatus()
   const redOn = !!redStatus?.enabled
+  const redPct = redStatus?.discountPct
   // ?pedido=<id> (the chat's «míralo y pídelo» link): highlight and scroll to that card.
   const [highlight, setHighlight] = useState<string | null>(null)
   useEffect(() => {
     setHighlight(new URLSearchParams(window.location.search).get("pedido"))
   }, [])
   // Once: `orders` changes after every edit, and the page mustn't jump back to the card each time.
+  // `user` and `redOn` because the card renders only after login and, with no shops of its own, once the Red is on.
   const scrolled = useRef(false)
   useEffect(() => {
     if (scrolled.current || !highlight || !orders?.some((o) => o.id === highlight)) return
@@ -83,7 +85,7 @@ export default function CompraPage() {
     if (!card) return
     scrolled.current = true
     card.scrollIntoView({ block: "start" })
-  }, [highlight, orders, user])
+  }, [highlight, orders, user, redOn])
   const rePrepare = () => prepare.mutate({}, { onSuccess: setResult })
 
   if (authLoading) return <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE] text-eyebrow">Cargando...</div>
@@ -114,7 +116,7 @@ export default function CompraPage() {
         </p>
         {redOn && (
           <p className="mt-2 max-w-md text-[12px] text-[#2D6A4F]" data-testid="red-intro">
-            Con las tiendas de la Red lo pides aquí, con un 5 % menos ya descontado.
+            Con las tiendas de la Red lo pides aquí, {redPct != null ? `con un ${redPct} % menos ya descontado` : "con descuento"}.
           </p>
         )}
       </header>

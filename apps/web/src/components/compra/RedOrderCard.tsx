@@ -5,16 +5,19 @@
  * tiendas», ona-hq D-165): el hogar lo pide por Mimoia, con el 5 % ya
  * descontado. Tramo 1a: borrador → «Pedir» (aún sin cobro) → esperando a la tienda.
  */
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useIsMutating } from "@tanstack/react-query"
 import { BadgePercent } from "lucide-react"
 import { SHOP_KIND_LABELS, SHOP_ORDER_STATUS_LABELS, redMaxBody, type Shop, type ShopOrder } from "@ona/shared"
 import { useCancelShopOrder, usePatchShopOrder } from "@/hooks/useShopOrders"
 import { usePlaceRedOrder } from "@/hooks/useRed"
 import { haptic } from "@/lib/pwa/haptics"
-import { DraftLines } from "./OrderCard"
+import { DraftBlockers, DraftFulfilment, DraftLines } from "./DraftParts"
 import { eur, primaryBtn } from "./styles"
 
 const CANCELLABLE = ["draft", "ordered", "accepted"]
+/** 24.5 → «24,5»; no max → empty field. */
+const maxText = (n: number | null | undefined) => (n != null ? String(n).replace(".", ",") : "")
 
 export function RedOrderCard({ order, shops, highlight = false }: { order: ShopOrder; shops: Shop[]; highlight?: boolean }) {
   const red = order.red!
@@ -50,14 +53,20 @@ export function RedOrderCard({ order, shops, highlight = false }: { order: ShopO
 
       {CANCELLABLE.includes(order.status) && (
         <footer className="border-t border-[#EFE8D8] px-4 py-2 text-right">
+          {cancel.error && (
+            <p role="alert" className="mb-1 text-left text-[12px] text-[#C65D38]">
+              {cancel.error.message}
+            </p>
+          )}
           <button
             type="button"
-            className="text-[11px] text-[#A39A8E] hover:text-[#C65D38]"
+            disabled={cancel.isPending}
+            className="text-[11px] text-[#A39A8E] enabled:hover:text-[#C65D38] disabled:opacity-40"
             onClick={() => {
               if (typeof window === "undefined" || window.confirm(`¿Cancelar el pedido a ${order.shop.name}?`)) cancel.mutate({ id: order.id })
             }}
           >
-            Cancelar pedido
+            {cancel.isPending ? "Cancelando…" : "Cancelar pedido"}
           </button>
         </footer>
       )}
@@ -69,9 +78,14 @@ function RedDraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
   const red = order.red!
   const patch = usePatchShopOrder()
   const place = usePlaceRedOrder()
-  const [max, setMax] = useState(red.maxEur != null ? String(red.maxEur).replace(".", ",") : "")
-  const [address, setAddress] = useState(order.address ?? "")
-  useEffect(() => setMax(red.maxEur != null ? String(red.maxEur).replace(".", ",") : ""), [red.maxEur])
+  const [max, setMax] = useState(maxText(red.maxEur))
+  // Follow the server's max (a new line changes the computed one), except while the household types.
+  const typing = useRef(false)
+  useEffect(() => {
+    if (!typing.current) setMax(maxText(red.maxEur))
+  }, [red.maxEur])
+  // Any edit of this order still on its way (max, lines, delivery): «Pedir» would send a max the server is about to change.
+  const editing = useIsMutating({ predicate: (m) => (m.state.variables as { id?: string } | undefined)?.id === order.id }) > 0
   const blocked = order.blockers.length > 0
   const kindLower = SHOP_KIND_LABELS[order.shop.kind].toLowerCase()
 
@@ -83,34 +97,7 @@ function RedDraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
         </p>
       )}
 
-      <div className="space-y-2">
-        <div className="flex gap-2" role="group" aria-label="Entrega">
-          {(["recoger", "domicilio"] as const)
-            .filter((f) => f === "recoger" || red.delivers)
-            .map((f) => (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={order.fulfilment === f}
-                onClick={() => order.fulfilment !== f && patch.mutate({ id: order.id, fulfilment: f })}
-                className={`rounded-full border px-3 py-1 text-[12px] ${order.fulfilment === f ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]" : "border-[#DDD6C5] text-[#1A1612]"}`}
-              >
-                {f === "recoger" ? "Recojo en tienda" : "A domicilio"}
-              </button>
-            ))}
-        </div>
-        {order.fulfilment === "domicilio" && (
-          <input
-            aria-label="Dirección de entrega"
-            value={address}
-            maxLength={200}
-            placeholder="Dirección de entrega (calle, número, piso, localidad)"
-            onChange={(e) => setAddress(e.target.value)}
-            onBlur={() => address.trim() !== (order.address ?? "") && patch.mutate({ id: order.id, address: address.trim() || null })}
-            className="w-full border-b border-[#DDD6C5] bg-transparent py-1 text-[13px] text-[#1A1612] outline-none focus:border-[#1A1612]"
-          />
-        )}
-      </div>
+      <DraftFulfilment order={order} offer={red.delivers ? ["recoger", "domicilio"] : ["recoger"]} />
 
       <DraftLines order={order} shops={shops} />
 
@@ -126,10 +113,17 @@ function RedDraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
             aria-label="Como mucho, en euros"
             value={max}
             onChange={(e) => setMax(e.target.value)}
+            onFocus={() => {
+              typing.current = true
+            }}
             onBlur={() => {
+              typing.current = false
               // Same builder the contract test runs against patchShopOrderSchema (redFlag.test.ts).
               const body = redMaxBody(max)
-              if (body.maxEur !== red.maxEur) patch.mutate({ id: order.id, ...body })
+              // Unchanged (or cleared when it was never raised): just show the server's max again.
+              if (body.maxEur === red.maxEur || (body.maxEur == null && !red.maxRaised)) return void setMax(maxText(red.maxEur))
+              // Cleared = back to the computed max, which only the PATCH's answer carries.
+              patch.mutate({ id: order.id, ...body }, { onSuccess: (o) => void (!typing.current && setMax(maxText(o.red?.maxEur))) })
             }}
             placeholder="—"
             className="w-16 border-b border-[#DDD6C5] bg-transparent py-0.5 text-right text-[13px] outline-none focus:border-[#1A1612]"
@@ -142,19 +136,12 @@ function RedDraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
         {patch.error && <p role="alert" className="text-[11px] text-[#C65D38]">{patch.error.message}</p>}
       </div>
 
-      {blocked && (
-        <ul className="space-y-0.5 rounded-xl border border-[#C65D38]/40 px-3 py-2 text-[12px] text-[#C65D38]" data-testid="blockers">
-          <li className="text-[10px] uppercase tracking-[0.12em]">Antes de pedirlo</li>
-          {order.blockers.map((b) => (
-            <li key={b}>· {b}</li>
-          ))}
-        </ul>
-      )}
+      <DraftBlockers blockers={order.blockers} title="Antes de pedirlo" />
 
       <div className="space-y-1">
         <button
           type="button"
-          disabled={blocked || red.maxEur == null || place.isPending}
+          disabled={blocked || red.maxEur == null || editing || place.isPending}
           onClick={() => {
             haptic.light()
             place.mutate({ id: order.id, maxEur: red.maxEur! })

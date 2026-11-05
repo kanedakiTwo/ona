@@ -10,19 +10,15 @@
  *   approved → send the confirmation; close when collected
  */
 import { useState } from "react"
-import { ArrowRightLeft, Check, Copy, ExternalLink, Globe, Mail, MessageCircle, Phone, Plus, X } from "lucide-react"
+import { Check, Copy, ExternalLink, Globe, Mail, MessageCircle, Phone } from "lucide-react"
 import {
   SHOP_KIND_LABELS,
   carrefourLinks,
   isLiveBasketSend,
   SHOP_ORDER_STATUS_LABELS,
-  capitalize,
-  formatQty,
-  prettyName,
   type LineDecision,
   type Shop,
   type ShopOrder,
-  type ShopOrderLine,
 } from "@ona/shared"
 import {
   useApproveShopOrder,
@@ -36,9 +32,8 @@ import { useBasketExtension } from "@/hooks/useBasketExtension"
 import { haptic } from "@/lib/pwa/haptics"
 import { api } from "@/lib/api"
 import { ExtensionSendPanel, ExtensionSentBody } from "./ExtensionOrder"
+import { DraftBlockers, DraftFulfilment, DraftLines, lineName } from "./DraftParts"
 import { eur, ghostBtn, primaryBtn } from "./styles"
-
-const lineName = (l: ShopOrderLine) => capitalize(prettyName(l.name))
 
 function parseEuros(s: string): number | null {
   const n = Number(s.replace(",", ".").replace(/[^\d.]/g, ""))
@@ -145,28 +140,11 @@ export function OrderCard({ order, shops }: { order: ShopOrder; shops: Shop[] })
 
 // ─── draft ─────────────────────────────────────────────────────
 
-/** "1 kg de manzanas" / "6 huevos" / "perejil" → what PATCH { add } takes. */
-export function parseAddText(raw: string): { name: string; quantity?: number; unit?: "g" | "ml" | "u" } | null {
-  const t = raw.trim()
-  if (!t) return null
-  const m = t.match(/^(\d+(?:[.,]\d+)?)\s*(kg|kilos?|g|gr|gramos?|l|litros?|ml|uds?|unidades?)?\s*(?:de\s+)?(.+)$/i)
-  if (!m) return { name: t.slice(0, 80) }
-  const n = Number(m[1].replace(",", "."))
-  const u = (m[2] ?? "").toLowerCase()
-  const name = m[3].trim().slice(0, 80)
-  if (/^(kg|kilo)/.test(u)) return { name, quantity: n * 1000, unit: "g" }
-  if (/^(g|gr|gramo)/.test(u)) return { name, quantity: n, unit: "g" }
-  if (/^(l|litro)/.test(u)) return { name, quantity: n * 1000, unit: "ml" }
-  if (u === "ml") return { name, quantity: n, unit: "ml" }
-  return { name, quantity: n, unit: "u" }
-}
-
 function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
   const patch = usePatchShopOrder()
   const markSent = useMarkShopOrderSent()
   const close = useCloseShopOrder()
   const [cap, setCap] = useState(order.capEur != null ? String(order.capEur).replace(".", ",") : "")
-  const [address, setAddress] = useState(order.address ?? "")
   const { channel } = order.shop
   const blocked = order.blockers.length > 0
   const d = order.delivery
@@ -174,31 +152,7 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
   return (
     <div className="space-y-4">
       {channel !== "web" && (
-        <div className="space-y-2">
-          <div className="flex gap-2" role="group" aria-label="Entrega">
-            {(["recoger", "domicilio"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={order.fulfilment === f}
-                onClick={() => order.fulfilment !== f && patch.mutate({ id: order.id, fulfilment: f })}
-                className={`rounded-full border px-3 py-1 text-[12px] ${order.fulfilment === f ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]" : "border-[#DDD6C5] text-[#1A1612]"}`}
-              >
-                {f === "recoger" ? "Recojo en tienda" : "A domicilio"}
-              </button>
-            ))}
-          </div>
-          {order.fulfilment === "domicilio" && (
-            <input
-              aria-label="Dirección de entrega"
-              value={address}
-              maxLength={200}
-              placeholder="Dirección de entrega (calle, número, piso, localidad)"
-              onChange={(e) => setAddress(e.target.value)}
-              onBlur={() => address.trim() !== (order.address ?? "") && patch.mutate({ id: order.id, address: address.trim() || null })}
-              className="w-full border-b border-[#DDD6C5] bg-transparent py-1 text-[13px] text-[#1A1612] outline-none focus:border-[#1A1612]"
-            />
-          )}
+        <DraftFulfilment order={order}>
           {d && d.minEur != null && (
             <p className={`text-[11px] ${d.shortByEur ? "text-[#C65D38]" : "text-[#7A7066]"}`} data-testid="delivery-check">
               {!d.confident
@@ -209,7 +163,7 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
               {d.feeEur ? ` Envío: ${eur(d.feeEur)}.` : ""}
             </p>
           )}
-        </div>
+        </DraftFulfilment>
       )}
 
       <DraftLines order={order} shops={shops} />
@@ -238,14 +192,7 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
         <pre className="mt-2 whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-[#1A1612]">{order.messageText}</pre>
       </details>
 
-      {blocked && (
-        <ul className="space-y-0.5 rounded-xl border border-[#C65D38]/40 px-3 py-2 text-[12px] text-[#C65D38]" data-testid="blockers">
-          <li className="text-[10px] uppercase tracking-[0.12em]">Antes de enviarlo</li>
-          {order.blockers.map((b) => (
-            <li key={b}>· {b}</li>
-          ))}
-        </ul>
-      )}
+      <DraftBlockers blockers={order.blockers} title="Antes de enviarlo" />
 
       <div className="flex flex-wrap items-center gap-3">
         {channel === "whatsapp" && order.links.order && (
@@ -280,119 +227,6 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
       )}
       {order.shop.kind === "supermercado" && <SuperExtras order={order} />}
     </div>
-  )
-}
-
-/** Las líneas del borrador y «¿Algo más?»: las mismas en la tarjeta de siempre y en la de la Red. */
-export function DraftLines({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
-  const patch = usePatchShopOrder()
-  const [extra, setExtra] = useState("")
-  const others = shops.filter((s) => s.id !== order.shopId)
-  const wantsNotes = order.shop.kind === "carniceria" || order.shop.kind === "pescaderia"
-
-  return (
-    <>
-      <ul className="divide-y divide-[#EFE8D8]">
-        {order.lines.map((l) => (
-          <li key={l.key} className={`py-2 ${l.included === false ? "opacity-60" : ""}`} data-testid={`line-${l.key}`}>
-            <div className="flex items-center gap-2">
-              {l.maybeHave && (
-                <input
-                  type="checkbox"
-                  aria-label={`Incluir ${lineName(l)}`}
-                  checked={l.included !== false}
-                  onChange={(e) => patch.mutate({ id: order.id, lines: [{ key: l.key, include: e.target.checked }] })}
-                />
-              )}
-              <span className="min-w-0 flex-1 text-[14px] text-[#1A1612]">
-                {l.text ?? `${lineName(l)} · ${formatQty(l.quantity, l.unit)}`}
-                {l.volatile && <span className="ml-1 text-[10px] uppercase tracking-[0.1em] text-[#C65D38]">lonja</span>}
-                {l.maybeHave && <span className="block text-[11px] text-[#7A7066]">probablemente lo tienes</span>}
-              </span>
-              {order.searchLinks[l.key] && (
-                <a href={order.searchLinks[l.key]} target="_blank" rel="noopener noreferrer" className={ghostBtn} aria-label={`Buscar ${lineName(l)} en ${order.shop.name}`}>
-                  Buscar <ExternalLink size={11} />
-                </a>
-              )}
-              {others.length > 0 && (
-                <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#A39A8E] hover:text-[#1A1612]">
-                  <ArrowRightLeft size={13} aria-hidden />
-                  <select
-                    aria-label={`Mover ${lineName(l)} a otra tienda`}
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                    value=""
-                    onChange={(e) => e.target.value && patch.mutate({ id: order.id, lines: [{ key: l.key, moveToShopId: e.target.value }] })}
-                  >
-                    <option value="">Mover a…</option>
-                    {others.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </span>
-              )}
-              <button
-                type="button"
-                aria-label={`Quitar ${lineName(l)}`}
-                onClick={() => patch.mutate({ id: order.id, lines: [{ key: l.key, remove: true }] })}
-                className="rounded-full p-1 text-[#A39A8E] hover:text-[#C65D38]"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            {l.options && l.options.length > 1 && (
-              <div className="mt-1 flex flex-wrap gap-1.5" role="group" aria-label={l.needsChoice?.question ?? `Opciones de ${lineName(l)}`}>
-                {l.options.map((o) => (
-                  <button
-                    key={o}
-                    type="button"
-                    aria-pressed={l.choice === o}
-                    onClick={() => l.choice !== o && patch.mutate({ id: order.id, lines: [{ key: l.key, choice: o }] })}
-                    className={`rounded-full border px-2.5 py-0.5 text-[11px] ${l.choice === o ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]" : l.needsChoice ? "border-[#C65D38] text-[#C65D38]" : "border-[#DDD6C5] text-[#1A1612]"}`}
-                  >
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
-            {l.needsQuantity && <QuantityAsk order={order} line={l} />}
-            {wantsNotes && !l.needsQuantity && (
-              <input
-                aria-label={`Nota para ${lineName(l)}`}
-                defaultValue={l.note ?? ""}
-                maxLength={120}
-                placeholder={order.shop.kind === "pescaderia" ? "Preparación: en lomos, sin espinas…" : "Preparación: picada, en filetes finos…"}
-                onBlur={(e) => {
-                  const v = e.target.value.trim()
-                  if (v !== (l.note ?? "")) patch.mutate({ id: order.id, lines: [{ key: l.key, note: v || null }] })
-                }}
-                className="mt-1 w-full border-b border-dashed border-[#DDD6C5] bg-transparent py-0.5 text-[12px] text-[#1A1612] outline-none placeholder:text-[#A39A8E] focus:border-[#1A1612]"
-              />
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          const item = parseAddText(extra)
-          if (item) patch.mutate({ id: order.id, add: [item] }, { onSuccess: () => setExtra("") })
-        }}
-      >
-        <input
-          aria-label={`Añadir algo más a ${order.shop.name}`}
-          value={extra}
-          onChange={(e) => setExtra(e.target.value)}
-          maxLength={80}
-          placeholder="¿Algo más? Ej: 1 kg de manzanas"
-          className="min-w-0 flex-1 border-b border-[#DDD6C5] bg-transparent py-1 text-[13px] text-[#1A1612] outline-none placeholder:text-[#A39A8E] focus:border-[#1A1612]"
-        />
-        <button type="submit" disabled={!extra.trim() || patch.isPending} className={ghostBtn}>
-          <Plus size={12} /> Añadir
-        </button>
-      </form>
-    </>
   )
 }
 
@@ -453,32 +287,6 @@ function CarrefourOrder({ order }: { order: ShopOrder }) {
           </ul>
         </div>
       )}
-    </div>
-  )
-}
-
-function QuantityAsk({ order, line }: { order: ShopOrder; line: ShopOrderLine }) {
-  const patch = usePatchShopOrder()
-  const [g, setG] = useState("")
-  const ask = line.needsQuantity!
-  return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-[#C65D38]">
-      ¿Cuánto?
-      <button type="button" className="rounded-full border border-[#C65D38] px-2.5 py-0.5" onClick={() => patch.mutate({ id: order.id, lines: [{ key: line.key, quantity: ask.grams, unit: "g" }] })}>
-        {ask.suggestion}
-      </button>
-      <input
-        aria-label={`Gramos de ${lineName(line)}`}
-        inputMode="numeric"
-        value={g}
-        onChange={(e) => setG(e.target.value)}
-        onBlur={() => {
-          const n = Number(g.replace(",", "."))
-          if (n > 0) patch.mutate({ id: order.id, lines: [{ key: line.key, quantity: n, unit: "g" }] })
-        }}
-        placeholder="otra (g)"
-        className="w-20 border-b border-[#DDD6C5] bg-transparent py-0.5 text-[12px] text-[#1A1612] outline-none focus:border-[#1A1612]"
-      />
     </div>
   )
 }

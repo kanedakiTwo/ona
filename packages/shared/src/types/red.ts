@@ -1,7 +1,8 @@
 import { z } from 'zod'
+import type { ShopOrderStatus } from './shopOrders.js'
 
 /**
- * Red de tiendas v2 (ona-hq D-165; specs/shop-orders.md → «Red de tiendas»):
+ * Red de tiendas v2 (ona-hq D-165; specs/red-tiendas.md):
  * the household orders through Mimoia and the shop cedes a share of every
  * order: half is a discount for the household, half Mimoia's commission.
  */
@@ -15,12 +16,15 @@ export const isRedKind = (k: string): k is RedKind => (RED_KINDS as readonly str
 export const RED_ORDER_STATUSES = ['ordered', 'accepted', 'preparing', 'ready', 'payment_pending', 'charged', 'delivered', 'rejected', 'incident'] as const
 export type RedOrderStatus = (typeof RED_ORDER_STATUSES)[number]
 
+/** The household cancels a Red order by itself only before the shop starts it (the API and /compra read this). */
+export const RED_HOUSEHOLD_CANCELLABLE: readonly ShopOrderStatus[] = ['draft', 'ordered', 'accepted']
+
 export interface RedSettings {
   /** % of the products total the household gets off. */
   discountPct: number
   /** % of the products total that is Mimoia's commission. */
   commissionPct: number
-  /** Whether that commission already includes VAT (pending Miguel's decision; a switch). */
+  /** Whether that commission already includes VAT (pending a decision; a switch). */
   commissionVatIncluded: boolean
   /** Margin over a line's estimate when its price is the household's or this shop's. */
   marginKnownPct: number

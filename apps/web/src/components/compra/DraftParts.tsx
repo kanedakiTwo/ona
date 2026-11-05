@@ -14,7 +14,6 @@ import { ghostBtn } from "./styles"
 
 export const lineName = (l: ShopOrderLine) => capitalize(prettyName(l.name))
 
-
 /** "1 kg de manzanas" / "6 huevos" / "perejil" → what PATCH { add } takes. */
 export function parseAddText(raw: string): { name: string; quantity?: number; unit?: "g" | "ml" | "u" } | null {
   const t = raw.trim()

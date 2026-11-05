@@ -91,6 +91,12 @@ const RED_VIEW: RedOrderView = { redShopId: 'r1', terms: DEFAULT_RED_SETTINGS, e
 const RED_LINKS = { order: null, confirmation: null, shortOrder: 'https://ona.app/c/REDREDREDREDRED1', shortConfirmation: null, tooLong: false, view: 'https://ona.app/compra?pedido=o9' }
 
 describe('prepare_shop_orders', () => {
+  it('the tool description never mentions the Red: every household sees it, the Red guidance travels in the result', () => {
+    const { description } = get('prepare_shop_orders')
+    expect(description).not.toMatch(/\bRed\b/)
+    expect(description).not.toMatch(/descuento/i)
+  })
+
   it('without shops: asks for them and points at /compra/tiendas', async () => {
     const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [], unassigned: [], skipped: [], hasShops: false } })
     const r = await get('prepare_shop_orders').handler({}, ctx(api))

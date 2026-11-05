@@ -2,7 +2,10 @@
  * Red de tiendas: the life of a Red order (ona-hq D-165, design §4). Pure.
  * draft, cancelled and closed are the same states every order has.
  */
-import type { RedOrderStatus, ShopOrderStatus } from '@ona/shared'
+import { RED_HOUSEHOLD_CANCELLABLE, type RedOrderStatus, type ShopOrderStatus } from '@ona/shared'
+
+// The household cancels by itself only before the shop starts (shared with /compra's card).
+export { RED_HOUSEHOLD_CANCELLABLE }
 
 /** Every state a Red order can be in → where it may go next. */
 const NEXT: Record<'draft' | 'cancelled' | 'closed' | RedOrderStatus, ShopOrderStatus[]> = {
@@ -24,9 +27,6 @@ const NEXT: Record<'draft' | 'cancelled' | 'closed' | RedOrderStatus, ShopOrderS
 export function canRedTransition(from: string, to: string): boolean {
   return (NEXT[from as keyof typeof NEXT] ?? []).includes(to as ShopOrderStatus)
 }
-
-/** The household cancels by itself only before the shop starts. */
-export const RED_HOUSEHOLD_CANCELLABLE: readonly ShopOrderStatus[] = ['draft', 'ordered', 'accepted']
 
 export function householdCanCancelRed(status: string): boolean {
   return RED_HOUSEHOLD_CANCELLABLE.includes(status as ShopOrderStatus)

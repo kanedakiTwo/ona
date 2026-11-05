@@ -155,13 +155,27 @@ export async function addShop(userId: string, input: ShopInput, db: Db = default
   return toShop(row)
 }
 
+/**
+ * Pure: an own shop stays linked to the Red only while its WhatsApp and kind
+ * are still the ones it was linked by. Changing either unlinks it; the next
+ * «Preparar» links it again if it still matches a Red shop.
+ */
+export function keepsRedLink(current: { whatsapp: string | null; kind: string }, input: Partial<Pick<ShopInput, 'whatsapp' | 'kind'>>): boolean {
+  return (input.whatsapp === undefined || input.whatsapp === current.whatsapp) && (input.kind === undefined || input.kind === current.kind)
+}
+
 export async function patchShop(userId: string, id: string, input: Partial<ShopInput>, db: Db = defaultDb): Promise<Shop | null> {
   const hh = await householdOf(userId, db)
-  const [current] = await db.select({ origin: householdShops.origin }).from(householdShops).where(and(eq(householdShops.id, id), eq(householdShops.householdId, hh))).limit(1)
+  const [current] = await db
+    .select({ origin: householdShops.origin, whatsapp: householdShops.whatsapp, kind: householdShops.kind, redShopId: householdShops.redShopId })
+    .from(householdShops)
+    .where(and(eq(householdShops.id, id), eq(householdShops.householdId, hh)))
+    .limit(1)
   if (current?.origin === 'red') throw new ShopOrderError(409, 'RED_SHOP', 'Los datos de una tienda de la Red los lleva Mimoia. Si no la quieres, quítala.')
+  const unlink = !!current?.redShopId && !keepsRedLink(current, input)
   const [row] = await db
     .update(householdShops)
-    .set({ ...shopValues(input), updatedAt: new Date() })
+    .set({ ...shopValues(input), ...(unlink ? { redShopId: null } : {}), updatedAt: new Date() })
     .where(and(eq(householdShops.id, id), eq(householdShops.householdId, hh)))
     .returning()
   return row ? toShop(row) : null
@@ -546,6 +560,17 @@ export interface PrepareResult {
 }
 
 /**
+ * Pure: the shops «Preparar» drafts for. Red copies (origin `red`) only while
+ * the Red is on for the household and its step worked; otherwise they're left
+ * out, so a Red copy never becomes a plain WhatsApp order. An own shop linked
+ * to the Red (origin `propia` + red_shop_id) always stays: without the Red it's
+ * just the household's shop, with wa.me and no Red fields.
+ */
+export function draftableShops<T extends { origin: string }>(shops: T[], opts: { redOn: boolean; redFailed: boolean }): T[] {
+  return opts.redOn && !opts.redFailed ? shops : shops.filter((s) => s.origin !== 'red')
+}
+
+/**
  * Draft one order per shop from the user's current shopping list. Replaces
  * the household's previous drafts; never touches orders already sent, and
  * leaves out items that are already in one of them (no double ordering).
@@ -578,7 +603,9 @@ export async function prepareOrders(userId: string, opts: { listId?: string } = 
   // kinds without a shop get the postal code question, the once-asked question or a Red copy.
   let red = emptyRedInfo(false)
   let terms: RedSettings | null = null
-  if (await redEnabledFor(userId, db)) {
+  const redOn = await redEnabledFor(userId, db)
+  let redFailed = false
+  if (redOn) {
     try {
       terms = await getRedSettings(db)
       const first = draftOrdersFromItems(items, asDraftShops(shops), { alreadyOrdered, prefs })
@@ -587,14 +614,16 @@ export async function prepareOrders(userId: string, opts: { listId?: string } = 
       red = r.info
       if (r.shopsChanged) shops = await shopRows(hh, db)
     } catch (err) {
-      // A Red error never stops «Preparar»: the household's own shops get their drafts as usual,
-      // and no Red copy becomes a plain WhatsApp order.
+      // A Red error never stops «Preparar»: the household's own shops get their drafts as usual.
       console.error('[red] prepare step failed:', err)
       red = emptyRedInfo(true)
       terms = null
-      shops = (await shopRows(hh, db)).filter((s) => s.origin !== 'red')
+      redFailed = true
+      shops = await shopRows(hh, db)
     }
   }
+  // Red off (the switch turned off later) or its step failed: no Red copy becomes a plain WhatsApp order.
+  shops = draftableShops(shops, { redOn, redFailed })
 
   const draft = draftOrdersFromItems(items, asDraftShops(shops), { alreadyOrdered, prefs })
 

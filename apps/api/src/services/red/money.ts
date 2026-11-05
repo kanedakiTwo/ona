@@ -35,7 +35,7 @@ export function productsEstimate(lines: ShopOrderLine[]): number | null {
   return toEur(known.reduce((acc, l) => acc + toCents(l.estimateEur as number), 0))
 }
 
-/** Techo de productos: Σ estimate × (1 + margin), line by line, to the cent. null if an included line has no estimate. */
+/** Techo de productos: Σ estimate × (1 + margin) over the lines, summed exactly and rounded to the cent once. null if an included line has no estimate. */
 export function productsCeiling(lines: ShopOrderLine[], s: RedSettings): number | null {
   const ls = live(lines)
   if (!ls.length || ls.some((l) => l.estimateEur == null)) return null

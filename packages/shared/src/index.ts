@@ -156,6 +156,7 @@ export type {
 export {
   RED_KINDS,
   RED_ORDER_STATUSES,
+  RED_HOUSEHOLD_CANCELLABLE,
   DEFAULT_RED_SETTINGS,
   isRedKind,
   isPostalCode,

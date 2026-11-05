@@ -1,15 +1,19 @@
 /**
  * Red de tiendas: the decisions behind «Pedir» (empty, blocked, the max the
  * household saw) and behind editing a Red draft's «como mucho» (too low, kept,
- * or back to the computed one when what's ordered changes).
- * TERMS_CHANGED is `sameTerms` (redStore.test.ts); its refresh is in the smoke.
+ * or back to the computed one when what's ordered changes); which shops
+ * «Preparar» drafts for when the Red is off or failed; and when an own shop
+ * stops being linked to the Red.
+ * TERMS_CHANGED: the comparison is `sameTerms` (redStore.test.ts); the refresh
+ * at «Pedir» (409, new terms on the draft, max reset, the next «Pedir» goes)
+ * is in redOrders.smoke.ts, against the real database.
  *
  * Run: pnpm --filter @ona/api test src/tests/redOrders.test.ts
  */
 import { describe, it, expect } from 'vitest'
 import { DEFAULT_RED_SETTINGS as S, type ShopOrderLine, type ShopSnapshot } from '@ona/shared'
 import { nextRedMax, redOrderRefusal, redView } from '../services/red/view.js'
-import { presentOrder, type OrderPatch } from '../services/shopOrders/store.js'
+import { draftableShops, keepsRedLink, presentOrder, type OrderPatch } from '../services/shopOrders/store.js'
 
 const line = (over: Partial<ShopOrderLine> = {}): ShopOrderLine => ({
   key: 'l1', sourceItemId: 'manual:m', ingredientId: null, name: 'manzanas', quantity: 1000, unit: 'g', note: null,
@@ -97,5 +101,34 @@ describe('nextRedMax (editing a Red draft)', () => {
     expect(nextRedMax(p({ lines: [{ key: 'l1', note: null, quantity: undefined }] }), 'recoger', view)).toEqual({ maxEur: undefined })
     expect(nextRedMax(p({ address: 'Calle de prueba 1' }), 'domicilio', view)).toEqual({ maxEur: undefined })
     expect(nextRedMax(p({ capEur: 40 }), 'recoger', view)).toEqual({ maxEur: undefined })
+  })
+})
+
+describe('draftableShops («Preparar» with the Red off or failed)', () => {
+  const own = { id: 'own', origin: 'propia', redShopId: null }
+  const joined = { id: 'joined', origin: 'propia', redShopId: 'r1' }
+  const copy = { id: 'copy', origin: 'red', redShopId: 'r2' }
+  const shops = [own, joined, copy]
+  it('Red on and its step worked: every shop, Red copies included', () => {
+    expect(draftableShops(shops, { redOn: true, redFailed: false }).map((s) => s.id)).toEqual(['own', 'joined', 'copy'])
+  })
+  it('the switch turned off: Red copies are left out (never a plain WhatsApp order to the Red shop); an own shop linked to the Red stays', () => {
+    expect(draftableShops(shops, { redOn: false, redFailed: false }).map((s) => s.id)).toEqual(['own', 'joined'])
+  })
+  it('the Red step failed: the same', () => {
+    expect(draftableShops(shops, { redOn: true, redFailed: true }).map((s) => s.id)).toEqual(['own', 'joined'])
+  })
+})
+
+describe('keepsRedLink (editing an own shop linked to the Red)', () => {
+  const current = { whatsapp: '34600000091', kind: 'fruteria' }
+  it('the same WhatsApp and kind (or not sent) keep the link', () => {
+    expect(keepsRedLink(current, {})).toBe(true)
+    expect(keepsRedLink(current, { whatsapp: '34600000091', kind: 'fruteria' })).toBe(true)
+  })
+  it('another WhatsApp, no WhatsApp or another kind unlink it', () => {
+    expect(keepsRedLink(current, { whatsapp: '34600000099' })).toBe(false)
+    expect(keepsRedLink(current, { whatsapp: null })).toBe(false)
+    expect(keepsRedLink(current, { kind: 'supermercado' })).toBe(false)
   })
 })

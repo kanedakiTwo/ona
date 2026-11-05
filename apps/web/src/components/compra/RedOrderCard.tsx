@@ -1,21 +1,20 @@
 "use client"
 
 /**
- * Tarjeta de un pedido a una tienda de la Red (specs/shop-orders.md → «Red de
- * tiendas», ona-hq D-165): el hogar lo pide por Mimoia, con el 5 % ya
+ * Tarjeta de un pedido a una tienda de la Red (specs/red-tiendas.md,
+ * ona-hq D-165): el hogar lo pide por Mimoia, con el 5 % ya
  * descontado. Tramo 1a: borrador → «Pedir» (aún sin cobro) → esperando a la tienda.
  */
 import { useEffect, useRef, useState } from "react"
 import { useIsMutating } from "@tanstack/react-query"
 import { BadgePercent } from "lucide-react"
-import { SHOP_KIND_LABELS, SHOP_ORDER_STATUS_LABELS, redMaxBody, type Shop, type ShopOrder } from "@ona/shared"
+import { RED_HOUSEHOLD_CANCELLABLE, SHOP_KIND_LABELS, SHOP_ORDER_STATUS_LABELS, redMaxBody, type Shop, type ShopOrder } from "@ona/shared"
 import { useCancelShopOrder, usePatchShopOrder } from "@/hooks/useShopOrders"
 import { usePlaceRedOrder } from "@/hooks/useRed"
 import { haptic } from "@/lib/pwa/haptics"
 import { DraftBlockers, DraftFulfilment, DraftLines } from "./DraftParts"
 import { eur, primaryBtn } from "./styles"
 
-const CANCELLABLE = ["draft", "ordered", "accepted"]
 /** 24.5 → «24,5»; no max → empty field. */
 const maxText = (n: number | null | undefined) => (n != null ? String(n).replace(".", ",") : "")
 
@@ -51,7 +50,7 @@ export function RedOrderCard({ order, shops, highlight = false }: { order: ShopO
         {!["draft", "ordered"].includes(order.status) && <p className="text-[12px] text-[#7A7066]">{SHOP_ORDER_STATUS_LABELS[order.status]}.</p>}
       </div>
 
-      {CANCELLABLE.includes(order.status) && (
+      {RED_HOUSEHOLD_CANCELLABLE.includes(order.status) && (
         <footer className="border-t border-[#EFE8D8] px-4 py-2 text-right">
           {cancel.error && (
             <p role="alert" className="mb-1 text-left text-[12px] text-[#C65D38]">

@@ -248,6 +248,7 @@ export const WEB_PAGE_TEMPLATES: readonly string[] = [
   '/blog',
   '/blog/:x',
   '/c/:x',
+  '/cocinar',
   '/como-funciona',
   '/compra',
   '/compra/tiendas',

@@ -4,8 +4,9 @@ import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin } from './auth.js'
 
 /**
- * Guard for the thirteen read-only routes the Mimoia HQ agents use: GET /admin/metrics
- * and GET /admin/usage (specs/metrics.md), GET /admin/errors (specs/errors.md),
+ * Guard for the read-only routes the Mimoia HQ agents use (tests/tokenRoutes.test.ts
+ * pins the list): GET /admin/metrics, GET /admin/usage, GET /admin/feature-usage and
+ * GET /admin/recipe-usage (specs/metrics.md),GET /admin/errors (specs/errors.md),
  * GET /admin/waitlist (specs/waitlist.md), GET /admin/price-survey and GET
  * /admin/feedback (counts only), and GET
  * /admin/assistant-reviews/flags (specs/whatsapp.md), GET /admin/catalog-wishes

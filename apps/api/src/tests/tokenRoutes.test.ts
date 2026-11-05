@@ -31,7 +31,7 @@ function tokenRoutes(): { files: string[]; routes: string[] } {
 }
 
 describe('routes open to the read token', () => {
-  it('are exactly these fourteen GETs: a new one needs its token view checked (services/agentView.ts) and this list updated', () => {
+  it('are exactly these fifteen GETs: a new one needs its token view checked (services/agentView.ts) and this list updated', () => {
     const { files, routes } = tokenRoutes()
     expect(files).toEqual([
       'appErrors.ts',
@@ -56,6 +56,7 @@ describe('routes open to the read token', () => {
       'GET /admin/metrics',
       'GET /admin/newsletter/stats',
       'GET /admin/price-survey',
+      'GET /admin/recipe-usage',
       'GET /admin/usage',
       'GET /admin/waitlist',
       'GET /notices/afina/stats',

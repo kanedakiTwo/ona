@@ -6,6 +6,7 @@ import { loadCapHits } from '../services/capHits.js'
 import { loadApiSaldo } from '../services/apiSaldo.js'
 import { loadDraftRecipes } from '../services/draftRecipes.js'
 import { loadFeatureUsageReport } from '../services/featureUsageReport.js'
+import { loadRecipeUsageReport } from '../services/recipeUsageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
 import { basketGapsForToken, basketSendsForToken, loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
 import { flagsForAgents } from '../services/agentView.js'
@@ -34,7 +35,11 @@ import { flagsForAgents } from '../services/agentView.js'
  *     de 80 caracteres y 12 palabras como mucho (si no, null y `productosFiltrados`);
  *   - GET /admin/feature-usage?days=30[&includeInternal=1] — uso de cada función
  *     por hogar (PRO-1025, specs/feature-usage.md): una fila por función, solo
- *     cifras, y «menos de 5» en los grupos de 1 a 4. Igual con sesión que con el token.
+ *     cifras, y «menos de 5» en los grupos de 1 a 4. Igual con sesión que con el token;
+ *   - GET /admin/recipe-usage?days=28[&includeInternal=1] — por receta del
+ *     catálogo, veces en un menú, cambiada y cocinada (PRO-1120, para Cocina;
+ *     specs/metrics.md «Uso por receta»): id, nombre y cifras, sin hogares.
+ *     Igual con sesión que con el token.
  *
  * Own router, mounted in index.ts BEFORE the routers that `router.use(authMiddleware)`
  * as a catch-all — otherwise a token-only request would be 401'd before it
@@ -80,6 +85,16 @@ router.get('/admin/feature-usage', metricsAuth, async (req, res) => {
     res.json(await loadFeatureUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
   } catch (err: any) {
     console.error('[feature-usage] report failed:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.get('/admin/recipe-usage', metricsAuth, async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 28, 1, 180)
+    res.json(await loadRecipeUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
+  } catch (err: any) {
+    console.error('[recipe-usage] report failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

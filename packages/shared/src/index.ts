@@ -232,6 +232,8 @@ export {
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
 export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from './constants/aiDisclosure.js'
+export { KITCHEN_APPLIANCES, BASIC_UTENSILS, foldEquipment, classifyEquipment, appliancesIn, unknownEquipmentCounts } from './constants/equipment.js'
+export type { EquipmentKind } from './constants/equipment.js'
 export {
   HEALTH_CONSENT_VERSION,
   HEALTH_CONSENT_TEXT,

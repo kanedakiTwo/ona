@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { carryIngredientMarks, ingredientMarksOf } from '../services/ingredientRoles.js'
 
@@ -45,5 +47,12 @@ describe('ingredientMarksOf', () => {
   it('copies role and substitutes, defaulting to unmarked', () => {
     expect(ingredientMarksOf({ role: 'secondary', substituteIngredientIds: ['a'] })).toEqual({ role: 'secondary', substituteIngredientIds: ['a'] })
     expect(ingredientMarksOf({})).toEqual({ role: null, substituteIngredientIds: [] })
+  })
+})
+
+describe('both copy paths carry the marks', () => {
+  const src = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8')
+  it.each(['routes/recipes.ts', 'services/assistant/skills.ts'])('%s spreads ingredientMarksOf into the copied rows', (file) => {
+    expect(src(file)).toMatch(/\.\.\.ingredientMarksOf\(ing\)/)
   })
 })

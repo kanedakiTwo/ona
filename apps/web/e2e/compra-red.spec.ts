@@ -1,5 +1,5 @@
 /**
- * Red de tiendas v2, tramo 1a (specs/shop-orders.md → «Red de tiendas»): a
+ * Red de tiendas v2, tramo 1a (specs/red-tiendas.md): a
  * household with no shops gives its postal code on /compra, gets the Red's
  * frutería on its own, sees the card with the discount and the max, and
  * orders. CI seeds the test shops in 28001 (scripts/redTestShops.ts) and
@@ -46,4 +46,13 @@ test('postal code → Red frutería → −5 % and max → Pedir', async ({ page
 
   await card.getByRole('button', { name: /^Pedir · como mucho/ }).click()
   await expect(card.getByTestId('red-ordered')).toContainText('Te avisamos cuando lo acepte', { timeout: 10_000 })
+
+  // The order's short link (what Mimo hands out) opens its card on /compra, never wa.me.
+  const orders = await (await page.request.get(`${API_URL}/shop-orders`, { headers: auth })).json()
+  const order = orders.find((o: { red: unknown; shop: { kind: string } }) => o.red && o.shop.kind === 'fruteria')
+  expect(order).toBeTruthy()
+  const short = new URL(order.links.shortOrder).pathname.split('/').filter(Boolean).pop()
+  const hop = await page.request.get(`/c/${short}`, { maxRedirects: 0 })
+  expect(hop.status()).toBe(302)
+  expect(hop.headers()['location']).toBe(`/compra?pedido=${order.id}`)
 })

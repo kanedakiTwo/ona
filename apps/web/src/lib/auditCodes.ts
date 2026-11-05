@@ -13,6 +13,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'ingredient.estimate_nutrition': 'Nutrición estimada',
   'recipe.update': 'Receta actualizada',
   'recipe.delete': 'Receta eliminada',
+  'recipe.allergens_recompute': 'Alérgenos de la receta recalculados',
   'user.suspend': 'Usuario suspendido',
   'user.unsuspend': 'Usuario reactivado',
   'user.reset_password.generate': 'Enlace de reset generado',

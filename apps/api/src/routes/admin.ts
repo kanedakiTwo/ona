@@ -79,6 +79,13 @@ import { mintToken } from '../services/passwordReset.js'
 import { reviewDay } from '../services/whatsapp/reviewer.js'
 import { madridParts } from '../services/madridTime.js'
 import { CONTAINS_TAGS, compoundIngredientsWithoutTags } from '../services/compoundIngredients.js'
+import {
+  allergenTagsChanged,
+  findRecipeAllergenMismatches,
+  recomputeRecipeAllergens,
+  recordRecipeAllergenChanges,
+} from '../services/nutrition/recipeAllergenSync.js'
+import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
 
 const router = Router()
 
@@ -240,8 +247,20 @@ router.get(
         }
       })
 
+      // PRO-1118: recipes whose stored allergens differ from their
+      // ingredients' union. Catalogue recipes by name; household ones only
+      // as a count (as above).
+      const mismatches = await findRecipeAllergenMismatches(db)
+      const catalogMismatches = mismatches.filter((r) => r.authorId == null)
+      const allergenMismatch = {
+        total: mismatches.length,
+        householdRecipes: mismatches.length - catalogMismatches.length,
+        recipes: catalogMismatches.map((r) => ({ id: r.id, name: r.name, stored: r.stored, expected: r.expected })),
+      }
+
       res.json({
         sesameMissing,
+        allergenMismatch,
         missingFdcId,
         missingDensity,
         missingUnitWeight,
@@ -479,14 +498,21 @@ router.patch(
           tx,
         )
 
-        return after
+        // PRO-1118: the recipes that use it carry the new union, one audit line each.
+        const recipeChanges = allergenTagsChanged(before.allergenTags, after.allergenTags)
+          ? await recomputeRecipeAllergens(tx, id)
+          : []
+        await recordRecipeAllergenChanges(tx, adminId, id, recipeChanges)
+
+        return { after, recipeChanges }
       })
 
       if (!updated) {
         res.status(404).json({ error: 'Ingredient not found' })
         return
       }
-      res.json(updated)
+      for (const c of updated.recipeChanges) recheckMenusForRecipe(c.recipeId)
+      res.json(updated.after)
     } catch (err) {
       console.error('PATCH /ingredients/:id error:', err)
       res.status(500).json({ error: 'Internal server error' })

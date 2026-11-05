@@ -11,6 +11,7 @@
  *   4. Ingredients missing unitWeight (produce items that ship per-unit)
  *   5. Allergen tag suggestions (heuristic > current), with the za'atar &
  *      co. stored without sesame and their published recipes on top (PRO-1096)
+ *      and the recipes whose allergens don't match their ingredients (PRO-1118)
  *   6. Recipes with incomplete nutrition (kcal == 0 / null)
  *   7. Recent regen output (failed/skipped JSONL)
  *   8. Usuarios — search + suspend + reset-link generator
@@ -53,6 +54,7 @@ import {
   UnitWeightSection,
   AllergenSection,
   SesameMissingSection,
+  AllergenMismatchSection,
 } from "../sections/IngredientSections"
 import { RecipesSection, RegenSection } from "../sections/RecipeSections"
 import { RemapModal } from "../sections/RemapModal"
@@ -333,6 +335,7 @@ export default function AdminPage() {
         {!isLoading && active === "allergens" && (
           <>
             <SesameMissingSection rows={ingredientGaps.data?.sesameMissing ?? []} />
+            <AllergenMismatchSection data={ingredientGaps.data?.allergenMismatch} />
             <AllergenSection rows={ingredientGaps.data?.allergenSuggestions ?? []} />
           </>
         )}

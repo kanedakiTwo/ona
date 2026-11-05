@@ -4,6 +4,8 @@
  * From launch day, on day 12 of a household's 14-day trial (2 days left), its
  * owner gets one email: when the trial ends, what the plans cost, and that
  * without a plan the account is paused (nothing charged, nothing deleted).
+ * If the founder offer hasn't gone out yet, it goes inside this email and no
+ * other message is sent (PRO-384, D-158; `households.founder_offer_at`).
  * Sent once per household (`households.trial_ending_email_at`), between 09:00
  * and 21:00 Madrid, never to a household with a paid plan or a suspended
  * owner. Text for Legal to review before publishing.
@@ -17,6 +19,7 @@ import {
   TRIAL_DAYS,
   TRIAL_ENDING_NOTICE_DAYS,
   accountAccess,
+  founderPriceAmounts,
   planByKey,
   trialDaysFor,
   trialLastDayLabel,
@@ -35,6 +38,8 @@ export function trialEndingEmail(i: {
   email: string
   access: Pick<AccountAccess, 'trialLastDay' | 'daysLeft'> & Partial<Pick<AccountAccess, 'trialDays'>>
   publicUrl: string
+  /** The founder offer goes inside (PRO-384): it hadn't gone out yet. */
+  withFounderOffer?: boolean
 }): EmailMessage {
   const web = i.publicUrl.replace(/\/+$/, '')
   const day = trialLastDayLabel(i.access)
@@ -50,6 +55,9 @@ export function trialEndingEmail(i: {
       'Hola:',
       `Tu prueba de ${i.access.trialDays ?? TRIAL_DAYS} días en ${BRAND_NAME} dura hasta el ${day}, incluido. Hasta entonces lo tienes todo, como hasta ahora.`,
       `Si después quieres seguir generando menús y hablando con Mimo, elige un plan antes de esa fecha. Esencial cuesta ${esencial} y Plus ${plus}, para todo tu hogar e IVA incluido.`,
+      ...(i.withFounderOffer
+        ? [`Si dejas la tarjeta antes de que acabe tu prueba, te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito.`]
+        : []),
       'Si no eliges ninguno, no se te cobra nada. Tu cuenta queda en pausa: tu menú, tus recetas y tu lista siguen ahí, no se borra nada, y puedes elegir un plan cuando quieras.',
     ],
     button: { label: 'Ver los planes', url: `${web}/profile/suscripcion` },
@@ -68,6 +76,8 @@ export interface TrialEmailCandidate {
   ownerEmail: string
   /** 28 with a creator's link (PRO-353); `TRIAL_DAYS` when left out. */
   trialDays?: number
+  /** `households.founder_offer_at`: null while the founder offer is pending (PRO-384). */
+  founderOfferAt?: Date | null
 }
 
 export interface TrialEmailRepo {
@@ -76,6 +86,9 @@ export interface TrialEmailRepo {
   /** Marks the household (only if not marked yet); false when another process got it first. */
   claim(householdId: string, at: Date): Promise<boolean>
   unclaim(householdId: string): Promise<void>
+  /** Marks the founder offer as sent with this email (only if not marked yet). */
+  claimFounderOffer?(householdId: string, at: Date): Promise<boolean>
+  unclaimFounderOffer?(householdId: string): Promise<void>
 }
 
 export function createDbTrialEmailRepo(db: typeof defaultDb = defaultDb): TrialEmailRepo {
@@ -89,7 +102,8 @@ export function createDbTrialEmailRepo(db: typeof defaultDb = defaultDb): TrialE
       const to = new Date(now.getTime() - (TRIAL_DAYS - TRIAL_ENDING_NOTICE_DAYS - 1) * 86_400_000)
       const paid = sql.join(PAID_ACCESS_STATUSES.map((s) => sql`${s}`), sql`, `)
       const rows = await db.execute(sql`
-        SELECT h.id AS "householdId", h.created_at AS "householdCreatedAt", u.email AS "ownerEmail", ${creatorRefsSql('h')} AS "creatorRefs"
+        SELECT h.id AS "householdId", h.created_at AS "householdCreatedAt", u.email AS "ownerEmail", h.founder_offer_at AS "founderOfferAt",
+          ${creatorRefsSql('h')} AS "creatorRefs"
         FROM households h
         JOIN users u ON u.id = h.owner_id
         WHERE h.trial_ending_email_at IS NULL
@@ -100,11 +114,14 @@ export function createDbTrialEmailRepo(db: typeof defaultDb = defaultDb): TrialE
           )
         LIMIT 1000
       `)
-      return (rows.rows as Array<{ householdId: string; householdCreatedAt: Date | string; ownerEmail: string; creatorRefs: string[] | null }>).map((r) => ({
+      return (
+        rows.rows as Array<{ householdId: string; householdCreatedAt: Date | string; ownerEmail: string; founderOfferAt: Date | string | null; creatorRefs: string[] | null }>
+      ).map((r) => ({
         householdId: r.householdId,
         householdCreatedAt: new Date(r.householdCreatedAt),
         ownerEmail: r.ownerEmail,
         trialDays: trialDaysFor(r.creatorRefs),
+        founderOfferAt: r.founderOfferAt ? new Date(r.founderOfferAt) : null,
       }))
     },
     async claim(householdId, at) {
@@ -117,6 +134,17 @@ export function createDbTrialEmailRepo(db: typeof defaultDb = defaultDb): TrialE
     },
     async unclaim(householdId) {
       await db.update(households).set({ trialEndingEmailAt: null }).where(sql`${households.id} = ${householdId}`)
+    },
+    async claimFounderOffer(householdId, at) {
+      const rows = await db
+        .update(households)
+        .set({ founderOfferAt: at })
+        .where(and(sql`${households.id} = ${householdId}`, isNull(households.founderOfferAt)))
+        .returning({ id: households.id })
+      return rows.length > 0
+    },
+    async unclaimFounderOffer(householdId) {
+      await db.update(households).set({ founderOfferAt: null }).where(sql`${households.id} = ${householdId}`)
     },
   }
 }
@@ -151,9 +179,12 @@ export async function sendTrialEndingEmails(now: Date, deps: TrialEmailDeps) {
     const access = isTrialEndingEmailDue(c.householdCreatedAt, now, c.trialDays)
     if (!access || !c.ownerEmail) continue
     if (!(await deps.repo.claim(c.householdId, now))) continue
-    const r = await deps.sendEmail(trialEndingEmail({ email: c.ownerEmail, access, publicUrl: deps.publicUrl }))
+    // PRO-384: the founder offer still pending → it goes inside, and only this email.
+    const withFounderOffer = c.founderOfferAt == null && !!deps.repo.claimFounderOffer && (await deps.repo.claimFounderOffer(c.householdId, now))
+    const r = await deps.sendEmail(trialEndingEmail({ email: c.ownerEmail, access, publicUrl: deps.publicUrl, withFounderOffer }))
     if (r.status === 'skipped') {
       await deps.repo.unclaim(c.householdId)
+      if (withFounderOffer) await deps.repo.unclaimFounderOffer?.(c.householdId)
       out.skipped += 1
     } else {
       out[r.status] += 1

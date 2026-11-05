@@ -51,6 +51,11 @@ export interface RecipeWithIngredients {
    * them as ingredients.
    */
   stepMentions?: ReadonlyArray<{ term: string; category: DietCategory }>
+  /**
+   * PRO-1142: dislike terms a later «Me apetece» beats for this recipe's
+   * name. Computed by `loadMatchableRecipes` (`dishDislikes.ts`).
+   */
+  dislikesOverridden?: readonly string[]
   /** Internal tags (`tipo:<slug>`, `proteina:<slug>`), for the week rules (PRO-254). */
   internalTags?: string[] | null
   /** Cached per-serving nutrition; only `kcal` is read here (the planner's day floor). */
@@ -205,7 +210,8 @@ export function matchRecipes(
     if (usedRecipeIds.has(recipe.id)) return false
 
     // 4. Restrictions + dislikes: allergen tags (recipe union, ingredient
-    //    catalogue tags, name inference) and ingredient terms.
+    //    catalogue tags, name inference) and ingredient terms; dislikes also
+    //    against the recipe's name (PRO-1142).
     if (violatesRestrictions(recipe, rules)) return false
 
     // 5. Equipment check — every piece of equipment the recipe needs must

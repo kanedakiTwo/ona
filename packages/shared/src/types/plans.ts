@@ -6,7 +6,8 @@
  * Decisions (ona-hq decision_log): D-021 set the prices; on 2026-10-15
  * Miguel made **Esencial the featured plan**, gave both plans a monthly /
  * yearly choice (Esencial anual 49,99 €), and set the closed beta to run
- * with everything (Plus) until launch day. Prices include VAT and are per
+ * with everything (Plus) until launch day. D-169 (2026-11-04): Plus at
+ * 9,99 €/mes and 99,99 €/año. Prices include VAT and are per
  * household. No struck-through prices, no fake quotas (constitution §8.3).
  */
 import { z } from 'zod'
@@ -97,8 +98,8 @@ export const PLANS: readonly Plan[] = [
     featured: false,
     tagline: 'Para quien quiere cocinar hablando y que Mimo se adelante.',
     prices: {
-      mensual: { cents: 899, label: '8,99 €/mes' },
-      anual: { cents: 5999, label: '59,99 €/año', perMonth: '5 €/mes' },
+      mensual: { cents: 999, label: '9,99 €/mes' },
+      anual: { cents: 9999, label: '99,99 €/año', perMonth: '8,33 €/mes' },
     },
     highlights: [
       'Todo lo de Esencial',
@@ -398,8 +399,8 @@ export function founderOfferStands(access: AccountAccess): boolean {
 /**
  * The founder price, with its amounts (PRO-204, Legal LEG-23: leaving the
  * figure out could be misleading by omission). Read from `PLANS`, never by
- * hand: «Esencial, 4,99 € al mes o 49,99 € al año; Plus, 8,99 € al mes o
- * 59,99 € al año». The offer goes out before a plan is chosen, so both plans.
+ * hand: «Esencial, 4,99 € al mes o 49,99 € al año; Plus, 9,99 € al mes o
+ * 99,99 € al año». The offer goes out before a plan is chosen, so both plans.
  */
 export function founderPriceAmounts(): string {
   return PLANS.map((p) => `${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`).join('; ')

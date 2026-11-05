@@ -32,10 +32,10 @@ describe('founder pricing copy (D-021)', () => {
     expect(FOUNDER_PLANS.map((p) => [p.id, p.price, p.featured])).toEqual([
       ['esencial-mensual', '4,99 €/mes', true],
       ['esencial-anual', '49,99 €/año', true],
-      ['plus-mensual', '8,99 €/mes', false],
-      ['plus-anual', '59,99 €/año', false],
+      ['plus-mensual', '9,99 €/mes', false],
+      ['plus-anual', '99,99 €/año', false],
     ])
-    expect(FOUNDER_PLANS.find((p) => p.id === 'plus-anual')?.perMonth).toBe('5 €/mes')
+    expect(FOUNDER_PLANS.find((p) => p.id === 'plus-anual')?.perMonth).toBe('8,33 €/mes')
   })
 
   it('beta households: free until launch, then the same 14 days as everyone (D-055)', () => {

@@ -1622,6 +1622,38 @@ export const newsletterTipLog = pgTable('newsletter_tip_log', {
 ])
 
 /**
+ * PRO-1123 (D-176): one row per newsletter issue, for the Admin «Newsletter»
+ * editor. Marketing's recommendation, the template Miguel corrects and saves
+ * (the letter with its `{nombre}`, `{receta}` and `{porque}`), when he got its
+ * proof, and the Friday 9:00 it is scheduled for. A new save clears the proof
+ * and the schedule: nothing goes out without the proof of what goes out.
+ */
+export const newsletterDrafts = pgTable('newsletter_drafts', {
+  issueId: text('issue_id').primaryKey(),
+  /** `{ subject, preheader?, content }` as Marketing proposed it. */
+  recommendation: jsonb('recommendation'),
+  recommendedAt: timestamp('recommended_at', { withTimezone: true }),
+  /** `{ subject, preheader?, content }` as the admin saved it. */
+  template: jsonb('template'),
+  savedBy: uuid('saved_by').references(() => users.id, { onDelete: 'set null' }),
+  savedAt: timestamp('saved_at', { withTimezone: true }),
+  /** The last proof of the saved template, to the admin's own account email. */
+  proofSentAt: timestamp('proof_sent_at', { withTimezone: true }),
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+  scheduledBy: uuid('scheduled_by').references(() => users.id, { onDelete: 'set null' }),
+  /** The API origin for the one-click opt-out, taken from the scheduling call. */
+  apiUrl: text('api_url'),
+  /** Claimed by the scheduler (or a send) — set once. */
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  /** `{ sent, failed, skipped, alreadySent }`, counts only. */
+  sendResult: jsonb('send_result'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_newsletter_drafts_scheduled').on(t.scheduledFor),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).

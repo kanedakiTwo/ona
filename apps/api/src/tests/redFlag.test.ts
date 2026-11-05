@@ -1,5 +1,5 @@
 /**
- * Red de tiendas v2 (specs/shop-orders.md → «Red de tiendas»): el código
+ * Red de tiendas v2 (specs/red-tiendas.md): el código
  * postal, los esquemas de las rutas y el interruptor RED_TIENDAS_EMAILS.
  *
  * Run: pnpm --filter @ona/api test src/tests/redFlag.test.ts

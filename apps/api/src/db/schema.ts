@@ -1330,7 +1330,7 @@ export const capHits = pgTable('cap_hits', {
 // ─── Red de tiendas v2 (D-165) ───────────────────────────────────────
 
 /**
- * Red de tiendas v2 (ona-hq D-165; specs/shop-orders.md → «Red de tiendas»):
+ * Red de tiendas v2 (ona-hq D-165; specs/red-tiendas.md):
  * Mimoia's shops. A household gets a copy in `household_shops` (origin `red`)
  * when Mimoia assigns one, and its own shop is linked (`red_shop_id`) when it
  * joins the Red. No column ranks shops by what they leave: assigning never

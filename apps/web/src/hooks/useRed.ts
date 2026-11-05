@@ -1,5 +1,5 @@
 /**
- * Red de tiendas v2 (specs/shop-orders.md → «Red de tiendas»): the switch,
+ * Red de tiendas v2 (specs/red-tiendas.md): the switch,
  * the household's postal code, the once-asked choice and «Pedir».
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"

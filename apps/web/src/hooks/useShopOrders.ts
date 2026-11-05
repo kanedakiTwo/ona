@@ -62,7 +62,7 @@ export interface PrepareResult {
   /** Pantry staples the recipes use, assumed at home ("¿Te falta algo de esto?"). */
   pantry: string[]
   hasShops: boolean
-  /** Red de tiendas: postal code, the once-asked choice, assigned shops (specs/shop-orders.md → «Red de tiendas»). */
+  /** Red de tiendas: postal code, the once-asked choice, assigned shops (specs/red-tiendas.md). */
   red?: RedPrepareInfo
 }
 

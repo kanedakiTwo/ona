@@ -1,8 +1,8 @@
 "use client"
 
 /**
- * Lo que dice la Red al preparar los pedidos (specs/shop-orders.md → «Red de
- * tiendas»): el código postal si falta, la pregunta de una vez a quien tiene
+ * Lo que dice la Red al preparar los pedidos (specs/red-tiendas.md):
+ * el código postal si falta, la pregunta de una vez a quien tiene
  * súper, las tiendas asignadas solas (con «¿Prefieres otra?») y las que no se
  * asignan solas por halal o alergias.
  */

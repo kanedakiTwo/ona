@@ -230,8 +230,8 @@ export const env = {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
   /**
-   * Emails (o `@dominio`) que tienen la Red de tiendas v2 (specs/shop-orders.md
-   * → «Red de tiendas», ona-hq D-165). Vacía = nadie: hasta que estén los cinco
+   * Emails (o `@dominio`) que tienen la Red de tiendas v2 (specs/red-tiendas.md,
+   * ona-hq D-165). Vacía = nadie: hasta que estén los cinco
    * tramos, solo cuentas de prueba.
    */
   RED_TIENDAS_EMAILS: (process.env.RED_TIENDAS_EMAILS || '')

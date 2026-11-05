@@ -1,5 +1,5 @@
 /**
- * GET /red/status (specs/shop-orders.md → «Red de tiendas»), con el router real
+ * GET /red/status (specs/red-tiendas.md), con el router real
  * en un puerto efímero. La sesión, el interruptor, el hogar y los ajustes son falsos.
  *
  *   apagada   → exactamente { enabled: false, postalCode: null } (sin descuento)

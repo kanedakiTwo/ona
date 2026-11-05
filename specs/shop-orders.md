@@ -1,6 +1,6 @@
 # Compra en mis tiendas (shop orders)
 
-**Status:** v1 shipped 2026-10-07; v1.1 (buy rules, pickup/delivery per order, add before sending) 2026-10-08; «Enviar a la extensión del navegador» (experimento cerrado) 2026-10-19 — orders are *handed* to the user, Mimoia never messages a shop nor handles money; Red de tiendas v2 tramo 1a (behind `RED_TIENDAS_EMAILS`, see [Red de tiendas](#red-de-tiendas-en-pruebas-tramo-1a)): Red orders are ordered on /compra with the discount applied, not handed to the user. Today the household's own shops never get a message from Mimoia and it never handles their money; in tramo 1a a Red shop isn't told either and nothing is charged.
+**Status:** v1 shipped 2026-10-07; v1.1 (buy rules, pickup/delivery per order, add before sending) 2026-10-08; «Enviar a la extensión del navegador» (experimento cerrado) 2026-10-19 — orders are *handed* to the user, Mimoia never messages a shop nor handles money. Red de tiendas (en pruebas, behind `RED_TIENDAS_EMAILS`): Red orders are placed on /compra instead, see [red-tiendas.md](./red-tiendas.md).
 
 Mimoia splits what's left on the shopping list for the next 7 days into one order per shop the household uses (frutería, carnicería, pescadería, súper), writes each order in the customer's voice, and hands it over as a link that opens **the user's own** WhatsApp (or mail app) with the text already written. The user sends it, pastes or forwards the shop's reply, Mimoia checks it line by line against what it expected, the user approves, sends the confirmation and pays the shop directly. Lines are written in **the shop's own units** ("1 cabeza de ajos", "100 g de jamón serrano, loncheado fino", "2 doradas de ración, limpias para el horno (o lubinas…)"), never the recipe's (see Buy rules). Background research: [docs/research/Pedir en tiendas de frescos.md](../docs/research/Pedir%20en%20tiendas%20de%20frescos.md), [docs/research/Compra Mimoia por WhatsApp y email.md](../docs/research/Compra%20ONA%20por%20WhatsApp%20y%20email.md) (and the earlier supermarket study, kept in the private company repo).
 
@@ -93,65 +93,9 @@ Experimento cerrado. En la tarjeta del súper, **«Enviar a <cadena>»** manda l
 
 **Lo que ven los agentes.** Las dos rutas de la extensión con el token de métricas (y con el JWT de admin, igual) nunca devuelven texto tecleado por un hogar ni quién es: cada línea va como su regla de compra (`ruleKey`) si la tiene; si es un ingrediente que sale en alguna receta del sistema, con su nombre de catálogo (solo pasan los nombres de las recetas del sistema: un ingrediente que creó un usuario con `POST /ingredients/auto-create` o el importador de recetas cuenta como tecleado); si no, `name: null` y `origen: tecleado`. El nombre pasa además una lista blanca, mirada sobre el texto normalizado (comillas y rayas tipográficas a las del teclado, luego NFKC): solo letras del alfabeto latino, cifras, espacios y `, . ' ( ) % / + · × & ° € -`, hasta 80 caracteres, sin `www`, dominios (con o sin `www`) ni 9 cifras o más; si no la pasa, `tecleado`. La elección solo sale si es una opción fija de su regla. El producto de la tienda pasa la misma lista blanca (hasta 160; con el token de métricas, además, como mucho 80 caracteres y 12 palabras: si no, null, y la respuesta cuenta cuántos en `productosFiltrados`, PRO-322) y su id solo si son letras, cifras, `_`, `.` o `-`, con menos de 9 cifras. Además, producto e id solo salen si los mandó un hogar de los nuestros (algún miembro con su email en `ADMIN_EMAILS`) o si dos hogares o más mandaron el mismo id con el mismo nombre en la ventana pedida; si no, los dos null y se ve la línea con su estado y su motivo (`confirmedProducts`; D-154, fase 2 con hogares que no controlamos). Sin búsqueda, hogar, usuario, `envioId` ni total del carro (`publicLineName` / `publicBasketLine` en `services/basketExtension.ts`). Con el token, la `fecha` de cada envío es solo el día (`AAAA-MM-DD`, Europe/Madrid); el JWT de admin ve la hora (`basketSendsForToken` / `basketGapsForToken`).
 
-## Red de tiendas (en pruebas: tramo 1a)
+## Red de tiendas (en pruebas)
 
-Behind `RED_TIENDAS_EMAILS` (exact email or `@domain`, any case; empty = nobody; `services/red/flag.ts`, same rule as the extension's switch, `services/emailAllowList.ts`). For everyone else nothing changes: no postal code question, no Red shops, same chat, and `GET /red/status` is `{ enabled: false, postalCode: null }`. Design and decision: ona-hq `docs/superpowers/specs/2026-11-03-red-tiendas-design.md` (D-165).
-
-- **What it is.** Mimoia's own shops (`red_shops`: frutería, carnicería, pescadería; never supermarkets). The household orders through Mimoia. The shop cedes a share of the products total, 10 % to start: a discount for the household, already applied (5 %), and Mimoia's commission (5 %). The numbers live in `red_settings` (one row), and every order freezes the ones it was drafted with (`shop_orders.red_terms`). A Red order is one with `red_shop_id` **and** `red_terms` (`isRedOrderRow`). There is no charge yet and the shop is not told anything yet (both tramo 1b).
-- **The money** (`services/red/money.ts`, pure, in whole cents):
-  - discount and commission are each a % of the products total at the shop's prices (before the discount, without the fee), rounded to the cent, half up; the household pays products − discount + fee;
-  - margin per line over its estimate: 15 % only with the household's price (`manual`) or this shop's (`historial`), 30 % with anything else (national reference or no source), +10 points with wild fish;
-  - «Como mucho» = Σ estimate × (1 + margin) line by line, minus the discount, plus the fee, rounded **up** to the euro; none while an included line has no estimate;
-  - what the shop may reach under that max = (max − fee) / (1 − discount), rounded **down** to the cent, so the household never pays over it.
-- **Which shop (constitución §7, «Las tiendas del hogar, primero»).**
-  - The household's own shop of a kind always goes first (`pickShopForKind` puts own shops before Red copies).
-  - A fresh kind whose lines fell back to the súper or to nothing (`DraftResult.fellBack`):
-    - without a postal code → «¿Cuál es tu código postal?» on /compra (`households.postal_code`, 5 digits, province 01–52);
-    - with a súper → asked once, «¿La fruta y la verdura, a <tienda> (−5 %) o las sigues pidiendo en <súper>?», and «En <súper>» is remembered (`households.red_choices`);
-    - with no súper → the best Red shop is assigned on its own («Tu frutería: …, de la Red, con un 5 % menos», with «¿Prefieres otra?»);
-    - no Red shop for that postal code → «Aún no hay frutería de la Red en tu código postal.»
-  - Red shops are ranked by: 1. the same postal code; 2. delivering to it (`delivery_postal_codes`); 3. the longest in the Red. Never by what they leave (`services/red/assign.ts`).
-  - Fase 1: a halal household never gets a carnicería on its own, and a household with any allergy gets neither a carnicería nor a pescadería. It can pick one, and is told the Red doesn't pass halal or allergies on yet. If the restrictions can't be read, the Red counts both.
-- **How it enters the household.**
-  - An assigned Red shop is a copy in `household_shops` (`origin = 'red'`, `red_shop_id`): one per household and kind (partial unique index; two «Preparar» at once upsert the same row). Pickup by default; it delivers only if the Red shop delivers to the household's postal code, and then carries its fee (0 = free) and minimum. It can't be edited (409 `RED_SHOP`; no pencil on /compra/tiendas, which says «de la Red · −5 %»). It can be removed, and removing it is remembered in `red_choices` as «not the Red for this kind», so that kind is never assigned or asked again. A copy whose Red shop or delivery changes loses its drafts; another Red shop also clears its price memory.
-  - The household's own shop with a Red shop's WhatsApp and kind is linked on the next «Preparar» (`red_shop_id`, origin stays `propia`, «en la Red · −5 %»), and any Red copy of that kind goes, drafts included. From then on its orders go through the Red, and the card says so.
-  - A new postal code re-checks every copy: one whose shop doesn't cover it goes; the rest get that postal code's delivery, and their drafts go if the fee or the minimum changes.
-  - If the Red step fails, «Preparar» still works: the household's own shops get their usual drafts (a linked one as a plain WhatsApp order that time), and Red copies get none.
-- **The card** (`components/compra/RedOrderCard.tsx`; delivery, lines and blockers are the same parts as any draft, `components/compra/DraftParts.tsx`, shared with `OrderCard`):
-  - «−5 % ya descontado»;
-  - pickup, or home delivery only if the shop delivers (a copy with a fee, or the household's own shop that joined; otherwise `fulfilment: domicilio` is 400 `NO_DELIVERY`);
-  - the same line editing as any draft (move, amounts, «¿Algo más?»);
-  - «Previsto» with the discount (+ «envío»);
-  - «Como mucho»: the household can raise it (`PATCH { maxEur }`, the field read by `redMaxBody`), never below the minimum, what's expected plus the fee up to the euro (400 `MAX_TOO_LOW`). Emptying it brings back the computed one, and so does changing the lines (anything but a note: amounts, choices, ticks, removing, moving, adding) or actually switching pickup ↔ delivery.
-  - Blockers on top of the usual ones: «Hay productos sin precio estimado: pon un máximo», delivery where it doesn't deliver, and under the delivery minimum.
-  - «Pedir · como mucho X €» (`POST /shop-orders/:id/order { maxEur }`; «En pruebas: todavía no se cobra nada.»), disabled while an edit of that order is on its way. Refused with 409 if:
-    - the max isn't the one on the card (`MAX_CHANGED`);
-    - the Red's terms changed (`TERMS_CHANGED`: the draft gets the new ones and its max goes back to the computed one);
-    - it's blocked (`BLOCKED`) or has nothing included (`EMPTY`);
-    - the Red shop is paused or gone (`RED_SHOP_UNAVAILABLE`).
-  - Ordered: «Pedido a <tienda>, como mucho X €. Te avisamos cuando lo acepte.»
-- **States.** Red orders have `ordered`, `accepted`, `preparing`, `ready`, `payment_pending`, `charged`, `delivered`, `rejected` and `incident` on top of `draft` / `cancelled` / `closed` (`services/red/states.ts`). Tramo 1a only goes `draft → ordered → cancelled`.
-  - Lines in `ordered`…`payment_pending` are «ya está en un pedido abierto».
-  - The household cancels in `draft`, `ordered` and `accepted`; later, 409 «La tienda ya lo está preparando: para cancelarlo, habla con ella.»
-  - Draft edits and cancels only write while the order is still in an allowed state (`updateInStatus`): an edit that lands after «Pedir» is 409. State errors name the state in Spanish: «No se puede editar (estado: Pedido).»
-  - A Red order never goes the WhatsApp way: `/sent`, `/quote` (before any model call) and `/approve` are 409 `RED_ORDER`, and so is closing one by hand, draft included (a draft is cancelled or ordered).
-- **Links and chat.**
-  - A Red order has no wa.me. Its `/c/<token>` short link answers `/compra?pedido=<id>`, which the web route follows (relative, own page only); the card is highlighted and scrolled to once.
-  - `prepare_shop_orders` gives that link («míralo y pídelo en la app»), with the discount and the max, and nothing glued right after it (copied as is, a trailing «.» would break the token). It points to the app for the postal code; the once-asked choice and the held-back kinds are only told («puede elegir en la app»).
-  - `register_shop_reply`, `approve_shop_order` and `close_shop_order` leave Red orders out; `close_shop_order` with `cancel` cancels one in `draft`, `ordered` or `accepted`.
-- **Test shops:** `scripts/redTestShops.ts --cp 28001 [--reparte …]` (`services/red/testShops.ts`: made-up names, 600 000 09N numbers, `is_test`). A database that isn't local needs `--yes`; production never, not even with `--yes`. Test shops are never assigned, linked or orderable in production (`redShopUsable`, signal `RAILWAY_ENVIRONMENT_NAME === 'production'`). CI and `test-e2e.sh` seed them in 28001 and give the Red to `@red.test.local` only.
-- **Not yet:**
-  - the card hold, the shop's link, timeouts and household notices (tramo 1b);
-  - sign-up, «Mi tienda» and Admin (tramo 2);
-  - real Stripe (tramo 3);
-  - WhatsApp to shops (tramo 4);
-  - invoices (tramo 5).
-
-  `kb/sobre-mimoia.md` gets the Red when it opens to households (not behind a test switch).
-- **Known limitations.**
-  - «Preparar» racing «Pedir»: in a narrow window, re-preparing can leave a duplicate Red draft with the same lines next to the order just placed. Preparing again leaves those lines out.
-  - Re-preparing drops a raised max: the drafts keep lines, picks, delivery and address, but come back with the computed max.
-  - Fase 1 counts any allergen in the household's restrictions, a diet's too (vegetariano, vegano), so it may hold back a carnicería or pescadería it didn't need to.
+Behind `RED_TIENDAS_EMAILS`: Mimoia's own shops, assigned by postal code, enter the household as one more shop (a copy with `household_shops.origin = 'red'`, or the household's own shop linked by `red_shop_id`). Their orders are placed on /compra with the discount applied, never sent by WhatsApp. Everything about it is in [Red de tiendas](./red-tiendas.md).
 
 ## Data Model
 
@@ -160,13 +104,8 @@ Behind `RED_TIENDAS_EMAILS` (exact email or `@domain`, any case; empty = nobody;
 - `shop_orders(id, household_id, user_id?, shop_id? → household_shops ON DELETE SET NULL, shop_snapshot jsonb, status draft|sent|quoted|approved|closed|cancelled, token unique, lines jsonb ShopOrderLine[], estimate_eur, cap_eur, message_text, shop_reply_text, quote_summary jsonb, confirmation_text, final_total_eur, fulfilment, address, created/updated/sent/quoted/approved/closed_at)`. Lines are a snapshot (inputs — name, recipe quantity/unit, notes, quantitySource, choice — plus the computed shop text, grams, options, needsChoice/needsQuantity, maybeHave/included, eci; v1 rows lack them and keep working) (the live list is rebuilt on every read). Deleting a shop deletes its drafts; sent/closed orders keep the snapshot.
 - `basket_extension_consents` (migración 0104, D-154): el aviso aceptado por cuenta y cadena (`user_id`, `cadena` = host de la web de la tienda, `etiqueta`, `version`, `accepted_at`; único por cuenta y cadena; se borra con la cuenta).
 - `shop_orders.extension_result jsonb` (migración 0073): el último envío a la extensión del navegador (`StoredBasketResult`), null si nunca. Las líneas pueden llevar `members`: los productos de una línea fusionada que la lista separaría, con sus `sourceItemIds`.
-- Red de tiendas (migration `0105_red_tiendas.sql`, D-165):
-  - `red_shops(id, name, kind fruteria|carniceria|pescaderia, postal_code, address, whatsapp unique, delivery_postal_codes text[] (empty = pickup only), delivery_min_eur, delivery_fee_eur, price_memory jsonb (written from tramo 1b), notes, status activa|pausada|baja, is_test, joined_at, created/updated_at)`;
-  - `red_settings`: one row (`id = 1`): `discount_pct`, `commission_pct`, `commission_vat_included`, `margin_known_pct`, `margin_reference_pct`, `margin_wild_fish_extra_pct`, `terms_version`;
-  - `households.postal_code` and `households.red_choices jsonb` (`{ fruteria: 'super' }`: asked once, or the Red copy removed);
-  - `household_shops.red_shop_id → red_shops ON DELETE SET NULL` and `origin propia|red`; unique `(household_id, kind)` where `origin = 'red'`;
-  - `shop_orders.red_shop_id`, `red_terms jsonb` (the `RedSettings` it was drafted with), `max_eur` (a raised max on a draft, null = computed; once ordered, the one accepted), `ordered_at`, `ordered_by_user_id → users`. `status` also takes the Red states.
-- Shared types + zod: `ShopOrder`, `ShopOrderLine`, `shopInputSchema`, `buildShopPayload` (web form) in `@ona/shared`; the Red's in `types/red.ts` (`RedSettings`, `RedOrderView` as `ShopOrder.red`, `RedPrepareInfo`, `postalCodeSchema`, `redChoiceSchema`, `placeRedOrderSchema`, `redMaxBody`).
+- Red de tiendas (migration `0105_red_tiendas.sql`): `red_shops`, `red_settings`, `households.postal_code` / `red_choices`, `household_shops.red_shop_id` / `origin`, and on `shop_orders` `red_shop_id`, `red_terms`, `max_eur`, `ordered_at`, `ordered_by_user_id` and the Red states: see [red-tiendas.md](./red-tiendas.md#data-model).
+- Shared types + zod: `ShopOrder`, `ShopOrderLine`, `shopInputSchema`, `buildShopPayload` (web form) in `@ona/shared`; the Red's in `types/red.ts`.
 
 ## API
 
@@ -177,15 +116,11 @@ All auth'd and scoped to the caller's primary household unless noted.
 | GET/POST | `/shops` | list / add (`shopInputSchema`) |
 | PATCH/DELETE | `/shops/:id` | full-form update / delete (+ its drafts) |
 | PATCH | `/shops/:id` `{ move }` | `{ move: up \| down \| first }` alone: reorder within its kind → all shops in their new order; positions rewritten 0…n-1; 400 bad `move`, 404 not the household's |
-| POST | `/shop-orders/prepare` | `{ days? = 7, listId? }` → `{ orders, unassigned, skipped, hasShops, red }` (`red`: `RedPrepareInfo`, `enabled: false` outside `RED_TIENDAS_EMAILS`) |
-| GET | `/shop-orders` | open orders, Red ones from `ordered` to `incident` (not `rejected`) included (`?all=1` adds closed, last 30 days) |
-| GET/PATCH | `/shop-orders/:id` | PATCH drafts only: `{ lines: [{key, remove?, note?, quantity?, unit?, choice?, include?, moveToShopId?}], add: [{name, quantity?, unit?, note?}], fulfilment?, address?, capEur?, maxEur? }`; a `choice` is saved as household preference. `maxEur` (Red drafts): 400 `MAX_TOO_LOW` under the minimum, null = computed |
-| POST | `/shop-orders/:id/sent` · `/quote {text}` · `/approve {decisions, capEur?}` · `/close {finalTotalEur?}` · `/cancel` | 409 on a wrong state; a Red order: 409 `RED_ORDER` on all but `/cancel` (`draft`, `ordered`, `accepted`) |
-| POST | `/shop-orders/:id/order` | «Pedir» a Red draft: `placeRedOrderSchema` `{ maxEur }` → the order, `ordered`. 403 `RED_OFF` outside the switch, 400 `NOT_RED`; 409 `MAX_CHANGED`, `TERMS_CHANGED`, `BLOCKED`, `EMPTY`, `RED_SHOP_UNAVAILABLE` |
-| GET | `/red/status` | `{ enabled, postalCode, discountPct? }` (`discountPct` only when enabled) |
-| PUT | `/red/postal-code` | 403 outside the switch; `postalCodeSchema` (400) → `{ postalCode }`; Red copies re-checked |
-| POST | `/red/choice` | 403 outside the switch; `redChoiceSchema` `{ kind, choice: red\|super, redShopId? }` → `{ shops }`. `super` remembers it and drops the copy; `red` needs the postal code (400) and a shop that covers it (404), 400 at 20 shops, and forgets «al súper» |
-| GET | `/shop-orders/link/:token[?m=ok]` | **public**, no side effects → `{ url }` (wa.me/mailto; a Red order: `/compra?pedido=<id>`, no `?m=ok`); 404 once closed/cancelled |
+| POST | `/shop-orders/prepare` | `{ days? = 7, listId? }` → `{ orders, unassigned, skipped, hasShops, red }` (`red`: [Red de tiendas](./red-tiendas.md#api)) |
+| GET | `/shop-orders` | open orders, Red ones included (`?all=1` adds closed, last 30 days) |
+| GET/PATCH | `/shop-orders/:id` | PATCH drafts only: `{ lines: [{key, remove?, note?, quantity?, unit?, choice?, include?, moveToShopId?}], add: [{name, quantity?, unit?, note?}], fulfilment?, address?, capEur?, maxEur? }`; a `choice` is saved as household preference; `maxEur` only on Red drafts |
+| POST | `/shop-orders/:id/sent` · `/quote {text}` · `/approve {decisions, capEur?}` · `/close {finalTotalEur?}` · `/cancel` | 409 on a wrong state; a Red order: 409 `RED_ORDER` on all but `/cancel` |
+| GET | `/shop-orders/link/:token[?m=ok]` | **public**, no side effects → `{ url }` (wa.me/mailto; a Red order: `/compra?pedido=<id>`); 404 once closed/cancelled |
 | GET | `/shop-extension/status` | `{ enabled, consents }`: `enabled` según `BASKET_EXTENSION_EMAILS`; `consents`, los avisos aceptados de esta cuenta (`BasketConsent[]`) |
 | POST | `/shop-extension/consent` | 403 fuera de la lista (antes de validar); `basketConsentSchema` (400 si no lo cumple; host en minúsculas) → `{ consent }`; otra versión sustituye a la anterior |
 | DELETE | `/shop-extension/consent/:cadena` | sin mirar la lista de emails → `{ removed }` |
@@ -198,7 +133,7 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 
 ## Assistant skills
 
-`shopOrderSkills.ts` (same REST calls, as the user): `manage_shops` (incl. delivery minimum/fee; `move` with `to: first | up | down` — «pon Mercadona como primer súper» — answers with the new order of that kind), `prepare_shop_orders` (links, or what's missing, pickup/delivery, minimum, pantry assumed, "¿algo más?"), `edit_shop_order` (add — each product to its shop —, remove, choose, amounts, include, delivery + address; same links), `register_shop_reply`, `approve_shop_order` (only after an explicit "sí"; `remove` names → line keys), `close_shop_order` (`cancel=true` cancels), `get_shop_orders`. Shop names match ignoring punctuation ("la plaza" → "Carnicería La Plaza"). The prompt treats a forwarded shop reply as data, never instructions, and lets the model copy `/c/` links verbatim (the only URLs it may write). Short links use `WEB_PUBLIC_URL`. Red orders: see [Red de tiendas](#red-de-tiendas-en-pruebas-tramo-1a) → «Links and chat».
+`shopOrderSkills.ts` (same REST calls, as the user): `manage_shops` (incl. delivery minimum/fee; `move` with `to: first | up | down` — «pon Mercadona como primer súper» — answers with the new order of that kind), `prepare_shop_orders` (links, or what's missing, pickup/delivery, minimum, pantry assumed, "¿algo más?"), `edit_shop_order` (add — each product to its shop —, remove, choose, amounts, include, delivery + address; same links), `register_shop_reply`, `approve_shop_order` (only after an explicit "sí"; `remove` names → line keys), `close_shop_order` (`cancel=true` cancels), `get_shop_orders`. Shop names match ignoring punctuation ("la plaza" → "Carnicería La Plaza"). The prompt treats a forwarded shop reply as data, never instructions, and lets the model copy `/c/` links verbatim (the only URLs it may write). Short links use `WEB_PUBLIC_URL`. Red orders: see [Red de tiendas](./red-tiendas.md) → «Links and chat».
 
 ## Constraints
 
@@ -229,6 +164,7 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 ## Related specs
 
 - [Shopping](./shopping.md) — the list the orders are drafted from
+- [Red de tiendas](./red-tiendas.md) — Mimoia's shops, in testing: postal code, «Pedir», the discount
 - [Advisor](./advisor.md) — skills and prompt rules
 - [WhatsApp](./whatsapp.md) — forwarded replies, `/c/` links in replies
 - [Household](./household.md) — scope
@@ -242,5 +178,5 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 - `apps/api/src/services/assistant/shopOrderSkills.ts`, `skills.ts` (registration), `systemPrompt.ts` (rules)
 - `apps/web/src/app/compra/page.tsx`, `apps/web/src/app/compra/tiendas/page.tsx`, `apps/web/src/app/c/[token]/route.ts`, `apps/web/src/components/compra/`, `apps/web/src/hooks/useShopOrders.ts`, `apps/web/src/app/shopping/page.tsx` (entry card)
 - Enviar a la extensión: `packages/shared/src/types/basketExtension.ts` (mensajes, protocolo, esquema del resultado, `StoredBasketResult`), `packages/shared/src/buy/extensionBasket.ts` (`buildExtensionBasket`, `basketSnapshot` y `basketLineOrigin` (la foto con el origen), `orderMembers`, `extensionKey`, `basketMayBeInCart`, `isLiveBasketSend` («envío vivo», la única condición), `sourceItemsForBasketKey`), `convert.ts` (`orderQtyInGrams`, `pieceCount`); `apps/api/src/services/basketExtension.ts` (interruptor, `decideBasketResult`, `ingredientsInSystemRecipes` (catálogo solo de recetas del sistema), recorte `publicLineName` y lista blanca `agentSafeText`, huecos y envíos), `services/shopOrders/store.ts` (`saveBasketResult`, `undoBasketSend`, `closeOrder`, `withLockedOrder`), `draft.ts` + `lines.ts` (`members`), `routes/shopOrders.ts` (las rutas de la extensión y del aviso), `services/basketExtension.ts` (`listBasketConsents`, `acceptBasketConsent`, `revokeBasketConsent`), `apps/api/src/db/migrations/0104_basket_extension_consents.sql`, `routes/metrics.ts` (`GET /admin/extension-gaps`, `GET /admin/extension-sends`), `services/usageEvents.ts` (`basketSentProps`), `config/env.ts` (`BASKET_EXTENSION_EMAILS`), `apps/api/src/db/migrations/0073_shop_order_extension_result.sql`; `apps/web/src/lib/basketExtension.ts`, `apps/web/src/hooks/useBasketExtension.ts`, `apps/web/src/components/compra/ExtensionOrder.tsx` (+ `OrderCard.tsx`, `styles.ts`), `apps/web/src/components/profile/BasketConsentsCard.tsx`
-- Red de tiendas: `packages/shared/src/types/red.ts`; `apps/api/src/services/red/` — `flag.ts`, `money.ts`, `assign.ts`, `states.ts`, `view.ts`, `store.ts`, `prepare.ts`, `testShops.ts`; `apps/api/src/services/emailAllowList.ts`; `apps/api/src/routes/red.ts` (mounted in `index.ts`), `routes/shopOrders.ts` (`POST /shop-orders/:id/order`), `services/shopOrders/store.ts` (`isRedOrderRow`, `placeRedOrder`, `updateInStatus`, `refuseRedInOldFlow`, the Red step in `prepareOrders`), `classify.ts` (`pickShopForKind`), `draft.ts` (`fellBack`), `config/env.ts` (`RED_TIENDAS_EMAILS`), `apps/api/src/db/migrations/0105_red_tiendas.sql`; `apps/api/scripts/redTestShops.ts`; `apps/web/src/hooks/useRed.ts`, `apps/web/src/components/compra/RedOrderCard.tsx`, `RedPrepareNotes.tsx`, `DraftParts.tsx` (shared with `OrderCard.tsx`). Tests: `apps/api/src/tests/redMoney.test.ts`, `redAssign.test.ts`, `redStates.test.ts`, `redView.test.ts`, `redOrders.test.ts` (refusals and the max), `redStore.test.ts`, `redFlag.test.ts` (switch, schemas, `redMaxBody` ↔ `patchShopOrderSchema` contract), `redStatusRoute.test.ts`, `redTestShops.test.ts`, `shopOrderSkills.test.ts`, `redOrders.smoke.ts` (real API and database); `apps/web/e2e/compra-red.spec.ts`
+- Red de tiendas: see [red-tiendas.md](./red-tiendas.md#source)
 - Tests: `apps/api/src/tests/buyRules.test.ts` (Miguel's real order line by line), `shopOrderDraft.test.ts` (draft, merge, blockers, delivery minimum), `shopOrders.test.ts`, `shopQuoteParser.test.ts`, `shopOrderSkills.test.ts` (incl. form ↔ schema contract), `shopFormExamples.test.ts` (the «Añadir tienda» examples are made up: no real shop, number or person — PRO-76), `shopOrdersRoute.smoke.ts`, `carrefourOrder.test.ts`, `extensionBasket.test.ts` (cesta y grupos), `basketExtension.test.ts` (esquema, decisión, recorte, huecos y envíos), `basketExtensionRoute.test.ts` (rutas), `basketExtensionRoute.smoke.ts` (API y base de datos reales); `apps/web/e2e/compra.spec.ts`, `compra-carrefour.spec.ts`, `compra-extension.spec.ts` (extensión simulada)

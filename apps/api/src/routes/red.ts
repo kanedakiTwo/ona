@@ -1,5 +1,5 @@
 /**
- * Red de tiendas v2 (specs/shop-orders.md → «Red de tiendas», ona-hq D-165).
+ * Red de tiendas v2 (specs/red-tiendas.md, ona-hq D-165).
  * Only for RED_TIENDAS_EMAILS: everyone else gets `enabled: false` or 403.
  *
  *   GET  /red/status       — { enabled, postalCode, discountPct? } (discountPct only when enabled)

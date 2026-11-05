@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { registerFreshUser, completeOnboarding } from './_helpers'
+import { answerShopper, registerFreshUser, completeOnboarding } from './_helpers'
 
 test('register → onboarding → menu', async ({ page }) => {
   await registerFreshUser(page)
@@ -34,7 +34,8 @@ test('the onboarding answers produce a real first menu (not an empty week)', asy
   })
 
   const next = page.getByRole('button', { name: /siguiente/i })
-  await next.click() // 1 adult (default)
+  await next.click() // 2 adults (default)
+  await answerShopper(page) // PRO-383
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
@@ -63,6 +64,7 @@ test('reaching /menu before finishing the sign-up: after it, /menu stays (no bou
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click()

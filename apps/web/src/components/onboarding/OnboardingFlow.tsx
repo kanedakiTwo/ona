@@ -8,7 +8,11 @@
  * favourite dishes went away: «Me encanta» replaces them; the weekday time
  * question is PRO-138). Since 2026-11-03 (Miguel: they overlapped) there is no
  * «¿Cuántas veces a la semana cocinas?» (it comes from how they cook) and no
- * «¿Qué quieres que Mimoia priorice?» (it barely changed the menu).
+ * «¿Qué quieres que Mimoia priorice?» (it barely changed the menu). With 2
+ * adults or more, «¿Quién hace la compra?» follows the household and, when
+ * someone else buys or they take turns, «Invítale y le llegará la lista cada
+ * semana» (PRO-383, D-158), which replaced the «Familia en el mismo hogar»
+ * card of step 1.
  *
  * The questions ("D · Luz y foto", PRO-37): one question per
  * screen with a compact header (eyebrow + Fraunces h1 with a terracotta
@@ -30,11 +34,16 @@ import {
   FREEZE_ANSWERS,
   FREEZE_ANSWER_LABELS,
   FREEZE_QUESTION,
+  SHOPPERS,
+  SHOPPER_LABELS,
+  asksShopper,
   cookingStyleParts,
   firstMenuWeeks,
+  shopperInviteText,
   type CookingStyle,
   type FreezeAnswer,
   type OnboardingDraft,
+  type Shopper,
   type WeekdayCookingChoice,
 } from "@ona/shared"
 import { RestrictionsPicker } from "./RestrictionsPicker"
@@ -45,8 +54,9 @@ import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
 import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
 import { TasteSwiper } from "@/components/taste/TasteSwiper"
 import { onboardingStepKey, trackUsage, type OnboardingStep } from "@/lib/usageEvents"
-import { RESTRICTIONS_STEP, onboardingOrder, resumeStep } from "@/lib/onboardingSteps"
-import { FamilyInviteOffer, useFamilyOfferOnce } from "@/components/household/FamilyInviteOffer"
+import { RESTRICTIONS_STEP, SHOPPER_INVITE_STEP, SHOPPER_STEP, onboardingOrder, resumeStep } from "@/lib/onboardingSteps"
+import { useFamilyOfferOnce, useFamilyOfferStatus } from "@/components/household/FamilyInviteOffer"
+import { FamilyInviteShare, familyInviteUrl } from "@/components/household/FamilyInviteShare"
 
 const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
 
@@ -57,6 +67,8 @@ interface OnboardingData {
   cookingStyle: CookingStyle | null
   /** PRO-221 «¿Congeláis la carne o el pescado cuando compráis?» (optional) */
   freezesMeatFish: FreezeAnswer | null
+  /** PRO-383 «¿Quién hace la compra?» (only with 2 adults or more) */
+  shopper: Shopper | null
   restrictions: string[]
   weekdayCooking: WeekdayCookingChoice | null
   cookingNote: string
@@ -159,6 +171,7 @@ export function onboardingDraftPayload(step: number, data: OnboardingData): Onbo
     kidsCount: data.kidsCount,
     cookingStyle: data.cookingStyle,
     freezesMeatFish: data.freezesMeatFish,
+    shopper: data.shopper,
     weekdayCooking: data.weekdayCooking,
     cookingNote: data.cookingNote.slice(0, 500),
   }
@@ -178,6 +191,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     kidsCount: draft?.kidsCount ?? 0,
     cookingStyle: draft?.cookingStyle ?? null,
     freezesMeatFish: draft?.freezesMeatFish ?? null,
+    shopper: draft?.shopper ?? null,
     restrictions: [],
     weekdayCooking: draft?.weekdayCooking ?? null,
     cookingNote: draft?.cookingNote ?? "",
@@ -197,7 +211,22 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   /** Typed in the allergies box and not added yet: it counts as added (2026-10-22). */
   const [typedRestriction, setTypedRestriction] = useState("")
   const restrictionsWithTyped = withTyped(data.restrictions, typedRestriction)
-  const order = onboardingOrder(allergiesAnswered)
+
+  // PRO-383: «Invítale…» replaces the sign-up's «Familia en el mismo hogar»
+  // card, so it follows the same «once» (PRO-261). Read once: stamping it as
+  // shown doesn't take the screen away halfway through.
+  const familyOfferStatus = useFamilyOfferStatus()
+  const [inviteOffer, setInviteOffer] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (inviteOffer !== null) return
+    if (familyOfferStatus.isError) setInviteOffer(false)
+    else if (familyOfferStatus.data) setInviteOffer(familyOfferStatus.data.alta)
+  }, [inviteOffer, familyOfferStatus.data, familyOfferStatus.isError])
+  const [shopperInvite, setShopperInvite] = useState<{ id: string; token: string } | null>(null)
+  const [preparingInvite, setPreparingInvite] = useState(false)
+  const [inviteError, setInviteError] = useState(false)
+
+  const order = onboardingOrder({ allergiesAnswered, adults: data.adults, shopper: data.shopper, inviteOffer: inviteOffer === true })
   const position = (s: number) => order.indexOf(s) + 1
   const visibleTotal = order.length
   const isLastStep = order.indexOf(step) === order.length - 1
@@ -231,9 +260,8 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     }
   }, [tasteStep, tasteStatus.data, tasteStatus.isError])
 
-  // «Familia en el mismo hogar» (PRO-261): with 2 adults or more, step 1
-  // offers once to prepare the message for the other person.
-  const familyOffer = useFamilyOfferOnce("alta", channel === "web" && tasteStep === "done" && step === 1 && data.adults >= 2)
+  // The invitation screen on screen = the sign-up's offer shown (never again).
+  useFamilyOfferOnce("alta", channel === "web" && tasteStep === "done" && step === SHOPPER_INVITE_STEP)
 
   // PRO-120: each step seen and passed, for the sign-up funnel (the API keeps one per person, step and day).
   const shownStep: OnboardingStep | null =
@@ -296,6 +324,19 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     setStep((s) => (s === RESTRICTIONS_STEP ? 4 : s))
   }
 
+  /** PRO-383 «Mandar invitación»: the household invitation (`source: alta`), then «Enviar por WhatsApp» / «Copiar». */
+  async function prepareShopperInvite() {
+    setPreparingInvite(true)
+    setInviteError(false)
+    try {
+      setShopperInvite(await api.post<{ id: string; token: string }>("/households/me/invites", { role: "member", source: "alta" }))
+    } catch {
+      setInviteError(true)
+    } finally {
+      setPreparingInvite(false)
+    }
+  }
+
   async function handleComplete() {
     if (!user) return
     setIsSubmitting(true)
@@ -312,6 +353,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
         cookingNote: data.cookingNote.trim() || undefined,
         cookingStyle: data.cookingStyle ?? undefined,
         freezesMeatFish: data.freezesMeatFish ?? undefined,
+        shopper: asksShopper(data.adults) ? (data.shopper ?? undefined) : undefined,
       }
       const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
 
@@ -349,6 +391,9 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
         return data.cookingStyle !== null
       case 4:
         return data.weekdayCooking !== null
+      case SHOPPER_STEP:
+        return data.shopper !== null
+      case SHOPPER_INVITE_STEP:
       case RESTRICTIONS_STEP:
         return true
       default:
@@ -516,7 +561,49 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                 <p className="mt-3 text-[13px] italic text-ink-muted">
                   Cada niño cuenta como media ración para la lista de la compra.
                 </p>
-                {familyOffer.show && <FamilyInviteOffer moment="alta" onDismiss={familyOffer.dismiss} className="mt-5" />}
+              </section>
+            )}
+
+            {/* Step 7: Who does the shopping (PRO-383), 2 adults or more */}
+            {step === SHOPPER_STEP && (
+              <section data-testid="onboarding-shopper">
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(SHOPPER_STEP)} de ${visibleTotal}`}>
+                  ¿Quién hace <Accent>la compra</Accent>?
+                </OnboardingHeader>
+                <Lead>Así sé a quién tiene que llegarle la lista.</Lead>
+                <div className="mt-6 space-y-3">
+                  {SHOPPERS.map((who) => (
+                    <OptionCard
+                      key={who}
+                      selected={data.shopper === who}
+                      onClick={() => setData({ ...data, shopper: who })}
+                      label={SHOPPER_LABELS[who]}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Step 8: Invite whoever buys (PRO-383) */}
+            {step === SHOPPER_INVITE_STEP && (
+              <section data-testid="onboarding-shopper-invite">
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(SHOPPER_INVITE_STEP)} de ${visibleTotal}`}>
+                  Invítale y le llegará <Accent>la lista</Accent> cada semana
+                </OnboardingHeader>
+                <Lead>Entrará en tu casa de Mimoia con un enlace: verá el menú y la lista de la compra de cada semana.</Lead>
+                {shopperInvite && (
+                  <div className="mt-6 rounded-[20px] border border-border-soft bg-paper p-4">
+                    <p data-testid="shopper-invite-message" className="break-words text-[14px] leading-relaxed text-ink">
+                      {shopperInviteText(familyInviteUrl(shopperInvite.token))}
+                    </p>
+                    <FamilyInviteShare inviteId={shopperInvite.id} token={shopperInvite.token} text={shopperInviteText} className="mt-4" />
+                  </div>
+                )}
+                {inviteError && (
+                  <p role="alert" className="mt-4 text-[13px] text-terracotta-deep">
+                    No he podido preparar la invitación. Puedes hacerlo luego desde Perfil → Mi casa.
+                  </p>
+                )}
               </section>
             )}
 
@@ -623,7 +710,20 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
 
           {/* Ink pill pinned to the bottom of the column */}
           <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">
-            {!isLastStep ? (
+            {step === SHOPPER_INVITE_STEP && !shopperInvite ? (
+              <>
+                <button type="button" onClick={() => void prepareShopperInvite()} disabled={preparingInvite} className={pill}>
+                  {preparingInvite ? "Preparando…" : "Mandar invitación"}
+                </button>
+                <button
+                  type="button"
+                  onClick={next}
+                  className="mt-1 flex h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-ink-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                >
+                  Ahora no
+                </button>
+              </>
+            ) : !isLastStep ? (
               <button type="button" onClick={next} disabled={!canAdvance()} className={pill}>
                 Siguiente
               </button>

@@ -5,6 +5,18 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 import { listSafeDay, pinnedDay } from './_clock'
 
+/**
+ * PRO-383: with 2 adults or more (2 is the default) the web sign-up asks
+ * «¿Quién hace la compra?» right after the household. Answer it («Yo» skips
+ * the invitation) and go on.
+ */
+export async function answerShopper(page: Page, label: 'Yo' | 'Otra persona de casa' | 'Nos turnamos' = 'Yo'): Promise<void> {
+  const step = page.getByTestId('onboarding-shopper')
+  await expect(step.getByRole('heading', { name: /quién hace la compra/i })).toBeVisible()
+  await step.getByRole('button', { name: label, exact: true }).click()
+  await page.getByRole('button', { name: /siguiente/i }).click()
+}
+
 /** Unique-per-run identifier — keeps DB state from colliding between specs. */
 export function uniqueId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`

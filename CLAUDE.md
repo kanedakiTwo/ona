@@ -151,6 +151,7 @@ The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT
 | Assistant skill added/removed, voice behavior, prompts | `advisor.md` |
 | New design token, font, component, page migrated to editorial | `design-system.md` |
 | Waitlist form/questions, batches, referral links, public CTAs, `BRAND_NAME` | `waitlist.md` (+ `privacy.md` if the data collected changes) |
+| Red de tiendas (Red shops, household postal code, «Pedir», discount, `RED_TIENDAS_EMAILS`) | `red-tiendas.md` |
 
 ## Adding new specs
 

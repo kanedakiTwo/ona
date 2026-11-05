@@ -3,7 +3,7 @@
  * ordered yet (ona-hq D-165, design §3 and §5). Pure: the terms are frozen on
  * the order, so presentOrder doesn't read the database.
  */
-import type { DeliveryCheck, RedOrderView, RedSettings, ShopFulfilment, ShopOrderLine, ShopSnapshot } from '@ona/shared'
+import type { DeliveryCheck, RedOrderView, RedSettings, ShopFulfilment, ShopOrder, ShopOrderLine, ShopSnapshot } from '@ona/shared'
 import { householdAmount, householdMax, productsCeiling, productsEstimate, shopCeiling } from './money.js'
 
 const eurText = (n: number) => `${String(Math.round(n * 100) / 100).replace('.', ',')} €`
@@ -59,4 +59,54 @@ export function redBlockers(view: RedOrderView, delivery: DeliveryCheck | null, 
     out.push(`No llegas al mínimo a domicilio (${eurText(delivery.minEur)}): añade algo o recógelo en la tienda`)
   }
   return out
+}
+
+export interface RedRefusal {
+  code: string
+  message: string
+}
+
+/** Why «Pedir» can't go ahead on this draft (empty, blocked, or the max isn't the one the household saw); null = it can. */
+export function redOrderRefusal(order: ShopOrder, maxEur: number): RedRefusal | null {
+  if (!order.lines.some((l) => l.included !== false)) return { code: 'EMPTY', message: 'El pedido está vacío.' }
+  if (order.blockers.length) return { code: 'BLOCKED', message: order.blockers[0] }
+  const max = order.red?.maxEur ?? null
+  if (max == null || Math.abs(max - maxEur) > 0.004) return { code: 'MAX_CHANGED', message: 'El máximo ha cambiado: revísalo antes de pedir.' }
+  return null
+}
+
+/** The parts of a draft edit that decide «como mucho» (PATCH /shop-orders/:id). */
+export interface RedMaxPatch {
+  lines?: Array<{ key: string; note?: string | null } & Record<string, unknown>>
+  add?: unknown[]
+  fulfilment?: ShopFulfilment
+  maxEur?: number | null
+}
+
+/**
+ * The edit changes what's ordered or how: any line change other than a note
+ * (amount, unit, remove, move, choice, include), an added product, or a real
+ * switch between pickup and delivery.
+ */
+export function redOrderChanged(patch: RedMaxPatch, currentFulfilment: ShopFulfilment): boolean {
+  const lineChanged = (patch.lines ?? []).some((l) => Object.entries(l).some(([k, v]) => k !== 'key' && k !== 'note' && v !== undefined))
+  const fulfilmentChanged = patch.fulfilment !== undefined && patch.fulfilment !== currentFulfilment
+  return lineChanged || !!patch.add?.length || fulfilmentChanged
+}
+
+/**
+ * patchOrder's rule for a Red draft's «como mucho». `view` is the edited
+ * draft with no max set. A max asked for wins if it isn't below what's
+ * expected (MAX_TOO_LOW); null brings back the computed one; otherwise a
+ * change to what's ordered brings it back too. `maxEur: undefined` = keep it.
+ */
+export function nextRedMax(patch: RedMaxPatch, currentFulfilment: ShopFulfilment, view: RedOrderView): { maxEur: number | null | undefined } | { refusal: RedRefusal } {
+  if (patch.maxEur !== undefined) {
+    const min = minimumMax(view)
+    if (patch.maxEur != null && min != null && patch.maxEur < min) {
+      return { refusal: { code: 'MAX_TOO_LOW', message: `El máximo no puede bajar de ${min} €: es lo previsto.` } }
+    }
+    return { maxEur: patch.maxEur }
+  }
+  return { maxEur: redOrderChanged(patch, currentFulfilment) ? null : undefined }
 }

@@ -7,7 +7,7 @@
  *   POST /red/choice       — { kind, choice: red|super, redShopId? } → the household's shops
  */
 import { Router, type Response } from 'express'
-import { postalCodeSchema, redChoiceSchema, type RedKind } from '@ona/shared'
+import { postalCodeSchema, redChoiceSchema } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
 import { redEnabledFor } from '../services/red/flag.js'
@@ -73,11 +73,12 @@ router.post('/red/choice', async (req: AuthRequest, res) => {
       if (!postalCode) return void res.status(400).json({ error: 'Falta tu código postal.' })
       const red = await activeRedShops()
       const shop = red.find((r) => r.id === redShopId)
-      const ok = shop && redCandidates(kind as RedKind, postalCode, [toLite(shop)]).length > 0
+      const ok = shop && redCandidates(kind, postalCode, [toLite(shop)]).length > 0
       if (!shop || !ok) return void res.status(404).json({ error: 'Esa tienda de la Red no llega a tu código postal.' })
-      await forgetSuperChoice(hh, kind)
       const id = await assignRedShop(hh, shop, postalCode)
       if (!id) return void res.status(400).json({ error: 'Máximo 20 tiendas por hogar.' })
+      // Only once the shop is the household's: at the 20-shop cap, its «al súper» answer stays.
+      await forgetSuperChoice(hh, kind)
     }
     res.json({ shops: await listShops(req.userId!) })
   } catch (err) {

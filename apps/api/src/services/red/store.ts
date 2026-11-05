@@ -35,6 +35,12 @@ export function sameTerms(a: RedSettings | null | undefined, b: RedSettings): bo
   return (Object.keys(b) as Array<keyof RedSettings>).every((k) => a[k] === b[k])
 }
 
+/** Whether a Red shop takes orders now (a paused or gone shop doesn't). */
+export async function isRedShopActive(redShopId: string, db: Pick<Db, 'select'> = defaultDb): Promise<boolean> {
+  const [row] = await db.select({ status: redShops.status }).from(redShops).where(eq(redShops.id, redShopId)).limit(1)
+  return row?.status === 'activa'
+}
+
 export async function activeRedShops(db: DbOrTx = defaultDb): Promise<RedShopRow[]> {
   return db.select().from(redShops).where(eq(redShops.status, 'activa'))
 }

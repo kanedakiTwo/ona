@@ -26,8 +26,10 @@ export function canRedTransition(from: string, to: string): boolean {
 }
 
 /** The household cancels by itself only before the shop starts. */
+export const RED_HOUSEHOLD_CANCELLABLE: readonly ShopOrderStatus[] = ['draft', 'ordered', 'accepted']
+
 export function householdCanCancelRed(status: string): boolean {
-  return status === 'draft' || status === 'ordered' || status === 'accepted'
+  return RED_HOUSEHOLD_CANCELLABLE.includes(status as ShopOrderStatus)
 }
 
 /** Its lines count as «ya está en un pedido abierto» (design §4, the list). */

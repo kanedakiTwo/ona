@@ -32,6 +32,7 @@ import {
 import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
 import { share } from '@/lib/pwa/share'
+import { trackUsage } from '@/lib/usageEvents'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
 import { activeQuickRange, quickRanges, shiftIso, spansWeeks, totalTitle, type QuickRangeKey } from '@/lib/shoppingRange'
@@ -152,7 +153,8 @@ export default function ShoppingPage() {
       window.location.origin,
       'lista',
     )
-    await share({ title: 'Lista de compra · Mimoia', text })
+    const shared = await share({ title: 'Lista de compra · Mimoia', text })
+    if (shared.success) trackUsage('content_shared', { what: 'lista' })
   }
 
   if (authLoading || menuLoading) {

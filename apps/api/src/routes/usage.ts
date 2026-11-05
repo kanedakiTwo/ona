@@ -19,7 +19,8 @@ import { clientEventProps, recordClientEvent, trackEvent } from '../services/usa
  *   (`web` by default, `whatsapp` from Mimo there). 204 always.
  *   POST /usage/event — what the web sees and the API can't (PRO-120):
  *   `{ name, props }` with `name` one of CLIENT_USAGE_EVENTS (onboarding_step,
- *   screen_viewed, recipe_viewed, taste_tuning, push_opened) and props from
+ *   screen_viewed, recipe_viewed, taste_tuning, push_opened; PRO-1024:
+ *   content_shared, week_printed, handsfree_started) and props from
  *   closed lists only (`clientEventProps`; anything else is dropped). The
  *   once-per-day cap of screens and sign-up steps is applied here, per person
  *   and Madrid day: the browser keeps nothing. 200 `{ counted }` always

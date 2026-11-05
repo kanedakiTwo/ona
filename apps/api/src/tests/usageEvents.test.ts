@@ -55,7 +55,8 @@ describe('routeUsageEvent (web requests)', () => {
   })
 
   it('maps the tracked routes to their events, channel web', () => {
-    expect(routeUsageEvent(req('POST', '/menu/generate'))).toEqual({ name: 'menu_generated', channel: 'web' })
+    // PRO-1024: with the «antes de planificar» counts (zero without a weekPlan).
+    expect(routeUsageEvent(req('POST', '/menu/generate'))).toEqual({ name: 'menu_generated', channel: 'web', props: { mealsOut: 0, guests: 0, fridge: 0 } })
     expect(routeUsageEvent(req('POST', '/user/u1/onboarding'))?.name).toBe('onboarding_completed')
     expect(routeUsageEvent(req('GET', '/shopping-list'))?.name).toBe('shopping_list_viewed')
     expect(routeUsageEvent(req('GET', '/shopping-list/m1'))?.name).toBe('shopping_list_viewed')
@@ -106,7 +107,7 @@ const actionEvents = (...args: Parameters<typeof skillUsageEvents>) => skillUsag
 
 describe('skillUsageEvents (Mimo)', () => {
   it('maps the skills that do something to events', () => {
-    expect(actionEvents('generate_weekly_menu', { data: {} }, 'whatsapp')).toEqual([{ name: 'menu_generated' }])
+    expect(actionEvents('generate_weekly_menu', { data: {} }, 'whatsapp')).toEqual([{ name: 'menu_generated', props: { mealsOut: 0, guests: 0, fridge: 0 } }])
     expect(actionEvents('complete_onboarding', { data: {} }, 'whatsapp').map((e) => e.name)).toEqual(['onboarding_completed', 'menu_generated'])
     expect(actionEvents('start_cooking_mode', { data: { recipeId: 'r' } }, 'voice')).toEqual([{ name: 'cook_mode_started' }])
     expect(actionEvents('log_cooked', { data: {} }, 'web')).toEqual([{ name: 'meal_cooked' }])

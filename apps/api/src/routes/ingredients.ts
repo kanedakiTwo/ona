@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from '../services/costLedger.js'
-import { eq, like, count, asc, desc, sql } from 'drizzle-orm'
+import { eq, ilike, count, asc, desc, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ingredients, recipeIngredients } from '../db/schema.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
@@ -16,9 +16,13 @@ import {
 } from '@ona/shared'
 import {
   suggestIngredient,
+  suggestAisleForName,
+  similarIngredients,
   levenshtein,
   normalizeForDedupe,
 } from '../services/ingredientAutoCreate.js'
+import { recomputeRecipesUsing } from '../services/nutrition/recomputeRecipes.js'
+import { invalidateRecipeCatalogCache } from '../services/recipePersistence.js'
 import { createUsdaClient } from '../services/nutrition/usdaClient.js'
 import { fetchBedcaNutrition } from '../services/nutrition/bedcaClient.js'
 import { inferAllergenTagsFromName } from '../services/nutrition/allergens.js'
@@ -82,7 +86,8 @@ router.get('/ingredients', async (req, res) => {
     const search = req.query.search as string | undefined
     const offset = (page - 1) * perPage
 
-    const where = search ? like(ingredients.name, `%${search}%`) : undefined
+    // Case-insensitive: «Manitas» finds «manitas de cerdo» (PRO-1125).
+    const where = search ? ilike(ingredients.name, `%${search}%`) : undefined
 
     // Total count
     const [{ total }] = await db
@@ -126,10 +131,10 @@ router.get('/ingredients/suggest', authMiddleware, async (req: AuthRequest, res)
       return
     }
     const limit = Math.max(1, Math.min(10, parseInt(req.query.limit as string) || 5))
-    // Optional `query` override: curators use this to refine a poor
-    // automatic translation. When present, we send it verbatim to USDA.
+    // Optional `query` override: the curator's manual search. Same path as
+    // the name (translated for USDA, Spanish for BEDCA), PRO-1125.
     const query = (req.query.query as string | undefined)?.trim() || undefined
-    const suggestion = await suggestIngredient(name, { limit, query })
+    const suggestion = await suggestIngredient(name, { limit, query, alwaysBedca: true })
     res.json(suggestion)
   } catch (err) {
     console.error('Suggest ingredient error:', err)
@@ -140,6 +145,26 @@ router.get('/ingredients/suggest', authMiddleware, async (req: AuthRequest, res)
           ? 'USDA rate limit exceeded; try again shortly.'
           : 'Internal server error',
     })
+  }
+})
+
+// GET /ingredients/similar?name=manitas
+//   PRO-1125: catalogue rows that look like a name the search didn't find
+//   («¿Es manitas de cerdo?»), before the household adds its own.
+//   IMPORTANT: registered BEFORE `/ingredients/:id`.
+router.get('/ingredients/similar', async (req, res) => {
+  try {
+    const name = (req.query.name as string | undefined)?.trim() ?? ''
+    if (name.length < 2 || name.length > MAX_INGREDIENT_NAME) {
+      res.json([])
+      return
+    }
+    const limit = Math.max(1, Math.min(10, parseInt(req.query.limit as string) || 5))
+    const rows = await db.select().from(ingredients)
+    res.json(similarIngredients(name, rows, limit))
+  } catch (err) {
+    console.error('Similar ingredients error:', err)
+    res.status(500).json({ error: 'Internal server error' })
   }
 })
 
@@ -239,7 +264,8 @@ router.post('/ingredients/auto-create', authMiddleware, requireSpendCapacity(), 
       .values({
         name: name.trim(),
         fdcId: resolvedFdc,
-        aisle: (aisle ?? null) as Aisle | null,
+        // The household's «Añadir» sends only the name (PRO-1125).
+        aisle: (aisle ?? suggestAisleForName(name)) as Aisle | null,
         density: density ?? null,
         unitWeight: unitWeight ?? null,
         allergenTags: allergens,
@@ -431,7 +457,10 @@ router.post(
         .where(eq(ingredients.id, id))
         .returning()
 
-      res.json({ ingredient: updated, source: 'estimated' })
+      // PRO-1125: the recipes that use it pick up the new values now.
+      invalidateRecipeCatalogCache()
+      const recomputed = await recomputeRecipesUsing(db, [id])
+      res.json({ ingredient: updated, source: 'estimated', recipesRecomputed: recomputed.length })
     } catch (err) {
       const e = err as Error & { status?: number }
       const status = e.status ?? 500

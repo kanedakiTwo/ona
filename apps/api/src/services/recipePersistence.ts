@@ -61,6 +61,7 @@ import {
 } from './recipeLint.js'
 import {
   aggregateNutrition,
+  catalogEntryFromRow,
   type IngredientCatalogEntry,
 } from './nutrition/aggregate.js'
 import { allergenUnion } from './nutrition/allergens.js'
@@ -285,21 +286,7 @@ async function loadCatalog(requiredIds: readonly string[] = []): Promise<BuiltCa
   }))
 
   const nutrition = new Map<string, IngredientCatalogEntry>()
-  for (const c of full) {
-    nutrition.set(c.id, {
-      id: c.id,
-      name: c.name,
-      calories: c.calories,
-      protein: c.protein,
-      carbs: c.carbs,
-      fat: c.fat,
-      fiber: c.fiber,
-      salt: c.salt,
-      density: c.density,
-      unitWeight: c.unitWeight,
-      edibleFraction: c.edibleFraction,
-    })
-  }
+  for (const c of full) nutrition.set(c.id, catalogEntryFromRow(c))
 
   const allergens = new Map<string, { allergenTags?: string[] | null }>()
   for (const c of full) {

@@ -42,6 +42,8 @@ export type UsdaSearchResult = {
   description: string
   dataType: string // 'Foundation' | 'SR Legacy' | 'Survey (FNDDS)' | 'Branded'
   publishedDate?: string
+  /** USDA food category («Pork Products», «Restaurant Foods»…), when the search returns it. */
+  foodCategory?: string
 }
 
 export interface UsdaClient {
@@ -357,6 +359,7 @@ export function createUsdaClient(opts?: { apiKey?: string; cacheDir?: string }):
         dataType: String(f.dataType ?? ''),
         publishedDate:
           typeof f.publishedDate === 'string' ? (f.publishedDate as string) : undefined,
+        foodCategory: typeof f.foodCategory === 'string' ? (f.foodCategory as string) : undefined,
       }))
     },
   }

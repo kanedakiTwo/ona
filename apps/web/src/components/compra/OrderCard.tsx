@@ -384,7 +384,7 @@ function DraftBody({ order, shops }: { order: ShopOrder; shops: Shop[] }) {
 function SuperExtras({ order }: { order: ShopOrder }) {
   const ext = useBasketExtension(order.shop.webUrl)
   if (ext.checking) return null
-  if (ext.available) return <ExtensionSendPanel order={order} etiqueta={ext.etiqueta ?? order.shop.name} extensionId={ext.extensionId} />
+  if (ext.available) return <ExtensionSendPanel order={order} etiqueta={ext.etiqueta ?? order.shop.name} extensionId={ext.extensionId} consent={ext.consent} />
   return <CarrefourOrder order={order} />
 }
 

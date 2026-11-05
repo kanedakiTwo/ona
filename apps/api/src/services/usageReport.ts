@@ -13,6 +13,7 @@ import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
+import { GROWTH_DEFINITIONS, loadGrowthReport } from './growthReport.js'
 import { optInDeclinedSql } from './whatsapp/optInOffer.js'
 import {
   ONBOARDING_STEPS,
@@ -464,12 +465,13 @@ export const USAGE_DEFINITIONS = {
   onboardingWhatsappChosen: 'Event onboarding_whatsapp_chosen: «Por WhatsApp» tapped on the first onboarding screen (POST /whatsapp/link-code with from=onboarding); see householdsByEvent for distinct households.',
   proactive: 'WhatsApp messages Mimo sends by itself (PRO-156), by ISO week of the window: sent = delivered daily_brief, cooking_reminder, dinner_checkin, shopping_reminder, weekly_nudge and alert; replied = followed by any message from the same number within replyWindowHours; replyRate = replied / sent; guided / fallback = written from the guide vs. the fixed text (rows before PRO-156 count in neither); optouts = BAJA from a linked account. byKind splits the same counts. Counts only.',
   familyInvites: 'Invitations to join the same household (PRO-263, D-088), all time, not the window, by where they were prepared: casa (Perfil → Mi casa, and every invite before 2026-10-20), alta (sign-up), compra (first visit to the shopping list), mimo (web chat or WhatsApp). prepared = created; sent = «Enviar por WhatsApp» / «Copiar» tapped, Mimo gave the link, or accepted; accepted = someone joined with it. Invites made by admin or suspended accounts only with includeInternal=1. goal = of the households with 2 adults or more (largest users.adults among counted members), how many have 2 or more counted accounts; share = that ratio (target 0.3 by 2026-11-23). Counts only.',
-  onboardingSteps: 'PRO-120: the web sign-up («Primeros pasos») in the order it is shown: afina («Afina tu menú», only the first time), canal (WhatsApp or the web, only when WhatsApp is available), hogar, frecuencia, cocina, tiempo, dieta, prioridad. seen / done = distinct people in the window with onboarding_step visto / hecho for that step (the server keeps one per person, step and Madrid day). The WhatsApp sign-up is one conversation: see onboarding_whatsapp_chosen, whatsapp_linked and onboarding_completed by channel.',
+  onboardingSteps: 'PRO-120: the web sign-up («Primeros pasos») in the order it is shown: afina («Afina tu menú», only the first time), canal (WhatsApp or the web, only when WhatsApp is available), hogar, frecuencia (until 2026-11-03), cocina, tiempo, dieta, prioridad (until 2026-11-03: the sign-up stopped asking both). seen / done = distinct people in the window with onboarding_step visto / hecho for that step (the server keeps one per person, step and Madrid day). The WhatsApp sign-up is one conversation: see onboarding_whatsapp_chosen, whatsapp_linked and onboarding_completed by channel.',
   screens: 'PRO-120: screen_viewed per ISO week; each row is one person and screen and Madrid day (capped on the server), so views = people-days. top = the screens with views, most viewed first.',
   householdsBySystem:
     'PRO-307: active households of the window (see activeHouseholds) by the system of the last browser they came in with: the most recent usage event with a device (screen_viewed, from the day this shipped, 2026-10-22; or app_opened_installed) — android, ios (iPhone; iPadOS Safari says it is a Mac and counts as desktop), desktop, unknown (no such event: WhatsApp only, or no web visit since). Only that word is stored, never the browser string. Counts only.',
   breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp), how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
   mimoSkills: 'PRO-1022: mimo_skill_used in the window, one row per Mimo tool (skill = the tool name) that returned data, most used first: total and by where the conversation was — web (chat in the app), whatsapp, telegram, voice. A tool that failed or found nothing (data null) leaves none. Counts only, never text.',
+  ...GROWTH_DEFINITIONS,
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
@@ -576,12 +578,14 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       ORDER BY e.household_id, e.created_at DESC
   `)
   const days = dayRange(fromDay, today)
-  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows] = await Promise.all([
+  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, growth] = await Promise.all([
     onboardingStepsQ,
     screensQ,
     breakdownQ,
     tasteCardsQ,
     mimoSkillsQ,
+    // PRO-379: the growth line, the trial today and time to the first menu. Counts only leave.
+    loadGrowthReport({ includeInternal: inc, now }, db),
   ])
   const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice] = await Promise.all([
     countsQ,
@@ -651,6 +655,9 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     mimoSkills: buildMimoSkills(
       (mimoSkillRows.rows as any[]).map((r) => ({ skill: String(r.skill), canal: r.canal ?? null, count: Number(r.count) })),
     ),
+    growth: growth.growth,
+    trial: growth.trial,
+    timeToFirstMenu: growth.timeToFirstMenu,
     referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),
     definitions: USAGE_DEFINITIONS,
     dataSince: sinceRaw ? new Date(sinceRaw).toISOString() : null,

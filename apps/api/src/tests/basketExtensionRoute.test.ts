@@ -4,7 +4,9 @@
  * emails y `trackEvent` son falsos; el esquema, `basketSentProps`, `metricsAuth`
  * e `intParam` son los de verdad.
  *
- *   GET  /shop-extension/status             sesión; { enabled }
+ *   GET  /shop-extension/status             sesión; { enabled, consents }
+ *   POST /shop-extension/consent            sesión + lista de emails (403 antes de validar); 400 si no cumple
+ *   DELETE /shop-extension/consent/:cadena  sesión, sin mirar la lista
  *   POST /shop-orders/:id/extension-result  sesión + lista de emails (403 antes de validar);
  *                                           400 si el esquema no cumple; cuenta solo si se guardó
  *   POST /shop-orders/:id/extension-undo    sesión, sin mirar la lista; cuenta solo si se deshizo
@@ -37,10 +39,16 @@ const h = vi.hoisted(() => ({
   save: vi.fn(),
   undo: vi.fn(),
   track: vi.fn(),
+  consents: vi.fn(async (_userId: string) => [] as unknown[]),
+  accept: vi.fn(async (_userId: string, input: Record<string, string>) => ({ ...input, acceptedAt: '2026-11-03T10:00:00.000Z' })),
+  revoke: vi.fn(async (_userId: string, _cadena: string) => true),
 }))
 vi.mock('../services/basketExtension.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/basketExtension.js')>()),
   basketExtensionEnabledFor: h.enabled,
+  listBasketConsents: h.consents,
+  acceptBasketConsent: h.accept,
+  revokeBasketConsent: h.revoke,
   loadBasketGaps: h.gaps,
   loadBasketSends: h.sends,
 }))
@@ -93,6 +101,9 @@ beforeEach(() => {
   h.track.mockReset()
   h.gaps.mockClear()
   h.sends.mockClear()
+  h.consents.mockClear()
+  h.accept.mockClear()
+  h.revoke.mockClear()
 })
 
 const ID = '11111111-2222-4333-8444-555555555555'
@@ -124,8 +135,41 @@ describe('GET /shop-extension/status', () => {
     expect((await call('GET', '/shop-extension/status', undefined, {})).status).toBe(401)
     expect(h.enabled).not.toHaveBeenCalled()
     h.enabled.mockResolvedValue(false)
-    expect(await call('GET', '/shop-extension/status')).toEqual({ status: 200, body: { enabled: false } })
+    expect(await call('GET', '/shop-extension/status')).toEqual({ status: 200, body: { enabled: false, consents: [] } })
     expect(h.enabled).toHaveBeenCalledWith('u1')
+  })
+  it('lleva los avisos aceptados de esta cuenta', async () => {
+    const consent = { cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+generico', acceptedAt: '2026-11-03T10:00:00.000Z' }
+    h.consents.mockResolvedValue([consent])
+    expect((await call('GET', '/shop-extension/status')).body).toEqual({ enabled: true, consents: [consent] })
+    expect(h.consents).toHaveBeenCalledWith('u1')
+  })
+})
+
+describe('POST /shop-extension/consent y DELETE /shop-extension/consent/:cadena (D-154)', () => {
+  const body = { cadena: 'Tienda.Example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+ext-v1' }
+  it('fuera de la lista: 403 antes de validar, sin guardar', async () => {
+    h.enabled.mockResolvedValue(false)
+    expect((await call('POST', '/shop-extension/consent', { basura: 1 })).status).toBe(403)
+    expect(h.accept).not.toHaveBeenCalled()
+  })
+  it('400 si no cumple el esquema (un host con barra, una versión con espacios)', async () => {
+    for (const malo of [{ ...body, cadena: 'tienda.example/x' }, { ...body, version: 'v 1' }, { ...body, etiqueta: '' }, {}]) {
+      expect((await call('POST', '/shop-extension/consent', malo)).status, JSON.stringify(malo)).toBe(400)
+    }
+    expect(h.accept).not.toHaveBeenCalled()
+  })
+  it('guarda con el host en minúsculas y devuelve lo aceptado', async () => {
+    const r = await call('POST', '/shop-extension/consent', body)
+    expect(r.status).toBe(200)
+    expect(h.accept).toHaveBeenCalledWith('u1', { cadena: 'tienda.example', etiqueta: 'La Cadena', version: 'web-v1-2026-11+ext-v1' })
+    expect(r.body.consent).toMatchObject({ cadena: 'tienda.example', acceptedAt: '2026-11-03T10:00:00.000Z' })
+  })
+  it('desactivar: sin sesión 401; con sesión, aunque esté fuera de la lista', async () => {
+    expect((await call('DELETE', '/shop-extension/consent/tienda.example', undefined, {})).status).toBe(401)
+    h.enabled.mockResolvedValue(false)
+    expect(await call('DELETE', '/shop-extension/consent/tienda.example')).toEqual({ status: 200, body: { removed: true } })
+    expect(h.revoke).toHaveBeenCalledWith('u1', 'tienda.example')
   })
 })
 

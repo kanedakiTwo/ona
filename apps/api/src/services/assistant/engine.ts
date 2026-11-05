@@ -18,6 +18,7 @@ import {
   type TokenUsage,
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+import { hasLikedRecipes } from '../tasteStore.js'
 import { noteApiCallOk } from '../apiSaldo.js'
 
 let client: Anthropic | null = null
@@ -83,7 +84,10 @@ export async function chat(
   // 2026-10-16 the time was still in the context block, which re-wrote the
   // context and the history on every message. The clock now rides on the
   // newest message (buildTurnMessages).
-  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, surface: opts.surface })
+  // WhatsApp sign-up: ask for a few favourite dishes only when «Afina tu menú»
+  // got no «Me apetece» / «Me encanta» (2026-11-03). On a failed read, don't ask.
+  const askFavorites = opts.onboarding === true && !(await hasLikedRecipes(userId, db).catch(() => true))
+  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, askFavorites, surface: opts.surface })
   const system = [
     { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
     { type: 'text' as const, text: context },

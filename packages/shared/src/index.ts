@@ -68,6 +68,7 @@ export {
   COOKING_STYLE_PATH,
   COOKING_STYLE_LABELS,
   cookingStyleParts,
+  cookingFreqForStyle,
   isCookingStyle,
   cookingStyleSchema,
   cookingStyleFactValueSchema,
@@ -124,16 +125,23 @@ export {
   patchShopOrderSchema,
 } from './types/shopOrders.js'
 export {
+  BASKET_CONSENT_GENERIC_RISK,
+  BASKET_CONSENT_WEB_VERSION,
   BASKET_EXTENSION_PROTOCOL,
   BASKET_LINE_ORIGINS,
   BASKET_LINE_STATES,
   BASKET_SEND_ERRORS,
   BASKET_SEND_MAX_DURATION_MS,
+  basketConsentSchema,
+  basketConsentVersion,
   basketSendResultSchema,
   extensionForHost,
   parseExtensionIds,
+  pingAviso,
 } from './types/basketExtension.js'
 export type {
+  BasketConsent,
+  BasketConsentInput,
   BasketLine,
   BasketLineOrigin,
   BasketMessage,

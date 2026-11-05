@@ -21,15 +21,13 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
 
-  // Step 4 (3 before PRO-217): the question, one tap, and the optional field.
+  // The third question (since 2026-11-03): one tap, and the optional field.
   await expect(page.getByRole('heading', { name: /entre semana, ¿cómo te gusta cocinar/i })).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 4 de 6')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 4')).toBeVisible()
   await expect(page.getByText('El fin de semana, sin prisa.')).toBeVisible()
   await expect(next).toBeDisabled()
   for (const label of [/^rápido/i, /^poco rato de trabajo/i, /^sin prisa/i]) {
@@ -46,9 +44,7 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
 
   const onboarding = page.waitForRequest((r) => r.method() === 'POST' && /\/user\/[^/]+\/onboarding$/.test(r.url()))
   await next.click()
-  await next.click() // no restrictions
-  await page.getByRole('button', { name: /salud/i }).click()
-  await page.getByRole('button', { name: /empezar/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click() // no restrictions
 
   const body = JSON.parse((await onboarding).postData() ?? '{}')
   expect(body.weekdayCooking).toBe('poco_trabajo')

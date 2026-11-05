@@ -10,7 +10,7 @@ import { useEffect, useState } from "react"
 import { Check, ExternalLink, ShoppingCart, Undo2 } from "lucide-react"
 import { buildExtensionBasket, capitalize, isLiveBasketSend, prettyName, type BasketSendError, type ShopOrder } from "@ona/shared"
 import { useCloseShopOrder } from "@/hooks/useShopOrders"
-import { ExtensionNoAnswer, ExtensionStaleSend, useSendToExtension, useUndoExtensionSend } from "@/hooks/useBasketExtension"
+import { ExtensionNoAnswer, ExtensionStaleSend, useAcceptBasketConsent, useSendToExtension, useUndoExtensionSend, type BasketExtensionConsent } from "@/hooks/useBasketExtension"
 import { ApiError } from "@/lib/api"
 import { haptic } from "@/lib/pwa/haptics"
 import { eur, ghostBtn as ghostBase, primaryBtn } from "./styles"
@@ -80,9 +80,81 @@ function basketNames(order: ShopOrder, basket = buildExtensionBasket(order.lines
   return new Map(all.map((b) => [b.key, capitalize(prettyName(b.name))]))
 }
 
-/** `extensionId`: la extensión que llena la web de esta tienda (useBasketExtension). */
-export function ExtensionSendPanel({ order, etiqueta, extensionId }: { order: ShopOrder; etiqueta: string; extensionId: string | null }) {
+/**
+ * El aviso antes del primer envío a una cadena (D-154, texto de Legal): qué hace la extensión, qué no hace y que la
+ * cadena puede bloquear la cuenta. La frase del riesgo la da la extensión de esa cadena. «Ahora no» no manda nada.
+ */
+function ConsentSheet({
+  etiqueta,
+  riesgo,
+  pending,
+  failed,
+  onAccept,
+  onClose,
+}: {
+  etiqueta: string
+  riesgo: string
+  pending: boolean
+  failed: boolean
+  onAccept: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 md:items-center" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="basket-consent-title"
+        data-testid="basket-consent"
+        className="w-full max-w-[480px] rounded-t-3xl bg-[#FAF6EE] px-5 pb-[calc(1.5rem+var(--safe-bottom))] pt-5 shadow-2xl md:rounded-3xl md:pb-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="basket-consent-title" className="font-display text-[1.35rem] leading-tight text-[#1A1612]">
+          Antes de enviar tu lista a {etiqueta}
+        </h2>
+        <p className="mt-3 text-[13px] leading-relaxed text-[#1A1612]">
+          Mimoia añadirá los productos de tu lista a tu carro de {etiqueta} con una extensión de tu navegador, usando la
+          sesión que ya tienes abierta en su web. Mimoia no ve ni guarda tu contraseña, no confirma el pedido y no paga: el
+          carro lo revisas y lo pagas tú en {etiqueta}. Lo que no está en nuestra lista de productos lo busca en la web de{" "}
+          {etiqueta} y lo marca «revísalo», así que míralo antes de pagar. <strong>{riesgo}</strong> De cada envío guardamos
+          qué productos entraron, cuántos y a qué precio, y puedes desactivarlo cuando quieras en Perfil.
+        </p>
+        {failed && (
+          <p role="alert" className={`mt-2 ${alertText}`}>
+            No hemos podido guardarlo. Vuelve a intentarlo.
+          </p>
+        )}
+        <div className="mt-4 flex flex-col gap-2">
+          <button type="button" className={primaryBtn} disabled={pending} onClick={onAccept}>
+            {pending ? "Guardando…" : "Entiendo el riesgo, activar"}
+          </button>
+          <button type="button" className={ghostBtn} disabled={pending} onClick={onClose}>
+            Ahora no
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * `extensionId`: la extensión que llena la web de esta tienda (useBasketExtension). `consent`: el aviso de esa
+ * cadena; sin aceptar (o con otra versión), el botón lo enseña antes de mandar nada.
+ */
+export function ExtensionSendPanel({
+  order,
+  etiqueta,
+  extensionId,
+  consent,
+}: {
+  order: ShopOrder
+  etiqueta: string
+  extensionId: string | null
+  consent: BasketExtensionConsent | null
+}) {
   const send = useSendToExtension()
+  const accept = useAcceptBasketConsent()
+  const [asking, setAsking] = useState(false)
   const basket = buildExtensionBasket(order.lines)
   // Nada que mandar (p. ej. todo «probablemente lo tienes» sin marcar): sin botón.
   if (basket.length === 0) return null
@@ -133,11 +205,33 @@ export function ExtensionSendPanel({ order, etiqueta, extensionId }: { order: Sh
         disabled={send.isPending}
         onClick={() => {
           haptic.light()
+          if (consent && !consent.accepted) {
+            accept.reset()
+            setAsking(true)
+            return
+          }
           send.mutate({ order, extensionId })
         }}
       >
         <ShoppingCart size={14} /> {send.isPending ? `Enviando a ${etiqueta}…` : `Enviar a ${etiqueta}`}
       </button>
+      {asking && consent && (
+        <ConsentSheet
+          etiqueta={etiqueta}
+          riesgo={consent.riesgo}
+          pending={accept.isPending}
+          failed={accept.isError}
+          onClose={() => setAsking(false)}
+          onAccept={() =>
+            accept.mutate(consent.input, {
+              onSuccess: () => {
+                setAsking(false)
+                send.mutate({ order, extensionId })
+              },
+            })
+          }
+        />
+      )}
       <p className="text-[11px] text-[#7A7066]" aria-live="polite">
         {send.isPending
           ? `Puede tardar un minuto. No cierres la pestaña de ${etiqueta}.`

@@ -21,11 +21,11 @@ export type Sex = (typeof SEXES)[number]
 export const HOUSEHOLD_SIZES = ['solo', 'couple', 'family_with_kids', 'family_no_kids'] as const
 export type HouseholdSize = (typeof HOUSEHOLD_SIZES)[number]
 
-// Cooking frequency (onboarding Q2)
+// Cooking frequency: since 2026-11-03 read from «¿Cómo cocináis en casa?» (cookingFreqForStyle)
 export const COOKING_FREQUENCIES = ['daily', '3_4_times', 'rarely'] as const
 export type CookingFrequency = (typeof COOKING_FREQUENCIES)[number]
 
-// User priority (onboarding Q5)
+// User priority: no longer asked in the sign-up (2026-11-03); Perfil and Mimo can still set it
 export const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 export type Priority = (typeof PRIORITIES)[number]
 

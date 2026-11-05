@@ -160,8 +160,9 @@ describe('processInbound — unlinked numbers', () => {
     expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
     expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
-    expect(m).toMatch(/\*2\.\* ¿Cuánto cocináis en casa/)
-    // PRO-245 / D-064: no favourite dishes in the sign-up any more.
+    // 2026-11-03: the web's «¿Cómo cocináis en casa?», not how often.
+    expect(m).toMatch(/\*2\.\* ¿Cómo cocináis en casa: cada día, unos días y aprovecháis para otros, batch cooking/)
+    // PRO-245 / D-064: no favourite dishes in the first message (Mimo asks later, only without «Me apetece»).
     expect(m).not.toMatch(/platos/)
   })
 

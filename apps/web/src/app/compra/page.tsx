@@ -7,16 +7,20 @@
  * order per shop (frutería, carnicería, pescadería, súper). The user sends
  * each one from their own WhatsApp / email, pastes the shop's reply, Mimoia
  * checks it against the estimate and the cap, the user approves, and pays
- * the shop directly. Mimoia never messages a shop nor handles money.
+ * the shop directly. With the Red (RED_TIENDAS_EMAILS), Red shops are ordered
+ * here, with the discount applied; the household's own shops work as before.
  */
-import { Suspense, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ChevronLeft, RefreshCw, Store } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { usePatchShopOrder, usePrepareShopOrders, useShopOrders, useShops, type PrepareResult } from "@/hooks/useShopOrders"
 import type { ShopOrder } from "@ona/shared"
+import { useRedStatus } from "@/hooks/useRed"
 import { OrderCard } from "@/components/compra/OrderCard"
+import { RedOrderCard } from "@/components/compra/RedOrderCard"
+import { RedPrepareNotes } from "@/components/compra/RedPrepareNotes"
 import { ClosedOrder } from "@/components/compra/ClosedOrder"
 import { haptic } from "@/lib/pwa/haptics"
 
@@ -64,6 +68,23 @@ export default function CompraPage() {
   const { data: orders, isLoading } = useShopOrders(true)
   const prepare = usePrepareShopOrders()
   const [result, setResult] = useState<PrepareResult | null>(null)
+  const { data: redStatus } = useRedStatus()
+  const redOn = !!redStatus?.enabled
+  // ?pedido=<id> (the chat's «míralo y pídelo» link): highlight and scroll to that card.
+  const [highlight, setHighlight] = useState<string | null>(null)
+  useEffect(() => {
+    setHighlight(new URLSearchParams(window.location.search).get("pedido"))
+  }, [])
+  // Once: `orders` changes after every edit, and the page mustn't jump back to the card each time.
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (scrolled.current || !highlight || !orders?.some((o) => o.id === highlight)) return
+    const card = document.getElementById(`pedido-${highlight}`)
+    if (!card) return
+    scrolled.current = true
+    card.scrollIntoView({ block: "start" })
+  }, [highlight, orders, user])
+  const rePrepare = () => prepare.mutate({}, { onSuccess: setResult })
 
   if (authLoading) return <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE] text-eyebrow">Cargando...</div>
   if (!user) return null
@@ -71,7 +92,7 @@ export default function CompraPage() {
   const open = (orders ?? []).filter((o) => o.status !== "closed").sort((a, b) => KIND_ORDER.indexOf(a.shop.kind) - KIND_ORDER.indexOf(b.shop.kind))
   const closed = (orders ?? []).filter((o) => o.status === "closed")
   const hasDrafts = open.some((o) => o.status === "draft")
-  const noShops = shops !== undefined && shops.length === 0
+  const noShops = shops !== undefined && shops.length === 0 && !redOn
 
   return (
     <div className="bg-[#FAF6EE] min-h-screen pb-24 lg:mx-auto lg:max-w-[900px]">
@@ -91,6 +112,11 @@ export default function CompraPage() {
           Mimoia prepara un pedido por tienda con lo que te falta para los próximos 7 días. Tú lo envías desde tu WhatsApp,
           la tienda te dice qué hay y cuánto cuesta, lo apruebas y pagas en la tienda.
         </p>
+        {redOn && (
+          <p className="mt-2 max-w-md text-[12px] text-[#2D6A4F]" data-testid="red-intro">
+            Con las tiendas de la Red lo pides aquí, con un 5 % menos ya descontado.
+          </p>
+        )}
       </header>
 
       <Suspense>
@@ -113,10 +139,10 @@ export default function CompraPage() {
         <section className="px-5 space-y-4">
           <button
             type="button"
-            disabled={prepare.isPending || !shops}
+            disabled={prepare.isPending || (!shops && !redOn)}
             onClick={() => {
               haptic.light()
-              prepare.mutate({}, { onSuccess: setResult })
+              rePrepare()
             }}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1A1612] py-4 text-[13px] uppercase tracking-[0.14em] text-[#FAF6EE] disabled:opacity-50"
           >
@@ -124,6 +150,7 @@ export default function CompraPage() {
             {prepare.isPending ? "Preparando…" : hasDrafts ? "Rehacer los pedidos" : "Preparar los pedidos"}
           </button>
           {prepare.error && <p role="alert" className="text-[12px] text-[#C65D38]">{prepare.error.message}</p>}
+          {result?.red && <RedPrepareNotes info={result.red} onChanged={rePrepare} />}
 
           {result && (result.skipped.length > 0 || result.unassigned.length > 0 || result.orders.length === 0) && (
             <div className="rounded-xl bg-[#F7F2E7] px-3 py-2 text-[12px] text-[#7A7066]">
@@ -133,7 +160,10 @@ export default function CompraPage() {
               )}
               {result.pantry?.length > 0 && <PantryCheck names={result.pantry} superOrder={open.find((o) => o.shop.kind === "supermercado" && o.status === "draft") ?? null} />}
               {result.unassigned.length > 0 && (
-                <p className="text-[#C65D38]">Sin tienda donde pedirlo: {result.unassigned.map((u) => u.name).join(", ")}. Añade un súper en tus tiendas.</p>
+                <p className="text-[#C65D38]">
+                  Sin tienda donde pedirlo: {result.unassigned.map((u) => u.name).join(", ")}.{" "}
+                  {redOn ? "Añade tus tiendas o espera a que haya una de la Red en tu código postal." : "Añade un súper en tus tiendas."}
+                </p>
               )}
             </div>
           )}
@@ -141,7 +171,13 @@ export default function CompraPage() {
           {isLoading ? (
             <div className="py-10 text-center font-italic italic text-[#7A7066]">Cargando…</div>
           ) : (
-            open.map((o) => <OrderCard key={o.id} order={o} shops={shops ?? []} />)
+            open.map((o) =>
+              o.red ? (
+                <RedOrderCard key={o.id} order={o} shops={shops ?? []} highlight={o.id === highlight} />
+              ) : (
+                <OrderCard key={o.id} order={o} shops={shops ?? []} />
+              ),
+            )
           )}
 
           {closed.length > 0 && (

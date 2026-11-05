@@ -73,6 +73,8 @@ export default function ShopsPage() {
                   <div className="min-w-0">
                     <div className="text-[10px] uppercase tracking-[0.14em] text-[#C65D38]">
                       {SHOP_KIND_LABELS[s.kind]}
+                      {s.origin === "red" && <span className="text-[#2D6A4F]"> · de la Red · −5 %</span>}
+                      {s.origin !== "red" && s.redShopId && <span className="text-[#2D6A4F]"> · en la Red · −5 %</span>}
                       {sameKind(s).length > 1 ? (
                         <span className="ml-1.5 normal-case tracking-normal text-[#7A7066]">
                           · {rank(s) === 0 ? "la primera: recibe el pedido" : `${rank(s) + 1}.ª`}
@@ -110,9 +112,11 @@ export default function ShopsPage() {
                         </button>
                       </>
                     ) : null}
-                    <button aria-label={`Editar ${s.name}`} onClick={() => setEditing(s)} className="rounded-full p-2 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612]">
-                      <Pencil size={14} />
-                    </button>
+                    {s.origin !== "red" && (
+                      <button aria-label={`Editar ${s.name}`} onClick={() => setEditing(s)} className="rounded-full p-2 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612]">
+                        <Pencil size={14} />
+                      </button>
+                    )}
                     <button
                       aria-label={`Borrar ${s.name}`}
                       onClick={() => {

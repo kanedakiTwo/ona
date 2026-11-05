@@ -5,7 +5,7 @@
  */
 
 export type ClientUsageEvent = "onboarding_step" | "screen_viewed" | "recipe_viewed" | "taste_tuning" | "push_opened"
-export type UsageScreen = "menu" | "lista" | "compra" | "receta" | "recetas" | "perfil" | "despensa" | "avisos" | "casa"
+export type UsageScreen = "menu" | "cocinar" | "lista" | "compra" | "receta" | "recetas" | "perfil" | "despensa" | "avisos" | "casa"
 export type RecipeViewFrom = "menu" | "catalogo" | "mimo" | "lista" | "otro"
 export type OnboardingStep = "afina" | "canal" | "hogar" | "frecuencia" | "cocina" | "tiempo" | "dieta" | "prioridad"
 
@@ -23,6 +23,7 @@ const RECIPE_DETAIL = /^\/recipes\/(?!new\/?$)[^/]+\/?$/
 export function screenOfPath(path: string | null | undefined): UsageScreen | null {
   const p = (path ?? "").replace(/\/+$/, "") || "/"
   if (p === "/menu") return "menu"
+  if (p === "/cocinar") return "cocinar"
   if (p === "/shopping") return "lista"
   if (p === "/compra") return "compra"
   if (p === "/recipes") return "recetas"

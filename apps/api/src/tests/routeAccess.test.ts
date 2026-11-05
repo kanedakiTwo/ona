@@ -43,6 +43,7 @@ const PROTECTED = [
   '/shopping',
   '/compra',
   '/compra/tiendas',
+  '/cocinar',
   '/profile',
   '/profile/casa',
   '/profile/pantry',

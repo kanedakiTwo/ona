@@ -371,7 +371,7 @@ export function recordSkillUsage(
 /** «Primeros pasos» on the web, in the order they're shown (the WhatsApp sign-up is one conversation: see specs/metrics.md). */
 export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'] as const
 export const ONBOARDING_STEP_ACTIONS = ['visto', 'hecho'] as const
-export const USAGE_SCREENS = ['menu', 'lista', 'compra', 'receta', 'recetas', 'perfil', 'despensa', 'avisos', 'casa'] as const
+export const USAGE_SCREENS = ['menu', 'cocinar', 'lista', 'compra', 'receta', 'recetas', 'perfil', 'despensa', 'avisos', 'casa'] as const
 export const RECIPE_VIEW_FROM = ['menu', 'catalogo', 'mimo', 'lista', 'otro'] as const
 export const TASTE_TUNING_ACTIONS = ['empezado', 'terminado', 'abandonado'] as const
 /** A tapped notification: its alert kind (the prep reminders are `prep_alerts`) or `otro`. */

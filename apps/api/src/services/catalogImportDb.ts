@@ -8,6 +8,7 @@ import type { Unit } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { ingredients, recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { matchIngredients } from './recipeExtractor.js'
+import { tokenSetMatch } from './ingredientTokenMatch.js'
 import { persistRecipe } from './recipePersistence.js'
 import { detectSourceType } from './sources/sourceType.js'
 import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
@@ -112,6 +113,19 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
   }
 }
 
+/**
+ * «Cocinar ahora»: Cocina's `sustitutos` names → catalogue ingredient ids
+ * (token-set match, same order; null = no match). Never creates an ingredient.
+ */
+export async function findCatalogIngredientIds(names: readonly string[], db: Pick<Db, 'select'> = defaultDb): Promise<Array<string | null>> {
+  if (names.length === 0) return []
+  const catalog = await db.select({ id: ingredients.id, name: ingredients.name }).from(ingredients)
+  return names.map((n) => {
+    const v = tokenSetMatch(n, catalog)
+    return v.kind === 'no-match' ? null : v.catalog.id
+  })
+}
+
 export function createDbCatalogImportDeps(
   rewrite: (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite>,
   log?: (line: string) => void,
@@ -120,6 +134,7 @@ export function createDbCatalogImportDeps(
     catalogNames: () => allCatalogNames(),
     rewrite,
     matchIngredients: (name, ings) => matchDraftIngredients(name, ings),
+    findIngredientIds: (names) => findCatalogIngredientIds(names),
     persistDraft: (input) => persistCatalogDraft(input),
     log,
   }

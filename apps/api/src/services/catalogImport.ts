@@ -25,7 +25,7 @@
  * Everything that talks to the AI or the database is injected (`CatalogImportDeps`)
  * so the orchestration is tested without either.
  */
-import type { Difficulty, Meal, Season, Unit } from '@ona/shared'
+import type { Difficulty, IngredientRole, Meal, Season, Unit } from '@ona/shared'
 import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS } from '@ona/shared'
 import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { dishKey } from './catalogWishes.js'
@@ -65,6 +65,10 @@ export interface DraftIngredient {
   note?: string | null
   optional?: boolean
   section?: string | null
+  /** «Cocinar ahora»: Cocina's `imprescindible` (true → essential, false → secondary); absent = the automatic rule. */
+  role?: IngredientRole
+  /** Cocina's `sustitutos`: catalogue ingredient names that can stand in for this one. */
+  substitutes?: string[]
 }
 
 /** A recipe as read from its source, before the house rewrite. */
@@ -155,7 +159,17 @@ export interface PersistDraftInput {
   /** PRO-372: the ficha's storage seals; null = no data. */
   freezable: boolean | null
   fridgeDays: number | null
-  ingredients: Array<{ ingredientId: string; quantity: number; unit: Unit; note: string | null; optional: boolean; section: string | null; displayOrder: number }>
+  ingredients: Array<{
+    ingredientId: string
+    quantity: number
+    unit: Unit
+    note: string | null
+    optional: boolean
+    section: string | null
+    displayOrder: number
+    role: IngredientRole | null
+    substituteIngredientIds: string[]
+  }>
   steps: Array<{ index: number; text: string; durationMin: number | null; temperature: number | null; technique: string | null; ingredientRefs: string[] }>
   catalogSource: CatalogSourceRef & { batch: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
 }
@@ -166,6 +180,8 @@ export interface CatalogImportDeps {
   rewrite: (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite>
   /** Same order as the input; ingredientId null = couldn't match nor create. */
   matchIngredients: (recipeName: string, ings: DraftIngredient[]) => Promise<MatchedIngredient[]>
+  /** Substitute names → catalogue ingredient ids, same order (null = no match). Never creates ingredients. */
+  findIngredientIds: (names: string[]) => Promise<Array<string | null>>
   persistDraft: (input: PersistDraftInput) => Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }>
   log?: (line: string) => void
   /**
@@ -476,6 +492,7 @@ export async function importCatalogRecipe(
     stepCount: rewrite.steps.length,
     ingredients: matched.map((m) => ({ name: m.name, quantity: m.quantity, unit: m.unit, unitWeight: m.unitWeight ?? null, density: m.density ?? null, edibleFraction: m.edibleFraction ?? null })),
   })
+  const substituteIds = await substituteIdsFor(draft.name, ingredients, deps)
   const { tags, internalTags } = catalogTags(rewrite, draft.tags ?? [])
   const { prepTime, cookTime } = timesFrom(rewrite, draft)
   const n = ingredients.length
@@ -503,6 +520,8 @@ export async function importCatalogRecipe(
       optional: ingredients[i].optional ?? false,
       section: ingredients[i].section ?? null,
       displayOrder: i,
+      role: ingredients[i].role ?? null,
+      substituteIngredientIds: substituteIds[i],
     })),
     steps: rewrite.steps.map((s, index) => ({
       index,
@@ -516,6 +535,20 @@ export async function importCatalogRecipe(
   })
   if (!saved.ok) return { ...base, status: 'rejected', reason: 'revisor', detail: saved.errors.join(' · ') }
   return { ...base, status: 'draft', recipeId: saved.recipeId, auditIssues: audit.issues, allergenDoubt: !!rewrite.allergenDoubt }
+}
+
+/**
+ * «Cocinar ahora»: each line's `sustitutos` as catalogue ids. Asks the
+ * catalogue only when the recipe has any; a name that doesn't match is
+ * dropped and logged.
+ */
+async function substituteIdsFor(recipeName: string, ings: readonly DraftIngredient[], deps: CatalogImportDeps): Promise<string[][]> {
+  const names = [...new Set(ings.flatMap((i) => i.substitutes ?? []))]
+  if (names.length === 0) return ings.map(() => [])
+  const ids = await deps.findIngredientIds(names)
+  const byName = new Map(names.map((n, k) => [n, ids[k] ?? null]))
+  for (const [name, id] of byName) if (!id) deps.log?.(`  sustituto sin casar: ${name} (${recipeName})`)
+  return ings.map((i) => [...new Set((i.substitutes ?? []).map((n) => byName.get(n)).filter((id): id is string => !!id))])
 }
 
 /** A whole batch, in order. One failure never stops the rest. */
@@ -591,6 +624,8 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
         note: i.note ?? null,
         optional: !!i.optional,
         section: i.section ?? null,
+        role: i.imprescindible === true ? 'essential' : i.imprescindible === false ? 'secondary' : undefined,
+        substitutes: Array.isArray(i.sustitutos) ? i.sustitutos.map(String).map((s: string) => s.trim()).filter(Boolean) : undefined,
       })),
       sourceSteps: (r.steps ?? []).map((s: any) => (typeof s === 'string' ? s : String(s?.text ?? ''))).filter(Boolean),
       source: {

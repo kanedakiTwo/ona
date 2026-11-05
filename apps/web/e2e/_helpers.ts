@@ -84,9 +84,11 @@ export async function submitLoginForm(page: Page, creds: Pick<TestCreds, 'userna
  */
 export async function registerFreshUser(
   page: Page,
-  opts: { keepFirstSteps?: boolean; keepTaste?: boolean } = {},
+  opts: { keepFirstSteps?: boolean; keepTaste?: boolean; emailDomain?: string } = {},
 ): Promise<TestCreds> {
-  const creds = freshCreds()
+  const fresh = freshCreds()
+  // Red de tiendas: @red.test.local accounts are the only ones with RED_TIENDAS_EMAILS in CI.
+  const creds = opts.emailDomain ? { ...fresh, email: `${fresh.username}@${opts.emailDomain}` } : fresh
   await page.goto('/register')
   await Promise.all([
     page.waitForURL(/\/onboarding|\/menu/, { timeout: 20_000 }),

@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { carryIngredientMarks, ingredientMarksOf } from '../services/ingredientRoles.js'
+import {
+  autoIngredientRole,
+  carryIngredientMarks,
+  ingredientMarksOf,
+  recipeGrams,
+  roleOf,
+  type RoleLine,
+} from '../services/ingredientRoles.js'
 
 const prev = (id: string, ingredientId: string, role: 'essential' | 'secondary' | null, subs: string[] = []) => ({
   id,
@@ -47,6 +54,54 @@ describe('ingredientMarksOf', () => {
   it('copies role and substitutes, defaulting to unmarked', () => {
     expect(ingredientMarksOf({ role: 'secondary', substituteIngredientIds: ['a'] })).toEqual({ role: 'secondary', substituteIngredientIds: ['a'] })
     expect(ingredientMarksOf({})).toEqual({ role: null, substituteIngredientIds: [] })
+  })
+})
+
+const line = (over: Partial<RoleLine>): RoleLine => ({ ingredientName: 'x', quantity: 100, unit: 'g', ...over })
+
+describe('autoIngredientRole', () => {
+  const total = 1000
+  it('protein, cereal and legume are essential whatever they weigh', () => {
+    expect(autoIngredientRole(line({ category: 'proteina', quantity: 50 }), total)).toBe('essential')
+    expect(autoIngredientRole(line({ category: 'Cereal', quantity: 10 }), total)).toBe('essential')
+    expect(autoIngredientRole(line({ category: 'legumbre', quantity: 10 }), total)).toBe('essential')
+  })
+  it('15 % of the recipe weight or more is essential; less is secondary', () => {
+    expect(autoIngredientRole(line({ quantity: 150 }), total)).toBe('essential')
+    expect(autoIngredientRole(line({ quantity: 149 }), total)).toBe('secondary')
+  })
+  it('units with a weight count in grams', () => {
+    expect(autoIngredientRole(line({ quantity: 2, unit: 'u', unitWeight: 200 }), total)).toBe('essential')
+  })
+  it('a line that cannot be weighed is secondary', () => {
+    expect(autoIngredientRole(line({ quantity: 1, unit: 'cdita' }), total)).toBe('secondary')
+  })
+  it('optional, «al gusto», «pizca» and zero quantity are secondary', () => {
+    expect(autoIngredientRole(line({ quantity: 500, optional: true }), total)).toBe('secondary')
+    expect(autoIngredientRole(line({ quantity: 500, note: 'al gusto' }), total)).toBe('secondary')
+    expect(autoIngredientRole(line({ quantity: 500, displayUnit: 'pizca' }), total)).toBe('secondary')
+    expect(autoIngredientRole(line({ quantity: 0, category: 'proteina' }), total)).toBe('secondary')
+  })
+  it('the units al_gusto and pizca are secondary, even for a cereal', () => {
+    expect(autoIngredientRole(line({ quantity: 1, unit: 'al_gusto', category: 'cereal' }), total)).toBe('secondary')
+    expect(autoIngredientRole(line({ quantity: 1, unit: 'pizca' }), total)).toBe('secondary')
+  })
+  it('with no category only the weight decides', () => {
+    expect(autoIngredientRole(line({ category: null, quantity: 400 }), total)).toBe('essential')
+  })
+})
+
+describe('recipeGrams', () => {
+  it('adds what can be weighed, leaving out basics', () => {
+    expect(recipeGrams([line({ quantity: 300 }), line({ ingredientName: 'Sal', quantity: 10 }), line({ quantity: 1, unit: 'cdita' })])).toBe(300)
+  })
+})
+
+describe('roleOf', () => {
+  it('a mark wins over the rule, except an optional line is always secondary', () => {
+    expect(roleOf(line({ role: 'essential', quantity: 1 }), 1000)).toBe('essential')
+    expect(roleOf(line({ role: 'essential', optional: true }), 1000)).toBe('secondary')
+    expect(roleOf(line({ role: null, quantity: 900 }), 1000)).toBe('essential')
   })
 })
 

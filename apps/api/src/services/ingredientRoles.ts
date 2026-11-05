@@ -4,6 +4,9 @@
  * (routes/ingredientRoles.ts); until then `autoIngredientRole` decides.
  */
 import type { IngredientRole } from '@ona/shared'
+import { lineGrams } from './catalogRecipeAudit.js'
+import { normalizeText } from './dietaryRestrictions.js'
+import { isBasicIngredient } from './withWhatIHave.js'
 
 export interface IngredientMarks {
   role: IngredientRole | null
@@ -51,4 +54,61 @@ export function carryIngredientMarks(
     }
   })
   return out.map((m) => m ?? { role: null, substituteIngredientIds: [] })
+}
+
+/** Categories whose ingredient defines the dish (seeded `ingredients.category`). */
+export const ESSENTIAL_CATEGORIES = ['proteina', 'cereal', 'legumbre'] as const
+/** A line weighing at least this share of the recipe is essential. */
+export const ESSENTIAL_WEIGHT_SHARE = 0.15
+
+export interface RoleLine {
+  ingredientName: string
+  quantity: number
+  unit: string
+  category?: string | null
+  optional?: boolean
+  note?: string | null
+  displayUnit?: string | null
+  unitWeight?: number | null
+  density?: number | null
+  edibleFraction?: number | null
+  role?: IngredientRole | null
+}
+
+function gramsOf(l: RoleLine): number | null {
+  return lineGrams({
+    name: l.ingredientName,
+    quantity: l.quantity,
+    unit: l.unit,
+    unitWeight: l.unitWeight ?? null,
+    density: l.density ?? null,
+    edibleFraction: l.edibleFraction ?? null,
+    note: l.note ?? null,
+  })
+}
+
+/** Grams of the recipe that can be weighed, basics left out. */
+export function recipeGrams(lines: readonly RoleLine[]): number {
+  return lines.reduce((sum, l) => (isBasicIngredient(l.ingredientName) ? sum : sum + (gramsOf(l) ?? 0)), 0)
+}
+
+const TO_TASTE = /\b(al gusto|pizca)\b/
+
+/** Pure: the role of an unmarked line (specs/cook-now.md → «Regla automática»). */
+export function autoIngredientRole(l: RoleLine, totalGrams: number): IngredientRole {
+  if (l.optional) return 'secondary'
+  if (!(l.quantity > 0)) return 'secondary'
+  if (l.unit === 'al_gusto' || l.unit === 'pizca') return 'secondary'
+  if (TO_TASTE.test(normalizeText(`${l.note ?? ''} ${l.displayUnit ?? ''}`))) return 'secondary'
+  const category = normalizeText(l.category ?? '')
+  if ((ESSENTIAL_CATEGORIES as readonly string[]).includes(category)) return 'essential'
+  const g = gramsOf(l)
+  if (g == null || totalGrams <= 0) return 'secondary'
+  return g / totalGrams >= ESSENTIAL_WEIGHT_SHARE ? 'essential' : 'secondary'
+}
+
+/** Cocina's mark if there is one, else the rule. An optional line is always secondary. */
+export function roleOf(l: RoleLine, totalGrams: number): IngredientRole {
+  if (l.optional) return 'secondary'
+  return l.role ?? autoIngredientRole(l, totalGrams)
 }

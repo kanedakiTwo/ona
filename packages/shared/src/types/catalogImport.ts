@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { DIFFICULTIES, MEALS, SEASONS, UNITS } from '../constants/enums.js'
+<<<<<<< 238700486dcf5591a1fca6549dc80746e43d3b3e
 import { isIsoDay } from './recipeOfTheDay.js'
+=======
+import { COURSES } from './recipe.js'
+>>>>>>> 557ebdb211915c864882a02a4ff0aa0bf740b970
 
 /**
  * Catalogue import from the admin page «Recetas pendientes»
@@ -59,9 +63,41 @@ const ingredientSchema = z
     }
   })
 
-const stepSchema = z.preprocess(toStepObject, z.object({ text: z.string().trim().min(1).max(2000) }))
+const stepSchema = z.preprocess(
+  toStepObject,
+  z.object({
+    text: z.string().trim().min(1).max(2000),
+    /** PRO-1097: only read when the batch is `reescrita` (the house steps, as the rewriter returns them). */
+    durationMin: z.number().int().min(0).max(1440).nullish(),
+    temperature: z.number().int().min(0).max(350).nullish(),
+    technique: z.string().max(60).nullish(),
+    /** 0-based indexes into the recipe's ingredient list. */
+    ingredientRefs: z.array(z.number().int().min(0)).max(80).optional(),
+  }),
+)
 
-export const cocinaRecipeSchema = z.object({
+/**
+ * PRO-1097 (D-150, C): the labels `catalogRewriter` gives a recipe, written
+ * by Cocina (Claude Code, on the subscription) in a batch with
+ * `reescrita: true`, so the import saves it without calling the model.
+ * `difficulty`, `meals`, `seasons`, `freezable` and `fridgeDays` are the
+ * recipe's own fields above. Without `reescrita` they are ignored and the
+ * rewriter labels the recipe as always.
+ */
+export const catalogRewriteLabelsSchema = z.object({
+  course: z.enum(COURSES).nullish(),
+  dishType: z.string().trim().max(60).nullish(),
+  protein: z.string().trim().max(60).nullish(),
+  techniques: z.array(z.string().trim().min(1).max(60)).max(12).optional(),
+  cuisine: z.string().trim().max(60).nullish(),
+  activeTime: z.number().int().min(0).max(1440).nullish(),
+  totalTime: z.number().int().min(0).max(2880).nullish(),
+  allergenDoubt: z.boolean().optional(),
+  allergenNote: z.string().max(300).nullish(),
+  tips: z.string().max(600).nullish(),
+})
+
+export const cocinaRecipeSchema = catalogRewriteLabelsSchema.extend({
   name: z.string().trim().min(1).max(150),
   servings: z.number().int().positive().max(100).optional(),
   prepTime: z.number().int().min(0).max(1440).nullish(),
@@ -89,6 +125,12 @@ export const cocinaBatchFileSchema = z.preprocess(
   toFileObject,
   z.object({
     source: sourceSchema.optional(),
+    /**
+     * PRO-1097: the steps are already the house's (written by Cocina, never
+     * the source's text) and the labels come in each recipe: the import
+     * doesn't call the rewriter.
+     */
+    reescrita: z.boolean().optional(),
     recipes: z.array(cocinaRecipeSchema).min(1).max(CATALOG_IMPORT_MAX_RECIPES),
   }).superRefine((file, ctx) => {
     // PRO-1099: one recipe of the day per day, inside the file too.
@@ -148,6 +190,21 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   file: { label: 'el fichero (source.file)' },
   credit: { label: 'el crédito (source.credit)' },
   url: { label: 'el enlace al original (source.url)' },
+  reescrita: { label: 'reescrita' },
+  durationMin: { label: 'los minutos del paso (durationMin)', plural: true },
+  temperature: { label: 'la temperatura (temperature)' },
+  technique: { label: 'la técnica del paso (technique)' },
+  ingredientRefs: { label: 'los ingredientes del paso (ingredientRefs)', plural: true },
+  course: { label: 'el tipo de plato del menú (course)' },
+  dishType: { label: 'el tipo de plato (dishType)' },
+  protein: { label: 'la proteína (protein)' },
+  techniques: { label: 'las técnicas (techniques)', plural: true },
+  cuisine: { label: 'la cocina (cuisine)' },
+  activeTime: { label: 'el tiempo activo (activeTime)' },
+  totalTime: { label: 'el tiempo total (totalTime)' },
+  allergenDoubt: { label: 'la duda de alérgenos (allergenDoubt)' },
+  allergenNote: { label: 'la nota de alérgenos (allergenNote)' },
+  tips: { label: 'el consejo (tips)' },
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -308,6 +365,9 @@ export function checkCocinaBatch(json: unknown): CocinaBatchCheck {
   const fromMiguel = origin === 'miguel' || file.recipes.some((r) => r.source?.origin === 'miguel')
   if (fromMiguel) {
     warnings.push('El fichero dice que hay recetas de tus fuentes (origin «miguel»): esas se pueden publicar sin pasar por tu revisión, en cuanto pasen la auditoría.')
+  }
+  if (file.reescrita) {
+    warnings.push('La tanda viene reescrita («reescrita»: true): se guardan sus pasos y etiquetas tal cual, sin reescribirlos con la IA.')
   }
   return { ok: true, file, origin, book: textOf(file.source?.book), names, warnings }
 }

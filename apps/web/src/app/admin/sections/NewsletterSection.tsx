@@ -205,7 +205,9 @@ export function NewsletterSection() {
     <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
       {label}
       {rows === 1 ? (
+        // The label wraps the field: without aria-label its name would carry the text typed in it.
         <input
+          aria-label={label}
           value={form[k]}
           onChange={(e) => edit(k)(e.target.value)}
           disabled={sent}
@@ -213,6 +215,7 @@ export function NewsletterSection() {
         />
       ) : (
         <textarea
+          aria-label={label}
           value={form[k]}
           onChange={(e) => edit(k)(e.target.value)}
           rows={rows}
@@ -230,6 +233,7 @@ export function NewsletterSection() {
         <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
           Número (la fecha del viernes)
           <input
+            aria-label="Número (la fecha del viernes)"
             value={issueId}
             onChange={(e) => setIssueId(e.target.value.trim().toLowerCase())}
             placeholder="2026-11-06"

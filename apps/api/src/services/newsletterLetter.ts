@@ -172,10 +172,19 @@ export function createDbNewsletterLetterRepo(db: Db = defaultDb): NewsletterLett
           adults: users.adults,
           kids: users.kidsCount,
           householdId: users.primaryHouseholdId,
-          waitlistName: sql<string | null>`(select ${waitlistEntries.firstName} from ${waitlistEntries} where ${waitlistEntries.email} = lower(${users.email}) limit 1)`,
+          email: users.email,
         })
         .from(users)
         .where(inArray(users.id, userIds))
+      // The name they gave on the waitlist (entries keep the email lowercase).
+      const emails = [...new Set(people.map((p) => p.email.trim().toLowerCase()))]
+      const listed =
+        emails.length > 0
+          ? await db
+              .select({ email: waitlistEntries.email, firstName: waitlistEntries.firstName })
+              .from(waitlistEntries)
+              .where(inArray(waitlistEntries.email, emails))
+          : []
       const hids = [...new Set(people.flatMap((p) => (p.householdId ? [p.householdId] : [])))]
       const cooked =
         hids.length > 0
@@ -192,7 +201,8 @@ export function createDbNewsletterLetterRepo(db: Db = defaultDb): NewsletterLett
           .filter((c) => c.householdId === p.householdId && safeDishName(c.name))
           .sort((a, b) => b.at.getTime() - a.at.getTime())[0]
         out.set(p.id, {
-          firstName: cleanFirstName(p.waitlistName) ?? nameFromUsername(p.username),
+          firstName:
+            cleanFirstName(listed.find((w) => w.email === p.email.trim().toLowerCase())?.firstName) ?? nameFromUsername(p.username),
           people: Math.max(1, (p.adults ?? 1) + (p.kids ?? 0)),
           kids: p.kids ?? 0,
           hasDislikes: dislikes.length > 0,

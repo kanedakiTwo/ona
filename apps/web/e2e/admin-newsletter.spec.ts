@@ -51,7 +51,8 @@ test('con la API de verdad: guarda la plantilla, enseña la vista previa y sin l
   await number.fill(issue)
   await expect(page.getByText('Marketing aún no ha dejado su recomendación para este número.')).toBeVisible({ timeout: 15_000 })
 
-  // `exact`: «Preheader (lo que se ve tras el asunto)» también dice «asunto».
+  // `exact`: «Preheader (lo que se ve tras el asunto)» también dice «asunto»
+  // (cada campo lleva su aria-label, que no cambia con lo escrito).
   await page.getByLabel('Asunto', { exact: true }).fill('{nombre}, tu receta de esta semana')
   await page.getByLabel('Saludo', { exact: true }).fill('Hola, {nombre}:')
   await page.getByLabel('Carta', { exact: true }).fill('Esta semana te mando {receta}. {porque}')
@@ -133,12 +134,12 @@ test('desde la recomendación, la prueba a tu correo y «Programar» para el vie
 
   await page.getByRole('button', { name: 'Ver vista previa' }).click()
   await expect(page.getByTestId('newsletter-preview')).toHaveCount(3)
-  await expect(page.getByText('Ana, tu receta')).toBeVisible()
+  await expect(page.getByTestId('newsletter-preview').first()).toContainText('Ana, tu receta')
 
   await expect(page.getByRole('button', { name: 'Programar para el viernes a las 9:00' })).toBeDisabled()
   await page.getByRole('button', { name: 'Enviarme la prueba' }).click()
   await expect(page.getByTestId('newsletter-proof-sent')).toHaveText('Prueba enviada a m***@gmail.com, con tu propio caso.')
   await page.getByRole('button', { name: 'Programar para el viernes a las 9:00' }).click()
-  await expect(page.getByTestId('newsletter-scheduled')).toContainText('viernes, 6 de noviembre')
+  await expect(page.getByTestId('newsletter-scheduled')).toContainText(/viernes.*6 de noviembre/)
   await expect(page.getByTestId('newsletter-scheduled')).toContainText('9:00')
 })

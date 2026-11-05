@@ -1,4 +1,4 @@
-import type { Shop, ShopOrder, ShopOrderLine } from '@ona/shared'
+import type { RedPrepareInfo, Shop, ShopOrder, ShopOrderLine } from '@ona/shared'
 import { SHOP_KIND_LABELS, normalizePhone, resolveBuyRule } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
@@ -11,6 +11,9 @@ import { shoppingLineSkills } from './shoppingLineSkills.js'
  * as /compra, as the user. Mimoia never messages a shop: it hands the user a
  * short link (/c/<token>) that opens THEIR WhatsApp with the order written,
  * then reads the shop's reply when the user forwards or pastes it.
+ * Red orders (shop_orders.red_shop_id) are the exception: their /c/ link opens
+ * the order's card on /compra («míralo y pídelo en la app»), never wa.me, and
+ * they stay out of the reply / approve / close flow.
  */
 
 const api = (ctx: SkillContext): AppApi =>
@@ -41,6 +44,13 @@ function deliveryNote(o: ShopOrder): string {
 }
 
 function sendLine(o: ShopOrder): string {
+  if (o.red) {
+    const live = o.lines.filter((l) => l.included !== false).length
+    const head = `*${o.shop.name}* (de la Red, −${o.red.terms.discountPct} % ya descontado; ${live} ${live === 1 ? 'producto' : 'productos'}${o.red.estimateEur != null ? `, ≈${euros(o.red.estimateEur)}` : ''}${o.red.maxEur != null ? `, como mucho ${euros(o.red.maxEur)}` : ''})`
+    // Nothing glued to the link: copied «TAL CUAL», a trailing «.» would make the token not match.
+    const missing = o.blockers.length ? ` (antes de pedirlo falta: ${o.blockers.join('; ')})` : ''
+    return `- ${head}: míralo y pídelo en la app → ${o.links.shortOrder}${missing}`
+  }
   const live = o.lines.filter((l) => l.included !== false).length
   const head = `*${o.shop.name}* (${live} ${live === 1 ? 'producto' : 'productos'}${o.estimateEur ? `, ≈${euros(o.estimateEur)}` : ''})`
   if (o.blockers.length && o.shop.channel !== 'web') {
@@ -195,14 +205,19 @@ const prepareShopOrders: SkillDefinition = {
     'Prepara (o rehace) los pedidos de la compra para las tiendas del usuario a partir de su lista actual. Llámala SIEMPRE que pida la compra, los pedidos o los enlaces de las tiendas, aunque ya los preparases antes en la conversación: la lista cambia y los enlaces anteriores no valen (en el historial salen como "[enlace de un pedido anterior]"; nunca los reutilices). No la llames después de editar: para cambiar un pedido preparado usa edit_shop_order. Reparte cada producto a su frutería, carnicería, pescadería o súper y devuelve un enlace por tienda que abre SU WhatsApp con el pedido escrito. Usala cuando pida "hazme la compra", "haz el pedido", "pídeselo a la frutería". Mimoia no envía nada: lo envía el usuario.',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
-    const r = await api(ctx)<{ orders: ShopOrder[]; unassigned: Array<{ name: string }>; skipped: Array<{ name: string }>; pantry?: string[]; hasShops: boolean }>(
+    const r = await api(ctx)<{ orders: ShopOrder[]; unassigned: Array<{ name: string }>; skipped: Array<{ name: string }>; pantry?: string[]; hasShops: boolean; red?: RedPrepareInfo }>(
       'POST',
       '/shop-orders/prepare',
       {},
     )
-    if (!r.hasShops) {
-      return { data: { navigateTo: '/compra/tiendas' }, uiHint: 'text', summary: 'El usuario aún no tiene tiendas guardadas. Pídele nombre, tipo (frutería, carnicería, pescadería, súper) y WhatsApp de cada una y guárdalas con manage_shops; o que las añada en la app.' }
+    const noShops: SkillResult = { data: { navigateTo: '/compra/tiendas' }, uiHint: 'text', summary: 'El usuario aún no tiene tiendas guardadas. Pídele nombre, tipo (frutería, carnicería, pescadería, súper) y WhatsApp de cada una y guárdalas con manage_shops; o que las añada en la app.' }
+    if (!r.hasShops && !r.red?.enabled) return noShops
+    const red = r.red
+    if (red?.needsPostalCode && !r.orders.length) {
+      return toCompra(`Para pedirte la fruta, la carne o el pescado a tiendas de la Red de tu barrio (con un ${red.discountPct} % menos) necesito tu código postal: ponlo en la app, en Compra.`)
     }
+    // The Red found nothing for this postal code either: same as without the Red.
+    if (!r.hasShops) return noShops
     if (!r.orders.length) return toCompra('No hay nada pendiente en la lista para pedir (o ya está todo en pedidos abiertos).')
     const parts = ['Pedidos preparados. Copia los enlaces TAL CUAL en tu respuesta:', ...r.orders.map(sendLine)]
     if (r.unassigned.length) parts.push(`Sin tienda (no tiene ni súper guardado): ${r.unassigned.map((u) => u.name).join(', ')}.`)
@@ -210,6 +225,10 @@ const prepareShopOrders: SkillDefinition = {
     const already = r.skipped.filter((s) => !pantry.includes(s.name))
     if (already.length) parts.push(`Ya está en un pedido abierto: ${already.map((s) => s.name).join(', ')}.`)
     if (pantry.length) parts.push(`Doy por hecho que en casa tienes: ${pantry.join(', ')}. Si te falta algo, que lo diga y lo añado.`)
+    if (red?.needsPostalCode) parts.push('Para lo que no tiene tienda: que ponga su código postal en la app (Compra) y te busco tiendas de la Red.')
+    for (const q of red?.questions ?? []) parts.push(`Pregúntale una sola vez si lo de ${SHOP_KIND_LABELS[q.kind].toLowerCase()} lo pide a ${q.redShop.name} (de la Red, −${red!.discountPct} %) o lo sigue pidiendo en ${q.superName}: lo elige en la app, en Compra.`)
+    for (const a of red?.assigned ?? []) parts.push(`Le he asignado una tienda de la Red: ${a.name} (${SHOP_KIND_LABELS[a.kind].toLowerCase()}, −${red!.discountPct} %). Si prefiere otra, la cambia en la app.`)
+    if (r.orders.some((o) => o.red)) parts.push('Las de la Red no se envían por WhatsApp: se miran y se piden en la app con su enlace.')
     parts.push(
       'Responde con UNA línea por tienda: las que están listas con su enlace copiado TAL CUAL; las que tienen "antes de enviarlo falta", con esa pregunta (corta) — luego se aplica con edit_shop_order, sin volver a preparar. Termina preguntando si quiere añadir algo más (por ejemplo fruta para la semana): se añade con edit_shop_order y el enlace sigue siendo el mismo. Cuando la tienda conteste, que te reenvíe o pegue su respuesta y la reviso.',
     )
@@ -227,7 +246,8 @@ const registerShopReply: SkillDefinition = {
     required: ['text'],
   },
   async handler(p, ctx) {
-    const order = pickOrder(await openOrders(ctx), ['sent', 'draft', 'quoted'], p.shop)
+    // A forwarded reply never lands on a Red order (the API refuses it too: 409 RED_ORDER).
+    const order = pickOrder((await openOrders(ctx)).filter((o) => !o.red), ['sent', 'draft', 'quoted'], p.shop)
     if (order === 'ambiguous') return toCompra('Hay varios pedidos esperando respuesta; pregunta de qué tienda es este mensaje.')
     if (!order) return toCompra('No hay ningún pedido esperando respuesta de una tienda.')
     let q: ShopOrder
@@ -266,7 +286,7 @@ const approveShopOrder: SkillDefinition = {
     required: [],
   },
   async handler(p, ctx) {
-    const order = pickOrder(await openOrders(ctx), ['quoted'], p.shop)
+    const order = pickOrder((await openOrders(ctx)).filter((o) => !o.red), ['quoted'], p.shop)
     if (order === 'ambiguous') return toCompra('Hay varias tiendas que han contestado; pregunta cuál confirmar.')
     if (!order) return toCompra('No hay ningún pedido con respuesta de la tienda pendiente de confirmar.')
     const decisions: Record<string, 'remove'> = {}
@@ -290,6 +310,8 @@ const approveShopOrder: SkillDefinition = {
   },
 }
 
+const CANCELLABLE: ShopOrder['status'][] = ['draft', 'sent', 'quoted', 'approved', 'ordered', 'accepted']
+
 const closeShopOrder: SkillDefinition = {
   name: 'close_shop_order',
   description:
@@ -300,9 +322,20 @@ const closeShopOrder: SkillDefinition = {
     required: [],
   },
   async handler(p, ctx) {
-    const order = pickOrder(await openOrders(ctx), ['draft', 'sent', 'quoted', 'approved'], p.shop)
+    const orders = await openOrders(ctx)
+    // Cancel: a Red order too, while the shop hasn't started it (draft, ordered, accepted).
+    // Close: never a Red order, which closes on its own when the shop delivers it.
+    const order = p.cancel
+      ? pickOrder(orders, CANCELLABLE, p.shop)
+      : pickOrder(orders.filter((o) => !o.red), ['draft', 'sent', 'quoted', 'approved'], p.shop)
     if (order === 'ambiguous') return toCompra('Hay varios pedidos abiertos; pregunta cuál.')
-    if (!order) return toCompra('No hay ningún pedido abierto.')
+    if (!order) {
+      if (p.cancel && orders.some((o) => o.red && !CANCELLABLE.includes(o.status))) {
+        return toCompra('El pedido de la Red ya está en marcha en la tienda: desde aquí ya no se cancela; si hace falta, que hable con la tienda.')
+      }
+      if (!p.cancel && orders.some((o) => o.red)) return toCompra('Los pedidos de la Red no se cierran a mano: se cierran solos cuando la tienda lo entrega.')
+      return toCompra('No hay ningún pedido abierto.')
+    }
     if (p.cancel) {
       await api(ctx)('POST', `/shop-orders/${order.id}/cancel`)
       return toCompra(`Hecho: pedido a ${order.shop.name} cancelado.`)
@@ -404,7 +437,22 @@ const getShopOrders: SkillDefinition = {
   async handler(_p, ctx) {
     const orders = await openOrders(ctx)
     if (!orders.length) return toCompra('No hay pedidos abiertos a tiendas.')
-    const label: Record<string, string> = { draft: 'preparado, sin enviar', sent: 'enviado, esperando respuesta', quoted: 'la tienda ha contestado, falta confirmar', approved: 'confirmado' }
+    const label: Record<string, string> = {
+      draft: 'preparado, sin enviar',
+      sent: 'enviado, esperando respuesta',
+      quoted: 'la tienda ha contestado, falta confirmar',
+      approved: 'confirmado',
+      // Red de tiendas (a Red draft gets its /c/ link below too: shortOrder is always set).
+      ordered: 'pedido a la tienda de la Red, esperando que lo acepte',
+      accepted: 'aceptado por la tienda',
+      preparing: 'la tienda lo está preparando',
+      ready: 'listo',
+      payment_pending: 'pendiente de pago',
+      charged: 'cobrado',
+      delivered: 'entregado',
+      rejected: 'rechazado por la tienda',
+      incident: 'con una incidencia abierta',
+    }
     return toCompra(orders.map((o) => `- ${o.shop.name}: ${label[o.status] ?? o.status}${o.status === 'draft' && o.links.shortOrder ? ` → ${o.links.shortOrder}` : ''}`).join('\n'))
   },
 }

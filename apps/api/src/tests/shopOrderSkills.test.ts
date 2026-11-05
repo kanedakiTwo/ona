@@ -7,7 +7,7 @@
  * Run: pnpm --filter @ona/api test src/tests/shopOrderSkills.test.ts
  */
 import { describe, it, expect } from 'vitest'
-import { EMPTY_SHOP_FORM, buildShopPayload, shopInputSchema, type Shop, type ShopOrder } from '@ona/shared'
+import { DEFAULT_RED_SETTINGS, EMPTY_SHOP_FORM, buildShopPayload, shopInputSchema, type RedOrderView, type Shop, type ShopOrder } from '@ona/shared'
 import { shopOrderSkills, payloadFrom } from '../services/assistant/shopOrderSkills.js'
 import type { AppApi } from '../services/assistant/appApi.js'
 
@@ -86,6 +86,10 @@ function order(over: Partial<ShopOrder> = {}): ShopOrder {
   }
 }
 
+/** A Red order's view (RedOrderView): −5 %, ≈17,10 €, como mucho 20 €. */
+const RED_VIEW: RedOrderView = { redShopId: 'r1', terms: DEFAULT_RED_SETTINGS, estimateShopEur: 18, estimateEur: 17.1, feeEur: null, ceilingShopEur: 20.7, maxEur: 20, maxRaised: false, shopCeilingEur: 21.05, delivers: false, ownShopJoined: false }
+const RED_LINKS = { order: null, confirmation: null, shortOrder: 'https://ona.app/c/REDREDREDREDRED1', shortConfirmation: null, tooLong: false, view: 'https://ona.app/compra?pedido=o9' }
+
 describe('prepare_shop_orders', () => {
   it('without shops: asks for them and points at /compra/tiendas', async () => {
     const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [], unassigned: [], skipped: [], hasShops: false } })
@@ -105,6 +109,63 @@ describe('prepare_shop_orders', () => {
     expect(r.summary).toMatch(/Súper Online.*web/)
     expect(r.summary).toContain('sal')
     expect(r.data.navigateTo).toBe('/compra')
+  })
+
+  it('a Red order: its /c/ link to the card on /compra, the discount and the max, never «envíaselo desde tu WhatsApp»', async () => {
+    const red = order({
+      id: 'o9',
+      status: 'draft',
+      shop: { name: 'Frutería de prueba', kind: 'fruteria', channel: 'whatsapp', whatsapp: '34600000091', email: null, webUrl: null, phone: null },
+      links: RED_LINKS,
+      red: RED_VIEW,
+    })
+    const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [red], unassigned: [], skipped: [], hasShops: true, red: { enabled: true, discountPct: 5, needsPostalCode: false, questions: [], assigned: [], heldBack: [], uncovered: [] } } })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.summary).toContain('https://ona.app/c/REDREDREDREDRED1')
+    expect(r.summary).toMatch(/de la Red, −5 % ya descontado/)
+    expect(r.summary).toMatch(/como mucho 20 €/)
+    expect(r.summary).not.toMatch(/envíaselo desde tu WhatsApp/)
+    expect(r.summary).not.toMatch(/wa\.me/)
+    expect(r.summary).toMatch(/REDREDREDREDRED1(\s|$)/)
+  })
+
+  it('a Red order with something missing: still its link, nothing glued to it, and what is missing', async () => {
+    const red = order({ id: 'o9', status: 'draft', links: RED_LINKS, red: RED_VIEW, blockers: ['Falta la dirección de entrega'] })
+    const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [red], unassigned: [], skipped: [], hasShops: true, red: { enabled: true, discountPct: 5, needsPostalCode: false, questions: [], assigned: [], heldBack: [], uncovered: [] } } })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.summary).toMatch(/REDREDREDREDRED1 \(antes de pedirlo falta: Falta la dirección de entrega\)/)
+  })
+
+  it('Red without a postal code and no shops: asks for the postal code in the app, not for shops', async () => {
+    const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [], unassigned: [{ name: 'manzanas' }], skipped: [], hasShops: false, red: { enabled: true, discountPct: 5, needsPostalCode: true, questions: [], assigned: [], heldBack: [], uncovered: [] } } })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.data.navigateTo).toBe('/compra')
+    expect(r.summary).toMatch(/código postal/)
+    expect(r.summary).not.toMatch(/manage_shops/)
+  })
+
+  it('Red on, postal code given, no shops and no Red shop nearby: still asks for shops (not «nada pendiente»)', async () => {
+    const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [], unassigned: [{ name: 'manzanas' }], skipped: [], hasShops: false, red: { enabled: true, discountPct: 5, needsPostalCode: false, questions: [], assigned: [], heldBack: [], uncovered: ['fruteria'] } } })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.data.navigateTo).toBe('/compra/tiendas')
+    expect(r.summary).toMatch(/manage_shops/)
+  })
+
+  it('Red: asks once (Red shop or súper), says which Red shop it assigned, all to pick in the app', async () => {
+    const red = order({ id: 'o9', status: 'draft', links: RED_LINKS, red: RED_VIEW })
+    const { api } = fakeApi({
+      'POST /shop-orders/prepare': {
+        orders: [red],
+        unassigned: [],
+        skipped: [],
+        hasShops: true,
+        red: { enabled: true, discountPct: 5, needsPostalCode: false, questions: [{ kind: 'carniceria', redShop: { id: 'r2', name: 'Carnicería de prueba' }, superName: 'Súper Online' }], assigned: [{ kind: 'fruteria', shopId: 's9', name: 'Frutería de prueba', alternatives: [] }], heldBack: [], uncovered: [] },
+      },
+    })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.summary).toMatch(/lo de carnicería lo pide a Carnicería de prueba \(de la Red, −5 %\) o lo sigue pidiendo en Súper Online/)
+    expect(r.summary).toMatch(/Le he asignado una tienda de la Red: Frutería de prueba \(frutería, −5 %\)/)
+    expect(r.summary).toMatch(/no se envían por WhatsApp/)
   })
 })
 
@@ -138,6 +199,13 @@ describe('register_shop_reply', () => {
     await get('register_shop_reply').handler({ text: 'todo ok', shop: 'la plaza' }, ctx(api))
     expect(writes(calls)[0].path).toBe('/shop-orders/o2/quote')
   })
+
+  it('never registers a forwarded reply on a Red order', async () => {
+    const red = order({ id: 'o9', status: 'draft', red: RED_VIEW })
+    const { api, calls } = fakeApi({ 'GET /shop-orders': [red] })
+    await get('register_shop_reply').handler({ text: 'todo ok' }, ctx(api))
+    expect(calls.some((c) => c.path.endsWith('/quote'))).toBe(false)
+  })
 })
 
 describe('approve_shop_order', () => {
@@ -166,6 +234,33 @@ describe('close_shop_order', () => {
     const b = fakeApi({ 'GET /shop-orders': [order({ status: 'approved' })] })
     await get('close_shop_order').handler({ totalEur: 23.4 }, ctx(b.api))
     expect(writes(b.calls)).toEqual([{ method: 'POST', path: '/shop-orders/o1/close', body: { finalTotalEur: 23.4 } }])
+  })
+
+  it('cancels a Red order the shop hasn\'t started (ordered / accepted)', async () => {
+    const a = fakeApi({ 'GET /shop-orders': [order({ id: 'o9', status: 'ordered', red: RED_VIEW })] })
+    await get('close_shop_order').handler({ cancel: true }, ctx(a.api))
+    expect(writes(a.calls)).toEqual([{ method: 'POST', path: '/shop-orders/o9/cancel', body: undefined }])
+    const b = fakeApi({ 'GET /shop-orders': [order({ id: 'o9', status: 'accepted', red: RED_VIEW })] })
+    await get('close_shop_order').handler({ cancel: true }, ctx(b.api))
+    expect(writes(b.calls)).toEqual([{ method: 'POST', path: '/shop-orders/o9/cancel', body: undefined }])
+  })
+
+  it('never closes a Red order by hand: it closes the other one, or says the Red ones close on their own', async () => {
+    const red = order({ id: 'o9', status: 'draft', red: RED_VIEW })
+    const a = fakeApi({ 'GET /shop-orders': [red, order({ status: 'approved' })] })
+    await get('close_shop_order').handler({}, ctx(a.api))
+    expect(writes(a.calls)).toEqual([{ method: 'POST', path: '/shop-orders/o1/close', body: {} }])
+    const b = fakeApi({ 'GET /shop-orders': [red] })
+    const r = await get('close_shop_order').handler({}, ctx(b.api))
+    expect(writes(b.calls)).toEqual([])
+    expect(r.summary).toMatch(/se cierran solos/)
+  })
+
+  it('a Red order the shop is already preparing: no cancel call, says to talk to the shop', async () => {
+    const { api, calls } = fakeApi({ 'GET /shop-orders': [order({ id: 'o9', status: 'preparing', red: RED_VIEW })] })
+    const r = await get('close_shop_order').handler({ cancel: true }, ctx(api))
+    expect(writes(calls)).toEqual([])
+    expect(r.summary).toMatch(/hable con la tienda/)
   })
 })
 
@@ -269,5 +364,19 @@ describe('edit_shop_order', () => {
     const r = await get('edit_shop_order').handler({ add: [{ name: 'manzanas' }] }, ctx(api))
     expect(writes(calls)).toEqual([])
     expect(r.summary).toMatch(/No hay pedidos preparados/)
+  })
+})
+
+describe('get_shop_orders', () => {
+  it('says the Red states in words and gives a Red draft its /c/ link', async () => {
+    const { api } = fakeApi({
+      'GET /shop-orders': [
+        order({ id: 'o9', status: 'draft', shop: { ...order().shop, name: 'Frutería de prueba' }, links: RED_LINKS, red: RED_VIEW }),
+        order({ id: 'o8', status: 'ordered', shop: { ...order().shop, name: 'Carnicería de prueba' }, links: RED_LINKS, red: RED_VIEW }),
+      ],
+    })
+    const r = await get('get_shop_orders').handler({}, ctx(api))
+    expect(r.summary).toMatch(/Frutería de prueba: .*→ https:\/\/ona\.app\/c\/REDREDREDREDRED1/)
+    expect(r.summary).toMatch(/Carnicería de prueba: pedido a la tienda de la Red, esperando que lo acepte/)
   })
 })

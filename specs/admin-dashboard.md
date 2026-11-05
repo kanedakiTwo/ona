@@ -17,7 +17,7 @@ It is intentionally small: **a few sections, no charts, no destructive operation
   - **Pasillo «otros»** — `aisle === 'otros'` or `aisle IS NULL`. Inline `<select>`.
   - **Sin densidad** — heuristic: name matches density-relevant keywords AND `density IS NULL`. Inline numeric input.
   - **Sin peso por unidad** — `aisle === 'produce'` AND `unitWeight IS NULL` AND not bulk leafy. Inline numeric input.
-  - **Alérgenos sugeridos** — rows where `inferAllergenTagsFromName(name)` produces tags not currently present.
+  - **Alérgenos sugeridos** — rows where `inferAllergenTagsFromName(name)` produces tags not currently present. On top, **Sin sésamo** (PRO-1096, `sesameMissing` of `GET /admin/ingredient-gaps`): ingredients whose name says za'atar, dukkah, gomasio or halva (`PRO1096_SESAME_TERMS`) and whose stored tags lack `sesamo`, each with the published catalogue recipes that use it (linked) and how many household recipes do (a count, no names). Only shown when there is one; the row is fixed by hand (its «Aceptar» below, or by Cocina's approval).
   - **Recetas de sistema con kcal=0** — system recipes (`authorId IS NULL`) whose `nutritionPerServing.kcal` is falsy. Lists which of their ingredients are still missing `fdcId`. Recipe name links to its detail page; admin fixes the upstream ingredient first, then re-saves the recipe to recompute.
   - **Output de regen** — collapsible list parsed from `apps/api/scripts/output/regen-failed.jsonl` and `regen-skipped.jsonl`.
   - **Usuarios** — see [User Management](./user-management.md). Sub-tab; lists, suspends, and generates reset password tokens.

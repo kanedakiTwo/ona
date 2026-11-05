@@ -38,6 +38,12 @@ export interface IngredientGapsResponse {
     recipes: Array<{ id: string; name: string }>
     householdRecipes: number
   }>
+  /** PRO-1118: recipes whose stored allergens differ from their ingredients' union. */
+  allergenMismatch?: {
+    total: number
+    householdRecipes: number
+    recipes: Array<{ id: string; name: string; stored: string[]; expected: string[] }>
+  }
 }
 
 export interface RecipeGapsResponse {

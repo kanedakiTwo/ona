@@ -10,6 +10,7 @@ import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
 import { applyCompoundIngredientTags } from '../services/compoundIngredients.js'
 import { applyNameAllergenTags } from '../services/nutrition/allergenBackfill.js'
+import { logRecipeAllergenMismatches } from '../services/nutrition/recipeAllergenSync.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -82,6 +83,13 @@ async function main() {
     await applyNameAllergenTags(db)
   } catch (err) {
     console.error('[allergen-names] failed:', err)
+  }
+  // Read-only (PRO-1118): count the recipes whose stored allergens don't
+  // match their ingredients' union; the list is in Admin → Alérgenos sugeridos.
+  try {
+    await logRecipeAllergenMismatches(db)
+  } catch (err) {
+    console.error('[recipe-allergens] failed:', err)
   }
   // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
   // every recipe; the cached figures are left as they are.

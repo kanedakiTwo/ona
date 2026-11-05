@@ -5,11 +5,12 @@
  *
  *   DATABASE_URL=… pnpm --filter @ona/api exec tsx scripts/redTestShops.ts --cp 28001 [--reparte 28002,28003] [--yes]
  *
- * A database that isn't local (staging) needs --yes.
+ * A database that isn't local (staging) needs --yes. Production (RAILWAY_ENVIRONMENT_NAME=production):
+ * never, not even with --yes.
  */
 import { isPostalCode } from '@ona/shared'
 import { pool } from '../src/db/connection.js'
-import { seedRedTestShops } from '../src/services/red/testShops.js'
+import { seedRedTestShops, testShopsDbRefusal } from '../src/services/red/testShops.js'
 
 const args = process.argv.slice(2)
 const arg = (name: string) => {
@@ -18,14 +19,14 @@ const arg = (name: string) => {
 }
 const cp = arg('--cp') ?? ''
 const reparte = (arg('--reparte') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-const url = process.env.DATABASE_URL ?? ''
 
 if (!isPostalCode(cp) || !reparte.every(isPostalCode)) {
   console.error('Uso: redTestShops.ts --cp 28001 [--reparte 28002,28003] [--yes]')
   process.exit(2)
 }
-if (!/localhost|127\.0\.0\.1|host=\/tmp/.test(url) && !args.includes('--yes')) {
-  console.error('La base no es local. Si de verdad es staging, añade --yes. En producción, nunca.')
+const refusal = testShopsDbRefusal(process.env.DATABASE_URL ?? '', process.env, args.includes('--yes'))
+if (refusal) {
+  console.error(refusal)
   process.exit(2)
 }
 

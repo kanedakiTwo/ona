@@ -8,6 +8,7 @@ import { DEFAULT_RED_SETTINGS, type RedKind, type RedSettings } from '@ona/share
 import { db as defaultDb } from '../../db/connection.js'
 import { households, householdShops, redSettings, redShops, shopOrders } from '../../db/schema.js'
 import { redCandidates, type RedShopLite } from './assign.js'
+import { redShopUsable } from './testShops.js'
 
 type Db = typeof defaultDb
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
@@ -37,12 +38,14 @@ export function sameTerms(a: RedSettings | null | undefined, b: RedSettings): bo
 
 /** Whether a Red shop takes orders now (a paused or gone shop doesn't). */
 export async function isRedShopActive(redShopId: string, db: Pick<Db, 'select'> = defaultDb): Promise<boolean> {
-  const [row] = await db.select({ status: redShops.status }).from(redShops).where(eq(redShops.id, redShopId)).limit(1)
-  return row?.status === 'activa'
+  const [row] = await db.select({ status: redShops.status, isTest: redShops.isTest }).from(redShops).where(eq(redShops.id, redShopId)).limit(1)
+  return !!row && redShopUsable(row)
 }
 
+/** The shops that can be assigned or linked: active, and no test shop in production (`redShopUsable`). */
 export async function activeRedShops(db: DbOrTx = defaultDb): Promise<RedShopRow[]> {
-  return db.select().from(redShops).where(eq(redShops.status, 'activa'))
+  const rows = await db.select().from(redShops).where(eq(redShops.status, 'activa'))
+  return rows.filter((r) => redShopUsable(r))
 }
 
 export const toLite = (r: RedShopRow): RedShopLite => ({

@@ -16,7 +16,45 @@ export const RED_TEST_SHOPS = [
   { kind: 'pescaderia', name: 'Pescadería de prueba', whatsapp: '34600000093', deliveryMinEur: 30, deliveryFeeEur: 4, delivers: true },
 ] as const
 
+/**
+ * Railway's production environment. Same signal as emailSink.ts: Railway sets
+ * RAILWAY_ENVIRONMENT_NAME to the environment's name (`production`, `staging`);
+ * CI and local runs don't set it. Not `isDeployedRuntime`, which staging is too.
+ */
+export function isProductionEnv(e: NodeJS.ProcessEnv = process.env): boolean {
+  return e.RAILWAY_ENVIRONMENT_NAME === 'production'
+}
+
+/**
+ * Whether a Red shop can be assigned, linked or ordered from: active, and never
+ * a test shop in production (CI, staging and local runs do see test shops).
+ */
+export function redShopUsable(shop: { status: string; isTest: boolean }, e: NodeJS.ProcessEnv = process.env): boolean {
+  return shop.status === 'activa' && (!shop.isTest || !isProductionEnv(e))
+}
+
+/** A Postgres URL on this machine: localhost, 127.0.0.1, ::1, or no host and the `/tmp` socket. */
+export function isLocalDbUrl(url: string): boolean {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return false
+  }
+  const host = u.hostname.replace(/^\[|\]$/g, '')
+  if (host) return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  return u.searchParams.get('host') === '/tmp'
+}
+
+/** Why scripts/redTestShops.ts must not seed this database, or null. Production: never, not even with --yes. */
+export function testShopsDbRefusal(url: string, e: NodeJS.ProcessEnv, yes: boolean): string | null {
+  if (isProductionEnv(e)) return 'Esto es producción: las tiendas de prueba nunca van ahí.'
+  if (!isLocalDbUrl(url) && !yes) return 'La base no es local. Si de verdad es staging, añade --yes. En producción, nunca.'
+  return null
+}
+
 export async function seedRedTestShops(input: { postalCode: string; deliversTo?: string[] }, db: Db = defaultDb) {
+  if (isProductionEnv()) throw new Error('Las tiendas de prueba nunca van a producción.')
   const out: Array<{ id: string; kind: string; name: string }> = []
   for (const s of RED_TEST_SHOPS) {
     const fields = {

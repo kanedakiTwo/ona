@@ -9,9 +9,13 @@
  *     pnpm --filter @ona/api exec vitest run src/tests/redOrders.smoke.ts
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { DEFAULT_RED_SETTINGS } from '@ona/shared'
 import { API_URL, reachable } from './smokeEnv.js'
 import { pool } from '../db/connection.js'
-import { seedRedTestShops } from '../services/red/testShops.js'
+import { householdAmount } from '../services/red/money.js'
+import { RED_TEST_SHOPS, seedRedTestShops } from '../services/red/testShops.js'
+
+const FRUTERIA = RED_TEST_SHOPS.find((s) => s.kind === 'fruteria')!
 
 interface Session { token: string }
 
@@ -22,7 +26,8 @@ async function register(domain: string): Promise<Session> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username: `red_${id}`, email: `red_${id}@${domain}`, password: 'smokepass123', ageConfirmed: true }),
   })
-  const body = await r.json()
+  const body = await r.json().catch(() => null)
+  if (!r.ok || typeof body?.token !== 'string') throw new Error(`register failed: ${r.status} ${JSON.stringify(body)}`)
   return { token: body.token }
 }
 
@@ -73,12 +78,13 @@ describe.skipIf(!reachable)('Red de tiendas · tramo 1a', () => {
     expect((await api('PUT', '/red/postal-code', { postalCode: '28001' })).body).toEqual({ postalCode: '28001' })
 
     prep = (await api('POST', '/shop-orders/prepare', {})).body
-    expect(prep.red.assigned.map((a: any) => [a.kind, a.name])).toEqual([['fruteria', 'Frutería de prueba']])
+    expect(prep.red.assigned.map((a: any) => [a.kind, a.name])).toEqual([['fruteria', FRUTERIA.name]])
     const order = prep.orders.find((o: any) => o.shop.kind === 'fruteria')
     expect(order.red).toMatchObject({ terms: { discountPct: 5, commissionPct: 5 }, delivers: true })
     expect(order.links.order).toBeNull()
     expect(order.links.shortOrder).toMatch(/\/c\//)
-    expect(order.red.estimateEur).toBeCloseTo(order.red.estimateShopEur * 0.95, 2)
+    expect(order.red.estimateShopEur).not.toBeNull()
+    expect(order.red.estimateEur).toBe(householdAmount(order.red.estimateShopEur, DEFAULT_RED_SETTINGS))
 
     // The short link opens the card on /compra, never wa.me.
     const token = order.links.shortOrder.split('/c/')[1]
@@ -87,8 +93,8 @@ describe.skipIf(!reachable)('Red de tiendas · tramo 1a', () => {
     // The shop shows in «Tus tiendas» as a Red one, and can't be edited.
     const shops = (await api('GET', '/shops')).body
     const copy = shops.find((s: any) => s.origin === 'red')
-    expect(copy).toMatchObject({ kind: 'fruteria', name: 'Frutería de prueba' })
-    expect((await api('PATCH', `/shops/${copy.id}`, { name: 'Otra', kind: 'fruteria', channel: 'whatsapp', whatsapp: '34600000091', fulfilment: 'recoger' })).status).toBe(409)
+    expect(copy).toMatchObject({ kind: 'fruteria', name: FRUTERIA.name })
+    expect((await api('PATCH', `/shops/${copy.id}`, { name: 'Otra', kind: 'fruteria', channel: 'whatsapp', whatsapp: FRUTERIA.whatsapp, fulfilment: 'recoger' })).status).toBe(409)
 
     // Raise the max; it can't go under what's expected.
     expect((await api('PATCH', `/shop-orders/${order.id}`, { maxEur: 1 })).status).toBe(400)
@@ -146,7 +152,7 @@ describe.skipIf(!reachable)('Red de tiendas · tramo 1a', () => {
 
   it('the household’s own shop with a Red shop’s WhatsApp joins the Red', async () => {
     const api = call(await register('red.test.local'))
-    await api('POST', '/shops', { name: 'Mi frutería', kind: 'fruteria', channel: 'whatsapp', whatsapp: '34600000091', fulfilment: 'recoger' })
+    await api('POST', '/shops', { name: 'Mi frutería', kind: 'fruteria', channel: 'whatsapp', whatsapp: FRUTERIA.whatsapp, fulfilment: 'recoger' })
     await addToList(api, [{ name: 'manzanas', quantity: 1000, unit: 'g', aisle: 'produce' }])
     const prep = (await api('POST', '/shop-orders/prepare', {})).body
     const order = prep.orders.find((o: any) => o.shop.kind === 'fruteria')

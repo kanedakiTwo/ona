@@ -42,6 +42,8 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/admin/newsletter/stats',
   '/admin/price-survey',
   '/admin/recipe-gaps',
+  '/admin/recipes/:x/ingredient-roles',
+  '/admin/recipes/ingredient-roles/pending',
   '/admin/regen-output',
   '/admin/usage',
   '/admin/users',

@@ -37,6 +37,7 @@ import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
+import ingredientRoleRoutes from './routes/ingredientRoles.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
@@ -196,6 +197,8 @@ app.use(telegramRoutes)
 // GET /admin/metrics accepts `x-metrics-token` instead of a JWT, so it must
 // be mounted before the catch-all `router.use(authMiddleware)` routers below.
 app.use(metricsRoutes)
+// Same reason: the ingredient-role routes accept `x-cocina-token` (specs/cook-now.md).
+app.use(ingredientRoleRoutes)
 // Same reason: GET /admin/errors also accepts `x-metrics-token`.
 app.use(appErrorsRoutes)
 // Same reason: GET /admin/waitlist accepts `x-metrics-token` (invite is admin JWT only).

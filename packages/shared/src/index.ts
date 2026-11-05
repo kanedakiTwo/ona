@@ -74,6 +74,18 @@ export {
   cookingStyleFactValueSchema,
   setCookingStyleSchema,
 } from './types/cookingStyle.js'
+export type { Shopper } from './types/shopper.js'
+export {
+  SHOPPERS,
+  SHOPPER_QUESTION,
+  SHOPPER_LABELS,
+  isShopper,
+  asksShopper,
+  shopperInvites,
+  shopperSchema,
+  shopperFactValueSchema,
+  shopperInviteText,
+} from './types/shopper.js'
 export type { FreezeAnswer } from './types/freezeHabit.js'
 export {
   FREEZE_ANSWERS,
@@ -395,9 +407,10 @@ export {
   ACCOUNT_PAUSED_MESSAGE,
   trialLastDayLabel,
   trialDaysLeftLabel,
-  FOUNDER_OFFER_DAY,
+  FOUNDER_OFFER_FALLBACK_DAY,
   founderPriceIfSubscribing,
   founderOfferStands,
+  founderOfferFires,
   founderOfferText,
   founderPriceAmounts,
   euros,
@@ -685,4 +698,7 @@ export type {
   CatalogCollectionCard,
   CatalogCollectionAdminView,
 } from './types/catalogCollections.js'
+// La receta del día (PRO-1099, specs/recipe-of-the-day.md)
+export { ISO_DAY_RE, isIsoDay, RECIPE_OF_THE_DAY_PHOTO_SIZES, RECIPE_OF_THE_DAY_PATH } from './types/recipeOfTheDay.js'
+export type { RecipeOfTheDayPhotoFormat, RecipeOfTheDayView } from './types/recipeOfTheDay.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'

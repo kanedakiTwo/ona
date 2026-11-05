@@ -19,7 +19,11 @@ import {
   type SubscriptionRepo,
 } from '../services/billing.js'
 import { creatorRefsSql } from '../services/creatorTrial.js'
+<<<<<<< 8398e65c6e75b98295b58a5ffeba6fb84e58d8c5
 import { createPaymentFailedNotifier } from '../services/paymentFailures.js'
+=======
+import { householdWeekResolved, trialFirstDay } from '../services/founderOffer.js'
+>>>>>>> 68062a86caaa8124c057dbfa194114f3d54295a5
 
 /**
  * Subscriptions (specs/billing.md).
@@ -51,6 +55,20 @@ export interface BillingDeps {
   now: () => Date
   webUrl: string
   auth: RequestHandler
+  /** PRO-384: what the founder offer needs (resolved week, already sent). Only asked in the trial. */
+  offerSignals: (payer: Payer) => Promise<{ weekResolved: boolean; founderOfferAt: Date | null }>
+}
+
+async function loadOfferSignals(payer: Payer): Promise<{ weekResolved: boolean; founderOfferAt: Date | null }> {
+  try {
+    const [h] = await db.select({ at: households.founderOfferAt }).from(households).where(eq(households.id, payer.householdId)).limit(1)
+    const founderOfferAt = h?.at ?? null
+    if (founderOfferAt || !payer.householdCreatedAt) return { weekResolved: false, founderOfferAt }
+    return { weekResolved: await householdWeekResolved(payer.householdId, trialFirstDay(payer.householdCreatedAt, payer.trialDays)), founderOfferAt }
+  } catch (err) {
+    console.error('[billing] founder offer signals failed:', err)
+    return { weekResolved: false, founderOfferAt: null }
+  }
 }
 
 async function loadPayer(userId: string): Promise<Payer | null> {
@@ -84,6 +102,7 @@ function defaults(): BillingDeps {
     now: () => new Date(),
     webUrl: env.WEB_PUBLIC_URL,
     auth: authMiddleware as RequestHandler,
+    offerSignals: loadOfferSignals,
   }
 }
 
@@ -98,16 +117,22 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
   router.get('/billing', d.auth, async (req: AuthRequest, res) => {
     const payer = await d.payer(req.userId!)
     const row = payer ? await d.repo.latestForHousehold(payer.householdId) : null
-    res.json(
-      billingStateFor(row, {
-        enabled: d.enabled(),
-        canManage: !!payer?.isOwner,
-        now: d.now(),
-        userCreatedAt: payer?.createdAt ?? null,
-        householdCreatedAt: payer?.householdCreatedAt ?? null,
-        trialDays: payer?.trialDays,
-      }),
-    )
+    const now = d.now()
+    const opts = {
+      enabled: d.enabled(),
+      canManage: !!payer?.isOwner,
+      now,
+      userCreatedAt: payer?.createdAt ?? null,
+      householdCreatedAt: payer?.householdCreatedAt ?? null,
+      trialDays: payer?.trialDays,
+    }
+    const state = billingStateFor(row, opts)
+    // PRO-384: before day 10 the offer depends on the resolved week; ask only then.
+    if (payer && state.access.state === 'trial' && !state.subscription && !state.founder.offer) {
+      res.json(billingStateFor(row, { ...opts, ...(await d.offerSignals(payer)) }))
+      return
+    }
+    res.json(state)
   })
 
   router.post('/billing/checkout', d.auth, async (req: AuthRequest, res) => {

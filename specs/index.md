@@ -164,6 +164,14 @@ Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para l
 
 ---
 
+## [La receta del día](./recipe-of-the-day.md)
+
+Recipe of the day / receta del día (PRO-1099, E-26): one published catalogue recipe per day (`recipes.featured_on`, unique, migration 0106; `featuredOn` in Cocina's batch file, Miguel sees it before it goes out, D-164.1), public `GET /recipe-of-the-day` and `GET /recipe-of-the-day/AAAA-MM-DD` (Madrid's today; «hoy no hay» → the last one, with its date; 404 `NONE`, 400 `INVALID_DATE`), social post pack / paquete para redes (title, short text built from the recipe, key ingredients, minutes, cuisine, credit, source link, recipe link), photo cut to 1080×1350 and 1200×630 (`/recipe-of-the-day/:date/photo/vertical|horizontal`, sharp; web relay `/receta-del-dia/<fecha>/foto/<formato>`), public page `/receta-del-dia` and `/receta-del-dia/<fecha>` with Open Graph / X card, in the sitemap, Mimo tool `get_recipe_of_the_day` (web chat and WhatsApp, D-051; warns it isn't picked for the household's allergies).
+
+**Source**: `apps/api/src/services/recipeOfTheDay.ts`, `apps/api/src/routes/recipeOfTheDay.ts`, `apps/api/src/services/assistant/recipeOfTheDaySkills.ts`, `packages/shared/src/types/recipeOfTheDay.ts`, `apps/web/src/app/(public)/receta-del-dia/`, `apps/web/src/components/recipeOfTheDay/`, `apps/web/src/lib/recipeOfTheDay.ts`
+
+---
+
 ## [Cooking Mode](./cooking-mode.md)
 
 Hands-free fullscreen cook-along, step-by-step UX, per-step countdown timers, multiple concurrent timers, vibration + chime on timer fire, swipe between steps, ingredient checklist, inline scaled ingredient chips, temperature/technique badges, Wake Lock screen-on, live diner re-scaling inside cooking mode, «Mimo, manos libres» hands-free button (keeps listening through silences until turned off or leaving cook mode), exits cleanly without mutating the recipe, "Empezar a cocinar" entry point.

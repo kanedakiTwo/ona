@@ -59,20 +59,33 @@ export async function matchDraftIngredients(recipeName: string, ings: DraftIngre
  */
 export async function persistCatalogDraft(input: PersistDraftInput, db: Db = defaultDb): Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }> {
   const catalogSource = catalogSourceRecord(input.catalogSource)
-  const [row] = await db
-    .insert(recipes)
-    .values({
-      name: input.name,
-      servings: input.servings,
-      authorId: null,
-      status: DRAFT,
-      importBatch: input.catalogSource.batch,
-      catalogSource,
-      // PRO-372: persistRecipe doesn't know the storage seals, so they go in here.
-      freezable: input.freezable,
-      fridgeDays: input.fridgeDays,
-    })
-    .returning({ id: recipes.id })
+  // PRO-1099: one recipe of the day per day — a day already taken rejects the recipe, in words.
+  if (input.featuredOn) {
+    const [taken] = await db.select({ name: recipes.name }).from(recipes).where(eq(recipes.featuredOn, input.featuredOn)).limit(1)
+    if (taken) return { ok: false, errors: [featuredOnTaken(input.featuredOn, taken.name)] }
+  }
+  let row: { id: string }
+  try {
+    ;[row] = await db
+      .insert(recipes)
+      .values({
+        name: input.name,
+        servings: input.servings,
+        authorId: null,
+        status: DRAFT,
+        importBatch: input.catalogSource.batch,
+        catalogSource,
+        // PRO-372: persistRecipe doesn't know the storage seals, so they go in here.
+        freezable: input.freezable,
+        fridgeDays: input.fridgeDays,
+        featuredOn: input.featuredOn ?? null,
+      })
+      .returning({ id: recipes.id })
+  } catch (err) {
+    // Two imports racing for the same day: the unique index answers.
+    if (input.featuredOn && isFeaturedOnConflict(err)) return { ok: false, errors: [featuredOnTaken(input.featuredOn, null)] }
+    throw err
+  }
   try {
     const res = await persistRecipe(
       {
@@ -110,6 +123,17 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
     await db.delete(recipes).where(eq(recipes.id, row.id))
     throw err
   }
+}
+
+/** «El 2026-11-05 ya tiene receta del día («Lentejas estofadas»).» */
+export function featuredOnTaken(day: string, name: string | null): string {
+  return `El ${day} ya tiene receta del día${name ? ` («${name}»)` : ''}: solo hay una por día (featuredOn).`
+}
+
+function isFeaturedOnConflict(err: unknown): boolean {
+  const e = err as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } } | null
+  const pg = e?.cause ?? e
+  return pg?.code === '23505' && (pg?.constraint ?? '').includes('featured_on')
 }
 
 export function createDbCatalogImportDeps(

@@ -232,8 +232,12 @@ export interface AccountAccess {
   trialDay: number | null
 }
 
-/** Day of the trial when the founder-price offer goes out (PRO-136, D-056). */
-export const FOUNDER_OFFER_DAY = 7
+/**
+ * The founder-price offer (PRO-136) fires when the household resolves its
+ * first week, or on this day of the trial, whichever comes first (PRO-384,
+ * D-158; it replaced D-056's fixed day 7).
+ */
+export const FOUNDER_OFFER_FALLBACK_DAY = 10
 
 /** «Te quedan 2 días»: the in-app notice and the email go from this many days before the last day (day 12). */
 export const TRIAL_ENDING_NOTICE_DAYS = 2
@@ -364,7 +368,7 @@ export interface BillingState {
     household: boolean
     /** Subscribing now keeps the founder price (a founding household, or still in its trial). */
     priceIfSubscribing: boolean
-    /** The day-7 offer stands: in trial from day 7, no plan. */
+    /** The offer stands: in trial, no plan, once the week is resolved or from day 10 (PRO-384), or already sent. */
     offer: boolean
   }
   subscription: {
@@ -417,9 +421,21 @@ export function founderPriceIfSubscribing(
   return s === 'beta' || s === 'trial'
 }
 
-/** The day-7 offer stands (PRO-136): in trial, from day 7, no plan. */
-export function founderOfferStands(access: AccountAccess): boolean {
-  return access.state === 'trial' && access.trialDay !== null && access.trialDay >= FOUNDER_OFFER_DAY
+/**
+ * The founder offer stands (PRO-136, PRO-384): in trial, no plan, and either
+ * the household resolved a week in its trial or it is day 10 or later.
+ */
+export function founderOfferStands(access: AccountAccess, weekResolved = false): boolean {
+  if (access.state !== 'trial' || access.trialDay === null) return false
+  return weekResolved || access.trialDay >= FOUNDER_OFFER_FALLBACK_DAY
+}
+
+/**
+ * The trigger (PRO-384, D-158): does the offer go out now? Once
+ * (`offeredAt` = `households.founder_offer_at`), never with a plan.
+ */
+export function founderOfferFires(i: { access: AccountAccess; weekResolved: boolean; offeredAt: Date | string | null }): boolean {
+  return i.offeredAt == null && founderOfferStands(i.access, i.weekResolved)
 }
 
 /**
@@ -433,13 +449,14 @@ export function founderPriceAmounts(): string {
 }
 
 /**
- * The day-7 offer, short (PRO-136, D-056): Mimo on WhatsApp and in the web
- * panel, and the offer card. Text for Legal to review.
+ * The founder offer, short (PRO-136, D-056): Mimo on WhatsApp and in the web
+ * panel, and the offer card. Text for Legal to review. Since PRO-384 it can
+ * go out on day 1, so it no longer opens with «Llevas una semana».
  */
 export function founderOfferText(i: { trialLastDay: string; firstChargeAt: string }): string {
   const last = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${i.trialLastDay}T12:00:00Z`))
   return (
-    `Llevas una semana con Mimoia. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba ` +
+    `Si ya sabes que te quedas con Mimoia, deja la tarjeta antes de que acabe tu prueba ` +
     `(dura hasta el ${last}) y te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito. ` +
     `No se cobra nada hasta el ${dayEs(i.firstChargeAt, true)} y puedes cancelar antes sin pagar nada.`
   )

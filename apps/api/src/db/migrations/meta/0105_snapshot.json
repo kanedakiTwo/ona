@@ -1,9 +1,5 @@
 {
-<<<<<<< 8398e65c6e75b98295b58a5ffeba6fb84e58d8c5
   "id": "50011615-d05d-4e20-9fed-bb5f0f3f7644",
-=======
-  "id": "20cb27e9-4514-44cd-914d-38d05b16acaa",
->>>>>>> 68062a86caaa8124c057dbfa194114f3d54295a5
   "prevId": "5051ef9e-5a08-4e63-a637-83c20e341d6d",
   "version": "7",
   "dialect": "postgresql",
@@ -5421,7 +5417,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-<<<<<<< 8398e65c6e75b98295b58a5ffeba6fb84e58d8c5
     "public.payment_failures": {
       "name": "payment_failures",
       "schema": "",
@@ -5524,8 +5519,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-=======
->>>>>>> 68062a86caaa8124c057dbfa194114f3d54295a5
     "public.price_survey_responses": {
       "name": "price_survey_responses",
       "schema": "",
@@ -7471,15 +7464,6 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< 8398e65c6e75b98295b58a5ffeba6fb84e58d8c5
-=======
-        "featured_on": {
-          "name": "featured_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
->>>>>>> 68062a86caaa8124c057dbfa194114f3d54295a5
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7510,24 +7494,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-<<<<<<< 8398e65c6e75b98295b58a5ffeba6fb84e58d8c5
-=======
-        },
-        "uq_recipes_featured_on": {
-          "name": "uq_recipes_featured_on",
-          "columns": [
-            {
-              "expression": "featured_on",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
->>>>>>> 68062a86caaa8124c057dbfa194114f3d54295a5
         }
       },
       "foreignKeys": {
@@ -8234,7 +8200,6 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< 8398e65c6e75b98295b58a5ffeba6fb84e58d8c5
         "cancel_reason": {
           "name": "cancel_reason",
           "type": "text",
@@ -8253,8 +8218,6 @@
           "primaryKey": false,
           "notNull": false
         },
-=======
->>>>>>> 68062a86caaa8124c057dbfa194114f3d54295a5
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",

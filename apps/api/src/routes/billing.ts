@@ -19,11 +19,8 @@ import {
   type SubscriptionRepo,
 } from '../services/billing.js'
 import { creatorRefsSql } from '../services/creatorTrial.js'
-<<<<<<< 8398e65c6e75b98295b58a5ffeba6fb84e58d8c5
-import { createPaymentFailedNotifier } from '../services/paymentFailures.js'
-=======
 import { householdWeekResolved, trialFirstDay } from '../services/founderOffer.js'
->>>>>>> 68062a86caaa8124c057dbfa194114f3d54295a5
+import { createPaymentFailedNotifier } from '../services/paymentFailures.js'
 
 /**
  * Subscriptions (specs/billing.md).

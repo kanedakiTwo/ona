@@ -225,7 +225,7 @@ describe('«te quedan 2 días» email (day 12)', () => {
     expect(m.to).toBe('ana@example.com')
     expect(m.subject).toBe('Te quedan 2 días de prueba en Mimoia')
     expect(m.text).toContain('dura hasta el 24 de enero, incluido')
-    expect(m.text).toContain('Esencial cuesta 4,99 €/mes y Plus 8,99 €/mes')
+    expect(m.text).toContain('Esencial cuesta 4,99 €/mes y Plus 9,99 €/mes')
     expect(m.text).toContain('no se te cobra nada')
     expect(m.text).toContain('no se borra nada')
     expect(m.text).toContain('https://mimoia.com/profile/suscripcion')

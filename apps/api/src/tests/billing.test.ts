@@ -37,11 +37,11 @@ describe('plans (2026-10-15: Esencial featured, monthly or yearly)', () => {
   it('prices, VAT included', () => {
     expect(PLANS.map((p) => [p.key, p.prices.mensual.cents, p.prices.anual.cents])).toEqual([
       ['esencial', 499, 4999],
-      ['plus', 899, 5999],
+      ['plus', 999, 9999],
     ])
     expect(PLANS.map((p) => [p.prices.mensual.label, p.prices.anual.label])).toEqual([
       ['4,99 €/mes', '49,99 €/año'],
-      ['8,99 €/mes', '59,99 €/año'],
+      ['9,99 €/mes', '99,99 €/año'],
     ])
   })
 

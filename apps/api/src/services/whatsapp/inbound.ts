@@ -15,6 +15,7 @@ import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
+import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
 import {
   ASK_SOURCE_COPY,
   PHOTO_SOURCE_WINDOW_MS,
@@ -905,7 +906,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       userId,
       errorMessage: String(err?.message ?? err).slice(0, 500),
     })
-    await outText('system', COPY.error)
+    // PRO-1101: Anthropic sin saldo → el texto propio de Mimo (y queda apuntado).
+    await outText('system', noteApiBalanceError(err) ? API_SALDO_REPLY : COPY.error)
   } finally {
     // Whatever path ended the turn, no "me pongo con ello" after this point.
     await acker.settle()

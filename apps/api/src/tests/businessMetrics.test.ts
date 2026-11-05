@@ -16,6 +16,7 @@ import {
   buildTotals,
   DEFINITIONS,
   FEATURE_DEFINITIONS,
+  NO_GESTURE_FEATURES,
   type MetricsInput,
 } from '../services/businessMetrics.js'
 
@@ -316,5 +317,13 @@ describe('buildTotals', () => {
     expect(totals.costEur.byProvider).toEqual({ anthropic: 0.1, meta_whatsapp: 0.3 })
     expect(totals.costPerActiveHouseholdWeekEur).toBeCloseTo(0.1, 6)
     expect(totals.unpricedCostEvents).toBe(1)
+  })
+})
+
+describe('active households leave out what Mimoia runs by itself (PRO-1069)', () => {
+  it('the ficha refiner and Mimo’s own messages are not a gesture; the definition says so', () => {
+    expect([...NO_GESTURE_FEATURES].sort()).toEqual(['ficha', 'whatsapp_guided', 'whatsapp_service', 'whatsapp_template'])
+    for (const f of NO_GESTURE_FEATURES) expect(DEFINITIONS.activeHouseholds).toContain(`\`${f}\``)
+    expect(DEFINITIONS.activeHouseholds).toMatch(/do not count/)
   })
 })

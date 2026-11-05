@@ -9,7 +9,8 @@ import { isRetiredRecipe } from './recipeCatalogOrder.js'
 import { loadFichaMenuConstraints } from './profile/reader.js'
 import { unlistedDietMentions } from './stepDietMentions.js'
 
-export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
+/** `authorId`: null for the catalogue, the household member's id for their own recipes (PRO-1141 looks there first). */
+export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null; authorId?: string | null }
 
 /**
  * Every recipe the user may be served, shaped for the matcher: the weekly
@@ -100,6 +101,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
   return allRecipes.map((r: any) => ({
     id: r.id,
     name: r.name,
+    authorId: r.authorId ?? null,
     meals: r.meals ?? [],
     seasons: r.seasons ?? [],
     // Three-state fit maps (migration 0024); legacy rows have null and the

@@ -12,7 +12,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isFixedDish, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
 import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
 import { describeWeekPlan } from '../weekPlan.js'
@@ -1326,6 +1326,17 @@ const swapMeal: SkillDefinition = {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
         summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
+      }
+    }
+
+    // A ficha's «plato fijo» (PRO-1141) is never swapped at random: only for a named recipe.
+    const fixedHere = days[dayIndex]?.[meal]?.dishes.find(isFixedDish)
+    if (fixedHere) {
+      const name = fixedHere.kind === 'recipe' ? fixedHere.recipeName ?? 'el plato fijo' : fixedHere.text
+      return {
+        data: null,
+        summary: `No he cambiado nada: "${name}" es un plato fijo de la ficha del hogar para la ${slotLabel}. Si quiere otro, pregúntale cuál y vuelve a llamar con recipeName.`,
+        uiHint: 'text',
       }
     }
 

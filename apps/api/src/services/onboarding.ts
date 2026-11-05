@@ -1,6 +1,6 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, or, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
-import { households, users } from '../db/schema.js'
+import { households, menus, users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent, healthConsentCoversReligion } from './healthConsent.js'
 import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
 import { applyFreezeAnswer, asksShopper, cookingFreqForStyle, isReligiousDiet, timeAvailableForChoice, type CookingFrequency, type CookingStyle, type FreezeAnswer, type Priority, type Shopper, type WeekdayCookingChoice } from '@ona/shared'
@@ -171,11 +171,28 @@ export async function onboardingStatus(userId: string, database: any = defaultDb
       onboardingDone: users.onboardingDone,
       onboardingDraft: users.onboardingDraft,
       householdOwnerId: households.ownerId,
+      // PRO-1042: a menu already made (Mimo by WhatsApp, an API sign-up).
+      hasMenu: sql<boolean>`EXISTS (SELECT 1 FROM ${menus} WHERE ${or(eq(menus.userId, users.id), eq(menus.householdId, users.primaryHouseholdId))})`,
     })
     .from(users)
     .leftJoin(households, eq(households.id, users.primaryHouseholdId))
     .where(eq(users.id, userId))
     .limit(1)
   if (!row) return null
-  return { onboardingRequired: needsOnboarding(row), onboardingDraft: row.onboardingDraft ?? null }
+  return onboardingGate(row)
+}
+
+/**
+ * PRO-1042: /menu goes to /onboarding only while there is no menu to show.
+ * With a menu already made, /menu shows it and offers the sign-up still to
+ * do apart (`onboardingPending`), instead of starting it again from zero.
+ */
+export function onboardingGate(row: { onboardingDone: boolean | null; householdOwnerId: string | null; id: string; hasMenu?: boolean | null; onboardingDraft?: unknown }) {
+  const pending = needsOnboarding(row)
+  return {
+    onboardingRequired: pending && !row.hasMenu,
+    onboardingPending: pending,
+    hasMenu: Boolean(row.hasMenu),
+    onboardingDraft: row.onboardingDraft ?? null,
+  }
 }

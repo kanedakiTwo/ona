@@ -134,6 +134,9 @@ router.get('/user/:id', async (req: AuthRequest, res) => {
     res.json({
       ...rest,
       onboardingRequired: status?.onboardingRequired ?? !user.onboardingDone,
+      // PRO-1042: the sign-up still to do, offered apart when a menu is already there.
+      onboardingPending: status?.onboardingPending ?? !user.onboardingDone,
+      hasMenu: status?.hasMenu ?? false,
       onboardingDraft: status?.onboardingDraft ?? null,
       imageGenQuota: { used, limit: env.IMAGE_GEN_MONTHLY_LIMIT, monthKey },
     })

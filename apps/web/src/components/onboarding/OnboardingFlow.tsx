@@ -177,7 +177,19 @@ export function onboardingDraftPayload(step: number, data: OnboardingData): Onbo
   }
 }
 
-export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDraft | null } = {}) {
+/**
+ * PRO-1042: what the account already says before the sign-up (Mimo by
+ * WhatsApp, an API sign-up): the questions open with it filled in, and with
+ * a menu already made the end doesn't generate another on top.
+ */
+export interface OnboardingKnown {
+  adults?: number | null
+  kidsCount?: number | null
+  restrictions?: string[] | null
+  hasMenu?: boolean
+}
+
+export default function OnboardingFlow({ draft = null, known = {} }: { draft?: OnboardingDraft | null; known?: OnboardingKnown } = {}) {
   const { user, updateUser } = useAuth()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -187,8 +199,8 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   const [error, setError] = useState("")
 
   const [data, setData] = useState<OnboardingData>(() => ({
-    adults: draft?.adults ?? 2,
-    kidsCount: draft?.kidsCount ?? 0,
+    adults: draft?.adults ?? (known.adults && known.adults >= 1 ? known.adults : 2),
+    kidsCount: draft?.kidsCount ?? known.kidsCount ?? 0,
     cookingStyle: draft?.cookingStyle ?? null,
     freezesMeatFish: draft?.freezesMeatFish ?? null,
     shopper: draft?.shopper ?? null,
@@ -347,7 +359,8 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       const payload = {
         adults: data.adults,
         kidsCount: data.kidsCount,
-        restrictions: healthConsent ? restrictionsWithTyped : [],
+        // Without the box ticked, what Mimo already saved stays (PRO-1042).
+        restrictions: healthConsent ? restrictionsWithTyped : known.restrictions ?? [],
         healthConsent,
         weekdayCooking: data.weekdayCooking ?? undefined,
         cookingNote: data.cookingNote.trim() || undefined,
@@ -363,8 +376,9 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       // one too and open it (PRO-65). One after the other, so the second
       // week's variety sees the first. The first menu starts today: the
       // days already gone are not generated (PRO-244, `fromDate`).
-      setPreparingMenu(true)
-      const { weeks, open, today } = firstMenuWeeks()
+      // With a menu already made by Mimo (PRO-1042), that one stays: /menu.
+      const { weeks, open, today } = known.hasMenu ? { weeks: [], open: "", today: "" } : firstMenuWeeks()
+      if (weeks.length) setPreparingMenu(true)
       for (const weekStart of weeks) {
         await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today }).catch(() => undefined)
       }

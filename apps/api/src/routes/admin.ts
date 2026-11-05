@@ -70,6 +70,7 @@ import {
 import { AISLES } from '@ona/shared'
 import {
   inferAllergenTagsFromName,
+  lacksPro1096Sesame,
   ALLERGEN_TAGS,
 } from '../services/nutrition/allergens.js'
 import { createUsdaClient } from '../services/nutrition/usdaClient.js'
@@ -201,7 +202,46 @@ router.get(
         }
       }
 
+      // PRO-1096: za'atar, dukkah, gomasio, halva… stored without «sesamo»,
+      // with the published recipes that use them. Catalogue recipes by name;
+      // household recipes only as a count.
+      const sesameRows = all.filter((r) => lacksPro1096Sesame(r.name, r.allergenTags))
+      const sesameUses = sesameRows.length
+        ? await db
+            .select({
+              ingredientId: recipeIngredients.ingredientId,
+              recipeId: recipes.id,
+              recipeName: recipes.name,
+              authorId: recipes.authorId,
+            })
+            .from(recipeIngredients)
+            .innerJoin(recipes, eq(recipes.id, recipeIngredients.recipeId))
+            .where(
+              and(
+                inArray(recipeIngredients.ingredientId, sesameRows.map((r) => r.id)),
+                eq(recipes.status, 'published'),
+              ),
+            )
+        : []
+      const sesameMissing = sesameRows.map((row) => {
+        const uses = sesameUses.filter((u) => u.ingredientId === row.id)
+        const catalog = new Map<string, string>()
+        const household = new Set<string>()
+        for (const u of uses) {
+          if (u.authorId == null) catalog.set(u.recipeId, u.recipeName)
+          else household.add(u.recipeId)
+        }
+        return {
+          id: row.id,
+          name: row.name,
+          currentTags: (row.allergenTags ?? []) as string[],
+          recipes: [...catalog].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'es')),
+          householdRecipes: household.size,
+        }
+      })
+
       res.json({
+        sesameMissing,
         missingFdcId,
         missingDensity,
         missingUnitWeight,

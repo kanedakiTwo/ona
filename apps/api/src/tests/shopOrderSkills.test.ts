@@ -151,7 +151,7 @@ describe('prepare_shop_orders', () => {
     expect(r.summary).toMatch(/manage_shops/)
   })
 
-  it('Red: asks once (Red shop or súper), says which Red shop it assigned, all to pick in the app', async () => {
+  it('Red: tells what can be picked in the app (Red shop or súper), which Red shop it assigned, and what it held back', async () => {
     const red = order({ id: 'o9', status: 'draft', links: RED_LINKS, red: RED_VIEW })
     const { api } = fakeApi({
       'POST /shop-orders/prepare': {
@@ -159,13 +159,51 @@ describe('prepare_shop_orders', () => {
         unassigned: [],
         skipped: [],
         hasShops: true,
-        red: { enabled: true, discountPct: 5, needsPostalCode: false, questions: [{ kind: 'carniceria', redShop: { id: 'r2', name: 'Carnicería de prueba' }, superName: 'Súper Online' }], assigned: [{ kind: 'fruteria', shopId: 's9', name: 'Frutería de prueba', alternatives: [] }], heldBack: [], uncovered: [] },
+        red: {
+          enabled: true,
+          discountPct: 5,
+          needsPostalCode: false,
+          questions: [{ kind: 'carniceria', redShop: { id: 'r2', name: 'Carnicería de prueba' }, superName: 'Súper Online' }],
+          assigned: [{ kind: 'fruteria', shopId: 's9', name: 'Frutería de prueba', alternatives: [] }],
+          heldBack: [{ kind: 'pescaderia', reason: 'alergias', candidates: [{ id: 'r3', name: 'Pescadería de prueba' }] }],
+          uncovered: [],
+        },
       },
     })
     const r = await get('prepare_shop_orders').handler({}, ctx(api))
-    expect(r.summary).toMatch(/lo de carnicería lo pide a Carnicería de prueba \(de la Red, −5 %\) o lo sigue pidiendo en Súper Online/)
+    expect(r.summary).toMatch(/Dile que puede elegir en la app \(Compra\) si lo de carnicería lo pide a Carnicería de prueba \(de la Red, −5 %\) o lo sigue pidiendo en Súper Online/)
+    expect(r.summary).not.toMatch(/una sola vez/)
     expect(r.summary).toMatch(/Le he asignado una tienda de la Red: Frutería de prueba \(frutería, −5 %\)/)
-    expect(r.summary).toMatch(/no se envían por WhatsApp/)
+    expect(r.summary).toMatch(/Por las alergias de casa no le he asignado sola una pescadería de la Red; puede elegirla en la app/)
+  })
+
+  it('only Red orders: the Red instruction, none of the WhatsApp reply / edit flow', async () => {
+    const red = order({ id: 'o9', status: 'draft', links: RED_LINKS, red: RED_VIEW })
+    const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [red], unassigned: [], skipped: [], hasShops: true, red: { enabled: true, discountPct: 5, needsPostalCode: false, questions: [], assigned: [], heldBack: [], uncovered: [] } } })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.summary).toMatch(/Para las de la Red: UNA línea por tienda con su enlace copiado TAL CUAL/)
+    expect(r.summary).toMatch(/No se envían por WhatsApp/)
+    expect(r.summary).not.toMatch(/antes de enviarlo falta/)
+    expect(r.summary).not.toMatch(/Cuando la tienda conteste/)
+    expect(r.summary).toMatch(/si quiere añadir algo más/)
+  })
+
+  it('Red and own shops together: both instructions, each for its own orders', async () => {
+    const red = order({ id: 'o9', status: 'draft', links: RED_LINKS, red: RED_VIEW })
+    const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [red, order({ status: 'draft' })], unassigned: [], skipped: [], hasShops: true, red: { enabled: true, discountPct: 5, needsPostalCode: false, questions: [], assigned: [], heldBack: [], uncovered: [] } } })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.summary).toMatch(/Para las de la Red: UNA línea/)
+    expect(r.summary).toMatch(/Para las demás, UNA línea por tienda: .*"antes de enviarlo falta"/)
+    expect(r.summary).toMatch(/Cuando la tienda conteste, que te reenvíe/)
+  })
+
+  it('no Red orders: the WhatsApp instruction exactly as before', async () => {
+    const { api } = fakeApi({ 'POST /shop-orders/prepare': { orders: [order({ status: 'draft' })], unassigned: [], skipped: [], hasShops: true } })
+    const r = await get('prepare_shop_orders').handler({}, ctx(api))
+    expect(r.summary).toContain(
+      'Responde con UNA línea por tienda: las que están listas con su enlace copiado TAL CUAL; las que tienen "antes de enviarlo falta", con esa pregunta (corta) — luego se aplica con edit_shop_order, sin volver a preparar. Termina preguntando si quiere añadir algo más (por ejemplo fruta para la semana): se añade con edit_shop_order y el enlace sigue siendo el mismo. Cuando la tienda conteste, que te reenvíe o pegue su respuesta y la reviso.',
+    )
+    expect(r.summary).not.toMatch(/de la Red/)
   })
 })
 
@@ -216,6 +254,17 @@ describe('approve_shop_order', () => {
     const r = await get('approve_shop_order').handler({ remove: ['brócoli'] }, ctx(api))
     expect(writes(calls)).toEqual([{ method: 'POST', path: '/shop-orders/o1/approve', body: { decisions: { l2: 'remove' } } }])
     expect(r.summary).toContain('https://ona.app/c/AAAAAAAAAAAAAAAA?m=ok')
+  })
+
+  it('skips Red orders: confirms the own shop that answered, never a Red one', async () => {
+    const red = order({ id: 'o9', status: 'quoted', red: RED_VIEW })
+    const { api, calls } = fakeApi({ 'GET /shop-orders': [red, order({ status: 'quoted' })], 'POST /shop-orders/o1/approve': order({ status: 'approved' }) })
+    await get('approve_shop_order').handler({}, ctx(api))
+    expect(writes(calls)).toEqual([{ method: 'POST', path: '/shop-orders/o1/approve', body: { decisions: {} } }])
+    const b = fakeApi({ 'GET /shop-orders': [red] })
+    const r = await get('approve_shop_order').handler({}, ctx(b.api))
+    expect(writes(b.calls)).toEqual([])
+    expect(r.summary).toMatch(/No hay ningún pedido con respuesta/)
   })
 
   it('refuses when no shop has answered yet', async () => {
@@ -376,7 +425,7 @@ describe('get_shop_orders', () => {
       ],
     })
     const r = await get('get_shop_orders').handler({}, ctx(api))
-    expect(r.summary).toMatch(/Frutería de prueba: .*→ https:\/\/ona\.app\/c\/REDREDREDREDRED1/)
+    expect(r.summary).toMatch(/Frutería de prueba: preparado, sin pedir → https:\/\/ona\.app\/c\/REDREDREDREDRED1/)
     expect(r.summary).toMatch(/Carnicería de prueba: pedido a la tienda de la Red, esperando que lo acepte/)
   })
 })

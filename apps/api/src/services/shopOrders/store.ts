@@ -80,7 +80,7 @@ export class ShopOrderError extends Error {
 }
 
 /** The household's own shops: what it can still cancel or close. */
-const OPEN_STATUSES: ShopOrderStatus[] = ['draft', 'sent', 'quoted', 'approved']
+export const OPEN_STATUSES: ShopOrderStatus[] = ['draft', 'sent', 'quoted', 'approved']
 /** Shown among the open orders on /compra (Red orders included). */
 const LISTED_OPEN: ShopOrderStatus[] = [...OPEN_STATUSES, ...RED_LISTED_OPEN]
 

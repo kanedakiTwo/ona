@@ -6,10 +6,12 @@
  *   POST /cook-now/choose    { recipeId, servings, displacedTo } → puts it in the meal of now
  */
 import { Router } from 'express'
-import { cookNowChooseSchema, cookNowProposalSchema } from '@ona/shared'
+import { cookNowChooseSchema, cookNowPhraseSchema, cookNowProposalSchema } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
-import { chooseCookNowRecipe, findCookNowProposal, loadCookNowToday } from '../services/cookNow/load.js'
+import { chooseCookNowRecipe, findCookNowProposal, loadCookNowToday, loadPhraseFacts } from '../services/cookNow/load.js'
+import { cookNowPhrase } from '../services/cookNow/phrase.js'
+import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
 
 const router = Router()
 router.use('/cook-now', authMiddleware)
@@ -35,6 +37,21 @@ router.post('/cook-now/proposal', async (req: AuthRequest, res) => {
   } catch (err) {
     console.error('POST /cook-now/proposal error:', err)
     res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.post('/cook-now/phrase', async (req: AuthRequest, res) => {
+  const parsed = cookNowPhraseSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Receta no válida' })
+    return
+  }
+  try {
+    const facts = await loadPhraseFacts(req.userId!, parsed.data.recipeId)
+    res.json({ text: facts ? await cookNowPhrase(req.userId!, facts, { householdId: await getPrimaryHouseholdId(req.userId!) }) : null })
+  } catch (err) {
+    console.error('POST /cook-now/phrase error:', err)
+    res.json({ text: null })
   }
 })
 

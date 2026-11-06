@@ -75,6 +75,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/cook-logs/:x',
   '/cook-logs/recipe/:x',
   '/cook-now/choose',
+  '/cook-now/phrase',
   '/cook-now/proposal',
   '/cook-now/today',
   '/cookbooks',

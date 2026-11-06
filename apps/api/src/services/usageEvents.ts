@@ -39,6 +39,8 @@ export const USAGE_EVENTS = [
   'meal_swapped',
   'shopping_list_viewed',
   'shopping_item_checked',
+  // PRO-380: «Mandar la lista» (web) or Mimo handing out the whole list; `props.via` on the web.
+  'shopping_list_shared',
   'recipe_imported',
   'recipe_created',
   'cook_mode_started',

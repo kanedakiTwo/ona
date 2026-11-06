@@ -224,6 +224,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/usage/cook-mode-started',
   '/usage/event',
   '/usage/invite-shared',
+  '/usage/list-shared',
   '/user/:x',
   '/user/:x/allergies-none',
   '/user/:x/first-steps',

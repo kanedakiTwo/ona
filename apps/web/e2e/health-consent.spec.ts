@@ -7,7 +7,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { registerFreshUser } from './_helpers'
+import { answerShopper, registerFreshUser } from './_helpers'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -27,6 +27,7 @@ async function onboard(page: Page, consent: boolean) {
   await page.goto('/onboarding')
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()

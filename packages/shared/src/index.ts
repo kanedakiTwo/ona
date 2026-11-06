@@ -24,9 +24,13 @@ export type {
 export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
 export { menuFitLevel } from './types/menu.js'
 export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/menuDish.js'
+<<<<<<< fdc9ab2c98a55580f71459bd5b42efc6d416e259
 export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine } from './types/menuDish.js'
 export { INGREDIENT_ROLES, ingredientRoleMarkSchema, ingredientRolesUpdateSchema } from './types/ingredientRole.js'
 export type { IngredientRole, IngredientRoleMark } from './types/ingredientRole.js'
+=======
+export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish } from './types/menuDish.js'
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 export type {
   MemoryKey,
   MemorySource,
@@ -76,6 +80,18 @@ export {
   cookingStyleFactValueSchema,
   setCookingStyleSchema,
 } from './types/cookingStyle.js'
+export type { Shopper } from './types/shopper.js'
+export {
+  SHOPPERS,
+  SHOPPER_QUESTION,
+  SHOPPER_LABELS,
+  isShopper,
+  asksShopper,
+  shopperInvites,
+  shopperSchema,
+  shopperFactValueSchema,
+  shopperInviteText,
+} from './types/shopper.js'
 export type { FreezeAnswer } from './types/freezeHabit.js'
 export {
   FREEZE_ANSWERS,
@@ -222,6 +238,8 @@ export {
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
 export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from './constants/aiDisclosure.js'
+export { KITCHEN_APPLIANCES, BASIC_UTENSILS, foldEquipment, classifyEquipment, appliancesIn, unknownEquipmentCounts } from './constants/equipment.js'
+export type { EquipmentKind } from './constants/equipment.js'
 export {
   HEALTH_CONSENT_VERSION,
   HEALTH_CONSENT_TEXT,
@@ -394,9 +412,10 @@ export {
   ACCOUNT_PAUSED_MESSAGE,
   trialLastDayLabel,
   trialDaysLeftLabel,
-  FOUNDER_OFFER_DAY,
+  FOUNDER_OFFER_FALLBACK_DAY,
   founderPriceIfSubscribing,
   founderOfferStands,
+  founderOfferFires,
   founderOfferText,
   founderPriceAmounts,
   euros,
@@ -684,4 +703,7 @@ export type {
   CatalogCollectionCard,
   CatalogCollectionAdminView,
 } from './types/catalogCollections.js'
+// La receta del día (PRO-1099, specs/recipe-of-the-day.md)
+export { ISO_DAY_RE, isIsoDay, RECIPE_OF_THE_DAY_PHOTO_SIZES, RECIPE_OF_THE_DAY_PATH } from './types/recipeOfTheDay.js'
+export type { RecipeOfTheDayPhotoFormat, RecipeOfTheDayView } from './types/recipeOfTheDay.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'

@@ -364,13 +364,16 @@ describe('shopping, pantry, staples', () => {
     const r = await get('get_shopping_list').handler({}, ctx(f.api))
     expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado: 1. En casa: 1.')
     expect(r.uiHint).toBe('shopping_list')
+    // PRO-380: handing out the whole list counts as `shopping_list_shared`.
+    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/list-shared', body: { channel: 'web' } }])
   })
 
-  it('get_shopping_list: all done, and empty list', async () => {
+  it('get_shopping_list: all done, and empty list (nothing handed out, nothing counted)', async () => {
     const done = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i1', name: 'Pan', checked: true }] } })
     expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado: 1.')
     const empty = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [] } })
     expect((await get('get_shopping_list').handler({}, ctx(empty.api))).summary).toContain('está vacía')
+    expect([...writes(done.calls), ...writes(empty.calls)]).toEqual([])
   })
 
   it('remove_shopping_items deletes matches and reports the rest', async () => {

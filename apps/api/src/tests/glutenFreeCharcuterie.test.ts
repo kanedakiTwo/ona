@@ -16,8 +16,10 @@ import type { ShoppingItem } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from '../services/dietaryRestrictions.js'
 import {
   CHOOSE_GLUTEN_FREE_CHARCUTERIE,
+  isBrandDependentGlutenBlendOrStock,
   isBrandDependentGlutenCharcuterie,
   isCoeliacHousehold,
+  needsGlutenFreeLabel,
   recipeDietNotices,
   withGlutenFreeCharcuterieNames,
 } from '../services/glutenFreeCharcuterie.js'
@@ -76,6 +78,52 @@ describe('coeliac household and lentejas con chorizo', () => {
     const out = withGlutenFreeCharcuterieNames([item('chorizo', 'staple'), item('salchichas', 'manual'), item('morcilla de cebolla')], true)
     expect(out.map((i) => i.name)).toEqual(['chorizo', 'salchichas', 'morcilla de cebolla sin gluten'])
     expect(out[2].id).toBe('morcilla de cebolla')
+  })
+})
+
+// PRO-1063 (Dani y Sara, 2026-10-27): the chili of the gluten-free menu asked
+// for «chili en polvo» with no notice; only Mimo, if asked, said «mirad la
+// etiqueta». Blends and stocks now get it on the recipe and the list.
+describe('blended spices and stocks in a coeliac household', () => {
+  const CHILI = ['carne picada de ternera', 'alubias rojas cocidas', 'tomate triturado', 'Chili en polvo', 'comino molido']
+
+  it('the chili tells a coeliac household to pick gluten-free chili en polvo', () => {
+    expect(recipeDietNotices(CHILI, true)).toEqual(['Elige chili en polvo sin gluten'])
+    expect(recipeDietNotices(CHILI, false)).toEqual([])
+    expect(recipeDietNotices(CHILI.filter((n) => n !== 'Chili en polvo'), true)).toEqual([])
+  })
+
+  it('one notice per blend or stock line, after the cured meat one, without repeats', () => {
+    const arroz = ['arroz', 'chorizo oreado', 'Caldo de pollo', 'curry en polvo', 'caldo de pollo', 'garbanzos cocidos']
+    expect(recipeDietNotices(arroz, true)).toEqual([
+      CHOOSE_GLUTEN_FREE_CHARCUTERIE,
+      'Elige caldo de pollo sin gluten',
+      'Elige curry en polvo sin gluten',
+    ])
+  })
+
+  it('chili en polvo, curry, ras el hanout and stocks in a cube or a brick', () => {
+    for (const n of ['chili en polvo', 'chile en polvo', 'curry', 'curry en polvo', 'pasta de curry amarillo', 'ras el hanout', 'caldo de verduras', 'caldo de pollo', 'caldo de pescado', 'caldo de cocido', 'pastilla de caldo', 'cubitos de caldo', 'fumet']) {
+      expect(isBrandDependentGlutenBlendOrStock(n), n).toBe(true)
+      expect(needsGlutenFreeLabel(n), n).toBe(true)
+    }
+  })
+
+  it('not single spices, the bones for a stock at home or what already says «sin gluten»', () => {
+    for (const n of ['comino molido', 'pimentón dulce', 'cayena', 'chile fresco', 'huesos para caldo', 'caldo de verduras sin gluten', 'arroz']) {
+      expect(isBrandDependentGlutenBlendOrStock(n), n).toBe(false)
+    }
+  })
+
+  it('the list asks for them «sin gluten» like the chorizo', () => {
+    const list = [item('Caldo de verduras'), item('Chili en polvo'), item('chorizo oreado'), item('comino molido'), item('caldo de pollo', 'manual')]
+    expect(withGlutenFreeCharcuterieNames(list, true).map((i) => i.name)).toEqual([
+      'Caldo de verduras sin gluten',
+      'Chili en polvo sin gluten',
+      'chorizo oreado sin gluten',
+      'comino molido',
+      'caldo de pollo',
+    ])
   })
 })
 

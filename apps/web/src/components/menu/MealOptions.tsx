@@ -60,7 +60,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, isFixedDish, isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { useSetSlotEaten } from "@/hooks/useMenu"
@@ -194,6 +194,8 @@ export function MealOptionsSheets({
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
   const lockedHint = locked ? "Desfíjala para cambiarla" : undefined
+  // PRO-1141: a «plato fijo» of the ficha is changed by choosing, never at random.
+  const fixedDish = isFixedDish(first)
 
   return (
     <>
@@ -235,8 +237,8 @@ export function MealOptionsSheets({
               <SheetAction
                 icon={Shuffle}
                 label="Cambiar al azar"
-                hint={lockedHint ?? "Otra receta que encaje con tu semana"}
-                disabled={locked || ctx.isRegenerating}
+                hint={lockedHint ?? (fixedDish ? "Es un plato fijo de vuestra ficha" : "Otra receta que encaje con tu semana")}
+                disabled={locked || fixedDish || ctx.isRegenerating}
                 onClick={() => {
                   handlers.regenerate()
                   close()

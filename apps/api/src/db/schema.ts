@@ -440,6 +440,14 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
   displayQuantity: real('display_quantity'),
   /** Human-readable unit as the recipe originally stated it (e.g. "taza", "cucharada"). */
   displayUnit: text('display_unit'),
+  /**
+   * «Cocinar ahora»: essential | secondary, marked by Cocina for catalogue
+   * recipes (services/ingredientRoles.ts). Null = not marked: the automatic
+   * rule decides. Survives edits (persistRecipe) and copies.
+   */
+  role: text('role'),
+  /** Catalogue ingredients that can stand in for this one (nata → leche). */
+  substituteIngredientIds: uuid('substitute_ingredient_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
 }, (table) => [
   index('idx_recipe_ingredients_recipe').on(table.recipeId),
   index('idx_recipe_ingredients_ingredient').on(table.ingredientId),
@@ -449,6 +457,7 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
     'recipe_ingredients_unit_check',
     sql.raw(`unit IN (${UNITS.map((u) => `'${u}'`).join(', ')})`),
   ),
+  check('recipe_ingredients_role_check', sql`role IS NULL OR role IN ('essential', 'secondary')`),
 ])
 
 // ─── 6. recipe_steps ────────────────────────────────────────
@@ -1637,6 +1646,38 @@ export const newsletterTipLog = pgTable('newsletter_tip_log', {
 }, (t) => [
   uniqueIndex('uq_newsletter_tip_log_issue_user').on(t.issueId, t.userId),
   index('idx_newsletter_tip_log_user').on(t.userId),
+])
+
+/**
+ * PRO-1123 (D-176): one row per newsletter issue, for the Admin «Newsletter»
+ * editor. Marketing's recommendation, the template Miguel corrects and saves
+ * (the letter with its `{nombre}`, `{receta}` and `{porque}`), when he got its
+ * proof, and the Friday 9:00 it is scheduled for. A new save clears the proof
+ * and the schedule: nothing goes out without the proof of what goes out.
+ */
+export const newsletterDrafts = pgTable('newsletter_drafts', {
+  issueId: text('issue_id').primaryKey(),
+  /** `{ subject, preheader?, content }` as Marketing proposed it. */
+  recommendation: jsonb('recommendation'),
+  recommendedAt: timestamp('recommended_at', { withTimezone: true }),
+  /** `{ subject, preheader?, content }` as the admin saved it. */
+  template: jsonb('template'),
+  savedBy: uuid('saved_by').references(() => users.id, { onDelete: 'set null' }),
+  savedAt: timestamp('saved_at', { withTimezone: true }),
+  /** The last proof of the saved template, to the admin's own account email. */
+  proofSentAt: timestamp('proof_sent_at', { withTimezone: true }),
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+  scheduledBy: uuid('scheduled_by').references(() => users.id, { onDelete: 'set null' }),
+  /** The API origin for the one-click opt-out, taken from the scheduling call. */
+  apiUrl: text('api_url'),
+  /** Claimed by the scheduler (or a send) — set once. */
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  /** `{ sent, failed, skipped, alreadySent }`, counts only. */
+  sendResult: jsonb('send_result'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_newsletter_drafts_scheduled').on(t.scheduledFor),
 ])
 
 /**

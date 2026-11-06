@@ -27,6 +27,7 @@ import unitsRouter from './routes/units.js'
 import memoryRoutes from './routes/memory.js'
 import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
+import cookNowRoutes from './routes/cookNow.js'
 import staplesRoutes from './routes/staples.js'
 import pushRoutes from './routes/push.js'
 import notificationRoutes from './routes/notifications.js'
@@ -37,7 +38,11 @@ import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
+<<<<<<< ad2012313a1d0ff1379f3f021316ea5aa20819f1
 import mimoRemotoRoutes from './routes/mimoRemoto.js'
+=======
+import ingredientRoleRoutes from './routes/ingredientRoles.js'
+>>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
@@ -200,6 +205,8 @@ app.use(telegramRoutes)
 // GET /admin/metrics accepts `x-metrics-token` instead of a JWT, so it must
 // be mounted before the catch-all `router.use(authMiddleware)` routers below.
 app.use(metricsRoutes)
+// Same reason: the ingredient-role routes accept `x-cocina-token` (specs/cook-now.md).
+app.use(ingredientRoleRoutes)
 // Same reason: GET /admin/errors also accepts `x-metrics-token`.
 app.use(appErrorsRoutes)
 // Same reason: GET /admin/waitlist accepts `x-metrics-token` (invite is admin JWT only).
@@ -219,6 +226,7 @@ app.use('/', unitsRouter)
 app.use(memoryRoutes)
 app.use(householdRoutes)
 app.use(cookLogRoutes)
+app.use(cookNowRoutes)
 app.use(staplesRoutes)
 app.use(recipeNotesRoutes)
 app.use(pantryRoutes)

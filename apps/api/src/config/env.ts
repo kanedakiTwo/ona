@@ -140,6 +140,13 @@ export const env = {
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
   /**
+   * Write token for the two routes Cocina (the office) uses to mark catalogue
+   * ingredients as essential/secondary (routes/ingredientRoles.ts, header
+   * `x-cocina-token`, specs/cook-now.md). Grants those two routes only.
+   * Empty → token auth disabled (admin JWT still works).
+   */
+  COCINA_WRITE_TOKEN: process.env.COCINA_WRITE_TOKEN || '',
+  /**
    * Extra `?ref=` labels the read token may name in GET /admin/waitlist
    * (`sources.bySource`), for campaign links that live outside the code:
    * comma-separated exact values, each `^[a-z0-9-]{1,32}$`, at most 50

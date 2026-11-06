@@ -265,6 +265,36 @@ describe('«te quedan 2 días» email (day 12)', () => {
     expect(skipRepo.marked.size).toBe(0)
   })
 
+  it('the founder offer still pending → it goes inside this email, marked once (PRO-384)', async () => {
+    const sent: EmailMessage[] = []
+    const send = async (m: EmailMessage): Promise<EmailResult> => {
+      sent.push(m)
+      return { status: 'sent', id: 'x' }
+    }
+    const offers = new Set<string>()
+    const withOffers = (cs: TrialEmailCandidate[]) => ({
+      ...memoryRepo(cs),
+      async claimFounderOffer(id: string) {
+        if (offers.has(id)) return false
+        offers.add(id)
+        return true
+      },
+      async unclaimFounderOffer(id: string) {
+        offers.delete(id)
+      },
+    })
+    await sendTrialEndingEmails(dayAt11(12), { repo: withOffers([{ ...candidate, founderOfferAt: null }]), sendEmail: send, publicUrl: 'https://mimoia.com' })
+    expect(sent[0].text).toContain('te quedas el precio de fundador para siempre (Esencial, 4,99 € al mes o 49,99 € al año')
+    expect(offers.has('h1')).toBe(true)
+    // Already sent before: the email goes without it.
+    await sendTrialEndingEmails(dayAt11(12), { repo: withOffers([{ ...candidate, householdId: 'h2', founderOfferAt: dayAt11(4) }]), sendEmail: send, publicUrl: 'https://mimoia.com' })
+    expect(sent[1].text).not.toContain('precio de fundador')
+    // No email key: both stay pending.
+    const skip = async (): Promise<EmailResult> => ({ status: 'skipped', reason: 'not_configured' })
+    await sendTrialEndingEmails(dayAt11(12), { repo: withOffers([{ ...candidate, householdId: 'h3' }]), sendEmail: skip, publicUrl: '' })
+    expect(offers.has('h3')).toBe(false)
+  })
+
   it('with a creator link (PRO-353): on day 26 of 28, saying 28 days and its own last day', async () => {
     expect(isTrialEndingEmailDue(NEW_HOUSEHOLD, dayAt11(12), 28)).toBeNull()
     expect(isTrialEndingEmailDue(NEW_HOUSEHOLD, dayAt11(26), 28)).toMatchObject({ daysLeft: 2, trialLastDay: '2027-02-07' })

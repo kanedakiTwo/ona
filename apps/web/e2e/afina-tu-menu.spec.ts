@@ -14,7 +14,7 @@
  *    «Seguir con 10 más».
  */
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { answerShopper, completeOnboarding, registerFreshUser } from './_helpers'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -100,8 +100,9 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
   await expect(web.or(firstQuestion)).toBeVisible({ timeout: 15_000 })
   if (await web.isVisible()) await web.click()
   await expect(firstQuestion).toBeVisible()
-  // Allergies already answered: three questions (2026-11-03: no frequency, no priority).
-  await expect(page.getByText('Primeros pasos · 1 de 3')).toBeVisible()
+  // Allergies already answered: three questions (2026-11-03: no frequency, no
+  // priority), plus «¿Quién hace la compra?» for two adults (PRO-383).
+  await expect(page.getByText('Primeros pasos · 1 de 4')).toBeVisible()
 
   const headers = await auth(page)
   const memory = await (await page.request.get(`${API_URL}/memory`, { headers })).json()
@@ -119,11 +120,12 @@ test('sign-up: 10 cards with buttons, then the questions; the first menu has no 
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   // PRO-138, the last question: no «¿Hay algo que no comas?» again.
-  await expect(page.getByText('Primeros pasos · 3 de 3')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 4 de 4')).toBeVisible()
   await page.getByRole('button', { name: /sin prisa/i }).click()
   await expect(page.getByRole('heading', { name: /hay algo que no comas/i })).toHaveCount(0)
   await page.getByRole('button', { name: /empezar/i }).click()

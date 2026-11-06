@@ -24,6 +24,7 @@ const BARE_ROUTES = new Set([
   "/terminos",
   "/aviso-legal",
   "/blog",
+  "/receta-del-dia",
   "/login",
   "/register",
   "/reset",
@@ -32,8 +33,8 @@ const BARE_ROUTES = new Set([
   "/newsletter/baja",
   "/offline",
 ])
-/** Bare sections with dynamic segments: waitlist page + opt-out, household invitations, blog articles, newsletter opt-out. */
-const BARE_PREFIXES = ["/lista/", "/invites/", "/blog/", "/newsletter/"]
+/** Bare sections with dynamic segments: waitlist page + opt-out, household invitations, blog articles, newsletter opt-out, the recipe of a given day and its photos. */
+const BARE_PREFIXES = ["/lista/", "/invites/", "/blog/", "/newsletter/", "/receta-del-dia/"]
 
 /**
  * Open without an account, but their chrome depends on the session: signed

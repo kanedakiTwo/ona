@@ -19,6 +19,7 @@ import {
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
 import { hasLikedRecipes } from '../tasteStore.js'
+import { noteApiCallOk } from '../apiSaldo.js'
 
 let client: Anthropic | null = null
 
@@ -302,6 +303,8 @@ export async function runToolLoop(params: {
       { headers: { 'anthropic-beta': FALLBACK_BETA } },
     )
     usage = addAnthropicUsage(usage, response.usage)
+    // PRO-1101: Anthropic contesta, así que hay saldo: cierra la racha `saldo_api` si la había.
+    noteApiCallOk()
 
     if (response.stop_reason === 'refusal') {
       flags.push('refusal')

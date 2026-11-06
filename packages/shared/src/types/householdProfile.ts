@@ -19,6 +19,7 @@ import { HEALTH_MEMORY_KEYS } from '../constants/healthConsent.js'
 import { MEALS } from '../constants/enums.js'
 import { MEMORY_KEYS, MEMORY_VALUE_SCHEMAS, type MemorySource } from './userMemory.js'
 import { cookingStyleFactValueSchema } from './cookingStyle.js'
+import { shopperFactValueSchema } from './shopper.js'
 
 // ─── Enums ──────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ export const NEW_PROFILE_FACT_TYPES = [
   'novelty',
   'cooking_style',
   'protein_minimum',
+  'shopper',
 ] as const
 
 export const PROFILE_FACT_TYPES = [...MEMORY_KEYS, ...NEW_PROFILE_FACT_TYPES] as const
@@ -148,6 +150,8 @@ export const NEW_PROFILE_FACT_VALUE_SCHEMAS = {
   protein_minimum: z.object({
     scope: z.enum(['every_dish']),
   }).strict(),
+  /** «¿Quién hace la compra?» in the sign-up (PRO-383): yo, otra persona de casa, nos turnamos. About the household. */
+  shopper: shopperFactValueSchema,
 } satisfies Record<(typeof NEW_PROFILE_FACT_TYPES)[number], z.ZodTypeAny>
 
 export const PROFILE_FACT_VALUE_SCHEMAS: Record<ProfileFactType, z.ZodTypeAny> = {

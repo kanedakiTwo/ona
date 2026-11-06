@@ -9,8 +9,9 @@
  *   recipes and list stay; new menus and Mimo need a plan. Owner: «Elegir
  *   plan»; a member: ask whoever runs the household.
  * - `trial` with ≤ 2 days left: «Te quedan 2 días de prueba» + what happens next.
- * - PRO-136: the day-7 founder-price offer (`founder.offer`, until the last
- *   2 days) and the legal notice 15 days before the first charge
+ * - PRO-136: the founder-price offer (`founder.offer`: from the first
+ *   resolved week or day 10, PRO-384; until the last 2 days) and the legal
+ *   notice 15 days before the first charge
  *   (`subscription.upcomingCharge`). One card at a time; the pause wins.
  *
  * Texts for Legal to review before publishing.

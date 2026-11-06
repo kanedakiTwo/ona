@@ -6,7 +6,7 @@
  * «¿Qué quieres que Mimoia priorice?». At 390×844 (iPhone 14).
  */
 import { test, expect } from '@playwright/test'
-import { registerFreshUser } from './_helpers'
+import { answerShopper, registerFreshUser } from './_helpers'
 
 test.use({ viewport: { width: 390, height: 844 } })
 
@@ -22,11 +22,13 @@ test('«¿Cómo cocináis en casa?» in the sign-up → Perfil shows it and chan
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
+  // PRO-383: two adults (the default) are asked who does the shopping.
+  await answerShopper(page)
 
-  // The second question, with no «¿Cuántas veces…?» before it.
+  // Then how they cook, with no «¿Cuántas veces…?» before it.
   const step = page.getByTestId('onboarding-cooking-style')
   await expect(step.getByRole('heading', { name: /cómo cocináis en casa/i })).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 2 de 4')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 5')).toBeVisible()
   await expect(next).toBeDisabled()
   await expect(step.getByRole('button', { name: /^cocino cada día/i })).toBeVisible()
   await expect(step.getByRole('button', { name: /^cocino unos días y aprovecho para otros/i })).toBeVisible()
@@ -42,7 +44,7 @@ test('«¿Cómo cocináis en casa?» in the sign-up → Perfil shows it and chan
   await next.click()
   // The allergies question is the last one: no «¿Qué quieres que Mimoia priorice?» after it.
   await expect(page.getByRole('heading', { name: /hay algo que no comas/i })).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 4 de 4')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 5 de 5')).toBeVisible()
   await page.getByRole('button', { name: /empezar/i }).click() // no restrictions
   const body = JSON.parse((await onboarding).postData() ?? '{}')
   expect(body.cookingStyle).toBe('batch')

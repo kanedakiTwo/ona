@@ -7,6 +7,7 @@ import type { ChatMessage } from '../services/assistant/types.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../services/advisorBudget.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { recordCapHit } from '../services/capHits.js'
+import { API_SALDO_REPLY, API_SALDO_TYPE, noteApiBalanceError } from '../services/apiSaldo.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
 import { eq } from 'drizzle-orm'
 import { recipes } from '../db/schema.js'
@@ -119,6 +120,11 @@ router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapac
     res.json(response)
   } catch (err: any) {
     console.error('Assistant chat error:', err.message)
+    // PRO-1101: Anthropic sin saldo → Mimo lo dice con su texto, no un error genérico (y queda apuntado).
+    if (noteApiBalanceError(err)) {
+      res.json({ message: API_SALDO_REPLY, actionTaken: false, corrections: [API_SALDO_TYPE] })
+      return
+    }
     res.status(500).json({ error: 'Internal server error' })
   }
 })

@@ -28,7 +28,7 @@ import {
   type PersistDraftInput,
 } from '../services/catalogImport.js'
 import { parseRewrite, rewriteMessage } from '../services/catalogRewriter.js'
-import { cocinaBatchFileSchema } from '@ona/shared'
+import { checkCocinaBatch, cocinaBatchFileSchema } from '@ona/shared'
 import { aggregateNutrition, type IngredientCatalogEntry } from '../services/nutrition/aggregate.js'
 
 // Three made-up pages of a made-up book.
@@ -528,6 +528,26 @@ describe('storage seals: «Se puede congelar» and days in the fridge (PRO-372)'
     expect(saved[0]).toMatchObject({ freezable: true, fridgeDays: 4 })
     // Cocina said nothing: the rewriter's guess is saved.
     expect(saved[1]).toMatchObject({ freezable: false, fridgeDays: 3 })
+  })
+
+  it('PRO-1099: the batch file takes featuredOn (a real day), one per day, and the importer saves it', async () => {
+    const featured = { ...cocinaJson, recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, cocinaJson.recipes[1]] }
+    expect(cocinaBatchFileSchema.safeParse(featured).success).toBe(true)
+    // Not a day: refused, in Spanish, with where it is.
+    const bad = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-02-30' }] })
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.problems[0]).toMatch(/^Receta 1 \(«.+»\): la fecha de la receta del día \(featuredOn\) tiene que ser un día AAAA-MM-DD/)
+    // Two recipes on the same day inside the file: the second is a problem.
+    const twice = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, { ...cocinaJson.recipes[1], featuredOn: '2026-11-05' }] })
+    expect(twice.ok).toBe(false)
+    if (!twice.ok) expect(twice.problems).toEqual([expect.stringMatching(/^Receta 2 .*2026-11-05 ya es la de la receta 1; solo hay una receta del día por día\.$/)])
+
+    const drafts = draftsFromCocinaJson(featured, { origin: 'cocina' })
+    expect(drafts.map((d) => d.featuredOn)).toEqual(['2026-11-05', null])
+    expect(draftsFromCocinaJson({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: 'mañana' }] }, { origin: 'cocina' })[0].featuredOn).toBeNull()
+    const { deps, saved } = fakeDeps({ rewrite: async (d) => rewriteFor(d, HOUSE_STEPS[d.name]) })
+    await importCatalogBatch(drafts, 'cocina-del-dia', deps)
+    expect(saved.map((s) => s.featuredOn)).toEqual(['2026-11-05', null])
   })
 
   it('the rewriter\'s unsure or odd answers are no data', () => {

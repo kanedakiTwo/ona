@@ -701,6 +701,20 @@
       "when": 1793717887638,
       "tag": "0104_basket_extension_consents",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793801779340,
+      "tag": "0106_recipe_featured_on",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793884741521,
+      "tag": "0106_newsletter_drafts",
+      "breakpoints": true
     }
   ]
 }

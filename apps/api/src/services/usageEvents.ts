@@ -62,14 +62,11 @@ export const USAGE_EVENTS = [
   'feedback_left',
   // PRO-1022: every Mimo tool that returned data (`props.skill` = the tool's name, `props.canal`). Never text.
   'mimo_skill_used',
-<<<<<<< a063f7ce3c2bcc516b97c0235f74c4d5c2a253df
   // «Cocinar ahora» (PRO-1106, specs/cook-now.md): the four questions answered, a proposal chosen.
   'cook_now_proposed',
   'cook_now_chosen',
-=======
   // PRO-383: «¿Quién hace la compra?» in the sign-up (`props.value` = me · other · shared; channel web or whatsapp).
   'shopper_answered',
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 

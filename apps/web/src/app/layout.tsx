@@ -7,7 +7,7 @@ import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistr
 import { RootShell } from "@/components/shared/RootShell"
 import { isRecipeSegment } from "@/lib/recipeShell"
 import { isBareRoute } from "@/lib/routeAccess"
-import { useEffect, useRef, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { recordVisit } from "@/lib/pwa/installPrompt"
 import { reportInstalledOpen } from "@/lib/pwa/installedOpen"
@@ -131,8 +131,10 @@ export default function RootLayout({ children, seo }: { children: React.ReactNod
       </head>
       <body>
         <ServiceWorkerRegistration />
-        {/* `@seo` slot (PRO-1077): a recipe's JSON-LD, outside RootShell so it is in the server HTML. */}
-        {seo}
+        {/* `@seo` slot (PRO-1077): a recipe's JSON-LD, outside RootShell so it is in the server HTML.
+            Keyed: bare, its default slot raised React's «unique key» warning on every other page,
+            and in `next dev` the issues badge then covered the bottom buttons the e2e click. */}
+        <Fragment key="seo">{seo}</Fragment>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <RootShell pathname={pathname}>

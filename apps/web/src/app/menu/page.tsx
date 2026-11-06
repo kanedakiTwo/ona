@@ -17,6 +17,7 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { AutoplanCard } from "@/components/menu/AutoplanCard"
 import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
@@ -556,6 +557,9 @@ export default function MenuPage() {
     </button>
   )
 
+  // PRO-381: «Mimo os ha dejado hecha la semana…», at the top.
+  const autoplanCard = <AutoplanCard weekStart={weekStart} onOpenWeek={setWeekStart} />
+
   const backToToday = !isCurrentWeek && (
     <button
       type="button"
@@ -745,6 +749,7 @@ export default function MenuPage() {
             header={
               <>
                 {header}
+                {autoplanCard}
                 <AccountAccessNotice />
                 <PendingSignUpCard />
                 <NoHealthDataNotice />
@@ -790,6 +795,7 @@ export default function MenuPage() {
         ) : (
           <div className="mx-auto flex max-w-[var(--page-max)] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
+            {autoplanCard}
             <AccountAccessNotice />
             <NoHealthDataNotice />
             <AfinaNoticeCard />
@@ -822,6 +828,7 @@ export default function MenuPage() {
         {moreButton}
       </header>
 
+      {autoplanCard}
       <AccountAccessNotice />
       <PendingSignUpCard />
 

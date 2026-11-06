@@ -5,10 +5,10 @@ import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
 import { withHouseholdRestrictions } from '../services/householdAllergies.js'
-import { generationSkips, keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
+import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
 import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js'
+import { menus, menuEdits, users, userSettings } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
 import { validate } from '../middleware/validate.js'
@@ -16,20 +16,19 @@ import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, t
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
-import { defaultTemplate, generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
+import { defaultTemplate, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
-import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
-import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
-import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek, isLeftoverSource } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
-import { startShadowPlan } from '../services/menuPlannerShadow.js'
+import { generateAndSaveMenu } from '../services/menuGenerate.js'
+import { autoplanNoticeFor, markAutoplanViewed, noteAutoplanChange } from '../services/weeklyAutoplan.js'
 import { loadSlotPickContext, slotPickOptions } from '../services/menuSlotPick.js'
 import {
+  menuEditWho,
   recordMenuEdits,
   slotDiff,
   slotRemoved,
@@ -274,73 +273,23 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       plan = { ...weekPlan, fridgeItems: gate.items }
     }
 
-    // Generate the menu. PRO-244: the first menu starts on the sign-up day —
-    // days before `fromDate` are left out of generation (no dishes, nothing
-    // on the list); they are not stored as "sin cocinar".
+    // Generate the menu (services/menuGenerate.ts, also Mimo's Thursday week,
+    // PRO-381). PRO-244: the first menu starts on the sign-up day — days
+    // before `fromDate` are left out of generation (no dishes, nothing on the
+    // list); they are not stored as "sin cocinar".
     // PRO-377: `onlyFavorites` — «Rehacer la semana con mis favoritas».
-    const { days, warnings, favoritesShort } = await generateMenu(
+    const { menu, days, warnings, favoritesShort } = await generateAndSaveMenu({
       userId,
       weekStart,
       customTemplate,
-      db,
-      previous.locked,
-      previous.days,
-      carryBanned,
-      generationSkips(carrySkipped, weekStart, fromDate),
-      plan,
-      { onlyFavorites: onlyFavorites === true },
-    )
-
-    // Save to menus table — carry the lists forward so the matcher honours
-    // them next regeneration too.
-    const [menu] = await db
-      .insert(menus)
-      .values({
-        userId,
-        householdId,
-        weekStart,
-        days,
-        locked: previous.locked,
-        bannedRecipeIds: [...carryBanned],
-        skippedDays: [...carrySkipped],
-      })
-      .returning()
-
-    // Calculate calories and nutrients for the menu log
-    const caloriesTotal = await calculateMenuCaloriesFromDB(days, db)
-    const aggregatedNutrients = await calculateMenuNutrientsFromDB(days, db)
-
-    // Create menu_log entry
-    await db.insert(menuLogs).values({
-      userId,
-      menuId: menu.id,
-      weekStart,
-      aggregatedNutrients,
-      caloriesTotal,
+      weekPlan: plan,
+      fromDate,
+      onlyFavorites: onlyFavorites === true,
+      previous,
     })
 
-    // Update nutrient balance
-    await updateBalance(userId, aggregatedNutrients, db)
-
-    // Enqueue prep-time alerts for this menu (PR-D). Best-effort: a
-    // failure here must NOT take the menu down — we log and continue.
-    // Opt-in: only fires when the user has matching `prep_habits`.
-    enqueuePrepAlertsForMenu(menu.id).catch((err) => {
-      console.warn('[menus.generate] enqueuePrepAlertsForMenu failed:', err)
-    })
-
-    // Menú inteligente a la sombra (PRO-255): Mimo piensa la misma semana
-    // and stores its proposal in `menu_plans`; the household keeps seeing
-    // this one. Not awaited: it never delays or breaks the menu.
-    startShadowPlan({
-      menuId: menu.id,
-      userId,
-      weekStart,
-      days,
-      locked: previous.locked,
-      bannedRecipeIds: carryBanned,
-      skippedDays: carrySkipped,
-    })
+    // PRO-381: redoing the week Mimo left done on Thursday is changing it.
+    noteAutoplanChange(userId, weekStart, menuEditWho(req).channel)
 
     // «Cuánto ha acertado» (PRO-155): one small Haiku call, stored on the
     // row. Null (no key, error, slow) → the menu goes out without the line.
@@ -356,6 +305,33 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
 
 // All remaining routes require auth
 router.use(authMiddleware)
+
+// PRO-381 · Piloto automático: the card «Mimo os ha dejado hecha la semana…»
+// on /menu (null when there is nothing to show). Declared before the
+// `:menuId` routes so «autoplan» is never read as a menu id.
+router.get('/menu/autoplan', async (req: AuthRequest, res) => {
+  try {
+    res.json({ notice: await autoplanNoticeFor(req.userId!) })
+  } catch (err) {
+    console.error('Autoplan notice error:', err)
+    res.json({ notice: null })
+  }
+})
+
+// The person opened that week: the card goes (once per person, `autoplan_viewed`).
+router.post('/menu/autoplan/viewed', async (req: AuthRequest, res) => {
+  const weekStart = typeof req.body?.weekStart === 'string' ? req.body.weekStart : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+    res.status(400).json({ error: 'weekStart (YYYY-MM-DD) es obligatorio.' })
+    return
+  }
+  try {
+    res.json({ ok: await markAutoplanViewed(req.userId!, weekStart) })
+  } catch (err) {
+    console.error('Autoplan viewed error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 /**
  * IDOR guard for every `/menu/:menuId/...` mutation route. The slot routes

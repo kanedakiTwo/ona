@@ -143,6 +143,8 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/menu/:x/edits',
   '/menu/:x/history',
   '/menu/:x/move-slot',
+  '/menu/autoplan',
+  '/menu/autoplan/viewed',
   '/menu/generate',
   '/month-menus/:x/copy',
   '/month-menus/current',

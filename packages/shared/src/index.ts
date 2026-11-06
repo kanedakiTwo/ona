@@ -295,7 +295,7 @@ export {
   matchesCatalogIntent,
 } from './utils/catalog.js'
 export type { CatalogScope, CatalogRecipeLike, CatalogFilterState, CatalogIntent } from './utils/catalog.js'
-export { menuShareText, recipeSharePayload, shoppingListShareText, shoppingListShareUrl, withOnaFooter } from './utils/sharePayloads.js'
+export { madeWithMimoLine, menuShareText, recipeSharePayload, shortInviteLink, shoppingListShareText, shoppingListShareUrl, withOnaFooter } from './utils/sharePayloads.js'
 export { shoppingProgress, parseShoppingAmount } from './utils/shoppingProgress.js'
 export type { ShoppingProgress } from './utils/shoppingProgress.js'
 export type { SharePayload } from './utils/sharePayloads.js'

@@ -57,6 +57,7 @@ import { haptic } from "@/lib/pwa/haptics"
 import { DAY_PARAM, dayFromSearch, menuRecipeHref } from "@/lib/menuReturn"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
+import { trackUsage } from "@/lib/usageEvents"
 import { absentMeals, batchServings, dateOfDay, dayHeading, feedsLeftovers, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
@@ -272,7 +273,8 @@ export default function MenuPage() {
   async function handleShareWeek() {
     if (!menu) return
     haptic.light()
-    await share({ title: "Mi menú de la semana", text: menuShareText(menu.days as never, window.location.origin) })
+    const shared = await share({ title: "Mi menú de la semana", text: menuShareText(menu.days as never, window.location.origin) })
+    if (shared.success) trackUsage("content_shared", { what: "semana" })
   }
 
   // PRO-225 · «Antes de planificar»: the blank week's optional answers.

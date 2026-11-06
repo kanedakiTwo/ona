@@ -19,6 +19,7 @@ import { useWakeLock } from "@/hooks/useWakeLock"
 import { haptic } from "@/lib/pwa/haptics"
 import { subscribeCookingCommands } from "@/lib/cookingCommands"
 import { useAuth } from "@/lib/auth"
+import { trackUsage } from "@/lib/usageEvents"
 import { useOptionalMimo } from "@/components/mimo/MimoProvider"
 import { StepCard, buildIngredientRefCounts } from "./StepCard"
 import { ChecklistPanel } from "./ChecklistPanel"
@@ -98,7 +99,10 @@ export function CookingShell({
     if (!mimo) return
     haptic.light()
     if (mimo.handsFree) mimo.setHandsFree(false)
-    else mimo.open({ listen: true, handsFree: true })
+    else {
+      mimo.open({ listen: true, handsFree: true })
+      trackUsage("handsfree_started", { where: "cocina" })
+    }
   }
 
   const totalSteps = recipe.steps.length

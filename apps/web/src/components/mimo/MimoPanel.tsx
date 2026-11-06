@@ -9,7 +9,7 @@ import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
-import { markRecipeFromMimo } from '@/lib/usageEvents'
+import { markRecipeFromMimo, trackUsage } from '@/lib/usageEvents'
 import { useBilling } from '@/hooks/useBilling'
 import { AccountAccessNotice, isPaused } from '@/components/billing/AccountAccessNotice'
 
@@ -232,6 +232,7 @@ export default function MimoPanel() {
                 onClick={() => {
                   const next = !mimo.handsFree
                   mimo.setHandsFree(next)
+                  if (next) trackUsage('handsfree_started', { where: 'panel' })
                   if (next && mimo.status === 'idle') mimo.toggleListening()
                 }}
                 aria-pressed={mimo.handsFree}

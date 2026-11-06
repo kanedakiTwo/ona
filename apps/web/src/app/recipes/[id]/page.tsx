@@ -36,6 +36,7 @@ import { AddToMenuSheet } from "@/components/recipes/detail/AddToMenuSheet"
 import { RecipeHeroPhoto } from "@/components/recipes/detail/RecipeHeroPhoto"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
+import { trackUsage } from "@/lib/usageEvents"
 import {
   BookmarkPlus,
   CalendarPlus,
@@ -267,7 +268,10 @@ export default function RecipeDetailPage() {
     // "Pásalo": catalogue recipes share this very page's link (it opens
     // without an account, with the waitlist block); private ones go as text
     // + a link to Mimoia. Either way with this household's invitation.
-    await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : "", referral.data?.code))
+    const shared = await share(
+      recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : "", referral.data?.code),
+    )
+    if (shared.success) trackUsage("content_shared", { what: "receta" })
   }
 
   const stepCount = recipe.steps?.length ?? 0

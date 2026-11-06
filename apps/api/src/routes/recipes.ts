@@ -45,6 +45,7 @@ import {
   saveOwnRecipeImage,
 } from '../services/recipeOwnImage.js'
 import { recipeShoppingIssues } from '../services/recipeShoppability.js'
+import { isInternalCall, trackEvent } from '../services/usageEvents.js'
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -1544,12 +1545,13 @@ router.post(
         await db
           .delete(userFavorites)
           .where(and(eq(userFavorites.userId, userId), eq(userFavorites.recipeId, recipeId)))
-        res.json({ favorited: false })
       } else {
         const householdId = await getPrimaryHouseholdId(userId)
         await db.insert(userFavorites).values({ userId, householdId, recipeId })
-        res.json({ favorited: true })
       }
+      // PRO-1024: `user_favorites` has no date; the event does (Mimo's toggle_favorite counts in the skill runner).
+      if (!isInternalCall(req)) trackEvent('favorite_toggled', { userId, channel: 'web', props: { on: !existing } })
+      res.json({ favorited: !existing })
     } catch (err) {
       console.error('Toggle favorite error:', err)
       res.status(500).json({ error: 'Internal server error' })

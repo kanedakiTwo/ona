@@ -75,6 +75,13 @@ export interface RecipeWithIngredients {
     edibleFraction?: number | null
     note?: string | null
     aisle?: string | null
+    /** Row id + «Cocinar ahora» marks (specs/cook-now.md). */
+    rowId?: string
+    optional?: boolean
+    displayUnit?: string | null
+    category?: string | null
+    role?: 'essential' | 'secondary' | null
+    substituteIngredientIds?: string[]
   }>
   /** Servings the quantities are for (recipes.servings), for the week rules (PRO-280). */
   servings?: number | null

@@ -38,11 +38,8 @@ import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
-<<<<<<< ad2012313a1d0ff1379f3f021316ea5aa20819f1
 import mimoRemotoRoutes from './routes/mimoRemoto.js'
-=======
 import ingredientRoleRoutes from './routes/ingredientRoles.js'
->>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'

@@ -712,10 +712,6 @@
     {
       "idx": 106,
       "version": "7",
-<<<<<<< ad2012313a1d0ff1379f3f021316ea5aa20819f1
-      "when": 1793948210958,
-      "tag": "0108_mimo_turnos_remotos",
-=======
       "when": 1793884741521,
       "tag": "0106_newsletter_drafts",
       "breakpoints": true
@@ -725,7 +721,13 @@
       "version": "7",
       "when": 1793942618716,
       "tag": "0107_ingredient_roles",
->>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1793950577623,
+      "tag": "0108_mimo_turnos_remotos",
       "breakpoints": true
     }
   ]

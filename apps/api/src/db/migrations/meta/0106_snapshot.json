@@ -1,9 +1,5 @@
 {
-<<<<<<< ad2012313a1d0ff1379f3f021316ea5aa20819f1
-  "id": "41a212dd-d245-43d9-8ffd-496c4af1ffb9",
-=======
   "id": "cb7f3c0f-8752-4c90-9aa8-d91bba38bdad",
->>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
   "prevId": "20cb27e9-4514-44cd-914d-38d05b16acaa",
   "version": "7",
   "dialect": "postgresql",
@@ -4555,82 +4551,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-<<<<<<< ad2012313a1d0ff1379f3f021316ea5aa20819f1
-    "public.mimo_turnos_remotos": {
-      "name": "mimo_turnos_remotos",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "creado": {
-          "name": "creado",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "estado": {
-          "name": "estado",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pendiente'"
-        },
-        "peticion": {
-          "name": "peticion",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "respuesta": {
-          "name": "respuesta",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_mimo_turnos_remotos_estado": {
-          "name": "idx_mimo_turnos_remotos_estado",
-          "columns": [
-            {
-              "expression": "estado",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "creado",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "mimo_turnos_remotos_estado_check": {
-          "name": "mimo_turnos_remotos_estado_check",
-          "value": "estado IN ('pendiente','cogido','respondido','caducado')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-=======
->>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
     "public.newsletter_clicks": {
       "name": "newsletter_clicks",
       "schema": "",
@@ -4705,8 +4625,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-<<<<<<< ad2012313a1d0ff1379f3f021316ea5aa20819f1
-=======
     "public.newsletter_drafts": {
       "name": "newsletter_drafts",
       "schema": "",
@@ -4849,7 +4767,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
->>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
     "public.newsletter_sends": {
       "name": "newsletter_sends",
       "schema": "",

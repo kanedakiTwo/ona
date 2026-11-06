@@ -2,9 +2,9 @@
 
 A «Cocinar» tab that, with four questions (time, people, whether something can be bought, the pantry confirmed), proposes a recipe to cook right now and two alternatives. Design: [`docs/superpowers/specs/2026-11-03-cocinar-ahora-design.md`](../docs/superpowers/specs/2026-11-03-cocinar-ahora-design.md); plan: [`docs/superpowers/plans/2026-11-03-cocinar-ahora.md`](../docs/superpowers/plans/2026-11-03-cocinar-ahora.md).
 
-It ships in five phases on one branch, published together at the end (PRO-1105 to PRO-1109). **Phase 1 (PRO-1105) is in:** what each ingredient of a recipe is for. Nothing of it is visible to households yet.
+It ships in five phases on one branch, published together at the end (PRO-1105 to PRO-1109). **Phase 1 (PRO-1105) is in:** what each ingredient of a recipe is for. **Phase 2 (PRO-1106) is in:** the search, its four routes, Mimo's line and the usage events. Nothing of it is visible to households yet: no screen calls the routes until phase 3.
 
-TODO(spec): the tab, the search, «Cocinar esta», the pantry move and the events land with phases 2–5 (plan tasks 7–20); this spec is rewritten then.
+TODO(spec): the tab, the pantry move, the cook mode's menu context and the end-to-end test land with phases 3–5 (plan tasks 13–20); this spec is rewritten then.
 
 ## User Capabilities
 
@@ -21,6 +21,20 @@ TODO(spec): the tab, the search, «Cocinar esta», the pantry move and the event
   A mark always wins over the rule (`roleOf`), except that an optional line is always secondary.
 - **Households' own recipes keep the rule**: they never reach the office (privacy, E-40). Both routes read and write only catalogue recipes: no author and not a household's copy (`CATALOGUE_RECIPE`). Account deletion removes own recipes before the author goes ([Privacy](./privacy.md)), so a null author is always the catalogue.
 
+### The search (phase 2)
+
+- **`GET /cook-now/today`** → `{ weekStart, day, meal, menuId, planned[], locked, slotServings, targets[] }`. `meal` is the **meal of now** (`cookNowMeal`, Madrid time): lunch until 16:00, then dinner; a meal already marked eaten is skipped; `null` when both are eaten. `planned` = the recipe dishes cooked for that slot (`plannedRecipeDishes`: not leftovers, tápers or notes) with name, image and total time. `targets` = the rest of the week (tomorrow → Sunday, same meal) where the planned dishes could move, each saying what it would replace and `disabled` for a skipped day or a locked meal (`displaceTargets`).
+- **`POST /cook-now/proposal`** `{ minutes: 15 | 30 | 45 | null, servings: 1–20, canBuy, requirePantryUse? }` (`cookNowProposalSchema`) → `{ meal, fallback, items[] }`, 0–3 recipes, the first one preferred. Each item: `recipe { id, name, imageUrl, totalTime }`, `fit` (`fits` | `margin`), `missingEssential`, `short`, `missingSecondary`, `substitutions [{ missing, use }]`, `uses`, `expiring`. The web writes the line under each one with `cookNowHitLine` («No te falta nada», «Puedes hacerla sin perejil», «Te falta: pollo», «Te falta un poco de arroz», «Cambia la nata por leche»).
+  - **Candidates** (`loadCookNowCandidates`): the menu's loader and matcher for that meal and weekday — allergies and diet of the whole household, dislikes, the week's vetoes, «Mejor no», equipment, season — **without the time budget**, main or versatile dishes only (`isCookNowCourse`). Without a meal of now it searches dinner and answers `meal: null`.
+  - **Time** (`fitOf`): total time ≤ the answer fits; up to +20 % is `margin`; more, or a recipe without time, is out. `null` minutes = no limit.
+  - **What the house has** (`evaluateRecipe`): basics (salt, oil, water, pepper, flour) never count; a line is at home when a catalogue-linked pantry row with quantity > 0 has its id or its word in the name; an active staple counts as at home; a substitute in the pantry stands in (`substitutions`); an optional line never counts as missing. An **essential** line the pantry has in the same unit but not enough of (scaled to the servings asked over the recipe's servings, 4 when unknown) is missing and `short`; different units count as enough. Essential or secondary by `roleOf` (phase 1).
+  - **Filter** (`rankCookNow`): «Solo lo que tengo» (`canBuy: false`) allows no missing essential; if nothing is left, the recipes missing exactly one are shown with `fallback: true`. «Sí, algo» allows up to two.
+  - **Order**, each criterion only breaking the previous one's ties: fits before margin → fewer missing essentials → more pantry used (each ingredient expiring within 3 days counts double) → fewer missing secondaries → «Repetir a menudo» (5 stars, «Me encanta») first → cooked by the household in the last 7 days last → name.
+  - `requirePantryUse: true` (the «Con lo que tienes» card of phase 3) keeps only recipes that use something from the pantry, and doesn't count as a proposal in the usage events.
+- **`POST /cook-now/phrase`** `{ recipeId }` → `{ text | null }`: Mimo's line on the preferred recipe (`services/cookNow/phrase.ts`), one sentence of at most 15 words written only from the facts given (what it uses from the pantry, what expires soon, days since it was last cooked, «Repetir a menudo», what can be left out). The only live AI call of the feature: `claude-opus-5-5`, low effort, billed as `cook_now_phrase` in `cost_events` to the household with no user, so it stays **outside Mimo's monthly cap** (`getUserMonthlySpendEur` sums by user). A paused account, no API key, an error or more than 5 s → `null` (the web shows the card without it). Cleaned to the first line, without quotes, at most 160 characters (`cleanPhrase`). `null` too when the user can't see the recipe.
+- **`POST /cook-now/choose`** `{ recipeId, servings | null, displacedTo | null }` (`cookNowChooseSchema`, behind `requireActiveAccount`) puts the recipe in the meal of now (`placeCookNowRecipe`): it replaces every dish of that slot, with `servings` as the slot's diners when given (null = the household default). The planned recipe dishes move, settings kept, to `displacedTo` (same meal, replacing what was there) or go when it is null; leftovers pointing at the moved slot follow it. The changes are written to the menu history (`recordMenuEdits`). A week without a menu gets a row with just that dish, like Mimo's «Con lo que tienes». Answers `{ placed: true, menuId, weekStart, day, meal }`, or `{ placed: false, reason }` with `no_meal`, `locked` (the meal is locked; `today` already says it), `not_found` (not visible) or `banned` (vetoed this week); a `displacedTo` that isn't a free target is 400.
+- **Usage events** ([Metrics](./metrics.md)): `cook_now_proposed` (`canBuy`) on each proposal asked, `cook_now_chosen` (`displaced`) on each choice, and `meal_cooked` now carries `fromMenu` (the cook log came with a `menuId`). They watch the growth line's **first strike** (D-158): cooking a dish of the menu.
+
 ## Constraints
 
 - **Marks survive edits**: saving a recipe (`persistRecipe`, edit mode) carries each row's role and substitutes to the new rows, first by row id when the ingredient is the same, then by ingredient id (the same ingredient in two sections keeps each row its own marks). A new ingredient comes unmarked; a row id reused for another ingredient doesn't carry the old marks (`carryIngredientMarks`). The recipe form doesn't send marks, so an edit keeps them; an explicit `role` in the write input (Cocina's batch) wins.
@@ -32,10 +46,19 @@ TODO(spec): the tab, the search, «Cocinar esta», the pantry move and the event
 
 - [Recipes](./recipes.md) — the recipe and its ingredients; copies
 - [Catalog Import](./catalog-import.md) — Cocina's batch file
-- [Menus](./menus.md) — the recipe loader the search will reuse
+- [Menus](./menus.md) — the recipe loader and matcher the search reuses; the slot the choice writes
 - [Metrics](./metrics.md) — the other office token (`x-metrics-token`, read only)
 
 ## Source
+
+- [packages/shared/src/cookNow.ts](../packages/shared/src/cookNow.ts) — `cookNowMeal`, `plannedRecipeDishes`, `displaceTargets`, `cookNowHitLine`, the request schemas
+- [apps/api/src/services/cookNow/search.ts](../apps/api/src/services/cookNow/search.ts) — `fitOf`, `evaluateRecipe`, `rankCookNow` (pure)
+- [apps/api/src/services/cookNow/place.ts](../apps/api/src/services/cookNow/place.ts) — `placeCookNowRecipe` (pure)
+- [apps/api/src/services/cookNow/load.ts](../apps/api/src/services/cookNow/load.ts) — `loadCookNowToday`, `loadCookNowCandidates`, `loadCookNowHouse`, `findCookNowProposal`, `loadPhraseFacts`, `chooseCookNowRecipe`
+- [apps/api/src/services/cookNow/phrase.ts](../apps/api/src/services/cookNow/phrase.ts) — Mimo's line
+- [apps/api/src/routes/cookNow.ts](../apps/api/src/routes/cookNow.ts) — the four routes, mounted next to `cookLogRoutes`
+- [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the loader brings each line's row id, optional, displayed unit, category, role and substitutes
+- Tests (phase 2): `cookNowShared.test.ts`, `cookNowSearch.test.ts`, `cookNowPlace.test.ts`, `cookNowLoad.test.ts`, `cookNowPhrase.test.ts`, `usageEvents.test.ts`
 
 - [packages/shared/src/types/ingredientRole.ts](../packages/shared/src/types/ingredientRole.ts) — `INGREDIENT_ROLES`, `ingredientRoleMarkSchema`, `ingredientRolesUpdateSchema`
 - [apps/api/src/services/ingredientRoles.ts](../apps/api/src/services/ingredientRoles.ts) — `carryIngredientMarks`, `ingredientMarksOf`, `autoIngredientRole`, `recipeGrams`, `roleOf`

@@ -166,12 +166,19 @@ Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para l
 
 ## [Cook now («Cocinar ahora»)](./cook-now.md)
 
-«Cocinar ahora» tab (in five phases, PRO-1105 to PRO-1109; phase 1 in): essential and secondary ingredients (imprescindibles y secundarios, `recipe_ingredients.role`), substitutes (sustitutos, `substitute_ingredient_ids`), the automatic rule (regla automática: protein/cereal/legume, 15 % of the weight, optional/al gusto/pizca secondary, `autoIngredientRole`, `roleOf`), marks kept on edit and on «Añadir a mis recetas» (`carryIngredientMarks`, `ingredientMarksOf`), Cocina marks the catalogue (`GET /admin/recipes/ingredient-roles/pending`, `PUT /admin/recipes/:id/ingredient-roles`, `x-cocina-token` / `COCINA_WRITE_TOKEN`, only catalogue recipes, households' own recipes never reach the office), batch file `imprescindible` / `sustitutos`.
+«Cocinar ahora» tab (in five phases, PRO-1105 to PRO-1109; phases 1–2 in): essential and secondary ingredients (imprescindibles y secundarios, `recipe_ingredients.role`), substitutes (sustitutos, `substitute_ingredient_ids`), the automatic rule (regla automática: protein/cereal/legume, 15 % of the weight, optional/al gusto/pizca secondary, `autoIngredientRole`, `roleOf`), marks kept on edit and on «Añadir a mis recetas» (`carryIngredientMarks`, `ingredientMarksOf`), Cocina marks the catalogue (`GET /admin/recipes/ingredient-roles/pending`, `PUT /admin/recipes/:id/ingredient-roles`, `x-cocina-token` / `COCINA_WRITE_TOKEN`, only catalogue recipes, households' own recipes never reach the office), batch file `imprescindible` / `sustitutos`. Phase 2: the search (búsqueda: meal of now / comida de ahora, time fit with +20 % margin, pantry, staples, substitutes, missing essentials, «Solo lo que tengo» / «Sí, algo», order), `GET /cook-now/today`, `POST /cook-now/proposal`, `POST /cook-now/phrase` (Mimo's line, la frase de Mimo, `cook_now_phrase` cost outside the monthly cap), `POST /cook-now/choose` (puts it in the meal, moves the planned dishes / pasarlas a otro día), usage events `cook_now_proposed`, `cook_now_chosen`, `meal_cooked.fromMenu`.
 
+**Source**: `packages/shared/src/types/ingredientRole.ts`, `packages/shared/src/cookNow.ts`, `apps/api/src/services/cookNow/`, `apps/api/src/routes/cookNow.ts`, `apps/api/src/services/ingredientRoles.ts`, `apps/api/src/routes/ingredientRoles.ts`, `apps/api/src/middleware/cocinaAuth.ts`, `apps/api/src/services/recipePersistence.ts`, `apps/api/src/services/catalogImport.ts`
+
+---
+
+<<<<<<< 3231645931fa7c78b5a829e4038b4c08ebad711a
 **Source**: `packages/shared/src/types/ingredientRole.ts`, `apps/api/src/services/ingredientRoles.ts`, `apps/api/src/routes/ingredientRoles.ts`, `apps/api/src/middleware/cocinaAuth.ts`, `apps/api/src/services/recipePersistence.ts`, `apps/api/src/services/catalogImport.ts`
 
 ---
 
+=======
+>>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
 ## [La receta del día](./recipe-of-the-day.md)
 
 Recipe of the day / receta del día (PRO-1099, E-26): one published catalogue recipe per day (`recipes.featured_on`, unique, migration 0106; `featuredOn` in Cocina's batch file, Miguel sees it before it goes out, D-164.1), public `GET /recipe-of-the-day` and `GET /recipe-of-the-day/AAAA-MM-DD` (Madrid's today; «hoy no hay» → the last one, with its date; 404 `NONE`, 400 `INVALID_DATE`), social post pack / paquete para redes (title, short text built from the recipe, key ingredients, minutes, cuisine, credit, source link, recipe link), photo cut to 1080×1350 and 1200×630 (`/recipe-of-the-day/:date/photo/vertical|horizontal`, sharp; web relay `/receta-del-dia/<fecha>/foto/<formato>`), public page `/receta-del-dia` and `/receta-del-dia/<fecha>` with Open Graph / X card, in the sitemap, Mimo tool `get_recipe_of_the_day` (web chat and WhatsApp, D-051; warns it isn't picked for the household's allergies).

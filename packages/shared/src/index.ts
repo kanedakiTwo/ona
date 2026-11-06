@@ -27,6 +27,17 @@ export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/men
 export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine } from './types/menuDish.js'
 export { INGREDIENT_ROLES, ingredientRoleMarkSchema, ingredientRolesUpdateSchema } from './types/ingredientRole.js'
 export type { IngredientRole, IngredientRoleMark } from './types/ingredientRole.js'
+export {
+  COOK_NOW_MINUTES,
+  cookNowMeal,
+  plannedRecipeDishes,
+  displaceTargets,
+  cookNowHitLine,
+  cookNowProposalSchema,
+  cookNowChooseSchema,
+  cookNowPhraseSchema,
+} from './cookNow.js'
+export type { CookNowMeal, DisplaceTarget, CookNowHitFacts, CookNowProposalRequest, CookNowChooseRequest } from './cookNow.js'
 export type {
   MemoryKey,
   MemorySource,

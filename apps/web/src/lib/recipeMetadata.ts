@@ -8,7 +8,8 @@ import { SITE_URL } from "./site"
  * what WhatsApp, Telegram, iMessage or a search engine show when someone
  * pastes the link. Built from the anonymous `GET /recipes/:id` response, so
  * only catalogue recipes get a real preview; a private or missing recipe gets
- * a generic, non-indexed one (we never confirm a private recipe exists).
+ * a generic, non-indexed one (we never confirm a private recipe exists). A
+ * book recipe keeps its preview but is not indexed (PRO-1077, D-104).
  *
  * Pure, so the tests can check it without a server.
  */
@@ -22,6 +23,8 @@ export interface PreviewRecipe {
   prepTime?: number | null
   cookTime?: number | null
   ingredients?: readonly unknown[] | null
+  /** PRO-1077: adapted from a book (D-104) → not indexed until Legal's OK. */
+  fromBook?: boolean
 }
 
 export const GENERIC_RECIPE_METADATA: Metadata = {
@@ -60,6 +63,7 @@ export function recipeMetadata(recipe: PreviewRecipe | null): Metadata {
     title: `${recipe.name} · ${BRAND_NAME}`,
     description,
     alternates: { canonical: path },
+    ...(recipe.fromBook ? { robots: { index: false } } : {}),
     openGraph: {
       type: "article",
       url: path,

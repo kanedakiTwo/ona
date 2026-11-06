@@ -100,6 +100,7 @@ import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
+import { isBookRecipe, loadSitemapRecipes } from '../services/recipeSeo.js'
 import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
 import { ingredientMarksOf } from '../services/ingredientRoles.js'
 import { z } from 'zod'
@@ -397,6 +398,8 @@ function toDetailRecipe(
   // «Inspirada en…»). Only this line — never the rest of catalog_source
   // (file, batch, audit notes).
   detail.sourceCredit = catalogSourceCredit(row.catalogSource)
+  // PRO-1077: a book recipe stays out of search engines until Legal's OK.
+  if (isBookRecipe(row.catalogSource)) detail.fromBook = true
   if (row.advancePrep?.length) detail.advancePrep = row.advancePrep
   // PRO-372: the ficha's «Se puede congelar» / «Aguanta N días en nevera» seals.
   if (row.freezable != null) detail.freezable = row.freezable
@@ -621,6 +624,18 @@ router.get('/recipes/seasonal-produce', async (req, res) => {
     res.json(await loadSeasonalProduce(month))
   } catch (err) {
     console.error('GET /recipes/seasonal-produce error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// GET /recipes/sitemap — the catalogue recipes `sitemap.xml` lists (PRO-1077):
+// published Mimoia recipes without the book ones (D-104), `[{ id, updatedAt }]`.
+// Public. **Must be declared before `/recipes/:id`.**
+router.get('/recipes/sitemap', async (_req, res) => {
+  try {
+    res.json(await loadSitemapRecipes())
+  } catch (err) {
+    console.error('GET /recipes/sitemap error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

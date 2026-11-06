@@ -34,7 +34,7 @@ Public articles on mimoia.com (PRO-92). Each article is a Markdown file in the r
 ## SEO
 
 - Each page sets its own metadata (Next `metadata` / `generateMetadata`, `metadataBase` = `SITE_URL` `https://mimoia.com`): `<title>` («Blog · Mimoia», «<titulo> · Mimoia»), description (`resumen`), canonical (`https://mimoia.com/blog[/slug]`), Open Graph (`og:type` website/article, title, description, image, `article:published_time`, author). The root layout skips its default `<title>`/description on `/blog*` (`hasOwnMetadata`) so they are not duplicated.
-- **`/sitemap.xml`** (`app/sitemap.ts`, new with the blog) lists the public pages (`/`, `/como-funciona`, `/blog`, `/privacidad`, `/terminos`, `/aviso-legal`) and every published article with `lastmod` = `fecha`.
+- **`/sitemap.xml`** (`app/sitemap.ts`, new with the blog) lists the public pages (`/`, `/como-funciona`, `/blog`, `/privacidad`, `/terminos`, `/aviso-legal`) and every published article with `lastmod` = `fecha`; also `/recipes` and the published catalogue recipes but the book ones (PRO-1077, see [Recipes](./recipes.md) → «SEO de la ficha»).
 
 ## Constraints
 

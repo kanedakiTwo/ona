@@ -67,7 +67,8 @@ export async function seedCatalogDrafts(batch: string, drafts: SeedDraft[]): Pro
        ORDER BY r.name LIMIT 1`,
     )
     if (!src[0]) throw new Error('The seed has no published catalogue recipe to copy')
-    const recipeCols = (await columns(c, 'recipes', ['id', 'name', 'status', 'import_batch', 'catalog_source', 'image_url', 'created_at', 'updated_at'])).join(', ')
+    // featured_on is one per day (PRO-1099): a copy never takes its source's day.
+    const recipeCols = (await columns(c, 'recipes', ['id', 'name', 'status', 'import_batch', 'catalog_source', 'image_url', 'featured_on', 'created_at', 'updated_at'])).join(', ')
     const ingCols = (await columns(c, 'recipe_ingredients', ['id', 'recipe_id'])).join(', ')
     const stepCols = (await columns(c, 'recipe_steps', ['id', 'recipe_id', 'ingredient_refs'])).join(', ')
     const ids: string[] = []

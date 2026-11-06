@@ -20,6 +20,7 @@ import {
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
 import { hasLikedRecipes } from '../tasteStore.js'
+import { noteApiCallOk } from '../apiSaldo.js'
 
 let client: Anthropic | null = null
 
@@ -348,9 +349,15 @@ export async function runToolLoop(params: {
       },
       { headers: { 'anthropic-beta': FALLBACK_BETA } },
     )
+<<<<<<< cb5ef5eb7b4d884f5936becb5854fc6ae9a32eac
     // PRO-393: model calls and tools run so far ride along to `cost_events`
     // (every return below happens before this round's tools run).
     usage = { ...addAnthropicUsage(usage, response.usage), rounds: round + 1, toolCalls: executed.length }
+=======
+    usage = addAnthropicUsage(usage, response.usage)
+    // PRO-1101: Anthropic contesta, así que hay saldo: cierra la racha `saldo_api` si la había.
+    noteApiCallOk()
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 
     if (response.stop_reason === 'refusal') {
       flags.push('refusal')

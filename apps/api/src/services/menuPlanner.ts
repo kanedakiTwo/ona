@@ -22,9 +22,9 @@
 import { z } from 'zod'
 import { CLAUDE_MODEL } from '../config/models.js'
 import type { DayMenu, DayTimeBudget, Meal, RecipeDish, Season } from '@ona/shared'
-import { fitsTimeBudget } from '@ona/shared'
+import { appliancesIn, fitsTimeBudget } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
-import { matchRecipes, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
+import { matchRecipes, needsMissingAppliance, needsUnavailableEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { dishTypeOf, mainProteinOf, type WeekRecipe } from './weekRules.js'
 
 export const PLANNER_MODEL = CLAUDE_MODEL
@@ -321,9 +321,9 @@ export function checkPlan(output: PlannerOutput, ctx: CheckContext): PlanCheck {
       const full = ctx.recipesById.get(recipe.id) ?? recipe
       if (violatesRestrictions(full, rules)) problems.push('restriccion')
       if (ctx.bannedRecipeIds?.has(full.id)) problems.push('veto')
-      const needs = (full.equipment ?? []).map(normaliseEquipment)
-      if ((ctx.unavailableEquipment && needs.some((e) => ctx.unavailableEquipment!.has(e))) ||
-          (ctx.availableEquipment && ctx.availableEquipment.size > 0 && !needs.every((e) => ctx.availableEquipment!.has(e)))) problems.push('equipo')
+      // Same rule as the matcher (PRO-1140): only appliances filter.
+      if (needsUnavailableEquipment(full.equipment, ctx.unavailableEquipment) ||
+          (ctx.availableEquipment && ctx.availableEquipment.size > 0 && needsMissingAppliance(full.equipment, new Set(appliancesIn([...ctx.availableEquipment]))))) problems.push('equipo')
       // Leftovers are eaten, not cooked: the day's time doesn't apply to them.
       if (!leftoverOf && !fitsTimeBudget(full, req.timeBudget ?? null)) problems.push('tiempo')
     }

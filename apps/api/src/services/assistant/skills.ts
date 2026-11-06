@@ -52,7 +52,7 @@ import { unlistedDietMentions } from '../stepDietMentions.js'
 import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
-import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
+import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
@@ -481,9 +481,9 @@ const getRecipeDetails: SkillDefinition = {
       quantity: ratio === 1 || r.quantity == null ? r.quantity : scaleRound(Number(r.quantity) * ratio, r.unit ?? 'g'),
     }))
     const ingredientList = scaledRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
-    // PRO-196: same notice as the web ficha for a coeliac household.
+    // PRO-196, PRO-1063: same notices as the web ficha for a coeliac household.
     const ingNames = riRows.map((r: any) => String(r.ingredientName))
-    const dietNotices = ingNames.some(isBrandDependentGlutenCharcuterie)
+    const dietNotices = ingNames.some(needsGlutenFreeLabel)
       ? recipeDietNotices(ingNames, isCoeliacHousehold((await restrictionsFor(ctx)).restrictions))
       : []
     const details = recipeDetailsSummary({

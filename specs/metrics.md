@@ -118,6 +118,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `whatsapp_unlinked` (PRO-120; pasivo) | `DELETE /whatsapp/link` | — |
 | `feedback_left` (PRO-120; `channel` boton/mimo/whatsapp, nunca el texto) | `POST /feedback` (el botón «Opinión») | `leave_feedback` (mimo en el chat de la web, whatsapp allí) |
 | `mimo_skill_used` (PRO-1022; `skill` = el nombre de la herramienta, `canal` web/whatsapp/telegram/voice; nunca texto) | — | **toda** herramienta de Mimo que devuelve datos (`data != null`), además de su evento propio si lo tiene (`generate_weekly_menu` deja `menu_generated` y `mimo_skill_used`). Una que falla o no encuentra nada no deja ninguno. `skill` solo se guarda si es un slug (`PROP_VALUE_RE`): siempre uno de los nombres de las herramientas (un test lo comprueba con todas). Telegram corre en el modo de WhatsApp (PRO-313): la columna `channel` dice `whatsapp` y `canal` dice `telegram` |
+<<<<<<< 1660f5702bf2b0e8ad8dfd8b042e3f2efd8f3dc4
 | `meal_adjusted` (PRO-1024; `what` servings/tipo/lock, `on` en lock) | `PATCH /menu/:id/day/:d/meal/:m` con `servings` (con solo `eaten` no cuenta), `PATCH …/dish/:p` con `pinnedType` (un reordenado con `newPosition` no cuenta), `PUT …/meal/:m/lock` | — (`set_meal_servings`, `lock_meal`: `mimo_skill_used`) |
 | `taper_set` (PRO-1024; `via: menu`) | `POST …/meal/:m/taper` | — (`set_taper`: `mimo_skill_used`) |
 | `leftover_dish_set` (PRO-1024; `variant` freezer/fridge/cooked) | `POST …/meal/:m/dish` con `variant`, `PATCH …/dish/:p` con `variant` (`planned`, deshacer, no cuenta) | — |
@@ -135,6 +136,9 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `content_shared` (PRO-1024; `what` receta/lista/semana) | `POST /usage/event` cuando el botón de compartir de la receta o «Compartir» de la semana terminan bien (compartido o copiado). La lista no lo manda: «Mandar la lista» ya cuenta `shopping_list_shared` (PRO-380), así no cuenta dos veces | — |
 | `week_printed` (PRO-1024; `withList`) | `POST /usage/event` al tocar «Imprimir» en `/menu/imprimir` | — |
 | `handsfree_started` (PRO-1024; `where` cocina/panel) | `POST /usage/event` al encender «Mimo, manos libres» del modo cocina o «Manos libres» del panel | — |
+=======
+| `autoplan_generated` / `autoplan_viewed` / `autoplan_changed` (PRO-381, D-158; `week` = el lunes de la semana; los dos primeros, pasivos) | el piloto automático del jueves (`weeklyAutoplan.ts`, sistema, sin canal) deja hecha la semana; `POST /menu/autoplan/viewed` al abrir esa semana en `/menu` (una vez por persona); el primer cambio en esa semana antes de su lunes (un plato cambiado, añadido o quitado, o la semana rehecha; una vez por hogar) | los cambios de Mimo pasan por las mismas rutas (`autoplan_changed` con su canal) |
+>>>>>>> e24ea7011a0bf6c2aa761a2450257e0d8a246a6d
 | `cook_now_proposed` (PRO-1106; `canBuy`) | `POST /cook-now/proposal`: las cuatro preguntas de «Cocinar ahora» respondidas ([Cook now](./cook-now.md)). La tarjeta «Con lo que tienes» llama a la misma ruta con `requirePantryUse` y no cuenta | — |
 | `cook_now_chosen` (PRO-1106; `displaced`: lo planeado pasó a otro día) | `POST /cook-now/choose`: «Cocinar esta» | — |
 

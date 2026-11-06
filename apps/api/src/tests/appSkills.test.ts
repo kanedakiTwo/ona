@@ -177,6 +177,19 @@ describe('menu skills', () => {
     expect(writes(g.calls)).toEqual([{ method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish/random', body: undefined }])
   })
 
+  // PRO-349 (Dani y Sara, 2026-10-22): the route takes the day out of
+  // skippedDays; the summary tells Mimo so it can say it.
+  it('add_dish and set_meal_note on a «sin cocinar» day say it is active again; on another day, nothing', async () => {
+    const skipped = { ...MENU, skippedDays: [5] }
+    const f = fakeApi({ 'GET /recipes': [], 'GET /menu/u1/*': skipped })
+    const added = await get('add_dish').handler({ dayIndex: 5, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(added.summary).toMatch(/El sábado \d+ de \w+ estaba marcado sin cocinar: ya vuelve a estar activo\./)
+    const note = await get('set_meal_note').handler({ dayIndex: 5, meal: 'lunch', text: 'Arroz de limpieza' }, ctx(f.api))
+    expect(note.summary).toContain('estaba marcado sin cocinar: ya vuelve a estar activo.')
+    const other = await get('add_dish').handler({ dayIndex: 2, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(other.summary).not.toContain('sin cocinar')
+  })
+
   it('remove_dish deletes by position found by name', async () => {
     const f = fakeApi()
     await get('remove_dish').handler({ dayIndex: 0, meal: 'lunch', dishName: 'ensalada' }, ctx(f.api))

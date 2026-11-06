@@ -25,6 +25,19 @@ export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, Men
 export { menuFitLevel } from './types/menu.js'
 export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/menuDish.js'
 export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish } from './types/menuDish.js'
+export { INGREDIENT_ROLES, ingredientRoleMarkSchema, ingredientRolesUpdateSchema } from './types/ingredientRole.js'
+export type { IngredientRole, IngredientRoleMark } from './types/ingredientRole.js'
+export {
+  COOK_NOW_MINUTES,
+  cookNowMeal,
+  plannedRecipeDishes,
+  displaceTargets,
+  cookNowHitLine,
+  cookNowProposalSchema,
+  cookNowChooseSchema,
+  cookNowPhraseSchema,
+} from './cookNow.js'
+export type { CookNowMeal, DisplaceTarget, CookNowHitFacts, CookNowProposalRequest, CookNowChooseRequest } from './cookNow.js'
 export type {
   MemoryKey,
   MemorySource,
@@ -282,7 +295,7 @@ export {
   matchesCatalogIntent,
 } from './utils/catalog.js'
 export type { CatalogScope, CatalogRecipeLike, CatalogFilterState, CatalogIntent } from './utils/catalog.js'
-export { menuShareText, recipeSharePayload, withOnaFooter } from './utils/sharePayloads.js'
+export { menuShareText, recipeSharePayload, shoppingListShareText, shoppingListShareUrl, withOnaFooter } from './utils/sharePayloads.js'
 export { shoppingProgress, parseShoppingAmount } from './utils/shoppingProgress.js'
 export type { ShoppingProgress } from './utils/shoppingProgress.js'
 export type { SharePayload } from './utils/sharePayloads.js'

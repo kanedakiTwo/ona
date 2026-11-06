@@ -56,6 +56,12 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       density: ingredients.density,
       edibleFraction: ingredients.edibleFraction,
       aisle: ingredients.aisle,
+      rowId: recipeIngredients.id,
+      optional: recipeIngredients.optional,
+      displayUnit: recipeIngredients.displayUnit,
+      category: ingredients.category,
+      role: recipeIngredients.role,
+      substituteIngredientIds: recipeIngredients.substituteIngredientIds,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
@@ -100,6 +106,13 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       edibleFraction: row.edibleFraction ?? null,
       note: row.note ?? null,
       aisle: row.aisle ?? null,
+      // «Cocinar ahora» (specs/cook-now.md).
+      rowId: row.rowId,
+      optional: row.optional ?? false,
+      displayUnit: row.displayUnit ?? null,
+      category: row.category ?? null,
+      role: row.role === 'essential' || row.role === 'secondary' ? row.role : null,
+      substituteIngredientIds: row.substituteIngredientIds ?? [],
     })
     ingredientsByRecipe.set(row.recipeId, list)
   }

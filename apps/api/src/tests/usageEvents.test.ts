@@ -48,6 +48,15 @@ describe('sanitizeProps', () => {
 })
 
 describe('routeUsageEvent (web requests)', () => {
+  it('«Cocinar ahora»: proposal, choose and a cook from the menu', () => {
+    expect(routeUsageEvent(req('POST', '/cook-now/proposal', { minutes: 30, servings: 2, canBuy: false }))).toEqual({ name: 'cook_now_proposed', props: { canBuy: false }, channel: 'web' })
+    // The «Con lo que tienes» card asks the same route: not a proposal anyone asked for.
+    expect(routeUsageEvent(req('POST', '/cook-now/proposal', { minutes: null, servings: 2, canBuy: false, requirePantryUse: true }))).toBeNull()
+    expect(routeUsageEvent(req('POST', '/cook-now/choose', { recipeId: 'r', servings: null, displacedTo: 2 }))).toEqual({ name: 'cook_now_chosen', props: { displaced: true }, channel: 'web' })
+    expect(routeUsageEvent(req('POST', '/cook-logs', { recipeId: 'r', menuId: 'm' }))).toEqual({ name: 'meal_cooked', props: { fromMenu: true }, channel: 'web' })
+    expect(routeUsageEvent(req('POST', '/cook-logs', { recipeId: 'r' }))).toEqual({ name: 'meal_cooked', props: { fromMenu: false }, channel: 'web' })
+  })
+
   it('PRO-106: «Por WhatsApp» in onboarding counts; the code from Perfil does not', () => {
     expect(routeUsageEvent(req('POST', '/whatsapp/link-code', { from: 'onboarding' }))).toEqual({ name: 'onboarding_whatsapp_chosen', channel: 'web' })
     expect(routeUsageEvent(req('POST', '/whatsapp/link-code'))).toBeNull()

@@ -117,6 +117,8 @@ export function SheetAction({
   href,
   disabled,
   destructive,
+  external,
+  testId,
 }: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
   label: string
@@ -125,6 +127,9 @@ export function SheetAction({
   href?: string
   disabled?: boolean
   destructive?: boolean
+  /** `href` opens another app or site (wa.me) in a new tab. */
+  external?: boolean
+  testId?: string
 }) {
   const cls = `flex min-h-[52px] w-full items-center gap-3.5 rounded-2xl px-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-ink ${
     disabled
@@ -153,15 +158,23 @@ export function SheetAction({
       </span>
     </>
   )
+  if (href && !disabled && external) {
+    // Another app (wa.me): a plain link in a new tab, and `onClick` still runs (to count it).
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" onClick={onClick} draggable={false} className={cls} data-testid={testId} {...a11y}>
+        {body}
+      </a>
+    )
+  }
   if (href && !disabled) {
     return (
-      <Link href={href} draggable={false} className={cls} {...a11y}>
+      <Link href={href} draggable={false} className={cls} data-testid={testId} {...a11y}>
         {body}
       </Link>
     )
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={cls} {...a11y}>
+    <button type="button" onClick={onClick} disabled={disabled} className={cls} data-testid={testId} {...a11y}>
       {body}
     </button>
   )

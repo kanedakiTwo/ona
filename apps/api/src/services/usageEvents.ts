@@ -39,6 +39,8 @@ export const USAGE_EVENTS = [
   'meal_swapped',
   'shopping_list_viewed',
   'shopping_item_checked',
+  // PRO-380: «Mandar la lista» (web) or Mimo handing out the whole list; `props.via` on the web.
+  'shopping_list_shared',
   'recipe_imported',
   'recipe_created',
   'cook_mode_started',
@@ -80,6 +82,9 @@ export const USAGE_EVENTS = [
   'content_shared',
   'week_printed',
   'handsfree_started',
+  // «Cocinar ahora» (PRO-1106, specs/cook-now.md): the four questions answered, a proposal chosen.
+  'cook_now_proposed',
+  'cook_now_chosen',
   // PRO-383: «¿Quién hace la compra?» in the sign-up (`props.value` = me · other · shared; channel web or whatsapp).
   'shopper_answered',
 ] as const
@@ -545,7 +550,14 @@ const ROUTE_EVENTS: RouteEvent[] = [
     event: (req) => ({ name: 'recipe_imported', props: urlImportProps(req.body?.url, 'web') }),
   },
   { method: 'POST', re: /^\/recipes\/?$/, event: (req) => ({ name: 'recipe_created', props: { withSource: Boolean(req.body?.sourceUrl) } }) },
-  { method: 'POST', re: /^\/cook-logs\/?$/, event: () => ({ name: 'meal_cooked' }) },
+  { method: 'POST', re: /^\/cook-logs\/?$/, event: (req) => ({ name: 'meal_cooked', props: { fromMenu: Boolean(req.body?.menuId) } }) },
+  {
+    method: 'POST',
+    re: /^\/cook-now\/proposal\/?$/,
+    // The «Con lo que tienes» card asks the same route: not a proposal anyone asked for.
+    event: (req) => (req.body?.requirePantryUse ? null : { name: 'cook_now_proposed', props: { canBuy: Boolean(req.body?.canBuy) } }),
+  },
+  { method: 'POST', re: /^\/cook-now\/choose\/?$/, event: (req) => ({ name: 'cook_now_chosen', props: { displaced: req.body?.displacedTo != null } }) },
   // Opening cook mode on the web (PRO-188): the page pings this once on open.
   { method: 'POST', re: /^\/usage\/cook-mode-started\/?$/, event: () => ({ name: 'cook_mode_started' }) },
   {

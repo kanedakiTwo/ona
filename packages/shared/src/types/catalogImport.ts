@@ -50,6 +50,10 @@ const ingredientSchema = z
     note: z.string().max(300).nullish(),
     optional: z.boolean().optional(),
     section: z.string().max(80).nullish(),
+    /** «Cocinar ahora»: true = without it it isn't the dish; false = it can be left out. Absent = automatic rule. */
+    imprescindible: z.boolean().optional(),
+    /** «Cocinar ahora»: catalogue ingredient names that can stand in for this one (nata → leche). */
+    sustitutos: z.array(z.string().trim().min(1).max(120)).max(5).optional(),
   })
   .superRefine((i, ctx) => {
     const key = i.qty == null && i.quantity != null ? 'quantity' : 'qty'

@@ -16,6 +16,7 @@ import { estimateLine, defaultCap } from '../services/shopOrders/estimate.js'
 import { capForLines } from '../services/shopOrders/draft.js'
 import {
   buildOrderMessage,
+  halalBuyPrefs,
   buildConfirmationMessage,
   waLink,
   mailtoLink,
@@ -227,6 +228,22 @@ describe('order and confirmation messages', () => {
     const charcu = buildOrderMessage({ kind: 'carniceria', channel: 'whatsapp', customerName: null, fulfilment: 'recoger', address: null, lines: [line({ name: 'jamon', ruleKey: 'jamon', text: '100 g de jamón serrano, loncheado fino' })] })
     expect(charcu).not.toContain('Si no hay algo')
     expect(charcu).toContain('- 100 g de jamón serrano, loncheado fino')
+  })
+  it('a halal household asks the butcher for halal meat (2026-10-25)', () => {
+    const meat = [line({ name: 'cordero', text: '1 kg de paletilla de cordero' })]
+    const halal = buildOrderMessage({ kind: 'carniceria', channel: 'whatsapp', customerName: null, fulfilment: 'recoger', address: null, lines: meat, halal: true })
+    expect(halal).toContain('Toda la carne, halal, por favor.')
+    expect(halal.indexOf('Toda la carne, halal')).toBeGreaterThan(halal.indexOf('- 1 kg de paletilla de cordero'))
+    expect(buildOrderMessage({ kind: 'carniceria', channel: 'whatsapp', customerName: null, fulfilment: 'recoger', address: null, lines: meat })).not.toContain('halal')
+    // Only the butcher: the greengrocer and the fishmonger aren't asked.
+    expect(buildOrderMessage({ kind: 'fruteria', channel: 'whatsapp', customerName: null, fulfilment: 'recoger', address: null, lines, halal: true })).not.toContain('halal')
+  })
+  it('a halal household asks for beef mince, not «mixta» (it carries pork)', () => {
+    expect(halalBuyPrefs({}, true)).toEqual({ 'carne picada': 'de ternera' })
+    expect(halalBuyPrefs({ 'carne picada': 'mixta', pollo: 'entero' }, true)).toEqual({ 'carne picada': 'de ternera', pollo: 'entero' })
+    expect(halalBuyPrefs({ 'carne picada': 'de cerdo' }, true)).toEqual({ 'carne picada': 'de ternera' })
+    const prefs = { 'carne picada': 'mixta' }
+    expect(halalBuyPrefs(prefs, false)).toBe(prefs)
   })
   it('"probablemente lo tienes" lines stay out of the message until ticked', () => {
     const msg = buildOrderMessage({ kind: 'supermercado', channel: 'web', customerName: null, fulfilment: 'recoger', address: null, lines: [line({ text: '1 tarrina de mantequilla (250 g)', included: false }), line({ key: 'l2', text: '1 paquete de lentejas (1 kg)' })] })

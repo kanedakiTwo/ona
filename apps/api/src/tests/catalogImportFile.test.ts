@@ -152,6 +152,56 @@ describe('contract: what the page sends is what the route and the importer read'
     expect(fromPayload[0].sourceSteps).toHaveLength(2)
   })
 
+  it('the link to the original survives the route schema (PRO-1015: it was stripped, so no ficha linked its creator)', () => {
+    const json = clone()
+    json.recipes[0].source = { ...(json.recipes[0].source ?? {}), url: 'https://blog-inventado.es/guiso/' }
+    const parsed = catalogImportRequestSchema.safeParse({ batch: 'cocina-09', fileName: 'tanda.json', file: json })
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    const [first] = draftsFromCocinaJson(parsed.data.file, { origin: 'cocina' })
+    expect(first.source.url).toBe('https://blog-inventado.es/guiso/')
+    // A link that isn't one is told in Spanish, with where it is.
+    json.recipes[0].source.url = 'blog inventado'
+    expect(problemsOf(json).some((p) => p.includes('el enlace al original (source.url)'))).toBe(true)
+  })
+
+  it('reads imprescindible and sustitutos per ingredient («Cocinar ahora»)', () => {
+    const [d] = draftsFromCocinaJson(
+      {
+        recipes: [
+          {
+            name: 'Crema de calabacín',
+            ingredients: [
+              { name: 'calabacín', qty: 800, unit: 'g', imprescindible: true },
+              { name: 'nata', qty: 100, unit: 'ml', imprescindible: false, sustitutos: ['leche'] },
+              { name: 'perejil', qty: 5, unit: 'g' },
+            ],
+            steps: ['a'],
+          },
+        ],
+      },
+      { origin: 'cocina' } as any,
+    )
+    expect(d.ingredients.map((i) => i.role)).toEqual(['essential', 'secondary', undefined])
+    expect(d.ingredients[1].substitutes).toEqual(['leche'])
+    expect(d.ingredients[0].substitutes).toBeUndefined()
+  })
+
+  it('imprescindible and sustitutos survive the route schema; a wrong type is told', () => {
+    const json = clone()
+    json.recipes[0].ingredients[0].imprescindible = true
+    json.recipes[0].ingredients[1].imprescindible = false
+    json.recipes[0].ingredients[1].sustitutos = ['garbanzos cocidos']
+    const parsed = catalogImportRequestSchema.safeParse({ batch: 'cocina-10', fileName: 'tanda.json', file: json })
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    const [first] = draftsFromCocinaJson(parsed.data.file, { origin: 'cocina' })
+    expect(first.ingredients[0].role).toBe('essential')
+    expect(first.ingredients[1]).toMatchObject({ role: 'secondary', substitutes: ['garbanzos cocidos'] })
+    json.recipes[0].ingredients[0].imprescindible = 'sí'
+    expect(problemsOf(json).some((p) => p.includes('ingrediente 1'))).toBe(true)
+  })
+
   it('a bad batch name or a bad file never builds a payload', () => {
     const badBatch = buildCatalogImportPayload({ text: TEXT, fileName: null, batch: 'tanda con espacios!' })
     expect(badBatch.ok).toBe(false)

@@ -8,15 +8,16 @@
  * filter the list), a slim progress card + the € total, the "Por comprar" /
  * "Ya en casa" tabs and the aisles. Rows read like the recipe detail's
  * ingredient rows: dashed dividers, 16 px name, JetBrains quantity, a big
- * check. Secondary actions (Compartir lo que queda, Añadir a mano, Pedir a
- * mis tiendas, Cambiar fechas) live in the "···" sheet (`MenuSheet`).
+ * check. The main button is «Mandar la lista» (PRO-380, `SendListButton`):
+ * WhatsApp, Copiar, the súper or the shops. Secondary actions (Añadir a
+ * mano, Pedir a mis tiendas, Cambiar fechas) live in the "···" sheet (`MenuSheet`).
  * The first time the list opens, once, «Compártela con quien compra contigo»
  * (PRO-261, `FamilyInviteOffer`) under the header.
  * Desktop (lg+): 1180 px container, aisles as paper cards in 2–3 columns.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { CalendarDays, Check, ChevronLeft, ChevronRight, MoreHorizontal, Package, Plus, Share2, Sparkles, Store } from 'lucide-react'
+import { CalendarDays, Check, ChevronLeft, ChevronRight, MoreHorizontal, Package, Plus, Sparkles, Store } from 'lucide-react'
 import Link from 'next/link'
 import type { Aisle } from '@ona/shared'
 import { useAuth } from '@/lib/auth'
@@ -31,9 +32,9 @@ import {
 } from '@/hooks/useShopping'
 import { useMenu } from '@/hooks/useMenu'
 import { haptic } from '@/lib/pwa/haptics'
-import { share } from '@/lib/pwa/share'
-import { InviteHouseholdButton, useReferralLink } from '@/components/referrals/InviteHouseholdButton'
-import { AISLE_LABELS, AISLE_ORDER, aisleLabel } from '@/lib/labels'
+import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
+import { SendListButton } from '@/components/shopping/SendList'
+import { AISLE_ORDER, aisleLabel } from '@/lib/labels'
 import { activeQuickRange, quickRanges, shiftIso, spansWeeks, totalTitle, type QuickRangeKey } from '@/lib/shoppingRange'
 import { LineWeek, LineWeekContext } from '@/components/shopping/LineWeek'
 import { FamilyInviteOffer, useFamilyOfferOnce } from '@/components/household/FamilyInviteOffer'
@@ -45,7 +46,7 @@ import {
 import { AddToListField, LineAmount, RemoveLineButton, UNIT_LABEL, useRemoveWithUndo } from '@/components/shopping/LineControls'
 import { HabitualStar, HabitualSwitch, HabitualTag, isHabitual } from '@/components/shopping/HabitualToggle'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
-import { ingredientDisplayName, missingQuantity, parseShoppingAmount, shoppingProgress, withOnaFooter } from '@ona/shared'
+import { ingredientDisplayName, missingQuantity, parseShoppingAmount, shoppingProgress } from '@ona/shared'
 
 function todayIso(): string {
   const now = new Date()
@@ -133,30 +134,6 @@ export default function ShoppingPage() {
 
   // «Familia en el mismo hogar» (PRO-261): once, the first time the list is on screen.
   const familyOffer = useFamilyOfferOnce('compra', !!user && !authLoading && !menuLoading && !!menuId && !!shoppingList)
-  // PRO-1016 (D-132): the shared list ends with this household's invitation.
-  const referral = useReferralLink(!!user)
-
-  async function handleExport() {
-    haptic.light()
-    const buyable = items.filter((i) => !i.checked && !i.inStock)
-    const grouped = groupByAisle(buyable)
-    const sections = AISLE_ORDER.flatMap((aisle) => {
-      const rows = grouped[aisle] ?? []
-      if (rows.length === 0) return []
-      const lines = rows
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((i) => `- ${i.name}: ${i.amountText ?? `${i.quantity} ${i.unit}`}`)
-        .join('\n')
-      return [`## ${AISLE_LABELS[aisle]}`, lines, '']
-    })
-    const text = withOnaFooter(
-      `Lista de compra · Mimoia\nSemana del ${weekStart}\n\n${sections.join('\n')}`,
-      window.location.origin,
-      'lista',
-      referral.data?.code,
-    )
-    await share({ title: 'Lista de compra · Mimoia', text })
-  }
 
   if (authLoading || menuLoading) {
     return (
@@ -364,6 +341,11 @@ export default function ShoppingPage() {
           {shoppingList && <ListTotalBanner listId={shoppingList.id} title={totalTitle(activeShortcut)} />}
         </div>
 
+        {/* PRO-380: the list's main button. */}
+        <div className="mt-3 px-5 lg:mt-5 lg:px-0">
+          <SendListButton items={items} className="w-full lg:w-auto" />
+        </div>
+
         {/* Tabs: lista / despensa */}
         <div className="mt-4 px-5 lg:mt-6 lg:px-0">
           <div role="tablist" aria-label="Lista o despensa" className="flex gap-6 border-b border-border-soft">
@@ -405,15 +387,6 @@ export default function ShoppingPage() {
       {/* "···" — the list's secondary actions */}
       <MenuSheet open={sheet === 'actions'} onClose={() => setSheet(null)} eyebrow={rangeLabel} title="Tu compra">
         <div className="flex flex-col gap-0.5">
-          <SheetAction
-            icon={Share2}
-            label="Compartir lo que queda"
-            hint="Lo que te falta por comprar, como texto"
-            onClick={() => {
-              setSheet(null)
-              void handleExport()
-            }}
-          />
           {shoppingList && (
             <SheetAction
               icon={Plus}

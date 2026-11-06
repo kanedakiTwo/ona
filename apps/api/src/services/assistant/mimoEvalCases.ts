@@ -38,13 +38,16 @@
  *   repeat the week day by day and answers what else was asked.
  * - `receta-minutos` (PRO-308): a recipe Mimo creates carries its minutes
  *   (`prepTime` and `cookTime` in create_recipe; the reply says the time).
+ * - `pregunta-nueva` (PRO-348): a new question after a change to the list or
+ *   the menu gets its answer, never «no he cambiado nada», «sigue igual» or
+ *   the previous turn's «Hecho:» again.
  */
 import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva'
 
 export interface MimoEvalCase {
   id: string
@@ -117,6 +120,24 @@ const DENIES_CHANGE_RE = new RegExp(
     'antes te dije',
     'acabo de aplicarlo',
     'tampoco cambie nada',
+  ].join('|'),
+)
+
+/**
+ * Mimo answering the previous message instead of the new question (PRO-348):
+ * «No he cambiado nada en el menú», «no he tocado el menú… sigue igual»,
+ * «En este mensaje no he cambiado nada: solo he mirado tu lista», «Dime qué
+ * cambio quieres», or the previous turn's «Hecho:» again (folded).
+ */
+export const ANSWERS_LAST_CHANGE_RE = new RegExp(
+  [
+    '\\bno he (cambiado|tocado|modificado)\\b',
+    '\\bno he hecho (ningun|ni un) cambio',
+    '\\bsiguen? igual\\b',
+    '\\ben este (mensaje|turno)\\b',
+    '\\bsolo he mirado\\b',
+    '\\bdime (que|cual) cambio',
+    '^\\s*hecho\\s*:',
   ].join('|'),
 )
 
@@ -306,6 +327,8 @@ export function milkAllergyProblems(reply: string): string[] {
  *   picture's caption, or writes the week day by day;
  * - `sin-minutos` (`receta-minutos`): created the recipe without its minutes
  *   (live) or doesn't say its time (CI).
+ * - `contesta-lo-anterior` (`pregunta-nueva`): talks about the changes (none
+ *   now, or the previous turn's) instead of answering the new question.
  */
 export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
@@ -346,6 +369,7 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
   if (c.check === 'leche-alergia') problems.push(...milkAllergyProblems(reply))
   if (c.check === 'alergeno-sin-mirar' && FREE_FROM_CLAIM_RE.test(text)) problems.push('dice-sin-alergeno')
   if (c.check === 'aviso-afina' && NOTICE_DENIAL_RE.test(text)) problems.push('no-ve-aviso')
+  if (c.check === 'pregunta-nueva' && ANSWERS_LAST_CHANGE_RE.test(text)) problems.push('contesta-lo-anterior')
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) {
@@ -665,5 +689,58 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     reconstructed: true,
     mustCallOneOf: ['create_recipe'],
     badReply: 'Hecho:\n- Receta «Merluza al horno con limón» guardada en tus recetas',
+  },
+  {
+    id: 'minimo-euros-tras-cambio',
+    check: 'pregunta-nueva',
+    origin: 'Familia Ruiz, 2026-10-22 (el cambio anterior y la pregunta son reconstruidos del feedback; la respuesta, literal). PRO-348',
+    context: [
+      'Hoy es jueves 2026-10-22 (dayIndex 3), son las 21:00 en Madrid.',
+      'Hogar: 2 adultos',
+      'Menu de esta semana (2026-10-19):',
+      '  Jue (dayIndex 3): cena: Tortilla de patatas',
+    ].join('\n'),
+    history: [
+      { role: 'user', content: 'en la semana del 26 quita el salmón del miércoles y pon pollo al horno' },
+      {
+        role: 'assistant',
+        content: '⟦hecho: swap_meal {"day":"2026-10-28","meal":"dinner","recipeName":"Pollo al horno"} → Hecho: la cena del miércoles 28 de octubre queda "Pollo al horno".⟧Hecho:\n- Miércoles 28, cena: Pollo al horno',
+      },
+    ],
+    message: 'vale. y lo mínimo para esa semana cuánto sería? dame una cifra en euros',
+    reconstructed: true,
+    toolResults: {
+      get_shopping_list:
+        'Lista de la compra de la semana del lunes 26 de octubre (12 productos): pechuga de pollo 800 g, huevos 12 u, patatas 2 kg, lentejas 500 g, arroz 1 kg, cebolla 1 kg, zanahoria 500 g, calabacín 3 u, tomate triturado 800 g, leche 2 l, pan 2 u, plátanos 1 kg.',
+      get_weekly_menu:
+        'Menu de la semana del lunes 26 de octubre:\nlunes 26: comida: Lentejas estofadas, cena: Tortilla de patatas\nmiércoles 28: cena: Pollo al horno',
+    },
+    /** A figure in euros. */
+    expect: /\d+\s*(€|euros?)/,
+    badReply: 'No he cambiado nada en el menú. Dime qué cambio quieres.',
+  },
+  {
+    id: 'adaptar-leo-tras-lista',
+    check: 'pregunta-nueva',
+    origin: 'Marta y Jorge, 2026-10-22 (pregunta y respuesta literales; el turno anterior, reconstruido del feedback). PRO-348',
+    context: [
+      'Hoy es jueves 2026-10-22 (dayIndex 3), son las 12:00 en Madrid.',
+      'Hogar: 2 adultos',
+      'Menu de esta semana (2026-10-19):',
+      '  Jue (dayIndex 3): comida: Lentejas estofadas',
+      'Lo que se de este hogar: en casa esta Leo, un bebe de 10 meses que hace BLW.',
+    ].join('\n'),
+    history: [
+      ...LEO_INTRO,
+      { role: 'user', content: 'mira en la lista si falta algo para las lentejas de hoy y añadelo' },
+      {
+        role: 'assistant',
+        content: '⟦hecho: get_shopping_list {} → Lista de la compra (9 productos)…; add_shopping_items {"items":[{"name":"zanahoria"},{"name":"puerro"}]} → Añadido a la lista: zanahoria, puerro.⟧Hecho:\n- Añadido a la lista: zanahoria y puerro',
+      },
+    ],
+    message: 'como se lo adapto a leo?',
+    /** Cooking help for Leo's lentils: texture, set aside, no salt… */
+    expect: /\b(chaf\w*|aplast\w*|tritur\w*|machac\w*|pure|aparta\w*|sin sal|textura|trocit\w*)\b/,
+    badReply: 'En este mensaje no he cambiado nada: solo he mirado tu lista.',
   },
 ]

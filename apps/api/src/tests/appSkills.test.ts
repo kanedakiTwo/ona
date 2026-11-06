@@ -364,13 +364,16 @@ describe('shopping, pantry, staples', () => {
     const r = await get('get_shopping_list').handler({}, ctx(f.api))
     expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado: 1. En casa: 1.')
     expect(r.uiHint).toBe('shopping_list')
+    // PRO-380: handing out the whole list counts as `shopping_list_shared`.
+    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/list-shared', body: { channel: 'web' } }])
   })
 
-  it('get_shopping_list: all done, and empty list', async () => {
+  it('get_shopping_list: all done, and empty list (nothing handed out, nothing counted)', async () => {
     const done = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i1', name: 'Pan', checked: true }] } })
     expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado: 1.')
     const empty = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [] } })
     expect((await get('get_shopping_list').handler({}, ctx(empty.api))).summary).toContain('está vacía')
+    expect([...writes(done.calls), ...writes(empty.calls)]).toEqual([])
   })
 
   it('remove_shopping_items deletes matches and reports the rest', async () => {
@@ -612,6 +615,23 @@ describe('recipes, profile, household', () => {
     const rules = compileRestrictions(put[0].body.restrictions)
     expect(rules.alcohol).toBe(true)
     expect(violatesRestrictions({ name: 'Riñones al jerez', ingredients: [{ ingredientName: 'riñones' }] }, rules)).toBe(true)
+  })
+
+  it('update_profile: «halal» under a v1 consent waits for the current text; the rest is saved (Legal, E-19)', async () => {
+    const v1 = fakeApi({
+      'GET /user/u1': { restrictions: ['sin gluten'] },
+      'GET /user/u1/health-consent': { active: true, version: 'salud-v1-2026-10' },
+    })
+    const r = await get('update_profile').handler({ addRestrictions: ['halal', 'sin lactosa'] }, ctx(v1.api))
+    expect(writes(v1.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { restrictions: ['sin gluten', 'sin lactosa'] } }])
+    expect(r.summary).toMatch(/texto nuevo del consentimiento/)
+
+    const v2 = fakeApi({
+      'GET /user/u1': { restrictions: ['sin gluten'] },
+      'GET /user/u1/health-consent': { active: true, version: 'salud-v2-2026-10' },
+    })
+    await get('update_profile').handler({ addRestrictions: ['halal'] }, ctx(v2.api))
+    expect(writes(v2.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { restrictions: ['sin gluten', 'halal'] } }])
   })
 
   it('update_profile never writes health data without the art. 9 consent (PRO-21)', async () => {

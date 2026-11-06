@@ -14,6 +14,8 @@ export interface RecipeFilters {
    * newest copies (the catalogue lists them last): 7 shown, 8 owned.
    */
   mine?: boolean
+  /** PRO-375: «Este mes» — recipes with this ingredient (by name: «Calabaza»). */
+  ingredient?: string
 }
 
 export function buildQueryString(filters?: RecipeFilters): string {
@@ -25,6 +27,7 @@ export function buildQueryString(filters?: RecipeFilters): string {
   if (filters.perPage) params.set("perPage", String(filters.perPage))
   if (filters.fitsMe) params.set("fitsMe", "1")
   if (filters.mine) params.set("mine", "1")
+  if (filters.ingredient) params.set("ingredient", filters.ingredient)
   for (const tag of filters.customTags ?? []) {
     params.append("customTag", tag)
   }

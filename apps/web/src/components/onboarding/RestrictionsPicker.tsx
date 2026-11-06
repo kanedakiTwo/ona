@@ -11,6 +11,7 @@ import { X } from "lucide-react"
 import { RESTRICTION_PRESETS } from "@ona/shared"
 import { cn } from "@/lib/utils"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
+import { ReligionConsentNote } from "@/components/ReligionConsentNote"
 import { withTyped } from "@/lib/restrictionText"
 
 const FIELD =
@@ -22,6 +23,8 @@ export function RestrictionsPicker({
   restrictions,
   onChange,
   onTypingChange,
+  typed,
+  religion,
 }: {
   consent: boolean
   onConsentChange: (consent: boolean) => void
@@ -33,8 +36,13 @@ export function RestrictionsPicker({
    * Not added on blur: the new chip moved the button under the finger.
    */
   onTypingChange?: (text: string) => void
+  /** The box's text when the screen holds it (it empties it after reading it, PRO-347). */
+  typed?: string
+  /** A consent given under v1 (E-19): the box for the current text when halal is picked. */
+  religion?: { needed: boolean; checked: boolean; onChange: (checked: boolean) => void }
 }) {
-  const [tagInput, setTagInputState] = useState("")
+  const [ownInput, setTagInputState] = useState("")
+  const tagInput = typed ?? ownInput
   function setTagInput(text: string) {
     setTagInputState(text)
     onTypingChange?.(text)
@@ -106,6 +114,13 @@ export function RestrictionsPicker({
             className={FIELD}
           />
         </div>
+        <ReligionConsentNote
+          restrictions={restrictions}
+          needsConsent={religion?.needed ?? false}
+          checked={religion?.checked ?? false}
+          onChange={(v) => religion?.onChange(v)}
+          disabled={!consent}
+        />
         {restrictions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {restrictions.map((tag) => (

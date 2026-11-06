@@ -41,7 +41,7 @@ export const HEALTH_TEXT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bkilos de mas\b/, /\b(perder|bajar|subir|ganar) (de )?peso\b/, /\badelgaz/, /\bsobrepeso\b/, /\bobesidad\b/, /\bimc\b/,
   /\bcalorias (diarias|al dia)\b/,
   // Religion-based diets.
-  /\bhalal\b/, /\bkosher\b/,
+  /\bhalal\b/, /\bkosher\b/, /\bmusulman/, /\bislam/, /\bramadan\b/,
 ]
 
 /** What a removed sentence becomes. */

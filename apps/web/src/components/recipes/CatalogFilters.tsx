@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { Search, X, SlidersHorizontal } from "lucide-react"
-import type { CatalogScope, Meal, Season } from "@ona/shared"
+import type { CatalogIntent, CatalogScope, Meal, Season } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
@@ -12,8 +12,9 @@ import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
  *   - `CatalogSearch`: one search field; on mobile the "Más filtros" button
  *     lives inside it.
  *   - `CatalogChips`: ONE chip row merging the old scope tabs and quick
- *     filters (Con lo que tengo, De temporada, En 30 min, meals, Selección
- *     Mimoia, Mis recetas — these two only with an account).
+ *     filters (Con lo que tengo, De temporada, En 30 min, the PRO-376
+ *     intents — Listas en 15 min, Cenas rápidas, Para picar, Sin gluten —,
+ *     meals, Selección Mimoia, Mis recetas — these two only with an account).
  *     No chip active = "Todas". At `lg+` the row wraps and ends in a
  *     "Más filtros" link.
  *   - `CatalogFiltersSheet`: the advanced filters dialog (bottom sheet on
@@ -44,6 +45,15 @@ const TIME_OPTIONS = [
 
 /** The "En 30 min" quick chip is the 30-minute time filter. */
 export const QUICK_MAX_TIME = 30
+/** «Listas en 15 min» (PRO-376) is the 15-minute time filter. */
+export const READY_MAX_TIME = 15
+
+/** Intent chips (PRO-376); rules in `@ona/shared` (`matchesCatalogIntent`). */
+const INTENT_OPTIONS: { value: CatalogIntent; label: string }[] = [
+  { value: "quickDinner", label: "Cenas rápidas" },
+  { value: "nibbles", label: "Para picar" },
+  { value: "glutenFree", label: "Sin gluten" },
+]
 
 type CatalogFilterControls = {
   selectedMeal: Meal | ""
@@ -52,6 +62,9 @@ type CatalogFilterControls = {
   onSeasonChange: (v: Season | "") => void
   maxTime: number | ""
   onMaxTimeChange: (v: number | "") => void
+  /** Intent chips on («Cenas rápidas», «Para picar», «Sin gluten»). */
+  intents: CatalogIntent[]
+  onToggleIntent: (v: CatalogIntent) => void
   scope: CatalogScope
   onScopeChange: (v: CatalogScope) => void
   householdTags?: { tag: string; count: number }[]
@@ -208,6 +221,17 @@ export function CatalogChips({
       >
         En 30 min
       </Chip>
+      <Chip
+        active={f.maxTime === READY_MAX_TIME}
+        onClick={() => f.onMaxTimeChange(f.maxTime === READY_MAX_TIME ? "" : READY_MAX_TIME)}
+      >
+        Listas en 15 min
+      </Chip>
+      {INTENT_OPTIONS.map((opt) => (
+        <Chip key={opt.value} active={f.intents.includes(opt.value)} onClick={() => f.onToggleIntent(opt.value)}>
+          {opt.label}
+        </Chip>
+      ))}
       {MEAL_OPTIONS.map((opt) => (
         <Chip
           key={opt.value}

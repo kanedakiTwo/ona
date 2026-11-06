@@ -7,10 +7,12 @@ import {
   HOUSEHOLD_INVITE_TTL_DAYS,
   capitalize,
   familyInviteShareText,
+  consentCoversReligiousDiet,
   formatQty,
   householdInvitePath,
   inviteHouseholdShareText,
   isAlertKind,
+  isReligiousDiet,
   prettyName,
   whatsappShareHref,
   type AlertKind,
@@ -22,7 +24,7 @@ import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
-import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
@@ -777,7 +779,7 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:
-    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista".',
+    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista", "hazme la lista de la compra", "mandame la lista".',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const list = await currentList(ctx)
@@ -800,6 +802,8 @@ const getShoppingList: SkillDefinition = {
     }
     const shown = missing.slice(0, 60).map(itemLabel)
     const more = missing.length > shown.length ? ` y ${missing.length - shown.length} más` : ''
+    // PRO-380: Mimo handing out the whole list counts like «Mandar la lista» (a resolved week).
+    await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
     return {
       data,
       summary: `Te faltan ${missing.length} cosas: ${shown.join(', ')}${more}. ${extra}`.trim(),
@@ -1342,15 +1346,23 @@ const updateProfile: SkillDefinition = {
     // Sex, age, weight, height, activity and restrictions are health data:
     // only with the art. 9 consent in force (PRO-21).
     const health = ['sex', 'age', 'weight', 'height', 'activityLevel', 'restrictions'].filter((k) => k in body)
+    let religionNote = ''
     if (health.length > 0) {
-      const consent = await api(ctx)<{ active?: boolean }>('GET', `/user/${ctx.userId}/health-consent`)
+      const consent = await api(ctx)<{ active?: boolean; version?: string | null }>('GET', `/user/${ctx.userId}/health-consent`)
       if (!consent?.active) {
         for (const k of health) delete body[k]
         if (Object.keys(body).length === 0) return text(HEALTH_CONSENT_SKILL_REPLY)
+      } else if (Array.isArray(body.restrictions) && !consentCoversReligiousDiet(consent.version)) {
+        // «halal» under a v1 consent: the current text first, in the profile (Legal, E-19).
+        const kept = (body.restrictions as string[]).filter((r) => !isReligiousDiet(r))
+        if (kept.length < (body.restrictions as string[]).length) {
+          body.restrictions = kept
+          religionNote = ` ${RELIGION_CONSENT_SKILL_REPLY}`
+        }
       }
     }
     await api(ctx)('PUT', `/user/${ctx.userId}`, body)
-    return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).`)
+    return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).${religionNote}`)
   },
 }
 

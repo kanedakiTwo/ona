@@ -3,7 +3,7 @@
  * link that opens without an account and says what Mimoia is.
  */
 import { describe, expect, it } from 'vitest'
-import { madeWithMimoLine, menuShareText, recipeSharePayload, shortInviteLink, withOnaFooter } from '@ona/shared'
+import { madeWithMimoLine, menuShareText, recipeSharePayload, shortInviteLink, shoppingListShareText, shoppingListShareUrl, withOnaFooter } from '@ona/shared'
 
 const ORIGIN = 'https://ona.example/'
 
@@ -68,9 +68,9 @@ describe('the household’s invitation at the foot (PRO-1016, D-132)', () => {
     expect(madeWithMimoLine('https://mimoia.com', 'abcd2345')).toBe('Hecho con Mimo · mimoia.com/i/abcd2345')
   })
 
-  it('the shared list ends with «Hecho con Mimo · …/i/<code>» of the household that shares it', () => {
-    const text = withOnaFooter('Lista de compra · Mimoia\n\n## Frutas\n- Cebolla: 300 g\n', 'https://mimoia.com', 'lista', 'abcd2345')
-    expect(text).toBe('Lista de compra · Mimoia\n\n## Frutas\n- Cebolla: 300 g\n\nHecho con Mimo · mimoia.com/i/abcd2345')
+  it('the shared list («Mandar la lista») ends with «Hecho con Mimo · …/i/<code>» of the household that shares it', () => {
+    const text = shoppingListShareText([{ name: 'Cebolla', aisle: 'produce', quantity: 300, unit: 'g' }], { origin: 'https://mimoia.com', code: 'abcd2345' })
+    expect(text).toBe('Lista de la compra\n\n*Frutas y verduras*\n- Cebolla: 300 g\n\nHecho con Mimo · mimoia.com/i/abcd2345')
     expect(text).not.toContain('?ref=lista')
   })
 
@@ -87,5 +87,31 @@ describe('the household’s invitation at the foot (PRO-1016, D-132)', () => {
   it('without a code (signed out, not loaded yet) the share is as before', () => {
     expect(recipeSharePayload({ id: 'r1', name: 'Lentejas', authorId: null }, ORIGIN, null).url).toBe('https://ona.example/recipes/r1?ref=receta')
     expect(withOnaFooter('Lista', ORIGIN, 'lista', undefined)).toContain('/?ref=lista')
+    expect(shoppingListShareText([{ name: 'Sal' }], { origin: ORIGIN, code: null })).toMatch(/— Hecho con Mimoia, .*: https:\/\/ona\.example\/\?ref=lista$/)
+  })
+})
+
+// PRO-380: «Mandar la lista».
+describe('shoppingListShareText', () => {
+  const items = [
+    { name: 'Tomate', aisle: 'produce', quantity: 1000, unit: 'g' },
+    { name: 'Pan', aisle: 'panaderia', quantity: 1, unit: 'u' },
+    { name: 'Cebolla', aisle: 'produce', quantity: 2, unit: 'u' },
+    { name: 'Pañales talla 4', aisle: 'raro', amountText: '2 paquetes' },
+    { name: 'Sal', aisle: 'despensa' },
+  ]
+
+  it('by aisle in the walk-through order, names sorted, amounts after the name', () => {
+    const text = shoppingListShareText(items, { origin: ORIGIN, code: 'abcd2345' })
+    expect(text).toContain('*Frutas y verduras*\n- Cebolla: 2 u\n- Tomate: 1000 g\n\n*Panadería*\n- Pan: 1 u\n\n*Despensa*\n- Sal\n\n*Otros*\n- Pañales talla 4: 2 paquetes')
+    expect(text.indexOf('Frutas')).toBeLessThan(text.indexOf('Panadería'))
+    expect(text).not.toContain('Lácteos')
+  })
+
+  it('the foot is the household’s invitation (PRO-1016, D-132): a sign-up from it counts (K factor)', () => {
+    const text = shoppingListShareText(items, { origin: ORIGIN, code: 'abcd2345' })
+    expect(text).toMatch(/\n\nHecho con Mimo · ona\.example\/i\/abcd2345$/)
+    expect(shoppingListShareUrl(ORIGIN, 'abcd2345')).toBe('https://ona.example/?ref=lista&invita=abcd2345')
+    expect(shoppingListShareUrl(ORIGIN, null)).toBe('https://ona.example/?ref=lista')
   })
 })

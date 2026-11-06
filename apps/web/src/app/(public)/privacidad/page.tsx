@@ -27,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 21 de octubre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 3 de noviembre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -43,8 +43,9 @@ export default function PrivacidadPage() {
               <strong>Datos de salud y alimentación:</strong> sexo, edad, peso, altura y nivel de actividad
               (para calcular tus calorías), alergias, intolerancias y restricciones (para que Mimoia no te
               proponga lo que no puedes comer), gustos y lo que cocinas. Las alergias y los datos físicos son
-              datos de salud: solo los tratamos porque tú nos los das, con tu consentimiento explícito, y
-              puedes borrarlos cuando quieras desde tu perfil.
+              datos de salud, y una dieta por motivos religiosos (como halal) revela tus creencias: solo los
+              tratamos porque tú nos los das, con tu consentimiento explícito, y puedes borrarlos cuando quieras
+              desde tu perfil.
             </li>
             <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
             <li data-testid="privacy-signup-shopping">
@@ -53,6 +54,21 @@ export default function PrivacidadPage() {
               para conocer los gustos de tu hogar y ajustar tu menú. Los analiza una inteligencia artificial de Anthropic,
               que trabaja para nosotros como encargada del tratamiento. No escribas ahí datos de salud: para alergias e
               intolerancias está el apartado de salud, que pide tu permiso. Lo guardamos mientras tengas la cuenta.
+            </li>
+            <li data-testid="privacy-basket-extension">
+              <strong>Envíos al carro del súper (si activas «Enviar a» tu súper).</strong> Si instalas nuestra extensión
+              del navegador y activas el envío, la extensión añade a tu carro de la web del súper los productos de tu
+              lista, usando la sesión que ya tienes abierta en esa web. Funciona solo en tu navegador: Mimoia no ve ni
+              guarda tu contraseña ni tu sesión del súper, no confirma el pedido y no paga. La extensión nos devuelve qué
+              productos entraron en tu carro (nombre, referencia de la tienda, unidades y precio que marca la tienda) y
+              cuáles no encontró, y lo guardamos en ese pedido para enseñarte el resultado, deshacer el envío si lo pides
+              y mejorar nuestra lista de productos de cada tienda (esto último, sin unirlo a tu hogar). También guardamos
+              qué versión del aviso aceptaste y cuándo. No recibimos tu dirección, tus datos de pago ni tus pedidos
+              anteriores en el súper. Lo hacemos para darte el servicio que pides (art. 6.1.b RGPD); estos datos solo se
+              usan para esto, no se venden ni se usan para publicidad, se borran si borras el pedido o tu cuenta, y puedes
+              desactivar el envío cuando quieras en tu perfil. Lo que pase en tu cuenta del súper lo rigen sus propias
+              condiciones y su política de privacidad: el súper no es encargado de Mimoia ni recibe nada de nosotros,
+              salvo los productos que la extensión añade a tu carro desde tu navegador.
             </li>
             <li>
               <strong>Tus opiniones sobre Mimoia:</strong> lo que nos cuentas desde el botón «Opinión» o le dices a Mimo
@@ -100,7 +116,12 @@ export default function PrivacidadPage() {
           <H2>4. Base legal</H2>
           <p>
             La ejecución del servicio que pides al registrarte y, para los datos de salud, tu consentimiento
-            explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.
+            explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.{" "}
+            <span data-testid="privacy-religious-diet-basis">
+              Los datos de salud y, si la indicas, tu dieta por motivos religiosos los tratamos solo con tu
+              consentimiento explícito (art. 9.2.a RGPD), que das aparte y puedes retirar cuando quieras desde tu
+              perfil. Si lo retiras, los borramos.
+            </span>{" "}
             Los avisos proactivos por WhatsApp solo se envían si los activas, y puedes darte de baja escribiendo BAJA.
             El menú de los viernes por email es un consentimiento aparte (art. 6.1.a RGPD y art. 21 de la LSSI): lo
             quitas en tu
@@ -111,11 +132,12 @@ export default function PrivacidadPage() {
           <p>Solo con los proveedores que hacen funcionar Mimoia, que tratan los datos por cuenta nuestra:</p>
           <ul className="ml-5 list-disc space-y-2">
             <li><strong>Anthropic</strong> (modelos Claude): el asistente, la lectura de recetas desde enlaces y fotos, y las estimaciones nutricionales.</li>
-            <li><strong>OpenAI</strong>: transcripción de lo que le dices a Mimo con la voz y de las notas de voz de WhatsApp; y, si AiKit no está disponible, generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta).</li>
+            <li data-testid="privacy-processor-groq"><strong>Groq</strong> (empresa de EE. UU.): transcripción de las notas de voz de WhatsApp y de lo que le dices a Mimo con la voz (recibe el audio). No entrena con esos datos ni los guarda, salvo registros de hasta 30 días para la fiabilidad del servicio y la prevención de abusos.</li>
+            <li><strong>OpenAI</strong>: transcripción de lo que le dices a Mimo con la voz y de las notas de voz de WhatsApp cuando Groq y AiKit no están disponibles; y, si AiKit no está disponible, generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta).</li>
             <li><strong>ElevenLabs</strong>: la voz de Mimo cuando lee sus respuestas en voz alta (solo recibe el texto de la respuesta).</li>
             <li><strong>Meta (WhatsApp Business)</strong>: si conectas WhatsApp, para enviar y recibir los mensajes.</li>
             <li><strong>Railway</strong>: alojamiento de la aplicación y de la base de datos.</li>
-            <li data-testid="privacy-processor-aikit"><strong>AiKit</strong>: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto.</li>
+            <li data-testid="privacy-processor-aikit"><strong>AiKit</strong>: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto. Si Groq no está disponible, también transcribe las notas de voz y lo que le dices a Mimo con la voz; para eso usa modelos de Google (Gemini), que reciben el audio.</li>
             <li><strong>Cloudflare</strong>: estadísticas agregadas de visitas a la web, sin cookies (ver el punto 8).</li>
             <li><strong>Resend</strong> (empresa de EE. UU.): el envío de los emails de Mimoia, como la invitación de la lista de espera y el menú de los viernes. Recibe tu email, tu nombre y el contenido del mensaje. Los correos salen desde servidores de la Unión Europea, pero Resend puede tratar los datos en Estados Unidos.</li>
             <li><strong>Stripe (a través de Link)</strong>: el cobro de las suscripciones. Recibe tu email y, cuando pagas, los datos de pago que escribes directamente en su página; Link actúa como vendedor registrado y emite los recibos. Nosotros guardamos solo el plan, su estado, sus fechas y las referencias de Stripe, nunca tu tarjeta.</li>

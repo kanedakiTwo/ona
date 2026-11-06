@@ -14,13 +14,15 @@
  */
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
 import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
+import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
 import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"
 import { useTasteStatus } from "@/hooks/useTaste"
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
 import type { DayMenu, MealSlot } from "@ona/shared"
@@ -51,6 +53,7 @@ import { useQueryLoad } from "@/components/profile/SubLoadError"
 import { useUser } from "@/hooks/useUser"
 import { useOnboardingGate } from "@/hooks/useOnboardingGate"
 import { haptic } from "@/lib/pwa/haptics"
+import { DAY_PARAM, dayFromSearch, menuRecipeHref } from "@/lib/menuReturn"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
 import { absentMeals, batchServings, dateOfDay, dayHeading, feedsLeftovers, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
@@ -97,6 +100,13 @@ function isValidWeekStart(s: string | null): s is string {
   const [y, m, d] = s.split("-").map(Number)
   const date = new Date(y, m - 1, d)
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d && date.getDay() === 1
+}
+
+/** The day a week opens on: today on the current week, Monday otherwise. */
+function defaultDayOf(weekStart: string): number {
+  if (weeksFromNow(weekStart) !== 0) return 0
+  const day = new Date().getDay()
+  return day === 0 ? 6 : day - 1
 }
 
 /** Whole-week delta from current Monday to `weekStart`. Negative = past. */
@@ -158,6 +168,7 @@ export default function MenuPage() {
     const url = new URL(window.location.href)
     if (next === getWeekStart()) url.searchParams.delete("week")
     else url.searchParams.set("week", next)
+    url.searchParams.delete(DAY_PARAM) // a new week opens on its own default day
     window.history.replaceState(null, "", url.toString())
   }, [])
 
@@ -204,10 +215,20 @@ export default function MenuPage() {
     ((profile?.kidsCount as number | undefined) ?? user?.kidsCount ?? 0)
   const defaultDiners = Math.max(1, householdDiners || 2)
 
-  const [selectedDay, setSelectedDay] = useState(() => {
-    const day = new Date().getDay()
-    return day === 0 ? 6 : day - 1
+  // Initial day from `?day=0…6` (0 = lunes), written with replaceState like
+  // `?week=`: «Volver» from a recipe lands on the week and the day you were
+  // looking at (Miguel, 2026-11-05). Otherwise the week's default day.
+  const [selectedDay, setSelectedDayState] = useState(() => {
+    const fromUrl = typeof window === "undefined" ? null : dayFromSearch(window.location.search)
+    return fromUrl ?? defaultDayOf(weekStart)
   })
+  const setSelectedDay = useCallback((next: number) => {
+    setSelectedDayState(next)
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    url.searchParams.set(DAY_PARAM, String(next))
+    window.history.replaceState(null, "", url.toString())
+  }, [])
 
   // "Vista día" vs "Vista semana" (mobile only; desktop shows both at once).
   // Persisted in localStorage; lazy-init so the first render is right.
@@ -229,14 +250,12 @@ export default function MenuPage() {
   const [confirmClearOpen, setConfirmClearOpen] = useState(false)
 
   // Changing week resets the day: today on the current week, Monday otherwise.
+  // Not on mount: the day may come from `?day=` (back from a recipe).
+  const dayWeekRef = useRef(weekStart)
   useEffect(() => {
-    if (isCurrentWeek) {
-      const day = new Date().getDay()
-      setSelectedDay(day === 0 ? 6 : day - 1)
-    } else {
-      setSelectedDay(0)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (dayWeekRef.current === weekStart) return
+    dayWeekRef.current = weekStart
+    setSelectedDayState(defaultDayOf(weekStart))
   }, [weekStart])
 
   useEffect(() => {
@@ -264,6 +283,26 @@ export default function MenuPage() {
     const plan = !menu || blankWeek ? weekPlan : undefined
     generateMenu.mutate({ userId: user.id, weekStart, ...(plan ? { weekPlan: plan } : {}) })
   }
+  // PRO-377 · «Rehacer la semana con mis favoritas»: what the favourites
+  // don't fill comes from the catalogue, and the page says how many.
+  function handleGenerateFavorites() {
+    if (!user) return
+    haptic.medium()
+    generateMenu.mutate({ userId: user.id, weekStart, onlyFavorites: true })
+  }
+  const favoritesShort =
+    generateMenu.variables?.onlyFavorites && generateMenu.variables.weekStart === weekStart
+      ? (generateMenu.data?.favoritesShort ?? 0)
+      : 0
+  const favoritesNotice = favoritesShort > 0 && (
+    <p
+      role="status"
+      data-testid="favorites-short"
+      className="mx-4 mt-3 rounded-[16px] border border-border bg-paper px-4 py-3 text-[14px] text-ink-mid lg:mx-0"
+    >
+      Tenías pocas favoritas: {favoritesShort === 1 ? "1 plato es nuevo" : `${favoritesShort} platos son nuevos`}.
+    </p>
+  )
 
   // PRO-295: the fridge text talks about an allergy → the API asks first.
   const genError = generateMenu.error
@@ -494,6 +533,7 @@ export default function MenuPage() {
       }}
       onThisWeek={() => setWeekStart(getWeekStart())}
       onRegenerate={handleGenerate}
+      onRegenerateFavorites={handleGenerateFavorites}
       onShare={handleShareWeek}
       onClear={handleClearWeek}
       onToggleView={() => {
@@ -639,6 +679,8 @@ export default function MenuPage() {
           )}
         </div>
       )}
+      {/* «Menú de <mes>» (PRO-378): copy Cocina's week into this one. */}
+      {!isPastWeek && !fridgeQuestion && <MonthMenuCard weekStart={weekStart} className="mx-auto mt-5 max-w-md" />}
     </div>
   ) : null
 
@@ -704,10 +746,12 @@ export default function MenuPage() {
               <>
                 {header}
                 <AccountAccessNotice />
+                <PendingSignUpCard />
                 <NoHealthDataNotice />
                 <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
+                {favoritesNotice}
                 {statusCard}
               </>
             }
@@ -732,9 +776,13 @@ export default function MenuPage() {
               haptic.medium()
               skipDay.mutate({ menuId: menu.id, day: d })
             }}
-            onAddMeal={(d, meal) => {
+            onAddMeal={(d, meal, recipeId) => {
               haptic.light()
-              addMealSlot.mutate({ menuId: menu.id, day: d, meal })
+              addMealSlot.mutate({ menuId: menu.id, day: d, meal, ...(recipeId ? { recipeId } : {}) })
+            }}
+            onAddNote={(d, meal, text) => {
+              haptic.light()
+              addDish.mutate({ menuId: menu.id, day: d, meal, payload: { kind: "note", text } })
             }}
             onAddFreezer={addFreezerDish}
             footer={extras}
@@ -775,6 +823,7 @@ export default function MenuPage() {
       </header>
 
       <AccountAccessNotice />
+      <PendingSignUpCard />
 
       <NoHealthDataNotice />
       <AfinaNoticeCard />
@@ -794,6 +843,7 @@ export default function MenuPage() {
         />
       )}
 
+      {favoritesNotice}
       {statusCard}
 
       {menu && !loadFailed && (
@@ -812,7 +862,7 @@ export default function MenuPage() {
               }}
               onSelectRecipe={(recipeId) => {
                 haptic.light()
-                router.push(`/recipes/${recipeId}`)
+                router.push(menuRecipeHref(recipeId))
               }}
               onMoveSlot={onMoveSlot}
               onUnskipDay={(d) => {
@@ -877,10 +927,15 @@ export default function MenuPage() {
                 meals: absentMeals(days, selectedDay, skippedDays),
                 dayName: weekdayName(selectedDay),
                 isAdding: addMealSlot.isPending,
-                onAdd: (meal) => {
+                onAdd: (meal, recipeId) => {
                   haptic.light()
-                  addMealSlot.mutate({ menuId: menu.id, day: selectedDay, meal })
+                  addMealSlot.mutate({ menuId: menu.id, day: selectedDay, meal, ...(recipeId ? { recipeId } : {}) })
                 },
+                onAddNote: (meal, text) => {
+                  haptic.light()
+                  addDish.mutate({ menuId: menu.id, day: selectedDay, meal, payload: { kind: "note", text } })
+                },
+                onAddFreezer: (meal, recipeId, variant) => addFreezerDish(selectedDay, meal, recipeId, variant),
               }}
               slotProps={slotPropsFor(selectedDay)}
               readOnly={isPastWeek}

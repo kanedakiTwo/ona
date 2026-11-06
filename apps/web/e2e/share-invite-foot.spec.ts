@@ -2,7 +2,7 @@
  * PRO-1016 (D-132): what people forward carries their household's invitation,
  * «Hecho con Mimo · mimoia.com/i/<code>» (specs/whatsapp.md for the week,
  * specs/shopping.md and specs/recipes.md for the shares):
- *   - the shared list («Compartir lo que queda») ends with it;
+ *   - the shared list («Mandar la lista» → «Copiar») ends with it;
  *   - a shared catalogue recipe carries the code in its link, and the page
  *     opened from it shows the foot and keeps the code on the way in;
  *   - `/i/<household code>` opens the landing with `?invita=` and a sign-up
@@ -37,18 +37,18 @@ test('the shared list and the shared recipe carry the household’s «Hecho con 
   const code = await myCode(page)
   const host = new URL(page.url()).host
 
-  // «Compartir lo que queda»: the foot is this household's invitation. Tapped
-  // again until the code has loaded (before that the share is the generic one).
+  // «Mandar la lista» → «Copiar»: the foot is this household's invitation
+  // («Copiar» waits for the code; before that the share is the generic one).
   await page.goto('/shopping')
-  await expect(page.getByRole('button', { name: /^Cambiar / }).first()).toBeVisible({ timeout: 20_000 })
-  await expect(async () => {
-    await page.evaluate(() => navigator.clipboard.writeText(''))
-    await page.getByRole('button', { name: 'Opciones de la compra' }).click()
-    await page.getByRole('button', { name: /compartir lo que queda/i }).click()
-    await expect.poll(() => clipboard(page), { timeout: 3_000 }).toContain(`/i/${code}`)
-  }).toPass({ timeout: 30_000 })
+  await expect(page.getByTestId('shopping-line').first()).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('send-list')).toBeEnabled({ timeout: 15_000 })
+  await page.getByTestId('send-list').click()
+  const copy = page.getByTestId('send-list-sheet').getByTestId('send-list-copy')
+  await expect(copy).toBeEnabled({ timeout: 15_000 })
+  await copy.click()
+  await expect.poll(() => clipboard(page), { timeout: 10_000 }).toContain(`/i/${code}`)
   const list = await clipboard(page)
-  expect(list).toContain('Lista de compra · Mimoia')
+  expect(list).toContain('Lista de la compra')
   expect(list.trimEnd().split('\n').pop()).toBe(`Hecho con Mimo · ${host}/i/${code}`)
   expect(list).not.toContain('?ref=lista')
 

@@ -19,6 +19,8 @@ export interface SkillContext {
    * 4.2, LEG-03, PRO-24): the skills point to the web profile instead.
    */
   channel?: import('./systemPrompt.js').AssistantMode
+  /** PRO-313: the chat app the `whatsapp` mode runs in (Telegram); only the usage events read it (PRO-1022). */
+  surface?: import('./systemPrompt.js').ChatSurface
 }
 
 export interface SkillResult {

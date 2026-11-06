@@ -107,6 +107,18 @@ export class NotASchoolMenuError extends Error {
   }
 }
 
+/**
+ * A file the reader can't take (PRO-355): a HEIC photo (the iPhone format;
+ * our image library can't decode it) or a PDF / image too big for the model.
+ * Each channel says what to do instead (web, WhatsApp).
+ */
+export type SchoolMenuFileProblem = 'heic' | 'too_big'
+export class SchoolMenuFileError extends Error {
+  constructor(public readonly reason: SchoolMenuFileProblem) {
+    super(reason === 'heic' ? 'school menu file is HEIC' : 'school menu file is too big for the reader')
+  }
+}
+
 /** «lunes 3: Lentejas (legumbre)» lines, for Mimo and WhatsApp. */
 export function schoolLunchLines(days: SchoolLunch[]): string[] {
   const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']

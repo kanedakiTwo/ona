@@ -2,6 +2,9 @@ import { Router } from 'express'
 import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
+import { loadCapHits } from '../services/capHits.js'
+import { loadApiSaldo } from '../services/apiSaldo.js'
+import { loadFeatureUsageReport } from '../services/featureUsageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
 import { basketGapsForToken, basketSendsForToken, loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
 import { flagsForAgents } from '../services/agentView.js'
@@ -10,7 +13,9 @@ import { flagsForAgents } from '../services/agentView.js'
  * Read-only aggregates for Miguel and the Mimoia HQ agents. Admin JWT or
  * `x-metrics-token` (GET only):
  *   - GET /admin/metrics?weeks=8[&includeInternal=1] — weekly business metrics
- *     and cost per active household (specs/metrics.md);
+ *     and cost per active household (specs/metrics.md), plus `capHits`: who
+ *     reached a spend cap this Madrid month (PRO-1090, services/capHits.ts),
+ *     and `apiSaldo`: since when Anthropic has no credit (PRO-1101, services/apiSaldo.ts);
  *   - GET /admin/usage?days=28[&includeInternal=1] — product analytics from
  *     `usage_events`: counts per day and event, active households, activation
  *     funnel (specs/metrics.md "Usage events");
@@ -24,7 +29,10 @@ import { flagsForAgents } from '../services/agentView.js'
  *     guardado esos días, sin hogar, usuario, envioId ni texto tecleado
  *     (specs/shop-orders.md). Las dos, con el nombre recortado (`publicLineName`).
  *     Con el token (PRO-322): la fecha solo por día y el producto de la tienda
- *     de 80 caracteres y 12 palabras como mucho (si no, null y `productosFiltrados`).
+ *     de 80 caracteres y 12 palabras como mucho (si no, null y `productosFiltrados`);
+ *   - GET /admin/feature-usage?days=30[&includeInternal=1] — uso de cada función
+ *     por hogar (PRO-1025, specs/feature-usage.md): una fila por función, solo
+ *     cifras, y «menos de 5» en los grupos de 1 a 4. Igual con sesión que con el token.
  *
  * Own router, mounted in index.ts BEFORE the routers that `router.use(authMiddleware)`
  * as a catch-all — otherwise a token-only request would be 401'd before it
@@ -41,7 +49,12 @@ const flag = (raw: unknown) => raw === '1' || raw === 'true'
 router.get('/admin/metrics', metricsAuth, async (req, res) => {
   try {
     const weeks = intParam(req.query.weeks, 8, 1, 52)
-    res.json(await loadBusinessMetrics({ weeks, includeInternal: flag(req.query.includeInternal) }))
+    const [metrics, capHits, apiSaldo] = await Promise.all([
+      loadBusinessMetrics({ weeks, includeInternal: flag(req.query.includeInternal) }),
+      loadCapHits(),
+      loadApiSaldo(),
+    ])
+    res.json({ ...metrics, capHits, apiSaldo })
   } catch (err: any) {
     console.error('[metrics] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
@@ -54,6 +67,16 @@ router.get('/admin/usage', metricsAuth, async (req, res) => {
     res.json(await loadUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
   } catch (err: any) {
     console.error('[usage] report failed:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+router.get('/admin/feature-usage', metricsAuth, async (req, res) => {
+  try {
+    const days = intParam(req.query.days, 30, 1, 180)
+    res.json(await loadFeatureUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
+  } catch (err: any) {
+    console.error('[feature-usage] report failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

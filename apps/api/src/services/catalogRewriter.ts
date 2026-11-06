@@ -8,10 +8,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
-import type { CatalogDraftInput, CatalogRewrite } from './catalogImport.js'
+import { cleanFridgeDays, type CatalogDraftInput, type CatalogRewrite, type RewriteOptions } from './catalogImport.js'
 import { CLAUDE_MODEL } from '../config/models.js'
 
-const REWRITE_MODEL = CLAUDE_MODEL
+export const REWRITE_MODEL = CLAUDE_MODEL
 
 export const REWRITE_PROMPT = `Eres el equipo de cocina de Mimoia, un planificador de menús para hogares en España.
 Te paso una receta leída de un libro o de una nota. Tu trabajo es escribir los pasos OTRA VEZ, con nuestras palabras, y etiquetarla.
@@ -37,12 +37,14 @@ Etiquetas:
 - "difficulty": "easy" | "medium" | "hard".
 - "allergenDoubt": true si no se puede descartar un alérgeno por cómo está escrito (por ejemplo «salsa al gusto», «caldo» sin decir de qué, trazas); "allergenNote": por qué, en una frase.
 - "tips": un consejo corto con tus palabras, o null.
+- "freezable": true si el plato ya hecho se puede congelar y queda bien al descongelarlo; false si no (ensaladas crudas, fritos crujientes, salsas que se cortan, patata cocida en trozos…); null si no lo tienes claro.
+- "fridgeDays": días que aguanta el plato ya hecho en la nevera, en un táper cerrado, de 1 a 5 (pescado y marisco, 1 o 2; guisos y legumbres, 3 o 4); null si no lo tienes claro.
 
 Devuelve SOLO un JSON con esta forma, sin markdown:
-{"steps":[{"text":"…","durationMin":null,"temperature":null,"technique":null,"ingredientRefs":[0,1]}],"meals":[],"seasons":[],"course":null,"dishType":null,"protein":null,"techniques":[],"cuisine":null,"activeTime":null,"totalTime":null,"difficulty":null,"allergenDoubt":false,"allergenNote":null,"tips":null}`
+{"steps":[{"text":"…","durationMin":null,"temperature":null,"technique":null,"ingredientRefs":[0,1]}],"meals":[],"seasons":[],"course":null,"dishType":null,"protein":null,"techniques":[],"cuisine":null,"activeTime":null,"totalTime":null,"difficulty":null,"allergenDoubt":false,"allergenNote":null,"tips":null,"freezable":null,"fridgeDays":null}`
 
 /** Pure: the user message for one recipe. */
-export function rewriteMessage(draft: CatalogDraftInput, avoidPhrases: readonly string[] = []): string {
+export function rewriteMessage(draft: CatalogDraftInput, avoidPhrases: readonly string[] = [], avoidWords: readonly string[] = []): string {
   const ings = draft.ingredients
     .map((i, k) => `${k}. ${i.name} — ${i.unit === 'al_gusto' ? 'al gusto' : `${i.quantity} ${i.unit}`}${i.note ? ` (${i.note})` : ''}${i.optional ? ' [opcional]' : ''}`)
     .join('\n')
@@ -50,7 +52,10 @@ export function rewriteMessage(draft: CatalogDraftInput, avoidPhrases: readonly 
   const avoid = avoidPhrases.length
     ? `\n\nEn el intento anterior repetiste estas frases del original; escríbelas de otra forma:\n${avoidPhrases.map((p) => `- «${p}»`).join('\n')}`
     : ''
-  return `Receta: ${draft.name}\nRaciones: 4\n\nIngredientes (índice. nombre — cantidad):\n${ings}\n\nPasos del original (solo para entender la técnica; no los copies):\n${steps}${avoid}`
+  const words = avoidWords.length
+    ? `\n\nEn el intento anterior escribiste ${avoidWords.map((w) => `«${w}»`).join(', ')}, que se lee como un ingrediente que la receta no lleva. No uses esa palabra: di lo que es con otra (la pulpa de una verdura, la semilla de una fruta, la punta de los dedos, «las piezas» o «cada una» para lo que se está haciendo).`
+    : ''
+  return `Receta: ${draft.name}\nRaciones: 4\n\nIngredientes (índice. nombre — cantidad):\n${ings}\n\nPasos del original (solo para entender la técnica; no los copies):\n${steps}${avoid}${words}`
 }
 
 /** Pure: parse the model's JSON (tolerates a ``` fence or prose around it). */
@@ -88,10 +93,12 @@ export function parseRewrite(text: string): CatalogRewrite {
     allergenDoubt: parsed.allergenDoubt === true,
     allergenNote: str(parsed.allergenNote),
     tips: str(parsed.tips),
+    freezable: typeof parsed.freezable === 'boolean' ? parsed.freezable : null,
+    fridgeDays: cleanFridgeDays(parsed.fridgeDays),
   }
 }
 
-export function createAnthropicRewriter(): (draft: CatalogDraftInput, opts: { avoidPhrases?: string[] }) => Promise<CatalogRewrite> {
+export function createAnthropicRewriter(): (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite> {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY no está configurada')
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
   return async (draft, opts) => {
@@ -99,7 +106,7 @@ export function createAnthropicRewriter(): (draft: CatalogDraftInput, opts: { av
       model: REWRITE_MODEL,
       max_tokens: 6000,
       system: REWRITE_PROMPT,
-      messages: [{ role: 'user', content: rewriteMessage(draft, opts.avoidPhrases ?? []) }],
+      messages: [{ role: 'user', content: rewriteMessage(draft, opts.avoidPhrases ?? [], opts.avoidWords ?? []) }],
     })
     recordAnthropicCost('catalog_import_rewrite', REWRITE_MODEL, response.usage, null)
     const block = response.content.find((b) => b.type === 'text')

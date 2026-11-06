@@ -149,12 +149,28 @@ describe('Mimo tool cook_with_what_i_have', () => {
       [{ restrictions: ['gluten'] }], // users.restrictions
       rows, // visible recipes (no household → no members query)
       ingRows,
+      [], // steps
     )
     const r = await tool.handler({ ingredients: ['calabacín', 'huevos'] }, { userId: 'u-1', db })
     expect(r.data.recipes.map((h: any) => h.id)).toEqual(['r-tortilla', 'r-crema'])
     expect(r.summary).toContain('Tortilla de calabacín (usa calabacín y huevos; te faltaria Cebolla)')
     expect(r.summary).not.toContain('rebozado')
     expect(r.summary).not.toMatch(/Sal|Aceite|Agua|Pimienta/)
+  })
+
+  it('PRO-346: a vegetarian household never gets a recipe whose steps add chorizo', async () => {
+    const rows = [
+      { id: 'r-tortilla', name: 'Tortilla de calabacín', authorId: null, allergens: [] },
+      { id: 'r-crema', name: 'Crema de calabacín', authorId: null, allergens: [] },
+    ]
+    const ingRows = [
+      ...tortilla.ingredients.map((i) => ({ recipeId: 'r-tortilla', ...i })),
+      ...crema.ingredients.map((i) => ({ recipeId: 'r-crema', ...i })),
+    ]
+    const steps = [{ recipeId: 'r-crema', index: 0, text: 'Al final, añadir chorizo en daditos.' }]
+    const db = makeDb([], [{ restrictions: ['vegetariano'] }], rows, ingRows, steps)
+    const r = await tool.handler({ ingredients: ['calabacín'] }, { userId: 'u-1', db })
+    expect(r.data.recipes.map((h: any) => h.id)).toEqual(['r-tortilla'])
   })
 })
 
@@ -203,6 +219,7 @@ describe('«¿Qué hago hoy con lo que tengo?» (PRO-222)', () => {
       [{ restrictions: ['sin gluten'] }], // a celiac household
       catalog.map((c) => c.row),
       catalog.flatMap((c) => c.ings),
+      [], // steps
     )
 
   it('«pollo, calabacín, arroz» for a celiac household: 3 recipes using at least two, none with gluten, none vetoed', async () => {

@@ -18,7 +18,7 @@ import {
   type FoodGroup,
   type SchoolLunch,
 } from '@ona/shared'
-import { NotASchoolMenuError, schoolLunchLines } from '@ona/shared'
+import { NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { householdMembers, householdPersons, profileFacts, schoolLunches, users } from '../db/schema.js'
@@ -34,6 +34,39 @@ export const SCHOOL_MENU_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 
 export type SchoolMenuMimeType = (typeof SCHOOL_MENU_MIME_TYPES)[number]
 export function isSchoolMenuMimeType(m: string | null | undefined): m is SchoolMenuMimeType {
   return !!m && (SCHOOL_MENU_MIME_TYPES as readonly string[]).includes(m)
+}
+
+/**
+ * An iPhone HEIC photo, by type or by name (some browsers send it as
+ * octet-stream). sharp's build only decodes AVIF, so it can't be made a JPEG:
+ * the household is told what to do instead (PRO-355).
+ */
+export function isHeicUpload(mimeType: string | null | undefined, fileName?: string | null): boolean {
+  if (mimeType && /^image\/hei[cf](-sequence)?$/i.test(mimeType)) return true
+  return !!fileName && /\.hei[cf]$/i.test(fileName.trim())
+}
+
+/** Claude takes a request up to 32 MB (the PDF goes in base64, ×4/3) and a PDF up to 100 pages. */
+export const SCHOOL_MENU_PDF_MAX_BYTES = 20 * 1024 * 1024
+export const SCHOOL_MENU_PDF_MAX_PAGES = 100
+
+/** Page objects counted in the raw PDF; 0 when they are packed in compressed streams (then not checked). */
+export function pdfPageCount(data: Buffer): number {
+  return data.toString('latin1').match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length ?? 0
+}
+
+/** Pure: throws SchoolMenuFileError('too_big') for a PDF the model won't take. */
+export function assertPdfFitsReader(data: Buffer): void {
+  if (data.length > SCHOOL_MENU_PDF_MAX_BYTES || pdfPageCount(data) > SCHOOL_MENU_PDF_MAX_PAGES) {
+    throw new SchoolMenuFileError('too_big')
+  }
+}
+
+/** The API's answer for a request too big (bytes, image size or PDF pages). */
+function isTooBigForModel(err: unknown): boolean {
+  const status = (err as { status?: unknown })?.status
+  const message = String((err as { message?: unknown })?.message ?? '')
+  return status === 413 || (status === 400 && /too large|exceeds|maximum of \d+ (PDF )?pages|too many pages/i.test(message))
 }
 
 // ─── The reader ──────────────────────────────────────────────────
@@ -109,15 +142,28 @@ export function parseSchoolMenuAnswer(raw: unknown): SchoolLunch[] {
   return out.sort((a, b) => a.date.localeCompare(b.date))
 }
 
-/** Read a school menu file (nothing is saved: the household checks it first). */
+/**
+ * Read a school menu file (nothing is saved: the household checks it first).
+ * A PDF too big for the model → SchoolMenuFileError('too_big') before calling it,
+ * and so does the model's own «too large» answer.
+ */
 export async function readSchoolMenu(
   file: { data: Buffer; mimeType: SchoolMenuMimeType },
   today: string,
   userId: string | null,
   reader: SchoolMenuReader = anthropicSchoolMenuReader,
 ): Promise<SchoolLunch[]> {
+  if (file.mimeType === 'application/pdf') assertPdfFitsReader(file.data)
   const fitted = file.mimeType === 'application/pdf' ? file : await fitImageForClaude(file.data, file.mimeType)
-  return parseSchoolMenuAnswer(await reader(fitted, today, userId))
+  let answer: unknown
+  try {
+    answer = await reader(fitted, today, userId)
+  } catch (err) {
+    if (!isTooBigForModel(err)) throw err
+    console.warn('[school-menu] file too big for the model:', (err as Error)?.message)
+    throw new SchoolMenuFileError('too_big')
+  }
+  return parseSchoolMenuAnswer(answer)
 }
 
 // ─── Storage ─────────────────────────────────────────────────────
@@ -251,4 +297,4 @@ export async function schoolDinnerPool<T extends GroupableRecipe>(
   return g ? withoutFoodGroup(pool, g) : pool
 }
 
-export { NotASchoolMenuError, schoolLunchLines }
+export { NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines }

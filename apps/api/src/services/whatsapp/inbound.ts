@@ -10,11 +10,12 @@ import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantRepl
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { captionVariants, type WeekView } from '../menuText.js'
-import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
+import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
 import {
   ASK_SOURCE_COPY,
   PHOTO_SOURCE_WINDOW_MS,
@@ -396,11 +397,13 @@ export const humanContact = (email?: string) => `escribe a ${email?.trim() || BR
 /**
  * PRO-245 (D-064, Miguel 2026-10-19): the WhatsApp sign-up asks exactly these,
  * and its first message announces as many as it lists. `complete_onboarding`
- * needs nothing else (adults, kids, cookingFreq).
+ * needs nothing else (adults, kids, how they cook). Since 2026-11-03 the
+ * second one is the web's «¿Cómo cocináis en casa?» instead of how often
+ * (Miguel: the web questions overlapped, and both sign-ups ask the same).
  */
 export const WHATSAPP_ONBOARDING_QUESTIONS = [
   '¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.',
-  '¿Cuánto cocináis en casa: casi a diario, 3-4 días a la semana o poco?',
+  '¿Cómo cocináis en casa: cada día, unos días y aprovecháis para otros, batch cooking (una o dos veces y dejáis hecha la semana) o improvisáis cada día?',
 ] as const
 
 const COUNT_WORDS = ['cero', 'una', 'dos', 'tres', 'cuatro', 'cinco']
@@ -417,8 +420,9 @@ export const COPY = {
    * keeps the three parts of the AI disclosure (AI, can be wrong, not a health
    * professional; AI Act art. 50) and announces and lists exactly the questions
    * of the sign-up (`WHATSAPP_ONBOARDING_QUESTIONS`, PRO-245): how many they are
-   * and how often they cook. No favourite dishes (D-064: «Afina tu menú» reads
-   * the tastes later).
+   * and how they cook. No favourite dishes here (D-064: «Afina tu menú» reads
+   * the tastes); Mimo asks for a few afterwards only when the cards got no
+   * «Me apetece» or «Me encanta» (`WHATSAPP_ONBOARDING_FAVORITES_ASK`).
    */
   linkedOnboarding: (name: string | null) =>
     `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. Soy un asistente de inteligencia artificial (IA) especializado en cocina: puedo equivocarme y no sustituyo a un profesional sanitario, pero puedo encargarme de las tareas rutinarias para que cocinar vuelva a ser divertido.\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nPara entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber ${countWord(WHATSAPP_ONBOARDING_QUESTIONS.length)} cosas.\n\n${WHATSAPP_ONBOARDING_QUESTIONS.map((q, i) => `*${i + 1}.* ${q}`).join('\n')}`,
@@ -483,6 +487,9 @@ export const COPY = {
   ackSchoolMenu: 'Recibido. Voy a leer el menú del cole, dame unos segundos…',
   schoolMenuNotFound: 'No he encontrado el menú del cole en ese archivo. Prueba con una foto más nítida o con el PDF del cole.',
   schoolMenuFailed: 'No he podido leer el menú del cole. Inténtalo de nuevo en un momento.',
+  /** PRO-355: a file the reader can't take, and what to send instead. */
+  schoolMenuHeic: 'Esa foto está en HEIC, el formato del iPhone, y no la puedo leer. Mándamela como foto (no como documento) o haz una captura de pantalla y mándame la captura.',
+  schoolMenuTooBig: 'Ese archivo es demasiado grande para leerlo. Mándame solo la página del menú del mes, o una foto de esa página.',
 }
 
 /** Slow skills get an immediate, specific "on it" instead of waiting for the timer. */
@@ -895,7 +902,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       userId,
       errorMessage: String(err?.message ?? err).slice(0, 500),
     })
-    await outText('system', COPY.error)
+    // PRO-1101: Anthropic sin saldo → el texto propio de Mimo (y queda apuntado).
+    await outText('system', noteApiBalanceError(err) ? API_SALDO_REPLY : COPY.error)
   } finally {
     // Whatever path ended the turn, no "me pongo con ello" after this point.
     await acker.settle()
@@ -994,10 +1002,13 @@ async function handleSchoolMenu(
     })
     await out('reply', renderPlainText(schoolMenuReply(days)))
   } catch (err: any) {
-    const notMenu = err instanceof NotASchoolMenuError
+    const fileProblem = err instanceof SchoolMenuFileError ? err.reason : null
+    const notMenu = err instanceof NotASchoolMenuError || fileProblem !== null
     if (!notMenu) console.error('[whatsapp] school menu read failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, { status: notMenu ? 'processed' : 'failed', userId, errorMessage: notMenu ? undefined : String(err?.message ?? err).slice(0, 500) })
-    await out('system', renderPlainText(notMenu ? COPY.schoolMenuNotFound : COPY.schoolMenuFailed))
+    const copy =
+      fileProblem === 'heic' ? COPY.schoolMenuHeic : fileProblem === 'too_big' ? COPY.schoolMenuTooBig : notMenu ? COPY.schoolMenuNotFound : COPY.schoolMenuFailed
+    await out('system', renderPlainText(copy))
   }
   return true
 }

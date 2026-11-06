@@ -16,12 +16,14 @@
  *   - Empty slot: Añadir plato, Fijar, Comensales, Quitar comida.
  *   - Locked ("Fijada"): every change is disabled except Desfijar.
  *
- * `useMealOptions()` owns which sheet is open so callers can open the
- * "Añadir plato" sheet directly (the empty-slot card's main button).
+ * `useMealOptions()` owns which sheet is open so callers can open one
+ * directly: the empty-slot card's main button opens this same sheet
+ * (Miguel, 2026-11-05: tapping an empty meal shows the "···" options).
  */
 import { useCallback, useState } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
+import { menuRecipeHref } from "@/lib/menuReturn"
 import {
   Ban,
   BookOpen,
@@ -58,7 +60,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, isFixedDish, isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { useSetSlotEaten } from "@/hooks/useMenu"
@@ -119,9 +121,9 @@ export function slotServings(ctx: SlotContext): number {
   return ctx.batchServings ?? ctx.slot.servings ?? ctx.defaultDiners
 }
 
-/** Recipe detail link for a menu dish, at the batch's servings (PRO-75). */
+/** Recipe detail link for a menu dish, at the batch's servings (PRO-75); its back button returns here. */
 export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
-  return `/recipes/${recipeId}?servings=${slotServings(ctx)}`
+  return menuRecipeHref(recipeId, slotServings(ctx))
 }
 
 type OpenSheet = null | "actions" | "picker" | "pin" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
@@ -192,6 +194,8 @@ export function MealOptionsSheets({
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
   const lockedHint = locked ? "Desfíjala para cambiarla" : undefined
+  // PRO-1141: a «plato fijo» of the ficha is changed by choosing, never at random.
+  const fixedDish = isFixedDish(first)
 
   return (
     <>
@@ -212,7 +216,7 @@ export function MealOptionsSheets({
         {!isSingleRecipe && dishes.length > 0 && (
           <DishList
             dishes={dishes}
-            onOpenRecipe={(id) => router.push(`/recipes/${id}`)}
+            onOpenRecipe={(id) => router.push(menuRecipeHref(id))}
             handlers={handlers}
           />
         )}
@@ -233,8 +237,8 @@ export function MealOptionsSheets({
               <SheetAction
                 icon={Shuffle}
                 label="Cambiar al azar"
-                hint={lockedHint ?? "Otra receta que encaje con tu semana"}
-                disabled={locked || ctx.isRegenerating}
+                hint={lockedHint ?? (fixedDish ? "Es un plato fijo de vuestra ficha" : "Otra receta que encaje con tu semana")}
+                disabled={locked || fixedDish || ctx.isRegenerating}
                 onClick={() => {
                   handlers.regenerate()
                   close()

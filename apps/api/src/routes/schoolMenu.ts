@@ -16,7 +16,9 @@ import { runWithCostUser } from '../services/costLedger.js'
 import { addDays, madridParts } from '../services/madridTime.js'
 import {
   NotASchoolMenuError,
+  SchoolMenuFileError,
   householdShowsSchoolMenu,
+  isHeicUpload,
   isSchoolMenuMimeType,
   loadSchoolLunches,
   readSchoolMenu,
@@ -36,11 +38,18 @@ const upload = multer({
   storage: multer.memoryStorage(),
   // Photos are made smaller before reading (visionImage.ts); a 48 MP camera JPEG fits.
   limits: { fileSize: 25 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => cb(null, isSchoolMenuMimeType(file.mimetype)),
+  // HEIC gets through so the route can say what to do with it (PRO-355).
+  fileFilter: (_req, file, cb) => cb(null, isSchoolMenuMimeType(file.mimetype) || isHeicUpload(file.mimetype, file.originalname)),
 })
 
 /** Said to the household instead of «Internal server error» (2026-10-23). */
 export const SCHOOL_MENU_READ_FAILED = 'No he podido leer el menú ahora. Prueba otra vez en un momento o mándamelo por WhatsApp con «menú del cole».'
+
+/** What to do instead with a file the reader can't take (PRO-355). */
+export const SCHOOL_MENU_FILE_HELP = {
+  heic: 'Esa foto está en HEIC, el formato del iPhone, y no la puedo leer. Haz una captura de pantalla de la foto y sube la captura, o mándamela por WhatsApp con «menú del cole».',
+  too_big: 'Ese archivo es demasiado grande para leerlo (un PDF, como mucho 20 MB y 100 páginas). Sube solo la página del menú del mes, o una foto o captura de esa página.',
+} as const
 
 /** multer's own errors (too big…) answer in Spanish, not as a 500. */
 const uploadFile: RequestHandler = (req, res, next) => {
@@ -74,6 +83,10 @@ router.get('/school-menu', authMiddleware, async (req: AuthRequest, res, next) =
 router.post('/school-menu/read', authMiddleware, requireSpendCapacity(), uploadFile, async (req: AuthRequest, res) => {
   try {
     const file = req.file
+    if (file && isHeicUpload(file.mimetype, file.originalname)) {
+      res.status(415).json({ error: SCHOOL_MENU_FILE_HELP.heic, code: 'HEIC' })
+      return
+    }
     if (!file || !isSchoolMenuMimeType(file.mimetype)) {
       res.status(400).json({ error: 'Sube una foto (JPG, PNG o WEBP) o un PDF del menú del cole.' })
       return
@@ -86,6 +99,11 @@ router.post('/school-menu/read', authMiddleware, requireSpendCapacity(), uploadF
   } catch (err) {
     if (err instanceof NotASchoolMenuError) {
       res.status(422).json({ error: err.message })
+      return
+    }
+    if (err instanceof SchoolMenuFileError) {
+      const heic = err.reason === 'heic'
+      res.status(heic ? 415 : 413).json({ error: SCHOOL_MENU_FILE_HELP[err.reason], code: heic ? 'HEIC' : 'TOO_BIG' })
       return
     }
     // Logged, so the error registry keeps the cause (errorCapture.ts).

@@ -509,6 +509,26 @@ describe('generate_weekly_menu', () => {
     expect([...args[7]]).toEqual([6])
   })
 
+  it('«hazme la semana con mis favoritas» (PRO-377): only_favorites reaches the generator and Mimo hears how many are new', async () => {
+    const { generateMenu } = await import('../services/menuGenerator.js')
+    const inserted = { id: 'm-fav', days: [{}, {}, {}, {}, {}, {}, {}] }
+    vi.mocked(generateMenu).mockClear()
+    vi.mocked(generateMenu).mockResolvedValueOnce({ days: inserted.days, warnings: [], favoritesShort: 4 })
+    const r = await skill.handler({ only_favorites: true }, ctx(makeDb([], [inserted], [{ id: 'log-1' }])))
+    expect((vi.mocked(generateMenu).mock.calls[0] as any[])[9]).toEqual({ onlyFavorites: true })
+    expect(r.data.favoritesShort).toBe(4)
+    expect(r.summary).toContain('Tenia pocas: 4 platos son nuevos')
+
+    vi.mocked(generateMenu).mockResolvedValueOnce({ days: inserted.days, warnings: [], favoritesShort: 0 })
+    const all = await skill.handler({ only_favorites: true }, ctx(makeDb([], [inserted], [{ id: 'log-2' }])))
+    expect(all.summary).toContain('Todos los platos salen de sus favoritas')
+
+    const plain = await skill.handler({}, ctx(makeDb([], [inserted], [{ id: 'log-3' }])))
+    expect((vi.mocked(generateMenu).mock.calls.at(-1) as any[])[9]).toEqual({ onlyFavorites: false })
+    expect(plain.summary).not.toContain('favoritas')
+    expect(plain.data.favoritesShort).toBeUndefined()
+  })
+
   it('targets next Monday with nextWeek=true (Sunday "¿te preparo el menú?" nudge)', async () => {
     const inserted = { id: 'm-next', days: [{}, {}, {}, {}, {}, {}, {}] }
     const thisWeek = await skill.handler({}, ctx(makeDb([], [inserted], [{ id: 'log-1' }])))
@@ -552,6 +572,7 @@ describe('swap_meal', () => {
       [],                                           // menu owner (audit options)
       [],                                           // recipe ingredients
       [],                                           // step counts
+      [], [],                                       // dislike overrides (PRO-1142): no household, no «Me apetece»
       [{ ...menu, days: [...menu.days] }],          // returning updated
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
@@ -575,6 +596,7 @@ describe('swap_meal', () => {
       [],
       [],
       [],
+      [], [],
       [{ ...menu, days: [...menu.days] }],
     )
     vi.mocked(findRecipeForSlot).mockClear()
@@ -624,6 +646,7 @@ describe('swap_meal', () => {
         [], // menu owner (audit options)
         [],
         [],
+        [], [], // dislike overrides (PRO-1142)
         [{ ...menu, days: [...menu.days] }],
       )
       await skill.handler({ dayIndex: 3, meal: 'lunch' }, ctx(db))
@@ -718,7 +741,7 @@ describe('swap_meal', () => {
       id: 'm-1',
       days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
-    // queries: menu → candidates by name → user restrictions → recipe allergens → its ingredients [→ update]
+    // queries: menu → candidates by name → user restrictions → recipe allergens → its ingredients → its steps [→ update]
     const queue = (extra: any[] = []) =>
       makeDb(
         [menu],
@@ -726,8 +749,23 @@ describe('swap_meal', () => {
         [{ restrictions: ['sin gluten'] }],
         [{ allergens: ['gluten', 'huevo'] }],
         [{ ingredientName: 'espaguetis', allergenTags: ['gluten'] }],
+        [{ index: 0, text: 'Cuece la pasta.' }],
         ...extra,
       )
+
+    it('PRO-346: meat the steps name and the ingredients don\'t counts too', async () => {
+      const db = makeDb(
+        [menu],
+        [{ id: 'r-lent', name: 'Lentejas guisadas', authorId: null }],
+        [{ restrictions: ['vegetariano'] }],
+        [{ allergens: [] }],
+        [{ ingredientName: 'lentejas', allergenTags: [] }, { ingredientName: 'cebolla', allergenTags: [] }],
+        [{ index: 0, text: 'Sofríe la cebolla.' }, { index: 1, text: 'A los 30 minutos añadir chorizo y morcilla.' }],
+      )
+      const r = await skill.handler({ dayIndex: 0, meal: 'lunch', recipeName: 'lentejas guisadas' }, ctx(db))
+      expect(r.uiHint).toBe('text')
+      expect(r.summary).toMatch(/No he cambiado nada.*vegetariano/)
+    })
 
     it('is not placed without confirmation; the model is told why', async () => {
       const r = await skill.handler({ dayIndex: 0, meal: 'lunch', recipeName: 'carbonara' }, ctx(queue()))
@@ -1388,7 +1426,8 @@ describe('skill export coverage', () => {
     // with set_shopping_habitual (PRO-293, same test file), and 89 with the
     // seven ficha tools (PRO-319, fichaMimo.test.ts).
     // and 91 with list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
-    expect(skills.length).toBe(91)
+    // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
+    expect(skills.length).toBe(92)
   })
 
   it('every skill has a unique name', () => {

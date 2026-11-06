@@ -140,6 +140,8 @@ function apiProblemType(text: string): string | null {
  * «Uncaught » and a leading class name. Each value is fixed text (≤ 32 characters).
  */
 const MESSAGE_KINDS: ReadonlyArray<readonly [type: string, test: RegExp]> = [
+  // PRO-1101: Anthropic answered «credit balance is too low» (services/apiSaldo.ts, one group).
+  ['saldo_api', /^saldo_api:/],
   // A tab older than the last publish asks for a JS/CSS chunk the new build no longer serves
   // (webpack, turbopack and native dynamic import wordings; isChunkLoadError in @ona/shared).
   ['ChunkLoadError', /Loading (?:CSS )?chunk \S+ failed|Failed to load chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i],
@@ -265,13 +267,13 @@ export interface FeedbackLike {
   page: string | null
   text: string
   createdAt: Date
-  /** What it answers ('sobras', PRO-285), or null. */
+  /** What it answers ('sobras', PRO-285; 'pregunta_unica', PRO-1091), or null. */
   tag?: string | null
 }
 
 const FEEDBACK_CHANNELS = ['app', 'chat', 'whatsapp'] as const
 /** Tags the counts may name (anything else counts as 'otra'). */
-export const FEEDBACK_TAGS = ['sobras'] as const
+export const FEEDBACK_TAGS = ['sobras', 'pregunta_unica'] as const
 
 /** Counts by tag (PRO-285: the answers to Mimo's leftovers question); untagged rows aren't counted. */
 export function feedbackTagCounts(rows: ReadonlyArray<Pick<FeedbackLike, 'tag'>>): Record<string, number> {
@@ -469,7 +471,8 @@ function pickStrings(o: unknown, keys: readonly string[]): Record<string, string
 
 const WAITLIST_TOTALS = ['entries', 'active', 'last7Days', 'wantsWhatsapp', 'newsletterOptIns', 'inTargetSegment', 'referredSignups'] as const
 const BATCH_COUNTS = ['waiting', 'waitingInTarget', 'selected', 'selectedInTarget', 'selectedReferrers', 'pulledInByReferrer'] as const
-const WAITLIST_DEFINITION_KEYS = ['active', 'last7Days', 'byDay', 'segments', 'sources', 'targetSegment', 'referredSignups', 'newsletterOptIns', 'suggestedNextBatch'] as const
+const WAITLIST_DEFINITION_KEYS = ['active', 'last7Days', 'byDay', 'segments', 'sources', 'targetSegment', 'referredSignups', 'invitations', 'newsletterOptIns', 'suggestedNextBatch'] as const
+const INVITATION_COUNTS = ['count', 'inTarget'] as const
 
 function pricingForAgents(raw: unknown) {
   const p = asLoose(raw)
@@ -551,6 +554,12 @@ export function waitlistForAgents(report: object) {
           referredSignups: num(referrals.referredSignups) ?? undefined,
           referrers: num(referrals.referrers) ?? undefined,
           topReferrers: arr(referrals.topReferrers).map((t) => ({ count: num(asLoose(t).count) })),
+        }
+      : undefined,
+    invitations: present('invitations')
+      ? {
+          invita: pickNumbers(asLoose(r.invitations).invita, INVITATION_COUNTS),
+          desconocidoPorInvitacion: pickNumbers(asLoose(r.invitations).desconocidoPorInvitacion, INVITATION_COUNTS),
         }
       : undefined,
     batches: present('batches')

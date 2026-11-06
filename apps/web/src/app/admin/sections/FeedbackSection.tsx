@@ -16,7 +16,7 @@ interface FeedbackItem {
   channel: "app" | "chat" | "whatsapp"
   text: string
   page: string | null
-  /** What it answers: 'sobras' = Mimo's leftovers question (PRO-285). */
+  /** What it answers: 'sobras' = Mimo's leftovers question (PRO-285); 'pregunta_unica' = the one from Admin (PRO-1091). */
   tag?: string | null
   createdAt: string
   username?: string
@@ -25,6 +25,7 @@ interface FeedbackItem {
 
 const TAG_LABEL: Record<string, string> = {
   sobras: "Pregunta de las sobras",
+  pregunta_unica: "Pregunta única por WhatsApp",
 }
 
 const CHANNEL_LABEL: Record<FeedbackItem["channel"], string> = {

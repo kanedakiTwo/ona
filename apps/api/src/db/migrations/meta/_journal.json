@@ -698,8 +698,22 @@
     {
       "idx": 104,
       "version": "7",
-      "when": 1793724174187,
-      "tag": "0104_mimo_turnos_remotos",
+      "when": 1793717887638,
+      "tag": "0104_basket_extension_consents",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793801779340,
+      "tag": "0106_recipe_featured_on",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793948210958,
+      "tag": "0108_mimo_turnos_remotos",
       "breakpoints": true
     }
   ]

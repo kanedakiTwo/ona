@@ -1423,7 +1423,8 @@ describe('skill export coverage', () => {
     // with set_shopping_habitual (PRO-293, same test file), and 89 with the
     // seven ficha tools (PRO-319, fichaMimo.test.ts).
     // and 91 with list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
-    expect(skills.length).toBe(91)
+    // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
+    expect(skills.length).toBe(92)
   })
 
   it('every skill has a unique name', () => {

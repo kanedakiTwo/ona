@@ -1,10 +1,10 @@
 /**
- * PRO-136 (specs/billing.md): the day-7 founder-price offer card (/menu,
+ * PRO-136 (specs/billing.md): the founder-price offer card (/menu,
  * Perfil → Suscripción and Mimo's panel) and the legal notice before the
  * first charge with its direct «Cancelar mi suscripción», at 390×844. The
  * offer only exists from launch day, so the spec answers `GET /billing` as
- * the API does on day 7 (the rule is tested in apps/api/src/tests/billing.test.ts
- * and founderOffer.test.ts).
+ * the API does once it fires (first resolved week or day 10, PRO-384; the
+ * rule is tested in apps/api/src/tests/billing.test.ts and founderOffer.test.ts).
  */
 
 import { test, expect, type Page } from '@playwright/test'
@@ -32,7 +32,7 @@ async function billingAs(page: Page, over: Record<string, unknown>) {
   )
 }
 
-test('day 7: the offer on /menu, in Mimo and on Suscripción', async ({ page }) => {
+test('once it fires: the offer on /menu, in Mimo and on Suscripción', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await registerFreshUser(page)

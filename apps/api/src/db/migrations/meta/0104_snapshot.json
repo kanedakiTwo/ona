@@ -1,5 +1,5 @@
 {
-  "id": "b05862be-7e18-4198-866a-f2a632db33a1",
+  "id": "5051ef9e-5a08-4e63-a637-83c20e341d6d",
   "prevId": "047517fa-297b-4456-b5d9-e5a123b13113",
   "version": "7",
   "dialect": "postgresql",
@@ -467,6 +467,93 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.basket_extension_consents": {
+      "name": "basket_extension_consents",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cadena": {
+          "name": "cadena",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "etiqueta": {
+          "name": "etiqueta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "uq_basket_extension_consent": {
+          "name": "uq_basket_extension_consent",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cadena",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "basket_extension_consents_user_id_users_id_fk": {
+          "name": "basket_extension_consents_user_id_users_id_fk",
+          "tableFrom": "basket_extension_consents",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -4462,79 +4549,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.mimo_turnos_remotos": {
-      "name": "mimo_turnos_remotos",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "creado": {
-          "name": "creado",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "estado": {
-          "name": "estado",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pendiente'"
-        },
-        "peticion": {
-          "name": "peticion",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "respuesta": {
-          "name": "respuesta",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "idx_mimo_turnos_remotos_estado": {
-          "name": "idx_mimo_turnos_remotos_estado",
-          "columns": [
-            {
-              "expression": "estado",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "creado",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "mimo_turnos_remotos_estado_check": {
-          "name": "mimo_turnos_remotos_estado_check",
-          "value": "estado IN ('pendiente','cogido','respondido','caducado')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.newsletter_clicks": {

@@ -64,6 +64,7 @@ import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
 import blindComparisonRoutes from './routes/blindComparison.js'
 import monthMenusRoutes from './routes/monthMenus.js'
+import recipeOfTheDayRoutes from './routes/recipeOfTheDay.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { warnDroppedExtraRefSources } from './services/agentView.js'
@@ -180,6 +181,8 @@ app.use(schoolMenuRoutes)
 app.use(blindComparisonRoutes)
 // Menú del mes (PRO-378): per-route auth.
 app.use(monthMenusRoutes)
+// La receta del día (PRO-1099): public.
+app.use(recipeOfTheDayRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the

@@ -78,7 +78,10 @@ interface Props {
   onMoveSlot: (p: { fromDay: number; fromMeal: MealKey; toDay: number; toMeal: MealKey }) => void
   onUnskipDay: (day: number) => void
   onSkipDay: (day: number) => void
-  onAddMeal: (day: number, meal: MealKey) => void
+  /** With `recipeId`, that recipe; without, one the matcher picks (or empty when nothing fits). */
+  onAddMeal: (day: number, meal: MealKey, recipeId?: string) => void
+  /** A missing meal as a note («Usar "<lo escrito>" como plato»). */
+  onAddNote?: (day: number, meal: MealKey, text: string) => void
   onAddFreezer?: (day: number, meal: MealKey, recipeId: string, variant: "freezer" | "fridge") => void
   /** Rendered under the week (vetoes panel, pantry card). */
   footer?: ReactNode
@@ -167,7 +170,9 @@ export function MenuDesktop(p: Props) {
             meal={m}
             dayName={dayName}
             isAdding={p.isAddingMeal}
-            onAdd={(meal) => p.onAddMeal(p.selectedDay, meal)}
+            onAdd={(meal, recipeId) => p.onAddMeal(p.selectedDay, meal, recipeId)}
+            onAddNote={p.onAddNote ? (meal, text) => p.onAddNote?.(p.selectedDay, meal, text) : undefined}
+            onAddFreezer={p.onAddFreezer ? (meal, recipeId, variant) => p.onAddFreezer?.(p.selectedDay, meal, recipeId, variant) : undefined}
             readOnly={p.readOnly}
             compact
           />

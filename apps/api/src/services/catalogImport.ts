@@ -28,7 +28,7 @@
  * so the orchestration is tested without either.
  */
 import type { Difficulty, Meal, Season, Unit } from '@ona/shared'
-import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS } from '@ona/shared'
+import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS, isIsoDay } from '@ona/shared'
 import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
@@ -83,6 +83,8 @@ export interface CatalogDraftInput {
   /** PRO-372: from the batch when Cocina sets it; else the rewrite's guess. */
   freezable?: boolean | null
   fridgeDays?: number | null
+  /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día», from the batch. */
+  featuredOn?: string | null
   ingredients: DraftIngredient[]
   /** The source's steps. Read to rewrite them; never saved. */
   sourceSteps: string[]
@@ -163,6 +165,8 @@ export interface PersistDraftInput {
   /** PRO-372: the ficha's storage seals; null = no data. */
   freezable: boolean | null
   fridgeDays: number | null
+  /** PRO-1099: «la receta del día» of that day (AAAA-MM-DD); null = none. */
+  featuredOn?: string | null
   ingredients: Array<{ ingredientId: string; quantity: number; unit: Unit; note: string | null; optional: boolean; section: string | null; displayOrder: number }>
   steps: Array<{ index: number; text: string; durationMin: number | null; temperature: number | null; technique: string | null; ingredientRefs: string[] }>
   catalogSource: CatalogSourceRef & { batch: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
@@ -515,6 +519,7 @@ export async function importCatalogRecipe(
     internalTags,
     tips: rewrite.tips?.trim() || null,
     ...storageFrom(rewrite, draft),
+    featuredOn: isIsoDay(draft.featuredOn) ? draft.featuredOn : null,
     ingredients: matched.map((m, i) => ({
       ingredientId: m.ingredientId as string,
       quantity: m.quantity,
@@ -606,6 +611,7 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
       equipment: r.equipment ?? [],
       freezable: typeof r.freezable === 'boolean' ? r.freezable : null,
       fridgeDays: cleanFridgeDays(r.fridgeDays),
+      featuredOn: isIsoDay(r.featuredOn) ? r.featuredOn : null,
       ingredients: (r.ingredients ?? []).map((i: any) => ({
         name: String(i.name ?? ''),
         quantity: Number(i.qty ?? i.quantity ?? 0),

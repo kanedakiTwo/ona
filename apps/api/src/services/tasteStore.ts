@@ -178,6 +178,19 @@ export async function verdictCount(userId: string, db: Db = defaultDb): Promise<
   return Number(r?.n ?? 0)
 }
 
+/**
+ * Has the user said some recipe appeals to them («Me apetece» or «Me encanta»)?
+ * The WhatsApp sign-up asks for a few favourite dishes when not (2026-11-03).
+ */
+export async function hasLikedRecipes(userId: string, db: Db = defaultDb): Promise<boolean> {
+  const rows = await db
+    .select({ recipeId: recipeVerdicts.recipeId })
+    .from(recipeVerdicts)
+    .where(and(eq(recipeVerdicts.userId, userId), inArray(recipeVerdicts.verdict, ['love', 'like'])))
+    .limit(1)
+  return rows.length > 0
+}
+
 /** Pure: a round of «Afina tu menú» (`TASTE_BATCH_SIZE` cards) has just ended (PRO-320). */
 export function tasteRoundEnded(count: number, batchSize: number): boolean {
   return count > 0 && count % batchSize === 0

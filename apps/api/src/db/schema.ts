@@ -379,11 +379,18 @@ export const recipes = pgTable('recipes', {
   catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
   /** Batch id of the catalogue import (PRO-154); null otherwise. */
   importBatch: text('import_batch'),
+  /**
+   * PRO-1099 (specs/recipe-of-the-day.md): the day (Madrid, YYYY-MM-DD) this
+   * catalogue recipe is «la receta del día». One recipe per day (unique);
+   * null for every other recipe. Set by the batch import (`featuredOn`).
+   */
+  featuredOn: date('featured_on'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (t) => [
   index('idx_recipes_import_batch').on(t.importBatch),
+  uniqueIndex('uq_recipes_featured_on').on(t.featuredOn),
   check('recipes_status_check', sql.raw("status IN ('draft','published')")),
 ])
 
@@ -1414,6 +1421,22 @@ export const shopOrders = pgTable('shop_orders', {
 }, (t) => [
   uniqueIndex('uq_shop_orders_token').on(t.token),
   index('idx_shop_orders_household_status').on(t.householdId, t.status),
+])
+
+// «Enviar a <cadena>» (specs/shop-orders.md, D-154): el aviso que aceptó cada
+// cuenta antes de su primer envío a una cadena. `cadena` es el host de la web
+// de la tienda (el repo nunca nombra la cadena); `version`, la del texto que
+// leyó. «Desactivar» en Perfil borra la fila; un texto nuevo pide aceptarlo otra vez.
+export const basketExtensionConsents = pgTable('basket_extension_consents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  cadena: text('cadena').notNull(),
+  /** Nombre de la cadena tal como lo dio la extensión, para enseñarlo en Perfil. */
+  etiqueta: text('etiqueta').notNull(),
+  version: text('version').notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_basket_extension_consent').on(t.userId, t.cadena),
 ])
 
 // ─── In-house error tracker (specs/errors.md) ────────────────────────

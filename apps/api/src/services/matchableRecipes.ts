@@ -8,6 +8,7 @@ import { catalogAuditIssuesFor } from './catalogRecipeAudit.js'
 import { isRetiredRecipe } from './recipeCatalogOrder.js'
 import { loadFichaMenuConstraints } from './profile/reader.js'
 import { unlistedDietMentions } from './stepDietMentions.js'
+import { loadDishDislikeOverrides } from './dishDislikes.js'
 
 /** `authorId`: null for the catalogue, the household member's id for their own recipes (PRO-1141 looks there first). */
 export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null; authorId?: string | null }
@@ -74,6 +75,11 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
   }
   const stepTexts = (recipeId: string) => [...(stepsByRecipe.get(recipeId) ?? [])].sort((a, b) => a.index - b.index).map((s) => s.text)
 
+  // PRO-1142: a dislike that names the dish keeps it out unless the household
+  // said «Me apetece» (or «Me encanta», or 5 stars) after it. A read error
+  // keeps every dislike.
+  const dislikesOverridden = await loadDishDislikeOverrides(userId, allRecipes, db).catch(() => new Map<string, string[]>())
+
   const auditLinesByRecipe = new Map<string, Array<{ name: string; quantity: number; unit: string; unitWeight: number | null; density: number | null; edibleFraction: number | null; note: string | null }>>()
   const ingredientsByRecipe = new Map<string, RecipeWithIngredients['ingredients']>()
   for (const row of riRows) {
@@ -132,6 +138,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     stepMentions: unlistedDietMentions(stepTexts(r.id), (ingredientsByRecipe.get(r.id) ?? []).map((i) => i.ingredientName)).map(
       ({ term, category }) => ({ term, category }),
     ),
+    dislikesOverridden: dislikesOverridden.get(r.id) ?? [],
     // PRO-73: catalogue recipes with no steps, too few ingredients or
     // quantities out of range are skipped by the matcher. Computed here, on
     // read; nothing is written. Users' own recipes are never audited.

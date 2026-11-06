@@ -789,6 +789,18 @@ async function tickOnce(): Promise<true> {
     console.error('[notificationScheduler] referral rewards failed:', err)
   }
 
+  // Newsletter (PRO-1123): the issue Miguel scheduled for Friday 9:00, once,
+  // only with the proof of the template he saved that week.
+  try {
+    // Imported here: the newsletter's own imports reach back to this module.
+    const { runScheduledNewsletterIfDue } = await import('./newsletterDrafts.js')
+    for (const r of await runScheduledNewsletterIfDue(now)) {
+      console.log(`[newsletter] scheduled ${r.issueId}: ${r.skipped ? `not sent (${r.skipped})` : `${r.sent} sent`}`)
+    }
+  } catch (err) {
+    console.error('[notificationScheduler] scheduled newsletter failed:', err)
+  }
+
   // Waitlist (PRO-97): one reminder 3 days after the invitation, if they
   // haven't created the account (checked once an hour).
   try {

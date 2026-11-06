@@ -7,12 +7,12 @@
 export type ClientUsageEvent = "onboarding_step" | "screen_viewed" | "recipe_viewed" | "taste_tuning" | "push_opened"
 export type UsageScreen = "menu" | "lista" | "compra" | "receta" | "recetas" | "perfil" | "despensa" | "avisos" | "casa"
 export type RecipeViewFrom = "menu" | "catalogo" | "mimo" | "lista" | "otro"
-export type OnboardingStep = "afina" | "canal" | "hogar" | "frecuencia" | "cocina" | "tiempo" | "dieta" | "prioridad"
+export type OnboardingStep = "afina" | "canal" | "hogar" | "quien_compra" | "invitar" | "frecuencia" | "cocina" | "tiempo" | "dieta" | "prioridad"
 
-/** The web sign-up's numbered steps (OnboardingFlow 1…6; 2 and 6 not asked since 2026-11-03, lib/onboardingSteps.ts). */
-const NUMBERED_STEPS: OnboardingStep[] = ["hogar", "frecuencia", "cocina", "tiempo", "dieta", "prioridad"]
+/** The web sign-up's numbered steps (OnboardingFlow 1…8; 2 and 6 not asked since 2026-11-03, 7 and 8 PRO-383, lib/onboardingSteps.ts). */
+const NUMBERED_STEPS: OnboardingStep[] = ["hogar", "frecuencia", "cocina", "tiempo", "dieta", "prioridad", "quien_compra", "invitar"]
 
-/** Pure: the step name of onboarding step 1…6. */
+/** Pure: the step name of onboarding step 1…8. */
 export function onboardingStepKey(step: number): OnboardingStep | null {
   return NUMBERED_STEPS[step - 1] ?? null
 }

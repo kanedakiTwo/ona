@@ -9,6 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const generateCalls: { weekStart: string; skipped: number[] }[] = []
 
 vi.mock('../services/onboarding.js', () => ({ saveOnboarding: vi.fn(async () => ({ id: 'u1' })) }))
+vi.mock('../services/shopperInvite.js', () => ({
+  shopperInviteForSignUp: vi.fn(async () => ({
+    url: 'https://mimoia.com/invites/abc',
+    message: 'Te he metido en nuestra casa de Mimoia: ahí tendrás el menú y la lista de la compra de cada semana. Entra aquí: https://mimoia.com/invites/abc',
+  })),
+}))
 vi.mock('../services/menuGenerator.js', async (orig) => ({
   ...(await orig<any>()),
   generateMenu: vi.fn(async (_u: string, weekStart: string, _t: unknown, _db: unknown, _l: unknown, _d: unknown, _b: unknown, skipped?: Set<number>) => {
@@ -36,6 +42,7 @@ vi.mock('../services/menuFit.js', async (orig) => ({
 
 const { skills } = await import('../services/assistant/skills.js')
 const { saveOnboarding } = await import('../services/onboarding.js')
+const { shopperInviteForSignUp } = await import('../services/shopperInvite.js')
 const completeOnboarding = skills.find((s) => s.name === 'complete_onboarding')!
 
 function fakeDb() {
@@ -107,7 +114,7 @@ describe('complete_onboarding — how they cook (2026-11-03)', () => {
   it('saves the web\'s «¿Cómo cocináis en casa?» answer, with no priority when none was said', async () => {
     await completeOnboarding.handler({ adults: 2, kidsCount: 1, cookingStyle: 'batch' }, { userId: 'u1', db: fakeDb() } as any)
     expect(vi.mocked(saveOnboarding).mock.calls[0][1]).toEqual({
-      adults: 2, kidsCount: 1, cookingStyle: 'batch', cookingFreq: undefined, favoriteDishes: [], priority: undefined,
+      adults: 2, kidsCount: 1, cookingStyle: 'batch', cookingFreq: undefined, favoriteDishes: [], priority: undefined, shopper: undefined, via: 'whatsapp',
     })
   })
 
@@ -124,5 +131,53 @@ describe('complete_onboarding — how they cook (2026-11-03)', () => {
       { userId: 'u1', db: fakeDb() } as any,
     )
     expect(vi.mocked(saveOnboarding).mock.calls[0][1].favoriteDishes).toEqual(['lentejas', 'tortilla de patatas'])
+  })
+})
+
+describe('complete_onboarding — «¿Quién hace la compra?» (PRO-383)', () => {
+  beforeEach(() => {
+    generateCalls.length = 0
+    vi.mocked(saveOnboarding).mockClear()
+    vi.mocked(shopperInviteForSignUp).mockClear()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-14T16:00:00Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('the tool takes the three answers', () => {
+    expect((completeOnboarding.parameters as any).properties.shopper.enum).toEqual(['me', 'other', 'shared'])
+  })
+
+  it('«Otra persona de casa» with 2 adults: saved, and the reply carries the same invitation as the web', async () => {
+    const r = await completeOnboarding.handler({ adults: 2, kidsCount: 0, cookingStyle: 'daily', shopper: 'other' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[0][1]).toMatchObject({ shopper: 'other', via: 'whatsapp' })
+    expect(shopperInviteForSignUp).toHaveBeenCalledWith('u1')
+    expect(r.summary).toContain('Te he metido en nuestra casa de Mimoia')
+    expect(r.summary).toContain('https://mimoia.com/invites/abc')
+  })
+
+  it('«Nos turnamos» also invites; «Yo» saves the answer and invites nobody', async () => {
+    await completeOnboarding.handler({ adults: 3, kidsCount: 1, cookingStyle: 'batch', shopper: 'shared' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(shopperInviteForSignUp).toHaveBeenCalledTimes(1)
+    const r = await completeOnboarding.handler({ adults: 2, kidsCount: 0, cookingStyle: 'batch', shopper: 'me' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[1][1]).toMatchObject({ shopper: 'me' })
+    expect(shopperInviteForSignUp).toHaveBeenCalledTimes(1)
+    expect(r.summary).not.toContain('invites/')
+  })
+
+  it('with 1 adult the answer is not kept and nobody is invited', async () => {
+    const r = await completeOnboarding.handler({ adults: 1, kidsCount: 0, cookingStyle: 'daily', shopper: 'other' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[0][1]).toMatchObject({ shopper: undefined })
+    expect(shopperInviteForSignUp).not.toHaveBeenCalled()
+    expect(r.summary).not.toContain('invites/')
+  })
+
+  it('an answer outside the three is dropped; a failed invitation leaves the sign-up done', async () => {
+    await completeOnboarding.handler({ adults: 2, kidsCount: 0, cookingStyle: 'daily', shopper: 'mi pareja' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[0][1]).toMatchObject({ shopper: undefined })
+    vi.mocked(shopperInviteForSignUp).mockRejectedValueOnce(new Error('boom'))
+    const r = await completeOnboarding.handler({ adults: 2, kidsCount: 0, cookingStyle: 'daily', shopper: 'other' }, { userId: 'u1', db: fakeDb() } as any)
+    expect(r.summary).toMatch(/Primeros pasos guardados/)
+    expect(r.summary).not.toContain('invites/')
   })
 })

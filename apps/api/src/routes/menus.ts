@@ -12,7 +12,7 @@ import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
 import { validate } from '../middleware/validate.js'
-import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
+import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
@@ -533,6 +533,11 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     // path used by the menu UI's "cambiar plato" picker and by the assistant's
     // swap_meal skill when the user names a specific recipe.
     const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
+    // PRO-1141: «Cambiar al azar» never replaces a ficha's «plato fijo»; choosing a recipe by hand does.
+    if (!manualRecipeId && slot.dishes.some(isFixedDish)) {
+      res.status(409).json({ error: 'Es un plato fijo de vuestra ficha: elige otra receta a mano si queréis cambiarlo.' })
+      return
+    }
     if (manualRecipeId) {
       const [chosen] = await db
         .select({ id: recipes.id, name: recipes.name, course: recipes.course })
@@ -548,7 +553,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       // grid's "+ Añadir" path), `.map` returns `[]` and the recipe is
       // never persisted. Detect that case and APPEND the chosen recipe
       // as the first dish instead.
-      const replaced: Dish[] = slot.dishes.map((dish) => {
+      // A ficha's fixed dish written as a note (PRO-1141) gives way to the chosen recipe.
+      const replaced: Dish[] = slot.dishes.filter((dish) => !(dish.kind === 'note' && isFixedDish(dish))).map((dish) => {
         if (dish.kind !== 'recipe') return dish
         return {
           kind: 'recipe',
@@ -1553,6 +1559,9 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const dish = slot.dishes[position]
     if (dish.kind === 'note') {
       res.status(400).json({ error: 'Cannot regenerate a note dish' }); return
+    }
+    if (isFixedDish(dish)) {
+      res.status(409).json({ error: 'Es un plato fijo de vuestra ficha: elige otra receta a mano si queréis cambiarlo.' }); return
     }
 
     // Build matcher options — same pattern as PUT /meal/:meal above.

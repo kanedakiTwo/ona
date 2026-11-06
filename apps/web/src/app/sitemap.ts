@@ -8,7 +8,7 @@ import { SITE_URL } from "@/lib/site"
  * `/recipes` (public signed out, specs/recipes.md). App routes behind login are
  * left out on purpose.
  */
-const PUBLIC_PAGES = ["/", "/como-funciona", "/recipes", "/blog", "/privacidad", "/terminos", "/aviso-legal"]
+const PUBLIC_PAGES = ["/", "/como-funciona", "/recipes", "/receta-del-dia", "/blog", "/privacidad", "/terminos", "/aviso-legal"]
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

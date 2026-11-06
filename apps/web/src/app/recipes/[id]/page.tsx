@@ -63,6 +63,7 @@ import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
 import { BRAND_NAME, recipeSharePayload } from "@ona/shared"
 import { ApiError } from "@/lib/api"
 import { loginHrefFor } from "@/lib/routeAccess"
+import { recipeBackTarget } from "@/lib/menuReturn"
 import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
 
 /**
@@ -92,6 +93,10 @@ export default function RecipeDetailPage() {
   const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
   const isDesktop = useIsDesktop()
+  // «Volver» goes back to the menu when the recipe was opened from it
+  // (`?desde=menu`, Miguel 2026-11-05); read after mount, like `?servings=`.
+  const [back, setBack] = useState(() => recipeBackTarget(""))
+  useEffect(() => setBack(recipeBackTarget(window.location.search)), [])
   // Signed out this page wears the public chrome (RootShell): a fixed
   // PublicNavbar on top, so the photo, sticky tabs and sticky hero start
   // below it, and a waitlist block closes the page (specs/recipes.md).
@@ -491,11 +496,19 @@ export default function RecipeDetailPage() {
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
           )}
           <Link
-            href="/recipes"
+            href={back.href}
+            data-testid="recipe-back"
+            onClick={(e) => {
+              // From the menu: back to the week and the day it was showing.
+              if (back.fromMenu && window.history.length > 1) {
+                e.preventDefault()
+                router.back()
+              }
+            }}
             className="absolute left-4 top-4 flex h-11 items-center gap-1 rounded-full bg-[#FFFEFA] pl-2.5 pr-4 text-[14px] font-semibold text-[#1A1612] shadow-sm transition-transform active:scale-95"
           >
             <ChevronLeft size={20} aria-hidden />
-            Recetas
+            {back.label}
           </Link>
           {heroEdit && <div className="absolute right-4 top-4">{heroEdit}</div>}
           <div
@@ -605,7 +618,7 @@ export default function RecipeDetailPage() {
         )}
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
-          <BackButton fallbackHref="/recipes" />
+          <BackButton fallbackHref={back.href} />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -945,8 +958,9 @@ function RecipeGoneNotice() {
 /**
  * Hero back button. Goes back in history when the user arrived from inside
  * the app (menu, catalogue, cookbook…); a link opened cold (WhatsApp, a new
- * tab) has nothing to go back to, so it falls through to the catalogue
- * (`/recipes`, public signed out too).
+ * tab) has nothing to go back to, so it falls through to `fallbackHref`:
+ * the menu for a recipe opened from it, the catalogue otherwise (`/recipes`,
+ * public signed out too).
  */
 function BackButton({ fallbackHref }: { fallbackHref: string }) {
   const router = useRouter()

@@ -118,14 +118,11 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `whatsapp_unlinked` (PRO-120; pasivo) | `DELETE /whatsapp/link` | — |
 | `feedback_left` (PRO-120; `channel` boton/mimo/whatsapp, nunca el texto) | `POST /feedback` (el botón «Opinión») | `leave_feedback` (mimo en el chat de la web, whatsapp allí) |
 | `mimo_skill_used` (PRO-1022; `skill` = el nombre de la herramienta, `canal` web/whatsapp/telegram/voice; nunca texto) | — | **toda** herramienta de Mimo que devuelve datos (`data != null`), además de su evento propio si lo tiene (`generate_weekly_menu` deja `menu_generated` y `mimo_skill_used`). Una que falla o no encuentra nada no deja ninguno. `skill` solo se guarda si es un slug (`PROP_VALUE_RE`): siempre uno de los nombres de las herramientas (un test lo comprueba con todas). Telegram corre en el modo de WhatsApp (PRO-313): la columna `channel` dice `whatsapp` y `canal` dice `telegram` |
-<<<<<<< a75b22f6d0671a9b3b45e0c1320f3c7d6f4a9db6
 | `autoplan_generated` / `autoplan_viewed` / `autoplan_changed` (PRO-381, D-158; `week` = el lunes de la semana; los dos primeros, pasivos) | el piloto automático del jueves (`weeklyAutoplan.ts`, sistema, sin canal) deja hecha la semana; `POST /menu/autoplan/viewed` al abrir esa semana en `/menu` (una vez por persona); el primer cambio en esa semana antes de su lunes (un plato cambiado, añadido o quitado, o la semana rehecha; una vez por hogar) | los cambios de Mimo pasan por las mismas rutas (`autoplan_changed` con su canal) |
-=======
 | `cook_now_proposed` (PRO-1106; `canBuy`) | `POST /cook-now/proposal`: las cuatro preguntas de «Cocinar ahora» respondidas ([Cook now](./cook-now.md)). La tarjeta «Con lo que tienes» llama a la misma ruta con `requirePantryUse` y no cuenta | — |
 | `cook_now_chosen` (PRO-1106; `displaced`: lo planeado pasó a otro día) | `POST /cook-now/choose`: «Cocinar esta» | — |
 
 «Cocinar ahora» (PRO-1106, D-158): `cook_now_proposed`, `cook_now_chosen` y `meal_cooked` con `fromMenu` vigilan el paso **«primer acierto»** de la línea de crecimiento (cocinar un plato del menú): cuántas propuestas se piden, cuántas acaban en el menú y cuántos «Terminar» del modo cocina vienen de un plato del menú.
->>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
 
 Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.ts`) y los procesos de sistema que leen la lista (recordatorio de la compra por WhatsApp, la lectura interna de `POST /shop-orders/prepare`) envían la cabecera `x-mimoia-internal`, que el middleware web ignora; el ejecutor de herramientas los registra con el canal de la conversación. Las herramientas que responden "no encontrado" (`data: null`) no cuentan. Los dos eventos de la extensión del navegador no son pasivos: hacen activo al hogar, como todos salvo `app_opened_installed`.
 

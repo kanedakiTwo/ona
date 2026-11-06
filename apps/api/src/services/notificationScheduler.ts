@@ -55,7 +55,7 @@ import { runFeatureUsagePassIfDue } from './featureUsage.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { WAITLIST_RETENTION_DATE, purgeWaitlistPersonalDataIfDue } from './waitlistRetention.js'
-import { isAccountPaused } from './accountAccess.js'
+import { isOnFreePlan } from './accountAccess.js'
 import { cooksOfWeek } from './cookToday.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
@@ -689,8 +689,8 @@ async function tickOnce(): Promise<true> {
       // A failed check must not swallow a real alert: send it as before.
       console.warn('[notificationScheduler] prep alert check failed (sending anyway):', err)
     }
-    // PRO-135: a paused account gets no alerts (only the notice to choose a plan).
-    if (!stale && (await isAccountPaused(row.userId, now))) stale = 'cuenta en pausa'
+    // PRO-385 (D-158): the alerts aren't in the Gratis plan.
+    if (!stale && (await isOnFreePlan(row.userId, now))) stale = 'plan Gratis'
     if (stale) {
       await db
         .update(notificationSchedule)

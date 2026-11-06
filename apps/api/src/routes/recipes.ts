@@ -59,6 +59,7 @@ import {
   SEASONS,
   DIFFICULTIES,
   RETIRED_RECIPE_TAG,
+  PLAN_GRATIS_IMPORTS_MESSAGE,
   type Difficulty,
   type Meal,
   type Recipe,
@@ -71,6 +72,7 @@ import {
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
 import { sortCatalog, type CatalogOrderRow } from '../services/recipeCatalogOrder.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
+import { requirePaidPlan } from '../services/accountAccess.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
 import { runWithCostUser } from '../services/costLedger.js'
 import {
@@ -740,10 +742,14 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
   }
 })
 
+// Importing recipes (a photo, a link) isn't in the Gratis plan (PRO-385, D-158).
+const paidPlanForImports = requirePaidPlan({ message: PLAN_GRATIS_IMPORTS_MESSAGE })
+
 // POST /recipes/extract-from-image — extract from photo (auth required).
 router.post(
   '/recipes/extract-from-image',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   upload.single('image'),
   async (req: AuthRequest, res) => {
@@ -799,6 +805,7 @@ const extractFromUrlSchema = z.object({
 router.post(
   '/recipes/extract-from-url',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   async (req: AuthRequest, res) => {
     try {

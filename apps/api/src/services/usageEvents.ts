@@ -62,7 +62,6 @@ export const USAGE_EVENTS = [
   'feedback_left',
   // PRO-1022: every Mimo tool that returned data (`props.skill` = the tool's name, `props.canal`). Never text.
   'mimo_skill_used',
-<<<<<<< 31f6fcfbb6b2386ddfa2eaf8605b8e1dffc9205c
   // PRO-1024 (trucos §6.2): the tricks the newsletter offers, one event per use. Closed props only.
   'meal_adjusted',
   'taper_set',
@@ -81,10 +80,8 @@ export const USAGE_EVENTS = [
   'content_shared',
   'week_printed',
   'handsfree_started',
-=======
   // PRO-383: «¿Quién hace la compra?» in the sign-up (`props.value` = me · other · shared; channel web or whatsapp).
   'shopper_answered',
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 

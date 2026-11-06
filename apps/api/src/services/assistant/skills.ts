@@ -62,6 +62,7 @@ import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
+import { ingredientMarksOf } from '../ingredientRoles.js'
 import { shopperInviteForSignUp } from '../shopperInvite.js'
 import { SHOPPERS, asksShopper, isShopper, shopperInvites } from '@ona/shared'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
@@ -2815,6 +2816,7 @@ const addRecipeToMine: SkillDefinition = {
             optional: ing.optional,
             note: ing.note,
             displayOrder: ing.displayOrder ?? i,
+            ...ingredientMarksOf(ing),
           })),
         )
       }

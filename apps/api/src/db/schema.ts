@@ -440,6 +440,14 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
   displayQuantity: real('display_quantity'),
   /** Human-readable unit as the recipe originally stated it (e.g. "taza", "cucharada"). */
   displayUnit: text('display_unit'),
+  /**
+   * «Cocinar ahora»: essential | secondary, marked by Cocina for catalogue
+   * recipes (services/ingredientRoles.ts). Null = not marked: the automatic
+   * rule decides. Survives edits (persistRecipe) and copies.
+   */
+  role: text('role'),
+  /** Catalogue ingredients that can stand in for this one (nata → leche). */
+  substituteIngredientIds: uuid('substitute_ingredient_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
 }, (table) => [
   index('idx_recipe_ingredients_recipe').on(table.recipeId),
   index('idx_recipe_ingredients_ingredient').on(table.ingredientId),
@@ -449,6 +457,7 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
     'recipe_ingredients_unit_check',
     sql.raw(`unit IN (${UNITS.map((u) => `'${u}'`).join(', ')})`),
   ),
+  check('recipe_ingredients_role_check', sql`role IS NULL OR role IN ('essential', 'secondary')`),
 ])
 
 // ─── 6. recipe_steps ────────────────────────────────────────

@@ -98,6 +98,7 @@ import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisib
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
 import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
+import { ingredientMarksOf } from '../services/ingredientRoles.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
@@ -1163,6 +1164,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
             optional: ing.optional,
             note: ing.note,
             displayOrder: ing.displayOrder ?? i,
+            ...ingredientMarksOf(ing),
           })),
         )
       }

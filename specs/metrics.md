@@ -99,7 +99,7 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `recipe_imported` (`props.source` url / photo / whatsapp_photo / whatsapp_url / social; `props.kind` article/youtube/instagram/tiktok) | `POST /recipes/extract-from-url`, `POST /recipes/extract-from-image` (el borrador, antes de guardar) | `import_recipe_from_url`; foto de WhatsApp guardada como receta (`inbound.ts`) |
 | `recipe_created` (`props.withSource`) | `POST /recipes` | `create_recipe` |
 | `cook_mode_started` | `POST /usage/cook-mode-started` (la página del modo cocina lo llama una vez al abrirse, sin datos, PRO-188) | `start_cooking_mode` |
-| `meal_cooked` | `POST /cook-logs` | `log_cooked`; `mark_meal_eaten` con `eaten: true` («ya lo hemos comido», `via: 'eaten'`, PRO-188) |
+| `meal_cooked` (`props.fromMenu` en la web: el registro llega con `menuId`, PRO-1106) | `POST /cook-logs` | `log_cooked`; `mark_meal_eaten` con `eaten: true` («ya lo hemos comido», `via: 'eaten'`, PRO-188) |
 | `mimo_message` (por `channel`; en WhatsApp `props.kind` text/voice_note/photo) | `POST /assistant/:id/chat` (`mode: voice` → voice) | cada turno de WhatsApp que llega a Mimo (`inbound.ts`) |
 | `whatsapp_linked` | — | código de vinculación aceptado (`inbound.ts`) |
 | `invite_shared` (PRO-165) | toque en «Invitar a otro hogar» (PRO-163: el botón de WhatsApp o «Copiar» en Perfil y bajo la lista de la compra, y Mimo cuando da el enlace con `share_invite_link`; `POST /usage/invite-shared`, sin props) | — |
@@ -118,6 +118,10 @@ Analítica de producto en una tabla propia, sin terceros. Una fila por cada cosa
 | `whatsapp_unlinked` (PRO-120; pasivo) | `DELETE /whatsapp/link` | — |
 | `feedback_left` (PRO-120; `channel` boton/mimo/whatsapp, nunca el texto) | `POST /feedback` (el botón «Opinión») | `leave_feedback` (mimo en el chat de la web, whatsapp allí) |
 | `mimo_skill_used` (PRO-1022; `skill` = el nombre de la herramienta, `canal` web/whatsapp/telegram/voice; nunca texto) | — | **toda** herramienta de Mimo que devuelve datos (`data != null`), además de su evento propio si lo tiene (`generate_weekly_menu` deja `menu_generated` y `mimo_skill_used`). Una que falla o no encuentra nada no deja ninguno. `skill` solo se guarda si es un slug (`PROP_VALUE_RE`): siempre uno de los nombres de las herramientas (un test lo comprueba con todas). Telegram corre en el modo de WhatsApp (PRO-313): la columna `channel` dice `whatsapp` y `canal` dice `telegram` |
+| `cook_now_proposed` (PRO-1106; `canBuy`) | `POST /cook-now/proposal`: las cuatro preguntas de «Cocinar ahora» respondidas ([Cook now](./cook-now.md)). La tarjeta «Con lo que tienes» llama a la misma ruta con `requirePantryUse` y no cuenta | — |
+| `cook_now_chosen` (PRO-1106; `displaced`: lo planeado pasó a otro día) | `POST /cook-now/choose`: «Cocinar esta» | — |
+
+«Cocinar ahora» (PRO-1106, D-158): `cook_now_proposed`, `cook_now_chosen` y `meal_cooked` con `fromMenu` vigilan el paso **«primer acierto»** de la línea de crecimiento (cocinar un plato del menú): cuántas propuestas se piden, cuántas acaban en el menú y cuántos «Terminar» del modo cocina vienen de un plato del menú.
 
 Sin dobles recuentos: las herramientas que llaman a la propia API REST (`appApi.ts`) y los procesos de sistema que leen la lista (recordatorio de la compra por WhatsApp, la lectura interna de `POST /shop-orders/prepare`) envían la cabecera `x-mimoia-internal`, que el middleware web ignora; el ejecutor de herramientas los registra con el canal de la conversación. Las herramientas que responden "no encontrado" (`data: null`) no cuentan. Los dos eventos de la extensión del navegador no son pasivos: hacen activo al hogar, como todos salvo `app_opened_installed`.
 

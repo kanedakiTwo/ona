@@ -172,13 +172,6 @@ Recipe catalog, recipe detail, ingredients, sectioned ingredient groups ("Para l
 
 ---
 
-<<<<<<< 3231645931fa7c78b5a829e4038b4c08ebad711a
-**Source**: `packages/shared/src/types/ingredientRole.ts`, `apps/api/src/services/ingredientRoles.ts`, `apps/api/src/routes/ingredientRoles.ts`, `apps/api/src/middleware/cocinaAuth.ts`, `apps/api/src/services/recipePersistence.ts`, `apps/api/src/services/catalogImport.ts`
-
----
-
-=======
->>>>>>> 7bdfda4dc0dd9c94865e3738073f95dab862f20d
 ## [La receta del día](./recipe-of-the-day.md)
 
 Recipe of the day / receta del día (PRO-1099, E-26): one published catalogue recipe per day (`recipes.featured_on`, unique, migration 0106; `featuredOn` in Cocina's batch file, Miguel sees it before it goes out, D-164.1), public `GET /recipe-of-the-day` and `GET /recipe-of-the-day/AAAA-MM-DD` (Madrid's today; «hoy no hay» → the last one, with its date; 404 `NONE`, 400 `INVALID_DATE`), social post pack / paquete para redes (title, short text built from the recipe, key ingredients, minutes, cuisine, credit, source link, recipe link), photo cut to 1080×1350 and 1200×630 (`/recipe-of-the-day/:date/photo/vertical|horizontal`, sharp; web relay `/receta-del-dia/<fecha>/foto/<formato>`), public page `/receta-del-dia` and `/receta-del-dia/<fecha>` with Open Graph / X card, in the sitemap, Mimo tool `get_recipe_of_the_day` (web chat and WhatsApp, D-051; warns it isn't picked for the household's allergies).

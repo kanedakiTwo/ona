@@ -7,7 +7,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { registerFreshUser } from './_helpers'
+import { answerShopper, registerFreshUser } from './_helpers'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -22,13 +22,12 @@ async function getUser(page: Page) {
   return (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
 }
 
-/** Walk the onboarding UI; on step 5 (restrictions) optionally tick the consent box and pick "sin gluten". */
+/** Walk the onboarding UI; on the last question (restrictions) optionally tick the consent box and pick "sin gluten". */
 async function onboard(page: Page, consent: boolean) {
   await page.goto('/onboarding')
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
@@ -44,8 +43,6 @@ async function onboard(page: Page, consent: boolean) {
   } else {
     await expect(chip).toBeDisabled()
   }
-  await next.click()
-  await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
 }
@@ -79,7 +76,7 @@ test('onboarding with the box stores them with date and version; withdrawing del
 
   let user = await getUser(page)
   expect(user.restrictions).toEqual(['sin gluten'])
-  expect(user.healthConsentVersion).toBe('salud-v1-2026-10')
+  expect(user.healthConsentVersion).toBe('salud-v2-2026-10')
   expect(user.healthConsentAt).toBeTruthy()
   await expect(page.getByTestId('no-health-data-notice')).toHaveCount(0)
 
@@ -121,7 +118,7 @@ test('existing users with health data are asked once', async ({ page }) => {
   // Answered → the real state no longer asks.
   await page.unroute(`**/user/${s.userId}/health-consent`)
   const state = await (await page.request.get(`${API_URL}/user/${s.userId}/health-consent`, { headers: s.auth })).json()
-  expect(state).toMatchObject({ active: true, needsPrompt: false, version: 'salud-v1-2026-10' })
+  expect(state).toMatchObject({ active: true, needsPrompt: false, version: 'salud-v2-2026-10' })
   await page.goto('/recipes')
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('dialog', { name: /seguimos guardándolos/i })).toHaveCount(0)

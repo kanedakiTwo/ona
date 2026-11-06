@@ -21,6 +21,7 @@ const EXAMPLES: Record<string, unknown> = {
   novelty: { score: 1 },
   cooking_style: { style: 'batch' },
   protein_minimum: { scope: 'every_dish' },
+  shopper: { who: 'shared' },
   dislikes: ['cilantro', 'hígado'],
   equipment: ['horno', 'olla exprés'],
   notes: ['Cenamos tarde'],
@@ -43,7 +44,7 @@ const EXAMPLES: Record<string, unknown> = {
 }
 
 describe('factSentence — every type says something, for its reader', () => {
-  it('every one of the 30 types has a sentence and a topic', () => {
+  it('every one of the 31 types has a sentence and a topic', () => {
     for (const type of PROFILE_FACT_TYPES) {
       expect(EXAMPLES, type).toHaveProperty([type])
       expect(factSentence(type, EXAMPLES[type], 'casa'), type).toBeTruthy()

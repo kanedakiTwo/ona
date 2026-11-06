@@ -9,6 +9,8 @@
  *   POST /admin/catalog-drafts/:id/discard      Miguel's «no»: it never goes out
  *   POST /admin/catalog-drafts/:id/restore      the verdict taken back
  *   POST /admin/catalog-batches/:batch/publish  what the rule allows in the batch (`publish --batch=…`)
+ *   PATCH /admin/catalog-recipes/:id/source     { sourceUrl?, credit? } → the link to the original and the
+ *                                               credit line of a catalogue recipe (draft or published)
  *   POST /admin/catalog-import/check            { batch, fileName?, file } → the file checked + what it would skip
  *   POST /admin/catalog-import/jobs             same body → 202: import as drafts in the background
  *   GET  /admin/catalog-import/jobs[?limit=]    latest imports with their progress
@@ -40,7 +42,10 @@ import {
   publishApprovedInBatch,
   publishCatalogDraft,
   restoreCatalogDraft,
+  updateCatalogSource,
   type BatchPublishResult,
+  type CatalogSourcePatch,
+  type CatalogSourceResult,
   type DraftActionResult,
 } from '../services/catalogReview.js'
 import { createAnthropicRewriter } from '../services/catalogRewriter.js'
@@ -53,6 +58,7 @@ export interface CatalogReviewDeps {
   discardDraft: (id: string, adminId: string) => Promise<DraftActionResult>
   restoreDraft: (id: string, adminId: string) => Promise<DraftActionResult>
   publishBatch: (batch: string, adminId: string) => Promise<BatchPublishResult>
+  updateSource: (id: string, patch: CatalogSourcePatch, adminId: string) => Promise<CatalogSourceResult>
   previewImport: (names: string[], batch: string) => Promise<{ recipes: Array<{ name: string; duplicateOf: string | null }>; alreadyInBatch: number }>
   /** The import needs the house rewrite (Anthropic). */
   canImport: () => boolean
@@ -91,6 +97,16 @@ const BATCH_PARAM = /^[A-Za-z0-9][\w.-]{0,99}$/
 const BODY_LIMIT = '2mb'
 
 const NOT_FOUND = { error: 'Ese borrador ya no está pendiente (¿publicado o borrado?).', code: 'NOT_FOUND' }
+const NOT_CATALOGUE = { error: 'Esa receta no es del catálogo de Mimoia.', code: 'NOT_FOUND' }
+
+/** At least one of the two; `null` clears it. */
+const sourcePatchSchema = z
+  .object({
+    sourceUrl: z.string().trim().max(500).url().refine((u) => /^https?:\/\//i.test(u), 'Solo enlaces http(s).').nullable().optional(),
+    credit: z.string().trim().max(300).nullable().optional(),
+  })
+  .strict()
+  .refine((b) => b.sourceUrl !== undefined || b.credit !== undefined, 'Manda el enlace (sourceUrl), el crédito (credit) o los dos.')
 
 /** The body checked with the shared schema; the problems in Spanish when it fails. */
 function readImportBody(body: unknown): { ok: true; data: CatalogImportRequest } | { ok: false; problems: string[] } {
@@ -136,6 +152,7 @@ export function createCatalogReviewRouter(overrides: Partial<CatalogReviewDeps> 
     discardDraft: (id, adminId) => discardCatalogDraft(id, adminId),
     restoreDraft: (id, adminId) => restoreCatalogDraft(id, adminId),
     publishBatch: (batch, adminId) => publishApprovedInBatch(batch, adminId),
+    updateSource: (id, patch, adminId) => updateCatalogSource(id, patch, adminId),
     previewImport: (names, batch) => previewImport(names, batch),
     canImport: () => !!env.ANTHROPIC_API_KEY,
     startImport: (input, opts) => defaultRunner().start(input, opts),
@@ -203,6 +220,22 @@ export function createCatalogReviewRouter(overrides: Partial<CatalogReviewDeps> 
       res.json(await d.publishBatch(batch, req.userId!))
     } catch (err) {
       fail(res, 'publish batch', err)
+    }
+  })
+
+  router.patch('/admin/catalog-recipes/:id/source', ...d.adminAuth, express.json(), async (req: AuthRequest, res) => {
+    if (!uuid.safeParse(req.params.id).success) return void res.status(404).json(NOT_CATALOGUE)
+    const body = sourcePatchSchema.safeParse(req.body)
+    if (!body.success) {
+      const problems = body.error.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))
+      return void res.status(400).json({ error: problems[0], code: 'INVALID_SOURCE', problems })
+    }
+    try {
+      const r = await d.updateSource(String(req.params.id), body.data, req.userId!)
+      if (!r.ok) return void res.status(404).json(NOT_CATALOGUE)
+      res.json({ id: r.id, name: r.name, sourceUrl: r.sourceUrl, sourceCredit: r.sourceCredit })
+    } catch (err) {
+      fail(res, 'catalog source', err)
     }
   })
 

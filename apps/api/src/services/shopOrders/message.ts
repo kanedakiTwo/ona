@@ -22,6 +22,8 @@ export interface OrderMessageInput {
   fulfilment: ShopFulfilment
   address: string | null
   lines: ShopOrderLine[]
+  /** Halal household (2026-10-25): the butcher is asked for halal meat. */
+  halal?: boolean
 }
 
 function joinEs(parts: string[]): string {
@@ -32,7 +34,8 @@ function joinEs(parts: string[]): string {
  * The order in the customer's voice. Delivery always carries the address and
  * asks roughly when it will arrive; pickup asks from what time to go. Meat and
  * fish ask the price per kilo and what to bring instead if something's missing
- * (not for a charcutería-only order).
+ * (not for a charcutería-only order). A halal household asks the butcher for
+ * halal meat.
  */
 export function buildOrderMessage(input: OrderMessageInput): string {
   const live = input.lines.filter((l) => l.included !== false)
@@ -46,6 +49,7 @@ export function buildOrderMessage(input: OrderMessageInput): string {
   const fresh = input.kind === 'carniceria' || input.kind === 'pescaderia'
   const onlyCharcuteria = live.length > 0 && live.every((l) => l.ruleKey && CHARCUTERIA_KEYS.has(l.ruleKey))
   const tail: string[] = []
+  if (input.halal && input.kind === 'carniceria') tail.push('Toda la carne, halal, por favor.')
   if (fresh && !onlyCharcuteria) tail.push('Si no hay algo, decidme qué me recomendáis en su lugar.')
   const asks = [...(fresh ? ['el precio por kilo'] : []), 'el total aproximado', delivery ? 'más o menos a qué hora llegaría' : 'a partir de qué hora puedo pasar a recogerlo']
   tail.push(`Antes de prepararlo, ¿me decís ${joinEs(asks)}? Gracias.`)
@@ -53,6 +57,17 @@ export function buildOrderMessage(input: OrderMessageInput): string {
 }
 
 const CHARCUTERIA_KEYS = new Set(BUY_RULES.filter((r) => r.shop === 'charcuteria').map((r) => r.key))
+
+/**
+ * A halal household's buy preferences: minced meat is asked for as beef
+ * («mixta», the default, carries pork) unless they chose another halal one.
+ * A choice made on the line itself still wins (`buildLine`).
+ */
+export function halalBuyPrefs(prefs: Record<string, string>, halal: boolean): Record<string, string> {
+  if (!halal) return prefs
+  const minced = prefs['carne picada']
+  return minced && minced !== 'mixta' && minced !== 'de cerdo' ? prefs : { ...prefs, 'carne picada': 'de ternera' }
+}
 
 export interface ConfirmationInput {
   lines: Array<Pick<ShopOrderLine, 'name' | 'decision' | 'quote'>>

@@ -25,6 +25,7 @@ const FORMAT: Record<string, string> = {
   novelty: '{"score":1} (de -2 prefiere la rutina a 2 le encanta probar)',
   cooking_style: '{"style":"daily"|"cook_and_reuse"|"batch"|"improvise"}',
   protein_minimum: '{"scope":"every_dish"}',
+  shopper: '{"who":"me"|"other"|"shared"} (me = quien se dio de alta, other = otra persona de casa, shared = se turnan)',
   dislikes: '["cilantro","hígado"] (lista de ingredientes)',
   equipment: '["horno","olla exprés"] (lista)',
   notes: '["frase corta"] (lista de frases)',

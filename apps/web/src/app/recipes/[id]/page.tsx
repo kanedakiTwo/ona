@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth"
 import { FavoriteButton } from "@/components/recipes/FavoriteButton"
 import { ShoppingIssues } from "@/components/recipes/ShoppingIssues"
 import { DietNotices } from "@/components/recipes/DietNotices"
+import { StorageSeals, hasStorageSeals } from "@/components/recipes/StorageSeals"
 import { CookedBadge } from "@/components/recipes/CookedBadge"
 import { RecipeNotesSection } from "@/components/recipes/RecipeNotesSection"
 import { AddToCookbookButton } from "@/components/recipes/AddToCookbookButton"
@@ -62,6 +63,7 @@ import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
 import { BRAND_NAME, recipeSharePayload } from "@ona/shared"
 import { ApiError } from "@/lib/api"
 import { loginHrefFor } from "@/lib/routeAccess"
+import { recipeBackTarget } from "@/lib/menuReturn"
 import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
 
 /**
@@ -91,6 +93,10 @@ export default function RecipeDetailPage() {
   const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
   const isDesktop = useIsDesktop()
+  // «Volver» goes back to the menu when the recipe was opened from it
+  // (`?desde=menu`, Miguel 2026-11-05); read after mount, like `?servings=`.
+  const [back, setBack] = useState(() => recipeBackTarget(""))
+  useEffect(() => setBack(recipeBackTarget(window.location.search)), [])
   // Signed out this page wears the public chrome (RootShell): a fixed
   // PublicNavbar on top, so the photo, sticky tabs and sticky hero start
   // below it, and a waitlist block closes the page (specs/recipes.md).
@@ -375,6 +381,7 @@ export default function RecipeDetailPage() {
       recipeName={recipe.name}
     />
   ) : null
+  const seals = hasStorageSeals(recipe)
   const notesBlock = (
     <div>
       {/* Quick personal actions: log a cook, file it in a cookbook. */}
@@ -389,7 +396,7 @@ export default function RecipeDetailPage() {
           persisted as a single text blob with paragraph breaks (`\n\n`);
           legacy `tips` content is merged in beneath so nothing the author
           typed disappears. */}
-      {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
+      {(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage || seals) && (
         <section className={`${user ? "mt-8" : ""} space-y-5`} aria-label="Notas de la receta">
           {(recipe.notes || recipe.tips) && (
             <div>
@@ -412,10 +419,13 @@ export default function RecipeDetailPage() {
               <p className="text-[15px] leading-relaxed text-[#1A1612]">{recipe.substitutions}</p>
             </div>
           )}
-          {recipe.storage && (
+          {(recipe.storage || seals) && (
             <div>
               <div className="text-eyebrow mb-2 text-[#7A7066]">Conservación</div>
-              <p className="text-[15px] leading-relaxed text-[#1A1612]">{recipe.storage}</p>
+              <StorageSeals freezable={recipe.freezable} fridgeDays={recipe.fridgeDays} />
+              {recipe.storage && (
+                <p className={`${seals ? "mt-3 " : ""}text-[15px] leading-relaxed text-[#1A1612]`}>{recipe.storage}</p>
+              )}
             </div>
           )}
         </section>
@@ -457,7 +467,7 @@ export default function RecipeDetailPage() {
         <CopyToMineButton recipeId={recipe.id} />
       )}
 
-      {!user && !(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage) && (
+      {!user && !(recipe.notes || recipe.tips || recipe.substitutions || recipe.storage || seals) && (
         <EmptyLine>Esta receta no tiene notas.</EmptyLine>
       )}
     </div>
@@ -486,11 +496,19 @@ export default function RecipeDetailPage() {
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
           )}
           <Link
-            href="/recipes"
+            href={back.href}
+            data-testid="recipe-back"
+            onClick={(e) => {
+              // From the menu: back to the week and the day it was showing.
+              if (back.fromMenu && window.history.length > 1) {
+                e.preventDefault()
+                router.back()
+              }
+            }}
             className="absolute left-4 top-4 flex h-11 items-center gap-1 rounded-full bg-[#FFFEFA] pl-2.5 pr-4 text-[14px] font-semibold text-[#1A1612] shadow-sm transition-transform active:scale-95"
           >
             <ChevronLeft size={20} aria-hidden />
-            Recetas
+            {back.label}
           </Link>
           {heroEdit && <div className="absolute right-4 top-4">{heroEdit}</div>}
           <div
@@ -600,7 +618,7 @@ export default function RecipeDetailPage() {
         )}
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
-          <BackButton fallbackHref="/recipes" />
+          <BackButton fallbackHref={back.href} />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -727,7 +745,19 @@ function RecipeHeader({
           className={`font-italic text-ink-muted ${isDesktop ? "text-[21px]" : "text-[18px]"} leading-[1.25]`}
           data-testid="recipe-credit"
         >
-          {recipe.sourceCredit}
+          {/* PRO-1075: with the original's link, the credit is the link. */}
+          {recipe.sourceUrl ? (
+            <a
+              href={recipe.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-2 hover:underline active:underline"
+            >
+              {recipe.sourceCredit}
+            </a>
+          ) : (
+            recipe.sourceCredit
+          )}
         </p>
       )}
       {isDesktop && metaParts.length > 0 && (
@@ -928,8 +958,9 @@ function RecipeGoneNotice() {
 /**
  * Hero back button. Goes back in history when the user arrived from inside
  * the app (menu, catalogue, cookbook…); a link opened cold (WhatsApp, a new
- * tab) has nothing to go back to, so it falls through to the catalogue
- * (`/recipes`, public signed out too).
+ * tab) has nothing to go back to, so it falls through to `fallbackHref`:
+ * the menu for a recipe opened from it, the catalogue otherwise (`/recipes`,
+ * public signed out too).
  */
 function BackButton({ fallbackHref }: { fallbackHref: string }) {
   const router = useRouter()

@@ -11,8 +11,12 @@ import {
   allergenUnion,
   effectiveAllergens,
   inferAllergenTagsFromName,
+  isCeleryBroth,
+  lacksPro1096Sesame,
+  normalize,
 } from '../services/nutrition/allergens.js'
 import { missingNameAllergens } from '../services/nutrition/allergenBackfill.js'
+import { seedIngredients } from '../seed/ingredients.js'
 
 // ─── allergenUnion ─────────────────────────────────────────────
 
@@ -361,6 +365,37 @@ describe('Tandas libros-01 y yaya-01 (2026-10-21) — ingredientes nuevos que sa
   })
 })
 
+// ─── PRO-1096: za'atar and the blends that carry sesame ─────────
+
+describe("inferAllergenTagsFromName — za'atar and sesame blends (PRO-1096)", () => {
+  it("za'atar in every spelling, dukkah, gomasio and halva are sesame", () => {
+    for (const name of [
+      "za'atar", 'Za’atar', 'zaatar', 'zatar', 'zahtar', "za'atar verde", 'mezcla de especias zaatar',
+      'dukkah', 'dukka', 'gomasio', 'halva', 'halwa de pistacho',
+    ]) {
+      expect(inferAllergenTagsFromName(name), name).toContain('sesamo')
+    }
+    expect(inferAllergenTagsFromName("za'atar")).toEqual(['sesamo'])
+    expect(inferAllergenTagsFromName('gomasio')).toEqual(['sesamo'])
+  })
+
+  it('whole words only: carrots and hummus get no extra sesame', () => {
+    expect(inferAllergenTagsFromName('zanahoria')).toEqual([])
+    expect(inferAllergenTagsFromName('zanahorias baby')).toEqual([])
+    // Hummus comes with sesame through its tahini, not its name.
+    expect(inferAllergenTagsFromName('hummus')).toEqual([])
+    expect(inferAllergenTagsFromName('zatarra')).toEqual([])
+  })
+
+  it('lacksPro1096Sesame flags only those names when «sesamo» is missing', () => {
+    expect(lacksPro1096Sesame("za'atar", [])).toBe(true)
+    expect(lacksPro1096Sesame('Dukkah', null)).toBe(true)
+    expect(lacksPro1096Sesame("za'atar", ['sesamo'])).toBe(false)
+    expect(lacksPro1096Sesame('tahini', [])).toBe(false)
+    expect(lacksPro1096Sesame('zanahoria', [])).toBe(false)
+  })
+})
+
 // ─── PRO-332: cheeses by their own name, kéfir, ghee ────────────
 
 describe('inferAllergenTagsFromName — milk without saying «leche» (PRO-332)', () => {
@@ -398,5 +433,58 @@ describe('missingNameAllergens — the boot step only adds milk to the PRO-332 n
     // Not a PRO-332 word: left as stored, even if another rule would tag it.
     expect(missingNameAllergens('crema de calabaza', [])).toEqual([])
     expect(missingNameAllergens('harina de trigo', [])).toEqual([])
+  })
+})
+
+// ─── PRO-363: broths carry celery, raisins sulphites ────────────
+
+describe('inferAllergenTagsFromName — broths and raisins (PRO-363)', () => {
+  it('a broth, stock or concentrate of meat, poultry, ham, vegetables or fish is celery', () => {
+    for (const n of [
+      'caldo de ave', 'caldo de carne', 'caldo de jamón', 'fondo oscuro de ternera', 'caldo de pollo',
+      'Caldo de gallina', 'caldo de cocido', 'caldo de verduras', 'caldo vegetal', 'caldo de pescado',
+      'caldo de marisco', 'caldo de huesos', 'concentrado de carne', 'pastilla de caldo de pollo', 'fondo de ave',
+    ]) {
+      expect(inferAllergenTagsFromName(n), n).toContain('apio')
+    }
+  })
+
+  it('«sin apio», bones for broth, fumet, dashi and other «fondos» are not', () => {
+    for (const n of [
+      'caldo de verduras sin apio', 'huesos para caldo', 'fumet', 'dashi en polvo', 'fondos de alcachofa',
+      'tomate concentrado', 'jamón cocido', 'pechuga de pollo', 'avena',
+    ]) {
+      expect(inferAllergenTagsFromName(n), n).not.toContain('apio')
+    }
+    expect(inferAllergenTagsFromName('caldo de pescado')).toEqual(['apio', 'pescado'])
+  })
+
+  it('raisins carry sulphites (whole word)', () => {
+    for (const n of ['pasas', 'uvas pasas', 'Pasas sultanas']) expect(inferAllergenTagsFromName(n), n).toContain('sulfitos')
+    for (const n of ['pasta', 'pastas de té', 'salsa de tomate', 'pastel']) {
+      expect(inferAllergenTagsFromName(n), n).not.toContain('sulfitos')
+    }
+  })
+})
+
+describe('missingNameAllergens — the boot step adds celery to broths and sulphites to raisins (PRO-363)', () => {
+  it('adds only the missing tag, never removes', () => {
+    expect(missingNameAllergens('caldo de ave', [])).toEqual(['apio'])
+    expect(missingNameAllergens('caldo de pescado', ['pescado'])).toEqual(['apio'])
+    expect(missingNameAllergens('caldo de pescado', ['apio', 'pescado'])).toEqual([])
+    expect(missingNameAllergens('uvas pasas', null)).toEqual(['sulfitos'])
+    expect(missingNameAllergens('pasas', ['sulfitos'])).toEqual([])
+    expect(missingNameAllergens('caldo de verduras sin apio', [])).toEqual([])
+    expect(missingNameAllergens('huesos para caldo', [])).toEqual([])
+    // Rules the boot step doesn't revisit: a «caldo de pescado» lacking «pescado» only gets «apio».
+    expect(missingNameAllergens('caldo de pescado', [])).toEqual(['apio'])
+  })
+})
+
+describe('seed catalogue — every broth carries celery (PRO-363)', () => {
+  it('no broth of `seed/ingredients.ts` lacks «apio»', () => {
+    const broths = seedIngredients.filter((i) => isCeleryBroth(normalize(i.name)))
+    expect(broths.length).toBeGreaterThan(0)
+    for (const b of broths) expect((b as { allergenTags?: string[] }).allergenTags ?? [], b.name).toContain('apio')
   })
 })

@@ -12,7 +12,7 @@
  */
 import { eq, inArray } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
-import { ingredients, recipeIngredients, recipes, users } from '../db/schema.js'
+import { ingredients, recipeIngredients, recipeSteps, recipes, users } from '../db/schema.js'
 import {
   compileRestrictions,
   mergeRestrictions,
@@ -20,8 +20,10 @@ import {
   normalizeText,
   violatesRestrictions,
   type CompiledRestrictions,
+  type RestrictableRecipe,
 } from './dietaryRestrictions.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
+import { unlistedDietMentions } from './stepDietMentions.js'
 
 type Db = typeof defaultDb
 
@@ -51,6 +53,8 @@ export interface CandidateRecipe {
   authorId?: string | null
   allergens?: readonly string[] | null
   ingredients: CandidateIngredient[]
+  /** PRO-346: what the steps name and the ingredients don't (`unlistedDietMentions`). */
+  stepMentions?: RestrictableRecipe['stepMentions']
 }
 
 export interface WithWhatIHaveHit<R extends CandidateRecipe = CandidateRecipe> {
@@ -193,12 +197,26 @@ export async function findRecipesWithWhatIHave(
     byRecipe.set(r.recipeId, list)
   }
 
+  // PRO-346: what the steps name and the ingredients don't counts for the diet too.
+  const stepRows = await db
+    .select({ recipeId: recipeSteps.recipeId, index: recipeSteps.index, text: recipeSteps.text })
+    .from(recipeSteps)
+    .where(inArray(recipeSteps.recipeId, visible.map((r) => r.id)))
+  const stepsByRecipe = new Map<string, Array<{ index: number; text: string }>>()
+  for (const s of (stepRows ?? []) as any[]) {
+    const list = stepsByRecipe.get(s.recipeId) ?? []
+    list.push({ index: s.index, text: s.text ?? '' })
+    stepsByRecipe.set(s.recipeId, list)
+  }
+  const stepTexts = (id: string) => [...(stepsByRecipe.get(id) ?? [])].sort((a, b) => a.index - b.index).map((s) => s.text)
+
   const candidates = visible.map((row) => ({
     id: row.id,
     name: row.name,
     authorId: row.authorId,
     allergens: row.allergens ?? [],
     ingredients: byRecipe.get(row.id) ?? [],
+    stepMentions: unlistedDietMentions(stepTexts(row.id), (byRecipe.get(row.id) ?? []).map((i) => i.ingredientName)),
     row,
   }))
   return rankWithWhatIHave(candidates, chosen, rules, opts.maxChosen).slice(0, limit)

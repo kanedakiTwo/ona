@@ -12,6 +12,8 @@
  * with nothing saved means «contestó que ninguna». No consent and nothing
  * saved means «no ha contestado» (WhatsApp sign-up that skipped the question,
  * a member who joined by invitation before PRO-271, consent withdrawn…).
+ * PRO-347: «No tengo ninguna» said without the consent (`allergies_none_at`)
+ * is an answer too: saying there are none stores no health data.
  *
  * Spec: specs/household.md → «Alergias y dieta al entrar en una casa».
  */
@@ -37,12 +39,14 @@ export interface AllergyAnswerInput {
   memoryRestrictions?: unknown
   consentAt: Date | string | null
   withdrawnAt: Date | string | null
+  /** «No tengo ninguna» without the consent (PRO-347). */
+  noneAt?: Date | string | null
 }
 
 /** Pure: has this person answered the allergies and diet question? */
 export function allergiesAnswered(p: AllergyAnswerInput): boolean {
   const saved = mergeRestrictions(p.restrictions, { restrictions: { value: p.memoryRestrictions } })
-  if (saved.length > 0) return true
+  if (saved.length > 0 || p.noneAt) return true
   return isHealthConsentActive(p.consentAt, p.withdrawnAt)
 }
 
@@ -72,6 +76,7 @@ async function loadMembers(userId: string, db: typeof defaultDb): Promise<Allerg
         restrictions: users.restrictions,
         consentAt: users.healthConsentAt,
         withdrawnAt: users.healthConsentWithdrawnAt,
+        noneAt: users.allergiesNoneAt,
       })
       .from(users)
       .where(inArray(users.id, ids)),
@@ -87,6 +92,7 @@ async function loadMembers(userId: string, db: typeof defaultDb): Promise<Allerg
     memoryRestrictions: memories.find((m) => m.userId === p.id && m.key === 'restrictions')?.value,
     consentAt: p.consentAt,
     withdrawnAt: p.withdrawnAt,
+    noneAt: p.noneAt,
   }))
 }
 

@@ -64,8 +64,9 @@ describe.skipIf(!reachable)('menú del cole smoke', () => {
   it('reading never answers a bare 500 (2026-10-23: «Internal server error» from an iPhone)', async () => {
     const home = await freshUser(1)
     const heic = await uploadMenu(home.auth, Uint8Array.from([0, 0, 0, 24, 102, 116, 121, 112]), 'image/heic', 'menu.heic')
-    expect(heic.status).toBe(400)
-    expect(heic.body.error).toMatch(/foto|PDF/)
+    // PRO-355: says what to do with an iPhone photo instead of «sube una foto».
+    expect(heic.status).toBe(415)
+    expect(heic.body.error).toMatch(/HEIC.*captura de pantalla/)
     const huge = await uploadMenu(home.auth, new Uint8Array(26 * 1024 * 1024), 'application/pdf', 'menu.pdf')
     expect(huge.status).toBe(413)
     expect(huge.body.error).toMatch(/demasiado grande/)

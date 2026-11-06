@@ -101,31 +101,34 @@ describe('routeUsageEvent (web requests)', () => {
   })
 })
 
+// The product-action events only: every tool with data also leaves `mimo_skill_used` (PRO-1022, mimoSkillUsed.test.ts).
+const actionEvents = (...args: Parameters<typeof skillUsageEvents>) => skillUsageEvents(...args).filter((e) => e.name !== 'mimo_skill_used')
+
 describe('skillUsageEvents (Mimo)', () => {
   it('maps the skills that do something to events', () => {
-    expect(skillUsageEvents('generate_weekly_menu', { data: {} }, 'whatsapp')).toEqual([{ name: 'menu_generated' }])
-    expect(skillUsageEvents('complete_onboarding', { data: {} }, 'whatsapp').map((e) => e.name)).toEqual(['onboarding_completed', 'menu_generated'])
-    expect(skillUsageEvents('start_cooking_mode', { data: { recipeId: 'r' } }, 'voice')).toEqual([{ name: 'cook_mode_started' }])
-    expect(skillUsageEvents('log_cooked', { data: {} }, 'web')).toEqual([{ name: 'meal_cooked' }])
-    expect(skillUsageEvents('swap_meal', { data: {} }, 'web', { recipeName: 'lentejas' })).toEqual([{ name: 'meal_swapped', props: { target: 'meal', how: 'picked' } }])
+    expect(actionEvents('generate_weekly_menu', { data: {} }, 'whatsapp')).toEqual([{ name: 'menu_generated' }])
+    expect(actionEvents('complete_onboarding', { data: {} }, 'whatsapp').map((e) => e.name)).toEqual(['onboarding_completed', 'menu_generated'])
+    expect(actionEvents('start_cooking_mode', { data: { recipeId: 'r' } }, 'voice')).toEqual([{ name: 'cook_mode_started' }])
+    expect(actionEvents('log_cooked', { data: {} }, 'web')).toEqual([{ name: 'meal_cooked' }])
+    expect(actionEvents('swap_meal', { data: {} }, 'web', { recipeName: 'lentejas' })).toEqual([{ name: 'meal_swapped', props: { target: 'meal', how: 'picked' } }])
   })
 
   it('PRO-188: «ya lo hemos comido» (mark_meal_eaten, eaten: true) counts as cooked; un-marking does not', () => {
-    expect(skillUsageEvents('mark_meal_eaten', { data: {} }, 'whatsapp', { meal: 'lunch', eaten: true })).toEqual([{ name: 'meal_cooked', props: { via: 'eaten' } }])
-    expect(skillUsageEvents('mark_meal_eaten', { data: {} }, 'web', { meal: 'lunch', eaten: false })).toEqual([])
+    expect(actionEvents('mark_meal_eaten', { data: {} }, 'whatsapp', { meal: 'lunch', eaten: true })).toEqual([{ name: 'meal_cooked', props: { via: 'eaten' } }])
+    expect(actionEvents('mark_meal_eaten', { data: {} }, 'web', { meal: 'lunch', eaten: false })).toEqual([])
     expect(skillUsageEvents('mark_meal_eaten', { data: null }, 'web', { meal: 'lunch', eaten: true })).toEqual([])
   })
 
   it('a recipe link sent over WhatsApp is whatsapp_url; a reel is social', () => {
-    expect(skillUsageEvents('import_recipe_from_url', { data: {} }, 'whatsapp', { url: 'https://cocina.example/receta' })[0].props).toEqual({ source: 'whatsapp_url', kind: 'article' })
-    expect(skillUsageEvents('import_recipe_from_url', { data: {} }, 'whatsapp', { url: 'https://vm.tiktok.com/abc' })[0].props).toEqual({ source: 'social', kind: 'tiktok' })
+    expect(actionEvents('import_recipe_from_url', { data: {} }, 'whatsapp', { url: 'https://cocina.example/receta' })[0].props).toEqual({ source: 'whatsapp_url', kind: 'article' })
+    expect(actionEvents('import_recipe_from_url', { data: {} }, 'whatsapp', { url: 'https://vm.tiktok.com/abc' })[0].props).toEqual({ source: 'social', kind: 'tiktok' })
   })
 
   it('"not found" results (data: null) and shop orders with nothing prepared do not count', () => {
     expect(skillUsageEvents('swap_meal', { data: null }, 'web')).toEqual([])
-    expect(skillUsageEvents('prepare_shop_orders', { data: { navigateTo: '/compra/tiendas' } }, 'whatsapp')).toEqual([])
-    expect(skillUsageEvents('prepare_shop_orders', { data: { orderIds: ['a', 'b'] } }, 'whatsapp')).toEqual([{ name: 'shop_order_prepared', props: { orders: 2 } }])
-    expect(skillUsageEvents('get_todays_menu', { data: {} }, 'web')).toEqual([])
+    expect(actionEvents('prepare_shop_orders', { data: { navigateTo: '/compra/tiendas' } }, 'whatsapp')).toEqual([])
+    expect(actionEvents('prepare_shop_orders', { data: { orderIds: ['a', 'b'] } }, 'whatsapp')).toEqual([{ name: 'shop_order_prepared', props: { orders: 2 } }])
+    expect(actionEvents('get_todays_menu', { data: {} }, 'web')).toEqual([])
   })
 })
 

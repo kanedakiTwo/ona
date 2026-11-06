@@ -460,18 +460,27 @@ export default function EditRecipePage() {
     )
   }
 
-  const canSubmit =
-    name.trim().length > 0 &&
-    servings > 0 &&
-    Object.keys(mealFit).length > 0 &&
-    Object.keys(seasonFit).length > 0 &&
-    ingredientRows.some(
-      (r) =>
-        r.ingredientName.trim() !== "" &&
-        r.ingredientId !== "" &&
-        typeof r.quantity === "number" &&
-        r.quantity > 0
-    )
+  const hasIngredient = ingredientRows.some(
+    (r) =>
+      r.ingredientName.trim() !== "" &&
+      r.ingredientId !== "" &&
+      typeof r.quantity === "number" &&
+      r.quantity > 0
+  )
+  // What still blocks "Guardar cambios", in words: a recipe imported without
+  // ingredients used to leave the button greyed out with no explanation.
+  const saveBlocker =
+    name.trim().length === 0
+      ? "Ponle un nombre a la receta para guardarla."
+      : !(servings > 0)
+        ? "Indica para cuántas personas es."
+        : Object.keys(mealFit).length === 0
+          ? "Elige al menos una comida."
+          : Object.keys(seasonFit).length === 0
+            ? "Elige al menos una temporada."
+            : !hasIngredient
+              ? "Para guardar, añade al menos un ingrediente de la lista con su cantidad."
+              : null
 
   return (
     <div className="min-h-screen bg-cream">
@@ -808,7 +817,8 @@ export default function EditRecipePage() {
           </div>
           <SaveBar
             submitLabel={updateRecipe.isPending ? "Guardando…" : "Guardar cambios"}
-            disabled={!canSubmit || updateRecipe.isPending}
+            disabled={saveBlocker !== null || updateRecipe.isPending}
+            hint={saveBlocker}
             cancelHref={`/recipes/${params.id}`}
           />
         </form>

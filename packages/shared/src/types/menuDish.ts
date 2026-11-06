@@ -1,5 +1,21 @@
 import type { Course } from './recipe.js'
 
+/**
+ * Why a dish was replaced on its own: see `RecipeDish.replaced`. `diet` and
+ * `removed`: the recipe changed or was deleted (PRO-345); `restrictions`:
+ * someone in the household saved an allergy or diet it breaks (PRO-364,
+ * PRO-1067).
+ */
+export type DishReplacedReason = 'diet' | 'removed' | 'restrictions'
+
+/** Pure: the day card's line for a replaced dish (PRO-345, PRO-1067). */
+export function replacedDishLine(r: { recipeName: string; reason: DishReplacedReason }): string {
+  if (r.reason === 'restrictions') return `En lugar de «${r.recipeName}», que no encaja con vuestras alergias o dieta`
+  return r.reason === 'diet'
+    ? `En lugar de «${r.recipeName}», que ha cambiado y ya no encaja con vuestra dieta`
+    : `En lugar de «${r.recipeName}», que ya no está en el catálogo`
+}
+
 export interface RecipeDish {
   kind: 'recipe'
   recipeId: string
@@ -26,6 +42,27 @@ export interface RecipeDish {
    * (menú inteligente, specs/smart-menu.md); today's generator never sets it.
    */
   why?: string | null
+  /**
+   * PRO-345: Mimoia put this dish in place of another because that recipe
+   * changed after entering the menu and no longer fits the household's
+   * allergies or diet (`diet`), or was deleted (`removed`); PRO-1067: or
+   * because someone saved an allergy or diet the old dish breaks
+   * (`restrictions`, PRO-364's review). The day card says so. Gone as soon
+   * as the dish is changed by hand.
+   */
+  replaced?: { recipeName: string; reason: DishReplacedReason } | null
+  /**
+   * PRO-364: someone in the household saved an allergy or diet this dish
+   * breaks, and there was no other recipe to put instead (or it's a táper
+   * already cooked). The day's card warns; any change of the dish drops it.
+   */
+  restrictionConflict?: boolean
+  /**
+   * PRO-1141: a «plato fijo» of the household's ficha («pizza el viernes por
+   * la noche»), put there by the generator. «Generar» puts it back and
+   * «Cambiar al azar» doesn't touch it; choosing another recipe by hand does.
+   */
+  fixedDish?: boolean
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
   imageUrl?: string | null
   /** Hydrated alongside `imageUrl`. */
@@ -43,6 +80,13 @@ export interface NoteDish {
    * slot's diners. Absent on ordinary notes, which add nothing to the list.
    */
   fixed?: { items: Array<{ name: string; quantity: number; unit: 'u' | 'g' | 'ml' }> }
+  /** PRO-1141: a ficha's «plato fijo» with no recipe that matches it: its name, nothing on the list. */
+  fixedDish?: boolean
+}
+
+/** Pure (PRO-1141): the dish is a ficha's «plato fijo» (not a táper copied from it). */
+export function isFixedDish(d: Dish | null | undefined): boolean {
+  return !!d && d.fixedDish === true && !(d.kind === 'recipe' && d.leftoverOf)
 }
 
 export type Dish = RecipeDish | NoteDish

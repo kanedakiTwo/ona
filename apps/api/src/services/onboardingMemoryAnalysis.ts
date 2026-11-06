@@ -25,9 +25,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { applyTemplateChange } from './assistant/appSkills.js'
 import {
+  COOKING_STYLE_LABELS,
   COOKING_WEEKDAYS,
   householdToDiners,
   validateMemoryFactValue,
+  type CookingStyle,
   type UserMemory,
   type WeekdayCookingChoice,
 } from '@ona/shared'
@@ -58,7 +60,9 @@ const MERGED_OBJECT_KEYS = new Set(['time_available', 'meal_times', 'cuisine_bia
 export interface OnboardingAnswers {
   adults: number
   kidsCount: number
+  /** Only from a cached older app: the sign-up asks `cookingStyle` instead (2026-11-03). */
   cookingFreq?: string | null
+  cookingStyle?: CookingStyle | null
   favoriteDishes?: string[]
   priority?: string | null
   weekdayCooking?: WeekdayCookingChoice | null
@@ -106,6 +110,7 @@ export function buildAnalysisUserText(a: OnboardingAnswers): string {
   const lines = [
     `Hogar: ${a.adults} adulto(s)${a.kidsCount ? ` y ${a.kidsCount} niño(s) de 2 a 10 años` : ''}.`,
     a.cookingFreq ? `Cuánto cocina: ${FREQ[a.cookingFreq] ?? a.cookingFreq}.` : null,
+    a.cookingStyle ? `Cómo cocinan en casa: ${COOKING_STYLE_LABELS[a.cookingStyle]}.` : null,
     a.weekdayCooking ? `Entre semana, cómo le gusta cocinar: ${WEEKDAY_COOKING[a.weekdayCooking]}. El fin de semana, sin prisa.` : null,
     a.favoriteDishes?.length ? `Platos que le encantan: ${a.favoriteDishes.join(', ')}.` : null,
     a.priority ? `Qué quiere que priorice: ${PRIORITY[a.priority] ?? a.priority}.` : null,

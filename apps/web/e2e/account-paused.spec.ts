@@ -8,7 +8,13 @@
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
 
-type Access = { state: 'beta' | 'trial' | 'paused' | 'subscribed'; trialEndsAt: string; trialLastDay: string; daysLeft: number | null }
+type Access = {
+  state: 'beta' | 'trial' | 'paused' | 'subscribed'
+  trialDays?: number
+  trialEndsAt: string
+  trialLastDay: string
+  daysLeft: number | null
+}
 
 async function billingAs(page: Page, access: Access) {
   await page.route(/\/billing$/, (route) =>
@@ -67,4 +73,15 @@ test('two days left: /menu warns once, with the last day', async ({ page }) => {
   await expect(notice).toContainText('Te quedan 2 días de prueba')
   await expect(notice).toContainText('hasta el 24 de enero')
   await expect(page.getByTestId('account-paused')).toHaveCount(0)
+})
+
+test('a creator link (PRO-353): Suscripción says the trial is 28 days, with its own last day', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await registerFreshUser(page)
+  if (page.url().includes('/onboarding')) await completeOnboarding(page)
+
+  await billingAs(page, { state: 'trial', trialDays: 28, trialEndsAt: '2027-02-07T23:00:00.000Z', trialLastDay: '2027-02-07', daysLeft: 20 })
+  await page.goto('/profile/suscripcion')
+  await expect(page.getByTestId('subscription-trial')).toHaveText('Estás en tu prueba de 28 días: dura hasta el 7 de febrero, incluido.', { timeout: 15_000 })
 })

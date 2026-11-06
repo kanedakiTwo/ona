@@ -614,6 +614,23 @@ describe('recipes, profile, household', () => {
     expect(violatesRestrictions({ name: 'Riñones al jerez', ingredients: [{ ingredientName: 'riñones' }] }, rules)).toBe(true)
   })
 
+  it('update_profile: «halal» under a v1 consent waits for the current text; the rest is saved (Legal, E-19)', async () => {
+    const v1 = fakeApi({
+      'GET /user/u1': { restrictions: ['sin gluten'] },
+      'GET /user/u1/health-consent': { active: true, version: 'salud-v1-2026-10' },
+    })
+    const r = await get('update_profile').handler({ addRestrictions: ['halal', 'sin lactosa'] }, ctx(v1.api))
+    expect(writes(v1.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { restrictions: ['sin gluten', 'sin lactosa'] } }])
+    expect(r.summary).toMatch(/texto nuevo del consentimiento/)
+
+    const v2 = fakeApi({
+      'GET /user/u1': { restrictions: ['sin gluten'] },
+      'GET /user/u1/health-consent': { active: true, version: 'salud-v2-2026-10' },
+    })
+    await get('update_profile').handler({ addRestrictions: ['halal'] }, ctx(v2.api))
+    expect(writes(v2.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { restrictions: ['sin gluten', 'halal'] } }])
+  })
+
   it('update_profile never writes health data without the art. 9 consent (PRO-21)', async () => {
     const f = fakeApi({ 'GET /user/u1/health-consent': { active: false } })
     const onlyHealth = await get('update_profile').handler({ addRestrictions: ['sin lactosa'], age: 40 }, ctx(f.api))

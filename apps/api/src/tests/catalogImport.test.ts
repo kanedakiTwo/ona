@@ -10,6 +10,7 @@ import {
   catalogSourceCredit,
   catalogSourceRecord,
   copiedPhrases,
+  cleanSourceUrl,
   draftsFromCocinaJson,
   findDuplicate,
   importCatalogBatch,
@@ -18,6 +19,8 @@ import {
   planBatchPublish,
   reviewDecision,
   scaleToHouseServings,
+  storageFrom,
+  strayDietWords,
   type BatchRecipe,
   type CatalogDraftInput,
   type CatalogImportDeps,
@@ -25,6 +28,7 @@ import {
   type PersistDraftInput,
 } from '../services/catalogImport.js'
 import { parseRewrite, rewriteMessage } from '../services/catalogRewriter.js'
+import { checkCocinaBatch, cocinaBatchFileSchema } from '@ona/shared'
 import { aggregateNutrition, type IngredientCatalogEntry } from '../services/nutrition/aggregate.js'
 
 // Three made-up pages of a made-up book.
@@ -171,6 +175,53 @@ describe('import of three pages (PRO-154)', () => {
     const [out] = await importCatalogBatch([thin], 't', deps)
     expect(out).toMatchObject({ status: 'draft', auditIssues: ['pocos_ingredientes'] })
     expect(saved[0].catalogSource.auditIssues).toEqual(['pocos_ingredientes'])
+  })
+})
+
+/**
+ * 2026-10-25 («Jerusalem», 11 of 109 rejected): the house rewrite called the
+ * aubergine's flesh «la carne», a peach stone «el hueso», pressed with «la yema
+ * de los dedos» and named the cookies of a cookie recipe «galletas»; the
+ * reviewer read each as an unlisted meat, egg or gluten (PRO-268). Like a
+ * copied phrase, that is the rewrite's doing: one more try, told which words
+ * to avoid. A word the source steps already use is the source's, not retried.
+ */
+describe('words of the rewrite that read as unlisted ingredients', () => {
+  const AUBERGINE: CatalogDraftInput = {
+    name: 'Berenjena asada con yogur de la prueba',
+    servings: 4,
+    ingredients: [
+      { name: 'berenjena', quantity: 800, unit: 'g' },
+      { name: 'yogur natural', quantity: 200, unit: 'g' },
+      { name: 'aceite de oliva virgen extra', quantity: 3, unit: 'cda' },
+    ],
+    sourceSteps: ['Berenjenas en mitades. Horno fuerte hasta blandas.', 'Pulpa fuera con cuchara; yogur y aceite.'],
+    source: { origin: 'miguel', book: 'Cuaderno azul' },
+  }
+
+  it('strayDietWords: what the rewrite names and neither the ingredients nor the source do', () => {
+    const names = AUBERGINE.ingredients.map((i) => i.name)
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne con una cuchara y mézclala con el yogur.']), names)).toEqual(['carne'])
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne de la berenjena y mézclala con el yogur.']), names)).toEqual([])
+    // Already in the source: not the rewrite's doing.
+    expect(strayDietWords(['Añade el chorizo.'], rewriteFor(AUBERGINE, ['Incorpora el chorizo al final.']), names)).toEqual([])
+  })
+
+  it('rewrites once more, avoiding the word, and saves the second try', async () => {
+    const avoided: Array<string[] | undefined> = []
+    const { deps, saved } = fakeDeps({
+      rewrite: async (d, opts) => {
+        avoided.push(opts.avoidWords)
+        return rewriteFor(d, opts.avoidWords?.length
+          ? ['Asa las berenjenas en mitades hasta que estén blandas.', 'Vacía la pulpa y mézclala con el yogur y el aceite.']
+          : ['Asa las berenjenas en mitades hasta que estén blandas.', 'Saca la carne y mézclala con el yogur y el aceite.'])
+      },
+    })
+    const [out] = await importCatalogBatch([AUBERGINE], 't', deps)
+    expect(out.status).toBe('draft')
+    expect(avoided).toEqual([undefined, ['carne']])
+    expect(saved[0].steps.map((s) => s.text).join(' ')).toContain('pulpa')
+    expect(rewriteMessage(AUBERGINE, [], ['carne'])).toContain('«carne»')
   })
 })
 
@@ -399,6 +450,25 @@ describe('where the recipe comes from (D-067)', () => {
     expect(plain.source.credit).toBe('Receta de la Yaya inventada')
   })
 
+  it('draftsFromCocinaJson keeps the original\'s address (PRO-1015): the recipe\'s over the file\'s; anything but http(s) is dropped', () => {
+    const drafts = draftsFromCocinaJson(
+      {
+        source: { origin: 'cocina', book: 'Blogs inventados', url: 'https://blog-inventado.es/' },
+        recipes: [
+          { name: 'Sopa inventada', source: { url: ' https://blog-inventado.es/sopa/ ' }, ingredients: [{ name: 'ajo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Guiso inventado', ingredients: [{ name: 'ajo', qty: 4, unit: 'u' }], steps: ['Paso inventado.'] },
+          { name: 'Caldo inventado', source: { url: 'Cuaderno azul, página 3' }, ingredients: [{ name: 'agua', qty: 1, unit: 'l' }], steps: ['Paso inventado.'] },
+          { name: 'Puré inventado', source: { url: 'javascript:alert(1)' }, ingredients: [{ name: 'patata', qty: 500, unit: 'g' }], steps: ['Paso inventado.'] },
+        ],
+      },
+      { origin: 'cocina' },
+    )
+    expect(drafts.map((d) => d.source.url)).toEqual(['https://blog-inventado.es/sopa/', 'https://blog-inventado.es/', null, null])
+    expect(cleanSourceUrl('https://www.youtube.com/watch?v=abc')).toBe('https://www.youtube.com/watch?v=abc')
+    expect(cleanSourceUrl(42)).toBeNull()
+    expect(cleanSourceUrl('')).toBeNull()
+  })
+
   it('the credit reaches recipes.catalog_source, with the book and page and no text of the source', async () => {
     const { deps, saved } = fakeDeps()
     const page = { ...PAGES[0], source: { ...PAGES[0].source, credit: 'Receta de la tía Prueba' } }
@@ -423,5 +493,68 @@ describe('where the recipe comes from (D-067)', () => {
     const bare = catalogSourceRecord({ ...saved[0].catalogSource, credit: undefined })
     expect(bare.credit).toBeNull()
     expect(catalogSourceCredit(bare)).toBe('Inspirada en Cuaderno azul')
+  })
+})
+
+describe('storage seals: «Se puede congelar» and days in the fridge (PRO-372)', () => {
+  const asCocina = (p: CatalogDraftInput) => ({
+    name: p.name,
+    servings: p.servings,
+    ingredients: p.ingredients.map((i) => ({ name: i.name, qty: i.quantity, unit: i.unit })),
+    steps: p.sourceSteps,
+  })
+  const cocinaJson = {
+    source: { origin: 'cocina' },
+    recipes: [{ ...asCocina(PAGES[0]), freezable: true, fridgeDays: 4 }, asCocina(PAGES[2])],
+  }
+
+  it('the batch file accepts freezable and fridgeDays, and the importer reads them', () => {
+    expect(cocinaBatchFileSchema.safeParse(cocinaJson).success).toBe(true)
+    expect(cocinaBatchFileSchema.safeParse({ recipes: [{ ...cocinaJson.recipes[0], fridgeDays: 0 }] }).success).toBe(false)
+    const drafts = draftsFromCocinaJson(cocinaJson, { origin: 'cocina' })
+    expect(drafts[0]).toMatchObject({ freezable: true, fridgeDays: 4 })
+    expect(drafts[1]).toMatchObject({ freezable: null, fridgeDays: null })
+  })
+
+  it('saves the batch values; without them, the rewriter\'s answer', async () => {
+    const answer = parseRewrite(JSON.stringify({ ...rewriteFor(PAGES[2], HOUSE_STEPS[PAGES[2].name]), freezable: false, fridgeDays: 3 }))
+    expect(answer).toMatchObject({ freezable: false, fridgeDays: 3 })
+    const { deps, saved } = fakeDeps({
+      rewrite: async (d) => ({ ...answer, steps: rewriteFor(d, HOUSE_STEPS[d.name]).steps }),
+    })
+    const out = await importCatalogBatch(draftsFromCocinaJson(cocinaJson, { origin: 'cocina' }), 'cocina-seals', deps)
+    expect(out.map((o) => o.status)).toEqual(['draft', 'draft'])
+    // Cocina said it: it wins over the rewriter.
+    expect(saved[0]).toMatchObject({ freezable: true, fridgeDays: 4 })
+    // Cocina said nothing: the rewriter's guess is saved.
+    expect(saved[1]).toMatchObject({ freezable: false, fridgeDays: 3 })
+  })
+
+  it('PRO-1099: the batch file takes featuredOn (a real day), one per day, and the importer saves it', async () => {
+    const featured = { ...cocinaJson, recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, cocinaJson.recipes[1]] }
+    expect(cocinaBatchFileSchema.safeParse(featured).success).toBe(true)
+    // Not a day: refused, in Spanish, with where it is.
+    const bad = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-02-30' }] })
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.problems[0]).toMatch(/^Receta 1 \(«.+»\): la fecha de la receta del día \(featuredOn\) tiene que ser un día AAAA-MM-DD/)
+    // Two recipes on the same day inside the file: the second is a problem.
+    const twice = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, { ...cocinaJson.recipes[1], featuredOn: '2026-11-05' }] })
+    expect(twice.ok).toBe(false)
+    if (!twice.ok) expect(twice.problems).toEqual([expect.stringMatching(/^Receta 2 .*2026-11-05 ya es la de la receta 1; solo hay una receta del día por día\.$/)])
+
+    const drafts = draftsFromCocinaJson(featured, { origin: 'cocina' })
+    expect(drafts.map((d) => d.featuredOn)).toEqual(['2026-11-05', null])
+    expect(draftsFromCocinaJson({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: 'mañana' }] }, { origin: 'cocina' })[0].featuredOn).toBeNull()
+    const { deps, saved } = fakeDeps({ rewrite: async (d) => rewriteFor(d, HOUSE_STEPS[d.name]) })
+    await importCatalogBatch(drafts, 'cocina-del-dia', deps)
+    expect(saved.map((s) => s.featuredOn)).toEqual(['2026-11-05', null])
+  })
+
+  it('the rewriter\'s unsure or odd answers are no data', () => {
+    const base = rewriteFor(PAGES[0], ['Paso.'])
+    expect(parseRewrite(JSON.stringify({ ...base, freezable: null, fridgeDays: null }))).toMatchObject({ freezable: null, fridgeDays: null })
+    expect(parseRewrite(JSON.stringify({ ...base, freezable: 'sí', fridgeDays: 90 }))).toMatchObject({ freezable: null, fridgeDays: null })
+    expect(parseRewrite(JSON.stringify({ ...base, fridgeDays: 2.6 })).fridgeDays).toBe(3)
+    expect(storageFrom(base, PAGES[0])).toEqual({ freezable: null, fridgeDays: null })
   })
 })

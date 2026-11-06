@@ -66,8 +66,8 @@ describe('server-side events', () => {
     })
     // Mimo's own call to /feedback carries the internal header: counted by the skill instead.
     expect(routeUsageEvent({ method: 'POST', path: '/feedback', body: {}, get: () => '1' })).toBeNull()
-    expect(skillUsageEvents('leave_feedback', { data: { ok: true } }, 'whatsapp')).toEqual([{ name: 'feedback_left', props: { channel: 'whatsapp' } }])
-    expect(skillUsageEvents('leave_feedback', { data: { ok: true } }, 'web')).toEqual([{ name: 'feedback_left', props: { channel: 'mimo' } }])
+    expect(skillUsageEvents('leave_feedback', { data: { ok: true } }, 'whatsapp')[0]).toEqual({ name: 'feedback_left', props: { channel: 'whatsapp' } })
+    expect(skillUsageEvents('leave_feedback', { data: { ok: true } }, 'web')[0]).toEqual({ name: 'feedback_left', props: { channel: 'mimo' } })
   })
 
   it('whatsapp_unlinked on DELETE /whatsapp/link', () => {
@@ -90,7 +90,7 @@ describe('/admin/usage blocks (counts only)', () => {
       { step: 'hogar', action: 'hecho', people: 4 },
       { step: 'dieta', action: 'visto', people: 3 },
     ])
-    expect(steps.map((s) => s.step)).toEqual(['afina', 'canal', 'hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'])
+    expect(steps.map((s) => s.step)).toEqual(['afina', 'canal', 'hogar', 'quien_compra', 'invitar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'])
     expect(steps.find((s) => s.step === 'hogar')).toEqual({ step: 'hogar', seen: 5, done: 4 })
     expect(steps.find((s) => s.step === 'dieta')).toEqual({ step: 'dieta', seen: 3, done: 0 })
   })

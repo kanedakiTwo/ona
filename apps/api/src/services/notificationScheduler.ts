@@ -50,6 +50,7 @@ import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
+import { runFeatureUsagePassIfDue } from './featureUsage.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { WAITLIST_RETENTION_DATE, purgeWaitlistPersonalDataIfDue } from './waitlistRetention.js'
@@ -744,6 +745,15 @@ async function tickOnce(): Promise<true> {
     console.error('[notificationScheduler] weekly planner failed:', err)
   }
 
+  // PRO-1023: uso de cada función por hogar, desde los eventos de ayer
+  // (una vez por día de Madrid, desde la 01:00; antes de la purga).
+  try {
+    const r = await runFeatureUsagePassIfDue(now)
+    if (r) console.log(`[feature-usage] ${r.features} funciones, ${r.rows} filas, ${r.newUses} usos nuevos`)
+  } catch (err) {
+    console.error('[notificationScheduler] feature usage pass failed:', err)
+  }
+
   // Product analytics retention: usage events older than 180 days (once a day).
   try {
     const purged = await purgeOldUsageEventsIfDue(now)
@@ -767,6 +777,18 @@ async function tickOnce(): Promise<true> {
     if (created) console.log(`[referrals] ${created} pending rewards`)
   } catch (err) {
     console.error('[notificationScheduler] referral rewards failed:', err)
+  }
+
+  // Newsletter (PRO-1123): the issue Miguel scheduled for Friday 9:00, once,
+  // only with the proof of the template he saved that week.
+  try {
+    // Imported here: the newsletter's own imports reach back to this module.
+    const { runScheduledNewsletterIfDue } = await import('./newsletterDrafts.js')
+    for (const r of await runScheduledNewsletterIfDue(now)) {
+      console.log(`[newsletter] scheduled ${r.issueId}: ${r.skipped ? `not sent (${r.skipped})` : `${r.sent} sent`}`)
+    }
+  } catch (err) {
+    console.error('[notificationScheduler] scheduled newsletter failed:', err)
   }
 
   // Waitlist (PRO-97): one reminder 3 days after the invitation, if they

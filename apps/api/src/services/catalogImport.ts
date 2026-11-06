@@ -10,7 +10,9 @@
  *     → quantities for 4
  *     → steps rewritten in the house's own words (never the book's text) +
  *       tags (meal, season, dish type, protein, technique, cuisine, active and
- *       total time, difficulty) + allergen doubts — one AI call
+ *       total time, difficulty) + allergen doubts — one AI call; a Cocina
+ *       batch with `reescrita: true` brings them already written and makes
+ *       no call (PRO-1097, D-150)
  *     → phrase check: a step that keeps 7 words in a row of the source is
  *       rewritten once more, then the recipe is rejected (never saved)
  *     → ingredients matched to the catalogue, new ones created automatically
@@ -26,11 +28,12 @@
  * so the orchestration is tested without either.
  */
 import type { Difficulty, Meal, Season, Unit } from '@ona/shared'
-import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS } from '@ona/shared'
+import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS, isIsoDay } from '@ona/shared'
 import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
 import { isCookingMediumNote, isFatName } from './nutrition/cookingMedium.js'
+import { unlistedDietMentions } from './stepDietMentions.js'
 import type { CatalogSourceInfo } from '../db/schema.js'
 
 export type CatalogOrigin = 'miguel' | 'cocina'
@@ -49,6 +52,12 @@ export interface CatalogSourceRef {
    * Without it, `catalogSourceCredit` falls back to the book for Miguel's sources.
    */
   credit?: string | null
+  /**
+   * The original's web address (a creator's blog post or video). It goes to
+   * `recipes.source_url`, so the ficha links it («Ver fuente» and the credit
+   * line, PRO-1075) — not to `catalog_source`.
+   */
+  url?: string | null
 }
 
 export interface DraftIngredient {
@@ -71,10 +80,21 @@ export interface CatalogDraftInput {
   seasons?: string[]
   tags?: string[]
   equipment?: string[]
+  /** PRO-372: from the batch when Cocina sets it; else the rewrite's guess. */
+  freezable?: boolean | null
+  fridgeDays?: number | null
+  /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día», from the batch. */
+  featuredOn?: string | null
   ingredients: DraftIngredient[]
   /** The source's steps. Read to rewrite them; never saved. */
   sourceSteps: string[]
   source: CatalogSourceRef
+  /**
+   * PRO-1097 (D-150, C): steps and labels Cocina already wrote in the house's
+   * words (a batch with `reescrita: true`). Saved as they come: no rewrite,
+   * so no AI call; `sourceSteps` is empty.
+   */
+  rewritten?: CatalogRewrite | null
 }
 
 export interface RewrittenStep {
@@ -87,6 +107,14 @@ export interface RewrittenStep {
 }
 
 /** What the house rewrite returns. */
+/** What a second try of the house rewrite is told to avoid. */
+export interface RewriteOptions {
+  /** Runs of words the first try copied from the source. */
+  avoidPhrases?: string[]
+  /** Words the first try used that read as an ingredient the recipe doesn't have. */
+  avoidWords?: string[]
+}
+
 export interface CatalogRewrite {
   steps: RewrittenStep[]
   meals: string[]
@@ -106,6 +134,9 @@ export interface CatalogRewrite {
   allergenNote?: string | null
   /** Short house note (optional), in our words. */
   tips?: string | null
+  /** PRO-372: can it be frozen, and how many days it keeps in the fridge (null = unsure). */
+  freezable?: boolean | null
+  fridgeDays?: number | null
 }
 
 export interface MatchedIngredient {
@@ -131,6 +162,11 @@ export interface PersistDraftInput {
   tags: string[]
   internalTags: string[]
   tips: string | null
+  /** PRO-372: the ficha's storage seals; null = no data. */
+  freezable: boolean | null
+  fridgeDays: number | null
+  /** PRO-1099: «la receta del día» of that day (AAAA-MM-DD); null = none. */
+  featuredOn?: string | null
   ingredients: Array<{ ingredientId: string; quantity: number; unit: Unit; note: string | null; optional: boolean; section: string | null; displayOrder: number }>
   steps: Array<{ index: number; text: string; durationMin: number | null; temperature: number | null; technique: string | null; ingredientRefs: string[] }>
   catalogSource: CatalogSourceRef & { batch: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
@@ -139,7 +175,7 @@ export interface PersistDraftInput {
 export interface CatalogImportDeps {
   /** Names already in the catalogue (published and drafts). */
   catalogNames: () => Promise<string[]>
-  rewrite: (draft: CatalogDraftInput, opts: { avoidPhrases?: string[] }) => Promise<CatalogRewrite>
+  rewrite: (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite>
   /** Same order as the input; ingredientId null = couldn't match nor create. */
   matchIngredients: (recipeName: string, ings: DraftIngredient[]) => Promise<MatchedIngredient[]>
   persistDraft: (input: PersistDraftInput) => Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }>
@@ -171,6 +207,20 @@ function words(text: string): string[] {
  * Pure: runs of `n` words in a row that a written text shares with the
  * source (accents and punctuation ignored). Empty = written in our words.
  */
+/**
+ * Pure: meat, fish, shellfish or allergen words the rewrite uses and neither
+ * the ingredients nor the source steps account for («saca la carne» of an
+ * aubergine, «el hueso» of a peach, «galletas» in a cookie recipe). The
+ * reviewer would reject them (PRO-268); being the rewrite's own words, one
+ * more try avoiding them usually fixes it. A word the source already uses is
+ * the source's problem and stays for the reviewer.
+ */
+export function strayDietWords(sourceSteps: readonly string[], rewrite: CatalogRewrite, ingredientNames: readonly string[]): string[] {
+  const inSource = new Set(unlistedDietMentions(sourceSteps, ingredientNames).map((m) => m.term))
+  const inRewrite = unlistedDietMentions(rewrite.steps.map((s) => s.text), ingredientNames).map((m) => m.term)
+  return [...new Set(inRewrite)].filter((t) => !inSource.has(t))
+}
+
 export function copiedPhrases(source: readonly string[], written: readonly string[], n: number = COPY_RUN_WORDS): string[] {
   const grams = new Set<string>()
   for (const s of source) {
@@ -336,6 +386,22 @@ export function timesFrom(r: CatalogRewrite, draft: CatalogDraftInput): { prepTi
   return { prepTime: active, cookTime: total - active || null }
 }
 
+/** Most days a cooked dish is told to keep in the fridge (PRO-372). */
+export const MAX_FRIDGE_DAYS = 30
+
+/** Pure: a fridge-days figure we trust (whole days, 1–30), or null. */
+export function cleanFridgeDays(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null
+  const d = Math.round(v)
+  return d >= 1 && d <= MAX_FRIDGE_DAYS ? d : null
+}
+
+/** Pure (PRO-372): the storage seals — what the batch says wins, key by key; else the rewrite's. */
+export function storageFrom(r: CatalogRewrite, draft: CatalogDraftInput): { freezable: boolean | null; fridgeDays: number | null } {
+  const freezable = typeof draft.freezable === 'boolean' ? draft.freezable : typeof r.freezable === 'boolean' ? r.freezable : null
+  return { freezable, fridgeDays: cleanFridgeDays(draft.fridgeDays) ?? cleanFridgeDays(r.fridgeDays) }
+}
+
 // ─── Where the recipe comes from (D-067) ────────────────────────
 
 function cleanText(v: unknown): string | null {
@@ -375,6 +441,29 @@ export function catalogSourceRecord(src: PersistDraftInput['catalogSource']): Ca
 
 // ─── Orchestration ──────────────────────────────────────────────
 
+/**
+ * The house rewrite with its two retries: a step that copies the source, and
+ * words that read as an unlisted ingredient. `rejected` when it still copies.
+ */
+async function houseRewrite(draft: CatalogDraftInput, forFour: CatalogDraftInput, deps: CatalogImportDeps): Promise<CatalogRewrite | { rejected: string }> {
+  let rewrite = await deps.rewrite(forFour, {})
+  let copied = copiedPhrases(draft.sourceSteps, [...rewrite.steps.map((s) => s.text), rewrite.tips ?? ''])
+  if (copied.length > 0) {
+    deps.log?.(`  ↻ ${draft.name}: reescribiendo otra vez (${copied.length} frase(s) iguales al libro)`)
+    rewrite = await deps.rewrite(forFour, { avoidPhrases: copied })
+    copied = copiedPhrases(draft.sourceSteps, [...rewrite.steps.map((s) => s.text), rewrite.tips ?? ''])
+    if (copied.length > 0) return { rejected: `${copied.length} frase(s) iguales al libro` }
+  }
+  const stray = strayDietWords(draft.sourceSteps, rewrite, forFour.ingredients.map((i) => i.name))
+  if (stray.length > 0) {
+    deps.log?.(`  ↻ ${draft.name}: reescribiendo otra vez (${stray.join(', ')}: no está en los ingredientes)`)
+    const again = await deps.rewrite(forFour, { avoidWords: stray })
+    // A second try that copies the source isn't better: the first goes on to the reviewer.
+    if (copiedPhrases(draft.sourceSteps, [...again.steps.map((s) => s.text), again.tips ?? '']).length === 0) rewrite = again
+  }
+  return rewrite
+}
+
 export async function importCatalogRecipe(
   draft: CatalogDraftInput,
   batch: string,
@@ -392,14 +481,10 @@ export async function importCatalogRecipe(
   const ingredients = scaleToHouseServings(markCookingMediumLines(draft.ingredients), draft.servings)
   const forFour: CatalogDraftInput = { ...draft, servings: HOUSE_SERVINGS, ingredients }
 
-  let rewrite = await deps.rewrite(forFour, {})
-  let copied = copiedPhrases(draft.sourceSteps, [...rewrite.steps.map((s) => s.text), rewrite.tips ?? ''])
-  if (copied.length > 0) {
-    deps.log?.(`  ↻ ${draft.name}: reescribiendo otra vez (${copied.length} frase(s) iguales al libro)`)
-    rewrite = await deps.rewrite(forFour, { avoidPhrases: copied })
-    copied = copiedPhrases(draft.sourceSteps, [...rewrite.steps.map((s) => s.text), rewrite.tips ?? ''])
-    if (copied.length > 0) return { ...base, status: 'rejected', reason: 'copia_del_libro', detail: `${copied.length} frase(s) iguales al libro` }
-  }
+  // PRO-1097: a batch Cocina already rewrote goes straight on (the reviewer
+  // still reads its steps); the rest gets the house rewrite.
+  const rewrite = draft.rewritten ?? (await houseRewrite(draft, forFour, deps))
+  if ('rejected' in rewrite) return { ...base, status: 'rejected', reason: 'copia_del_libro', detail: rewrite.rejected }
   if (rewrite.steps.length === 0) return { ...base, status: 'rejected', reason: 'no_es_receta', detail: 'sin pasos' }
 
   const matched = await deps.matchIngredients(draft.name, ingredients)
@@ -433,6 +518,8 @@ export async function importCatalogRecipe(
     tags,
     internalTags,
     tips: rewrite.tips?.trim() || null,
+    ...storageFrom(rewrite, draft),
+    featuredOn: isIsoDay(draft.featuredOn) ? draft.featuredOn : null,
     ingredients: matched.map((m, i) => ({
       ingredientId: m.ingredientId as string,
       quantity: m.quantity,
@@ -504,12 +591,14 @@ export function previewDuplicates(names: readonly string[], catalog: readonly st
  * (the recipe's wins, key by key — `credit` included).
  */
 export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef): CatalogDraftInput[] {
-  const root = json as { source?: Partial<CatalogSourceRef>; recipes?: unknown[] } | unknown[]
+  const root = json as { source?: Partial<CatalogSourceRef>; reescrita?: unknown; recipes?: unknown[] } | unknown[]
   const list = Array.isArray(root) ? root : Array.isArray(root?.recipes) ? root.recipes : []
   const fileSource = Array.isArray(root) ? {} : root?.source ?? {}
+  const rewritten = !Array.isArray(root) && root?.reescrita === true
   return list.map((raw) => {
     const r = raw as Record<string, any>
     const src = { ...fallback, ...fileSource, ...(r.source ?? {}) } as CatalogSourceRef
+    const steps = (r.steps ?? []).map((s: any) => (typeof s === 'string' ? s : String(s?.text ?? ''))).filter(Boolean)
     return {
       name: String(r.name ?? '').trim(),
       servings: Number(r.servings) || HOUSE_SERVINGS,
@@ -520,6 +609,9 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
       seasons: r.seasons ?? [],
       tags: r.tags ?? [],
       equipment: r.equipment ?? [],
+      freezable: typeof r.freezable === 'boolean' ? r.freezable : null,
+      fridgeDays: cleanFridgeDays(r.fridgeDays),
+      featuredOn: isIsoDay(r.featuredOn) ? r.featuredOn : null,
       ingredients: (r.ingredients ?? []).map((i: any) => ({
         name: String(i.name ?? ''),
         quantity: Number(i.qty ?? i.quantity ?? 0),
@@ -528,16 +620,72 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
         optional: !!i.optional,
         section: i.section ?? null,
       })),
-      sourceSteps: (r.steps ?? []).map((s: any) => (typeof s === 'string' ? s : String(s?.text ?? ''))).filter(Boolean),
+      // A rewritten batch's steps are already the house's: nothing of a source to read.
+      sourceSteps: rewritten ? [] : steps,
+      rewritten: rewritten ? rewriteFromBatch(r) : null,
       source: {
         origin: src.origin === 'miguel' ? 'miguel' : 'cocina',
         book: src.book ?? null,
         page: src.page != null ? String(src.page) : null,
         file: src.file ?? null,
         credit: cleanText(src.credit),
+        url: cleanSourceUrl(src.url),
       },
     }
   })
+}
+
+/**
+ * Pure (PRO-1097): what `catalogRewriter` would have returned, from a recipe
+ * of a `reescrita` batch (steps as `{ text, durationMin, temperature,
+ * technique, ingredientRefs }` or text, labels at the recipe's top level;
+ * `catalogRewriteLabelsSchema` in `@ona/shared`). Read as tolerantly as the
+ * model's answer (`parseRewrite`); the route has already checked the file.
+ */
+export function rewriteFromBatch(r: Record<string, any>): CatalogRewrite {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : null)
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const list = (v: unknown) => (Array.isArray(v) ? v.map(String).filter(Boolean) : [])
+  return {
+    steps: (Array.isArray(r.steps) ? r.steps : [])
+      .map((s: any) => (typeof s === 'string' ? { text: s } : s ?? {}))
+      .map((s: any) => ({
+        text: String(s.text ?? '').trim(),
+        durationMin: num(s.durationMin),
+        temperature: num(s.temperature),
+        technique: str(s.technique),
+        ingredientRefs: Array.isArray(s.ingredientRefs) ? s.ingredientRefs.filter((k: unknown) => Number.isInteger(k)) : [],
+      }))
+      .filter((s: RewrittenStep) => s.text),
+    meals: list(r.meals),
+    seasons: list(r.seasons),
+    course: str(r.course),
+    dishType: str(r.dishType),
+    protein: str(r.protein),
+    techniques: list(r.techniques),
+    cuisine: str(r.cuisine),
+    activeTime: num(r.activeTime),
+    totalTime: num(r.totalTime),
+    difficulty: str(r.difficulty),
+    allergenDoubt: r.allergenDoubt === true,
+    allergenNote: str(r.allergenNote),
+    tips: str(r.tips),
+    freezable: typeof r.freezable === 'boolean' ? r.freezable : null,
+    fridgeDays: cleanFridgeDays(r.fridgeDays),
+  }
+}
+
+/** Pure: an http(s) address for `recipes.source_url`, or null (a blank, a book title, a broken link). */
+export function cleanSourceUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const value = raw.trim()
+  if (!value || /\s/.test(value)) return null
+  try {
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null
+  } catch {
+    return null
+  }
 }
 
 // ─── Publishing ─────────────────────────────────────────────────

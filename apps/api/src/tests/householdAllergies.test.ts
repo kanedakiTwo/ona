@@ -111,9 +111,12 @@ describe('withHouseholdRestrictions (PRO-305)', () => {
   it('every pick in routes/menus.ts and Mimo’s swap_meal reads the household’s restrictions', () => {
     const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8')
     const menus = read('routes/menus.ts')
-    // PUT meal (Cambiar al azar), POST meal (añadir una comida), regenerate dish, random dish.
-    expect(menus.match(/const restrictions = await withHouseholdRestrictions\(/g)?.length).toBe(4)
+    // POST meal (añadir una comida), regenerate dish, random dish.
+    expect(menus.match(/const restrictions = await withHouseholdRestrictions\(/g)?.length).toBe(3)
     expect(menus).not.toMatch(/const restrictions = mergeRestrictions\(/)
+    // PUT meal (Cambiar al azar), through the context it shares with PRO-364's review.
+    expect(menus).toContain('await loadSlotPickContext(menu, req.userId!)')
+    expect(read('services/menuSlotPick.ts')).toContain('const restrictions = await withHouseholdRestrictions(')
     expect(read('services/menuGenerator.ts')).toContain('withHouseholdRestrictions(')
     expect(read('services/assistant/skills.ts')).toContain('const restrictions = await withHouseholdRestrictions(own.restrictions, userId, db)')
   })

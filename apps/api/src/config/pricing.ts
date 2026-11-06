@@ -18,7 +18,7 @@
  */
 import { env } from './env.js'
 
-export type CostProvider = 'anthropic' | 'openai' | 'meta_whatsapp' | 'aikit' | 'elevenlabs'
+export type CostProvider = 'anthropic' | 'openai' | 'meta_whatsapp' | 'aikit' | 'elevenlabs' | 'groq'
 
 export interface Price {
   currency: 'USD' | 'EUR'
@@ -91,6 +91,14 @@ export const PRICES: PriceTable = {
   'openai/gpt-realtime-2.1': { currency: 'USD', perMinute: 0.1 }, // UNVERIFIED (blended estimate)
   'openai/gpt-realtime-2.1-mini': { currency: 'USD', perMinute: 0.03 }, // UNVERIFIED (blended estimate)
 
+  // ── Groq (speech-to-text, first in the chain of services/stt.ts) ──
+  // Source: console.groq.com/docs/speech-to-text, checked 2026-10-25:
+  // whisper-large-v3-turbo $0.04 / hour, whisper-large-v3 $0.111 / hour, each
+  // request billed for at least 10 s (stt.ts records max(duration, 10 s)).
+  // The free plan costs nothing: these are the list prices if it is outgrown.
+  'groq/whisper-large-v3-turbo': { currency: 'USD', perMinute: 0.04 / 60 },
+  'groq/whisper-large-v3': { currency: 'USD', perMinute: 0.111 / 60 },
+
   // ── Meta WhatsApp (Spain rate card, EUR, VAT excluded) ───────
   // Source: Meta's EUR list rates effective 2026-10-01, Spain row
   // (developers.facebook.com/documentation/business-messaging/whatsapp/pricing,
@@ -119,6 +127,12 @@ export const PRICES: PriceTable = {
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)
   // gpt-image-1, quality medium, 1536×1024: ~1,570 output image tokens at $40/MTok (measured 2026-10-08).
   'openai/gpt-image-1': { currency: 'USD', perImage: 0.063 },
+
+  // ── AIKIT chat (transcription reserve, services/stt.ts) ──
+  // Gemini 3.8 Flash hearing a voice note. Derived on 2026-10-25 from the `cost` AiKit returns with
+  // each answer (e.g. 392 tokens in + 207 out = 0.000956): 0.67 per MTok in (mostly audio) and 3.35
+  // per MTok out (reasoning included). UNVERIFIED currency: AiKit doesn't say; EUR like its spend counter.
+  'aikit/google/gemini-3.8-flash': { currency: 'EUR', inputPerMTok: 0.67, outputPerMTok: 3.35 }, // UNVERIFIED (currency)
 
   // ── ElevenLabs TTS (chat read-aloud) ──
   // Starter: 6 $ for 30,000 credits ≈ 0,20 $ per 1,000 characters with the

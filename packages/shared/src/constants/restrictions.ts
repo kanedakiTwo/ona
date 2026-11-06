@@ -20,11 +20,31 @@ export const RESTRICTION_PRESETS = [
   'soja',
   'vegetariano',
   'vegano',
+  // 2026-10-25: no pork or anything made from it, no blood, gelatine or lard
+  // of unknown origin, no alcohol. A religion-based diet: special-category
+  // data like the rest, stored only with the health consent.
+  'halal',
   // PRO-144: skips recipes with wine, sherry, beer… (not health data per se).
   'sin alcohol',
 ] as const
 
 export type RestrictionPreset = (typeof RESTRICTION_PRESETS)[number]
+
+/**
+ * «nada», «ninguna», «no tengo» — or «nada. como d todo, el crio tb», as a
+ * test household wrote (2026-10-22) — say there is none: not a restriction.
+ * «nada de cerdo» and «no como cerdo» are one. Shared by the allergies box
+ * (web) and the API's reading of it (PRO-347, `restrictionReader`).
+ */
+export function saysNone(text: string): boolean {
+  const t = text.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  if (/^nada de\b/.test(t)) return false
+  return (
+    /^(nada|ningun[ao]?s?)\b/.test(t) ||
+    /^no( tengo)?( ningun[ao]?)?( (alergias?|intolerancias?)( ni (alergias?|intolerancias?))?)?[.!]*$/.test(t) ||
+    /^sin (alergias?|intolerancias?|restricciones)[.!]*$/.test(t)
+  )
+}
 
 /**
  * Restrictions shown and saved by /profile (PRO-64): the union of the

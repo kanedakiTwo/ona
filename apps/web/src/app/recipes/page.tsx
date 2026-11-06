@@ -8,11 +8,12 @@ import {
   detectSeason,
   filterCatalogRecipes,
   pickFeaturedRecipes,
+  type CatalogIntent,
   type CatalogScope,
   type Meal,
   type Season,
 } from "@ona/shared"
-import { useRecipes, useRecipesWithWhatIHave } from "@/hooks/useRecipes"
+import { useRecipes, useRecipesWithWhatIHave, useSeasonalProduce } from "@/hooks/useRecipes"
 import { useHouseholdCustomTags } from "@/hooks/useRecipeNotes"
 import { useAuth } from "@/lib/auth"
 import {
@@ -20,12 +21,16 @@ import {
   CatalogFiltersSheet,
   CatalogSearch,
   QUICK_MAX_TIME,
+  READY_MAX_TIME,
 } from "@/components/recipes/CatalogFilters"
 import CatalogGrid from "@/components/recipes/CatalogGrid"
 import { WithWhatIHavePicker, MAX_WITH_WHAT_I_HAVE, type PickedIngredient } from "@/components/recipes/WithWhatIHavePicker"
 import { FeaturedRecipeCard } from "@/components/recipes/FeaturedRecipeCard"
+import { CollectionsRow } from "@/components/recipes/CollectionsRow"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
+import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
+import { SeasonalProduceRow } from "@/components/recipes/SeasonalProduceRow"
 
 const SCOPE_KEY = "ona.recipes.scope"
 
@@ -42,8 +47,9 @@ function readScope(): CatalogScope | null {
  * `/recipes` — "D · Luz y foto". Header ("Recetas" + Nueva receta), one
  * search field, one chip row (quick filters + scope, plus «Con lo que tengo»,
  * which opens an ingredient picker and swaps the grid for ranked results
- * with what is missing), a "De temporada" hero
- * when nothing is filtered, then the card grid. Advanced filters live in a
+ * with what is missing), the «Este mes» row of the month's fruits and
+ * vegetables (PRO-375: one tapped filters by that ingredient), a "De temporada" hero
+ * and the «Colecciones» row (PRO-374) when nothing is filtered, then the card grid. Advanced filters live in a
  * dialog opened from the search field (mobile) or "Más filtros" (lg+).
  *
  * Signed out (specs/recipes.md → "Catálogo público") this is the public
@@ -62,6 +68,8 @@ export default function RecipesPage() {
   const [selectedMeal, setSelectedMeal] = useState<Meal | "">("")
   const [selectedSeason, setSelectedSeason] = useState<Season | "">("")
   const [maxTime, setMaxTime] = useState<number | "">("")
+  /** Intent chips (PRO-376): «Cenas rápidas», «Para picar», «Sin gluten». */
+  const [intents, setIntents] = useState<CatalogIntent[]>([])
   const [filtersOpen, setFiltersOpen] = useState(false)
   /**
    * Catalogue scope: 'all' (no chip), 'ona' ("Selección Mimoia", system
@@ -76,6 +84,10 @@ export default function RecipesPage() {
   const [picked, setPicked] = useState<PickedIngredient[]>([])
   /** Season "now" — meteorological, Spain; same rule as the menu generator. */
   const [currentSeason] = useState<Season>(() => detectSeason(new Date()))
+  /** «Este mes» (PRO-375): the browser's month and the product picked from the row. */
+  const [currentMonth] = useState(() => new Date().getMonth() + 1)
+  const [produce, setProduce] = useState("")
+  const { data: seasonalProduce } = useSeasonalProduce(currentMonth)
 
   useEffect(() => {
     const saved = readScope()
@@ -93,12 +105,16 @@ export default function RecipesPage() {
   function toggleTag(tag: string) {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
   }
+  function toggleIntent(intent: CatalogIntent) {
+    setIntents((prev) => (prev.includes(intent) ? prev.filter((i) => i !== intent) : [...prev, intent]))
+  }
   const { data: householdTags } = useHouseholdCustomTags({ enabled: !signedOut })
 
   const { data: catalogRecipes, isLoading: catalogLoading } = useRecipes({
     search: searchQuery || undefined,
     meal: selectedMeal || undefined,
     customTags: selectedTags.length > 0 ? selectedTags : undefined,
+    ingredient: produce || undefined,
     perPage: 100,
     // PRO-299: «Mis recetas» asks the API for them, so none is cut off.
     ...(scope === "mine" ? { mine: true } : {}),
@@ -121,7 +137,7 @@ export default function RecipesPage() {
   const isLoading = withWhatIHave ? picked.length > 0 && withWhatIHaveLoading : catalogLoading
   const waitingForIngredients = withWhatIHave && picked.length === 0
 
-  // Season / time / scope are filtered client-side (rules in @ona/shared).
+  // Season / time / scope / intents are filtered client-side (rules in @ona/shared).
   const filteredRecipes = useMemo(
     () =>
       filterCatalogRecipes(recipes ?? [], {
@@ -129,8 +145,9 @@ export default function RecipesPage() {
         userId: user?.id,
         season: selectedSeason,
         maxTime,
+        intents,
       }),
-    [recipes, scope, user?.id, selectedSeason, maxTime],
+    [recipes, scope, user?.id, selectedSeason, maxTime, intents],
   )
 
   const anyFilterActive =
@@ -138,13 +155,15 @@ export default function RecipesPage() {
     !!selectedMeal ||
     !!selectedSeason ||
     !!maxTime ||
+    intents.length > 0 ||
     scope !== "all" ||
     selectedTags.length > 0 ||
-    withWhatIHave
+    withWhatIHave ||
+    !!produce
   // Filters with no chip in the row → badge on the filters button.
   const hiddenFiltersCount =
     (selectedSeason && selectedSeason !== currentSeason ? 1 : 0) +
-    (maxTime && maxTime !== QUICK_MAX_TIME ? 1 : 0) +
+    (maxTime && maxTime !== QUICK_MAX_TIME && maxTime !== READY_MAX_TIME ? 1 : 0) +
     selectedTags.length
 
   // "De temporada" hero: only on the unfiltered catalogue. Two at lg+ (the
@@ -163,11 +182,13 @@ export default function RecipesPage() {
     setSelectedMeal("")
     setSelectedSeason("")
     setMaxTime("")
+    setIntents([])
     setSearchQuery("")
     setScopeAndPersist("all")
     setSelectedTags([])
     setWithWhatIHave(false)
     setPicked([])
+    setProduce("")
   }
 
   function addPicked(ing: PickedIngredient) {
@@ -186,6 +207,8 @@ export default function RecipesPage() {
     onSeasonChange: setSelectedSeason,
     maxTime,
     onMaxTimeChange: setMaxTime,
+    intents,
+    onToggleIntent: toggleIntent,
     scope,
     onScopeChange: setScopeAndPersist,
     householdTags: signedOut ? undefined : householdTags,
@@ -193,7 +216,12 @@ export default function RecipesPage() {
     onToggleTag: toggleTag,
     currentSeason,
     withWhatIHave,
-    onWithWhatIHaveChange: signedOut ? undefined : setWithWhatIHave,
+    onWithWhatIHaveChange: signedOut
+      ? undefined
+      : (on: boolean) => {
+          setWithWhatIHave(on)
+          if (on) setProduce("")
+        },
     accountFilters: !signedOut,
   }
 
@@ -274,11 +302,31 @@ export default function RecipesPage() {
           />
         )}
 
+        {!withWhatIHave && (
+          <SeasonalProduceRow
+            className={`mt-2.5 lg:mt-[22px] ${signedOut ? "" : "px-5 lg:px-0"}`}
+            produce={seasonalProduce ?? []}
+            selected={produce}
+            onSelect={setProduce}
+          />
+        )}
+
         {featured.length > 0 && (
           <section aria-label="De temporada" className="mt-2.5 lg:mt-[22px] lg:grid lg:grid-cols-2 lg:gap-5">
             <FeaturedRecipeCard recipe={featured[0]} className={signedOut ? "rounded-[18px]" : ""} />
             {featured[1] && <FeaturedRecipeCard recipe={featured[1]} className="hidden lg:block" />}
           </section>
+        )}
+
+        {/* «Menú de <mes>» (PRO-378): signed in, nothing filtered. */}
+        {!signedOut && !anyFilterActive && <MonthMenuCard className="mx-4 mt-3 lg:mx-0 lg:mt-5" />}
+
+        {/* «Colecciones» (PRO-374): Cocina's collections, only on the unfiltered catalogue. */}
+        {!anyFilterActive && (
+          <CollectionsRow
+            className="mt-6 lg:mt-8"
+            edgeClassName={signedOut ? "" : "px-5 lg:px-0"}
+          />
         )}
 
         <div className={signedOut ? "pt-3.5 lg:pt-[22px]" : "px-4 pt-3.5 lg:px-0 lg:pt-[22px]"}>

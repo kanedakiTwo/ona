@@ -10,6 +10,7 @@
 import Link from "next/link"
 import { ChefHat } from "lucide-react"
 import { usePantryMatches } from "@/hooks/usePantryMatch"
+import { menuRecipeHref } from "@/lib/menuReturn"
 
 export function PantryMatchCard() {
   const { data, isLoading } = usePantryMatches(3)
@@ -30,7 +31,7 @@ export function PantryMatchCard() {
           {data.map((hit) => (
             <li key={hit.recipe.id}>
               <Link
-                href={`/recipes/${hit.recipe.id}`}
+                href={menuRecipeHref(hit.recipe.id)}
                 className="flex items-center gap-3 rounded-xl bg-[#FAF6EE]/5 backdrop-blur-sm p-2.5 transition-colors hover:bg-[#FAF6EE]/10"
               >
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#FAF6EE]/10">

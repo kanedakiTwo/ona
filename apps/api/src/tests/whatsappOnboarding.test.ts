@@ -6,6 +6,7 @@
  * first menu. The inbound side is covered in whatsappInbound.test.ts.
  */
 import { describe, expect, it } from 'vitest'
+import { SHOPPER_LABELS } from '@ona/shared'
 import {
   buildSystemPrompt,
   WHATSAPP_ONBOARDING_FAVORITES_ASK,
@@ -60,14 +61,29 @@ describe('WhatsApp onboarding prompt', () => {
     expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/No preguntes por la prioridad/)
     expect(WHATSAPP_ONBOARDING_PROMPT).not.toMatch(/si no, varied/)
   })
+
+  it('PRO-383: «¿Quién hace la compra?» only with 2 adults or more, the web\'s three answers as buttons, and the invitation as it comes', () => {
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/solo si son 2 adultos o mas/)
+    expect(WHATSAPP_ONBOARDING_PROMPT).toContain('"¿Quién hace la compra?" con [[opciones: Yo | Otra persona de casa | Nos turnamos]]')
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/Con 1 adulto no lo preguntes/)
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/invitacion para quien hace la compra, ponla en tu respuesta tal cual/)
+    // WhatsApp buttons hold 20 characters at most.
+    for (const label of Object.values(SHOPPER_LABELS)) expect(label.length).toBeLessThanOrEqual(20)
+  })
 })
 
 describe('complete_onboarding', () => {
   it('exists, and takes no health fields to save (PRO-1041: the said allergies only shape the first menu)', () => {
     expect(completeOnboarding).toBeDefined()
     const props = Object.keys((completeOnboarding.parameters as any).properties)
+<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
     expect(props.sort()).toEqual(['adults', 'cookingFreq', 'cookingStyle', 'favoriteDishes', 'kidsCount', 'priority', 'restrictions_said'])
     expect((completeOnboarding.parameters as any).properties.restrictions_said.description).toMatch(/solo a este menu y no se guardan/)
+=======
+    expect(props.sort()).toEqual(['adults', 'cookingFreq', 'cookingStyle', 'favoriteDishes', 'kidsCount', 'priority', 'shopper'])
+    // PRO-383: who does the shopping is never required (only 2 adults or more are asked).
+    expect((completeOnboarding.parameters as any).required).toEqual(['adults', 'kidsCount'])
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   })
 
   it('2026-11-03: how they cook is the web\'s four answers; the priority has no default', () => {

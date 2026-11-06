@@ -595,6 +595,7 @@ describe('swap_meal', () => {
       [],                                           // menu owner (audit options)
       [],                                           // recipe ingredients
       [],                                           // step counts
+      [], [],                                       // dislike overrides (PRO-1142): no household, no «Me apetece»
       [{ ...menu, days: [...menu.days] }],          // returning updated
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
@@ -618,6 +619,7 @@ describe('swap_meal', () => {
       [],
       [],
       [],
+      [], [],
       [{ ...menu, days: [...menu.days] }],
     )
     vi.mocked(findRecipeForSlot).mockClear()
@@ -667,6 +669,7 @@ describe('swap_meal', () => {
         [], // menu owner (audit options)
         [],
         [],
+        [], [], // dislike overrides (PRO-1142)
         [{ ...menu, days: [...menu.days] }],
       )
       await skill.handler({ dayIndex: 3, meal: 'lunch' }, ctx(db))
@@ -1446,7 +1449,8 @@ describe('skill export coverage', () => {
     // with set_shopping_habitual (PRO-293, same test file), and 89 with the
     // seven ficha tools (PRO-319, fichaMimo.test.ts).
     // and 91 with list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
-    expect(skills.length).toBe(91)
+    // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
+    expect(skills.length).toBe(92)
   })
 
   it('every skill has a unique name', () => {

@@ -12,7 +12,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isFixedDish, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
 import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
 import { describeWeekPlan } from '../weekPlan.js'
@@ -45,15 +45,20 @@ import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
+import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { unlistedDietMentions } from '../stepDietMentions.js'
 import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
+<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
 import { withMenuOnlyRestrictions } from '../menuOnlyRestrictions.js'
 import { loadRecentUserTexts, saidRestrictionsForMenu, saidRestrictionsLine, type SaidRestrictions } from '../saidRestrictions.js'
 import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
+=======
+import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../glutenFreeCharcuterie.js'
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
@@ -63,6 +68,8 @@ import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
+import { shopperInviteForSignUp } from '../shopperInvite.js'
+import { SHOPPERS, asksShopper, isShopper, shopperInvites } from '@ona/shared'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
 import { schoolDinnerPool } from '../schoolMenu.js'
 import { weekHolidaySummary } from '../menuHolidays.js'
@@ -498,9 +505,9 @@ const getRecipeDetails: SkillDefinition = {
       quantity: ratio === 1 || r.quantity == null ? r.quantity : scaleRound(Number(r.quantity) * ratio, r.unit ?? 'g'),
     }))
     const ingredientList = scaledRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
-    // PRO-196: same notice as the web ficha for a coeliac household.
+    // PRO-196, PRO-1063: same notices as the web ficha for a coeliac household.
     const ingNames = riRows.map((r: any) => String(r.ingredientName))
-    const dietNotices = ingNames.some(isBrandDependentGlutenCharcuterie)
+    const dietNotices = ingNames.some(needsGlutenFreeLabel)
       ? recipeDietNotices(ingNames, isCoeliacHousehold((await restrictionsFor(ctx)).restrictions))
       : []
     const details = recipeDetailsSummary({
@@ -1089,7 +1096,7 @@ const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 const completeOnboarding: SkillDefinition = {
   name: 'complete_onboarding',
   description:
-    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa y como cocinan (y los platos o la prioridad, solo si los ha dicho), marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y como cocinan.',
+    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa y como cocinan (con 2 adultos o mas, tambien quien hace la compra; y los platos o la prioridad, solo si los ha dicho), marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y como cocinan.',
   parameters: {
     type: 'object',
     properties: {
@@ -1116,12 +1123,24 @@ const completeOnboarding: SkillDefinition = {
         enum: [...PRIORITIES],
         description: 'Solo si dice lo que mas le importa (quick = rapido, varied = variado, healthy = sano, cheap = barato). No lo preguntes; si no lo ha dicho, omitelo.',
       },
+<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
       restrictions_said: RESTRICTIONS_SAID_PROP,
+=======
+      shopper: {
+        type: 'string',
+        enum: [...SHOPPERS],
+        description: 'Solo con 2 adultos o mas: quien hace la compra. me = el usuario ("Yo"); other = otra persona de casa; shared = se turnan. Con other o shared la herramienta devuelve el mensaje con el enlace de invitacion para esa persona. Con 1 adulto, omitelo.',
+      },
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     },
     required: ['adults', 'kidsCount'],
   },
   async handler(
+<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
     params: { adults?: number; kidsCount?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; priority?: string; restrictions_said?: string[] },
+=======
+    params: { adults?: number; kidsCount?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; priority?: string; shopper?: string },
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -1146,8 +1165,15 @@ const completeOnboarding: SkillDefinition = {
     if (missing.length > 0) {
       return { data: null, summary: `No he guardado nada: falta ${missing.join(', ')}. Preguntaselo.` }
     }
+    // PRO-383: «¿Quién hace la compra?» is only for 2 adults or more.
+    const shopper = asksShopper(adults) && isShopper(params?.shopper) ? params.shopper : undefined
     // No restrictions or consent here: health data never goes through WhatsApp.
-    await saveOnboarding(userId, { adults, kidsCount, cookingStyle, cookingFreq, favoriteDishes, priority }, db)
+    await saveOnboarding(userId, { adults, kidsCount, cookingStyle, cookingFreq, favoriteDishes, priority, shopper, via: 'whatsapp' }, db)
+    // Someone else buys, or they take turns: the same invitation as the web's «Mandar invitación».
+    const invite = shopperInvites(shopper) ? await shopperInviteForSignUp(userId).catch(() => null) : null
+    const inviteLine = invite
+      ? ` Invitacion para quien hace la compra (dale este mensaje tal cual, en un bloque aparte, para que se lo reenvie; asi le llegara la lista cada semana):\n${invite.message}\n`
+      : ''
     // PRO-320: a pass of the ficha's refiner at the moment (in the background).
     void import('../profile/refiner.js').then((m) => m.refineHouseholdSoon(userId, 'onboarding')).catch(() => undefined)
     // Same first menu as the web sign-up (PRO-65, PRO-244): it starts today
@@ -1168,7 +1194,11 @@ const completeOnboarding: SkillDefinition = {
     const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.channel)}` : ''
     return {
       ...menu,
+<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
       summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños). ${menu.summary}${nextLine}${saidLine}`,
+=======
+      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}`,
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     }
   },
 }
@@ -1341,6 +1371,17 @@ const swapMeal: SkillDefinition = {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
         summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
+      }
+    }
+
+    // A ficha's «plato fijo» (PRO-1141) is never swapped at random: only for a named recipe.
+    const fixedHere = days[dayIndex]?.[meal]?.dishes.find(isFixedDish)
+    if (fixedHere) {
+      const name = fixedHere.kind === 'recipe' ? fixedHere.recipeName ?? 'el plato fijo' : fixedHere.text
+      return {
+        data: null,
+        summary: `No he cambiado nada: "${name}" es un plato fijo de la ficha del hogar para la ${slotLabel}. Si quiere otro, pregúntale cuál y vuelve a llamar con recipeName.`,
+        uiHint: 'text',
       }
     }
 
@@ -3081,6 +3122,8 @@ export const skills: SkillDefinition[] = [
   ...schoolMenuSkills,
   // PRO-228: «Sí, mételo» al repaso mensual del congelador.
   ...freezerSkills,
+  // La receta del día (PRO-1099, specs/recipe-of-the-day.md):
+  ...recipeOfTheDaySkills,
 ]
 
 /**

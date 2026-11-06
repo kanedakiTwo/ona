@@ -27,6 +27,7 @@ import unitsRouter from './routes/units.js'
 import memoryRoutes from './routes/memory.js'
 import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
+import cookNowRoutes from './routes/cookNow.js'
 import staplesRoutes from './routes/staples.js'
 import pushRoutes from './routes/push.js'
 import notificationRoutes from './routes/notifications.js'
@@ -216,6 +217,7 @@ app.use('/', unitsRouter)
 app.use(memoryRoutes)
 app.use(householdRoutes)
 app.use(cookLogRoutes)
+app.use(cookNowRoutes)
 app.use(staplesRoutes)
 app.use(recipeNotesRoutes)
 app.use(pantryRoutes)

@@ -1,5 +1,9 @@
 {
+<<<<<<< a063f7ce3c2bcc516b97c0235f74c4d5c2a253df
   "id": "901a9215-160b-476f-8e9f-2a29b3a097e3",
+=======
+  "id": "20cb27e9-4514-44cd-914d-38d05b16acaa",
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   "prevId": "5051ef9e-5a08-4e63-a637-83c20e341d6d",
   "version": "7",
   "dialect": "postgresql",
@@ -6521,6 +6525,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+<<<<<<< a063f7ce3c2bcc516b97c0235f74c4d5c2a253df
         },
         "role": {
           "name": "role",
@@ -6534,6 +6539,8 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::uuid[]"
+=======
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
         }
       },
       "indexes": {
@@ -6603,10 +6610,13 @@
         "recipe_ingredients_unit_check": {
           "name": "recipe_ingredients_unit_check",
           "value": "unit IN ('g', 'ml', 'u', 'cda', 'cdita', 'pizca', 'al_gusto')"
+<<<<<<< a063f7ce3c2bcc516b97c0235f74c4d5c2a253df
         },
         "recipe_ingredients_role_check": {
           "name": "recipe_ingredients_role_check",
           "value": "role IS NULL OR role IN ('essential', 'secondary')"
+=======
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
         }
       },
       "isRLSEnabled": false
@@ -7379,6 +7389,15 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< a063f7ce3c2bcc516b97c0235f74c4d5c2a253df
+=======
+        "featured_on": {
+          "name": "featured_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -7409,6 +7428,24 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+<<<<<<< a063f7ce3c2bcc516b97c0235f74c4d5c2a253df
+=======
+        },
+        "uq_recipes_featured_on": {
+          "name": "uq_recipes_featured_on",
+          "columns": [
+            {
+              "expression": "featured_on",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
         }
       },
       "foreignKeys": {

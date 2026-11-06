@@ -6,22 +6,27 @@
  *     overlapping caption card: eyebrow "Comida · 28 min · 3 raciones",
  *     Fraunces title, ink pill "Empezar a cocinar" (→ cook mode) and "···";
  *   - the other meals as horizontal rows (photo, eyebrow, title) + "···";
- *   - empty slots as one quiet "Añadir plato" card + "···";
+ *   - empty slots as one quiet "Añadir plato" card + "···"; tapping the card
+ *     opens the same sheet as "···" (Miguel, 2026-11-05);
  *   - a meal the rest of the week has and this day lacks as «El viernes no
  *     hay comida» + «Añadir» (`absentMeals`), so a dinner can't pass for lunch;
+ *     tapping it opens what to put there (elegir, al azar, táper), never a
+ *     dish nobody asked for (Miguel, 2026-11-05);
  *   - a quiet day footer: "Añadir comida" (missing slots) and "Saltar día".
  * Used full-bleed on mobile and inside the desktop hero row.
  */
 import { useState } from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
-import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, RotateCw, Snowflake, TriangleAlert, Utensils } from "lucide-react"
+import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, Replace, RotateCw, Shuffle, Snowflake, TriangleAlert, Utensils } from "lucide-react"
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
 import { isTaperDish, replacedDishLine, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { DAY_MEAL_ORDER, firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
+import { RecipePickerSheet } from "./RecipePickerSheet"
 import {
   MealOptionsButton,
   MealOptionsSheets,
@@ -365,11 +370,13 @@ export function EmptyMealCard({
         </p>
       ) : (
         <>
+          {/* The same sheet as "···": Añadir plato, Fijar, Comensales, Quitar (Miguel, 2026-11-05). */}
           <button
             type="button"
-            disabled={ctx.isLocked}
-            onClick={() => ctl.setOpen("addDish")}
-            className="flex min-h-[56px] min-w-0 flex-1 items-center gap-3 rounded-xl px-2.5 text-left transition-colors hover:bg-cream-deep disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ink"
+            onClick={() => ctl.setOpen("actions")}
+            aria-haspopup="dialog"
+            data-testid="empty-meal"
+            className="flex min-h-[56px] min-w-0 flex-1 items-center gap-3 rounded-xl px-2.5 text-left transition-colors hover:bg-cream-deep focus-visible:outline-2 focus-visible:outline-ink"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bone text-clay">
               <Plus size={18} strokeWidth={1.8} />
@@ -394,30 +401,36 @@ export interface AbsentMeals {
   meals: MealKey[]
   dayName: string
   isAdding: boolean
-  onAdd: (meal: MealKey) => void
+  /** Creates the meal: with `recipeId`, that recipe; without, one the matcher picks. */
+  onAdd: (meal: MealKey, recipeId?: string) => void
+  /** «Usar "<lo escrito>" como plato» in the picker: the meal as a note. */
+  onAddNote?: (meal: MealKey, text: string) => void
+  /** «Del congelador» (PRO-82) / «Táper de la nevera» (PRO-240). */
+  onAddFreezer?: (meal: MealKey, recipeId: string, variant: TaperVariant) => void
 }
 
 /**
  * «El viernes no hay comida» + «Añadir» (Miguel, 2026-10-19: the day's
- * dinner passed for its lunch). «Añadir» creates the slot, same as
- * «Añadir comida → Comida».
+ * dinner passed for its lunch). Tapping it opens what to put there —
+ * «Elegir receta», «Una al azar», a táper — instead of adding a dish
+ * nobody chose (Miguel, 2026-11-05: «que me aparezca el menú contextual»).
  */
 export function AbsentMealCard({
   meal,
   dayName,
   isAdding,
   onAdd,
+  onAddNote,
+  onAddFreezer,
   readOnly,
   compact = false,
 }: Omit<AbsentMeals, "meals"> & { meal: MealKey; readOnly: boolean; compact?: boolean }) {
   const label = mealLabel(meal)
   const Icon = mealIconFor(meal)
-  return (
-    <div
-      data-testid="absent-meal"
-      data-meal={meal}
-      className={`flex items-center gap-3 rounded-2xl border border-dashed border-border p-1.5 pl-2.5 ${compact ? "" : "mx-4"}`}
-    >
+  const [open, setOpen] = useState<null | "actions" | "picker" | TaperVariant>(null)
+  const close = () => setOpen(null)
+  const body = (
+    <>
       <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bone text-clay">
         <Icon size={18} strokeWidth={1.6} />
       </span>
@@ -427,16 +440,97 @@ export function AbsentMealCard({
           El {dayName} no hay {label.toLowerCase()}
         </span>
       </span>
-      {!readOnly && (
+    </>
+  )
+  return (
+    <div
+      data-testid="absent-meal"
+      data-meal={meal}
+      className={`rounded-2xl border border-dashed border-border ${compact ? "" : "mx-4"}`}
+    >
+      {readOnly ? (
+        <div className="flex items-center gap-3 p-1.5 pl-2.5">{body}</div>
+      ) : (
         <button
           type="button"
-          onClick={() => onAdd(meal)}
+          onClick={() => setOpen("actions")}
           disabled={isAdding}
+          aria-haspopup="dialog"
           aria-label={`Añadir ${label.toLowerCase()} al ${dayName}`}
-          className="inline-flex min-h-[44px] shrink-0 items-center gap-1 rounded-full border border-border bg-paper px-3.5 text-[14px] font-medium text-ink transition-colors hover:border-ink disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ink"
+          className="flex w-full items-center gap-3 rounded-2xl p-1.5 pl-2.5 text-left transition-colors hover:bg-cream-deep disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-ink"
         >
-          <Plus size={14} /> Añadir
+          {body}
+          <span className="inline-flex min-h-[44px] shrink-0 items-center gap-1 rounded-full border border-border bg-paper px-3.5 text-[14px] font-medium text-ink">
+            <Plus size={14} /> Añadir
+          </span>
         </button>
+      )}
+      {!readOnly && (
+        <>
+          <MenuSheet open={open === "actions"} onClose={close} eyebrow={`${label} · ${dayName}`} title="Sin plato todavía">
+            <div className="flex flex-col gap-0.5">
+              <SheetAction icon={Replace} label="Elegir receta" hint="Busca en el catálogo" onClick={() => setOpen("picker")} />
+              <SheetAction
+                icon={Shuffle}
+                label="Una al azar"
+                hint="Una receta que encaje con tu semana"
+                disabled={isAdding}
+                onClick={() => {
+                  onAdd(meal)
+                  close()
+                }}
+              />
+              {onAddFreezer && (
+                <div className="mt-1 border-t border-border-soft pt-1">
+                  <SheetAction
+                    icon={Snowflake}
+                    label="Del congelador"
+                    hint="Un táper que ya tienes: no suma a la compra"
+                    onClick={() => setOpen("freezer")}
+                  />
+                  <SheetAction
+                    icon={Refrigerator}
+                    label="Táper de la nevera"
+                    hint="Ya cocinado, en la nevera: no suma a la compra"
+                    onClick={() => setOpen("fridge")}
+                  />
+                </div>
+              )}
+            </div>
+          </MenuSheet>
+          {/* Out of the page's transformed wrappers, like the meal sheet's picker. */}
+          {typeof document !== "undefined" &&
+            createPortal(
+              <RecipePickerSheet
+                open={open === "picker"}
+                onClose={close}
+                title={`${label} del ${dayName}`}
+                subtitle="Sin plato"
+                onPick={(picked) => {
+                  onAdd(meal, picked.id)
+                  close()
+                }}
+                onUseText={
+                  onAddNote
+                    ? (text) => {
+                        onAddNote(meal, text)
+                        close()
+                      }
+                    : undefined
+                }
+              />,
+              document.body,
+            )}
+          {onAddFreezer && (
+            <FreezerDishSheets
+              open={open === "freezer" || open === "fridge"}
+              onClose={close}
+              missing={[meal]}
+              variant={open === "fridge" ? "fridge" : "freezer"}
+              onAdd={(m, recipeId) => onAddFreezer(m, recipeId, open === "fridge" ? "fridge" : "freezer")}
+            />
+          )}
+        </>
       )}
     </div>
   )
@@ -603,6 +697,8 @@ export function DayMeals({
                 dayName={absent.dayName}
                 isAdding={absent.isAdding}
                 onAdd={absent.onAdd}
+                onAddNote={absent.onAddNote}
+                onAddFreezer={absent.onAddFreezer}
                 readOnly={readOnly}
               />
             )

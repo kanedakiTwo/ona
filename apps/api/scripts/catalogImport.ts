@@ -10,7 +10,9 @@
  *   --dir=…     folder of page photos (.jpg/.jpeg/.png/.webp) or PDFs (one page
  *               per recipe; PDFs are split with `pdftoppm`). The page number is
  *               taken from the file name («p123.jpg», «page-45.png») or the PDF page.
- *   --json=…    Cocina's batch file (hand-authored shape, see draftsFromCocinaJson)
+ *   --json=…    Cocina's batch file (hand-authored shape, see draftsFromCocinaJson);
+ *               with `"reescrita": true` its steps and labels are saved as they come,
+ *               without the AI rewrite (PRO-1097)
  *   --origin=…  miguel (Miguel's books, his mother's recipe book) | cocina (found or written by Cocina)
  *   --book=…    source title, saved with the recipe (never its text)
  *   --credit=…  the line the recipe page shows under the title, as it must read
@@ -89,7 +91,14 @@ async function runImport() {
   type Draft = Parameters<typeof importCatalogBatch>[0][number]
   const drafts: Draft[] = []
   if (flag('json')) {
-    drafts.push(...draftsFromCocinaJson(JSON.parse(readFileSync(flag('json')!, 'utf8')), { origin, book, credit, file: path.basename(flag('json')!) }))
+    const json = JSON.parse(readFileSync(flag('json')!, 'utf8'))
+    // PRO-1097: a rewritten batch is saved as it comes, so it is checked like the web page checks it.
+    if ((json as { reescrita?: unknown })?.reescrita === true) {
+      const { checkCocinaBatch } = await import('@ona/shared')
+      const check = checkCocinaBatch(json)
+      if (!check.ok) throw new Error(`La tanda reescrita no vale:\n${check.problems.map((p) => `- ${p}`).join('\n')}`)
+    }
+    drafts.push(...draftsFromCocinaJson(json, { origin, book, credit, file: path.basename(flag('json')!) }))
   } else if (flag('dir')) {
     const { AnthropicProvider } = await import('../src/services/providers/anthropic.js')
     const vision = new AnthropicProvider()

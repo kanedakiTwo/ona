@@ -89,6 +89,16 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
       expect.objectContaining({ prepared: expect.any(Number), sent: expect.any(Number), accepted: expect.any(Number) }),
     )
     expect(after.body.familyInvites.goal.withTwoPlusAdults).toEqual(expect.any(Number))
+    // PRO-379: the growth line (real SQL on usage_events, menus, subscriptions): the new household
+    // is in this week's cohort with its first menu inside the open window.
+    const cohort = after.body.growth.at(-1)
+    expect(cohort.signups).toBeGreaterThanOrEqual(1)
+    expect(cohort.firstMenu.reachedInOpenWindow + cohort.firstMenu.reached).toBeGreaterThanOrEqual(1)
+    expect(cohort.paid).toEqual({ eligible: expect.any(Number), reached: expect.any(Number), reachedInOpenWindow: 0 })
+    expect(after.body.timeToFirstMenu.at(-1).withMenu).toBeGreaterThanOrEqual(1)
+    const t = after.body.trial
+    expect(t.beta + t.inTrial + t.withCard + t.paying + t.paused + t.free + t.pastDue).toBeGreaterThanOrEqual(1)
+    expect(t.cancellations.byReason).toEqual(expect.any(Object))
     // Counts only: no ids, usernames or emails anywhere in the payload.
     const raw = JSON.stringify(after.body)
     expect(raw).not.toContain(userId)

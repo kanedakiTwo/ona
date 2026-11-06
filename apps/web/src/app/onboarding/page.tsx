@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { OnboardingDraft } from "@ona/shared"
 import { api } from "@/lib/api"
-import OnboardingFlow from "@/components/onboarding/OnboardingFlow"
+import OnboardingFlow, { type OnboardingKnown } from "@/components/onboarding/OnboardingFlow"
 
 export default function OnboardingPage() {
   const { user, isLoading, updateUser } = useAuth()
@@ -15,7 +15,8 @@ export default function OnboardingPage() {
   // finished elsewhere (WhatsApp, another browser) since this one cached it.
   const status = useQuery({
     queryKey: ["onboarding-status", user?.id],
-    queryFn: () => api.get<{ onboardingDone?: boolean | null; onboardingDraft?: OnboardingDraft | null }>(`/user/${user!.id}`),
+    queryFn: () =>
+      api.get<{ onboardingDone?: boolean | null; onboardingDraft?: OnboardingDraft | null } & OnboardingKnown>(`/user/${user!.id}`),
     enabled: Boolean(user) && !user?.onboardingDone,
     staleTime: 0,
     refetchOnWindowFocus: false,
@@ -54,5 +55,12 @@ export default function OnboardingPage() {
     )
   }
 
-  return <OnboardingFlow draft={status.data?.onboardingDraft ?? null} />
+  // PRO-1042: what the account already says (Mimo, an API sign-up) fills the questions in.
+  const known: OnboardingKnown = {
+    adults: status.data?.adults,
+    kidsCount: status.data?.kidsCount,
+    restrictions: status.data?.restrictions,
+    hasMenu: status.data?.hasMenu,
+  }
+  return <OnboardingFlow draft={status.data?.onboardingDraft ?? null} known={known} />
 }

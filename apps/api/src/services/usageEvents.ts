@@ -62,6 +62,9 @@ export const USAGE_EVENTS = [
   'feedback_left',
   // PRO-1022: every Mimo tool that returned data (`props.skill` = the tool's name, `props.canal`). Never text.
   'mimo_skill_used',
+  // «Cocinar ahora» (PRO-1106, specs/cook-now.md): the four questions answered, a proposal chosen.
+  'cook_now_proposed',
+  'cook_now_chosen',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -231,7 +234,14 @@ const ROUTE_EVENTS: RouteEvent[] = [
     event: (req) => ({ name: 'recipe_imported', props: urlImportProps(req.body?.url, 'web') }),
   },
   { method: 'POST', re: /^\/recipes\/?$/, event: (req) => ({ name: 'recipe_created', props: { withSource: Boolean(req.body?.sourceUrl) } }) },
-  { method: 'POST', re: /^\/cook-logs\/?$/, event: () => ({ name: 'meal_cooked' }) },
+  { method: 'POST', re: /^\/cook-logs\/?$/, event: (req) => ({ name: 'meal_cooked', props: { fromMenu: Boolean(req.body?.menuId) } }) },
+  {
+    method: 'POST',
+    re: /^\/cook-now\/proposal\/?$/,
+    // The «Con lo que tienes» card asks the same route: not a proposal anyone asked for.
+    event: (req) => (req.body?.requirePantryUse ? null : { name: 'cook_now_proposed', props: { canBuy: Boolean(req.body?.canBuy) } }),
+  },
+  { method: 'POST', re: /^\/cook-now\/choose\/?$/, event: (req) => ({ name: 'cook_now_chosen', props: { displaced: req.body?.displacedTo != null } }) },
   // Opening cook mode on the web (PRO-188): the page pings this once on open.
   { method: 'POST', re: /^\/usage\/cook-mode-started\/?$/, event: () => ({ name: 'cook_mode_started' }) },
   {

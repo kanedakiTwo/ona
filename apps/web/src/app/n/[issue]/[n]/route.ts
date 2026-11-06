@@ -7,7 +7,8 @@
  * issue or link → 404, no redirect. No IP, browser or recipient is stored.
  * The «Corre la voz» buttons (PRO-1019) add `?c=<code>&k=lista|hogar`,
  * passed on; the API builds WhatsApp or the copy page from that code. The
- * person's recipe and tip (PRO-1020) add `?r=<recipe id>` and `?t=<tip id>`.
+ * person's recipe and tip (PRO-1020) add `?r=<recipe id>` and `?t=<tip id>`,
+ * and their wine (PRO-395) `?v=<wine id>`.
  */
 import type { NextRequest } from "next/server"
 
@@ -17,8 +18,8 @@ async function resolve(req: NextRequest, issue: string, n: string, method: "GET"
   const q = new URLSearchParams()
   if (req.nextUrl.searchParams.get("prueba") === "1") q.set("prueba", "1")
   // «Corre la voz» (PRO-1019): the recipient's code and kind; the person's recipe
-  // and tip (PRO-1020): their ids. The API checks them and builds the destination.
-  for (const k of ["c", "k", "r", "t"]) {
+  // and tip (PRO-1020) and their wine (PRO-395): their ids. The API checks them and builds the destination.
+  for (const k of ["c", "k", "r", "t", "v"]) {
     const v = req.nextUrl.searchParams.get(k)
     if (v) q.set(k, v.slice(0, 64))
   }

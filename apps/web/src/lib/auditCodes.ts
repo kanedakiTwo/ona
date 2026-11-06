@@ -21,6 +21,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'invite_campaign.create': 'Enlace de invitación creado',
   'invite_campaign.delete': 'Enlace de invitación eliminado',
   'newsletter.send': 'Newsletter enviada',
+  'newsletter.wines_load': 'Base de vinos de la newsletter cargada',
   'catalog_draft.publish': 'Receta del catálogo publicada',
   'catalog_draft.discard': 'Borrador del catálogo descartado',
   'catalog_draft.restore': 'Borrador del catálogo recuperado',

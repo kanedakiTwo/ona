@@ -708,6 +708,13 @@
       "when": 1793801779340,
       "tag": "0106_recipe_featured_on",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793935094711,
+      "tag": "0107_newsletter_wines",
+      "breakpoints": true
     }
   ]
 }

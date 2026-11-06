@@ -34,6 +34,19 @@ import {
 } from './newsletterTips.js'
 import { ensureReferralCode } from './accountReferrals.js'
 import {
+  WINE_DISH_TYPES,
+  createDbNewsletterWineRepo,
+  dishTypeOf,
+  pickWine,
+  wineAllowed,
+  wineBlockHtml,
+  wineBlockText,
+  wineDestination,
+  wineEnabled,
+  type NewsletterWineRepo,
+  type WineBlock,
+} from './newsletterWine.js'
+import {
   ACCENT,
   BODY,
   BORDER,
@@ -80,6 +93,9 @@ import {
  *     «corre_la_voz» (`newsletterStats.ts`).
  *   - Every account gets its own recipe and tip (PRO-1020, `newsletterTips.ts`),
  *     counted in the slots «receta» and «truco» and logged in `newsletter_tip_log`.
+ *   - And, under its recipe, the wine that goes with it (PRO-395, `newsletterWine.ts`),
+ *     only to adults whose household can have it, counted in the slot «vino» and
+ *     logged in `newsletter_wine_log`; off until Legal's yes and her signature.
  */
 
 // ─── Content ─────────────────────────────────────────────────────
@@ -136,6 +152,8 @@ export const newsletterContentSchema = z.object({
         imageUrl: httpsUrl,
         imageAlt: z.string().trim().min(1).max(200),
         meta: z.string().trim().max(120).optional(),
+        /** PRO-395: its dish type for the wine, when Miguel changes it; otherwise `dishTypeOf`. */
+        dishType: z.enum(WINE_DISH_TYPES).optional(),
       }),
     )
     .max(8)
@@ -267,7 +285,7 @@ function correLaVozBlock(share: CorreLaVoz, inviteLine: string): string {
  */
 export function renderNewsletterEmail(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
-  links: { unsubscribeUrl: string; leaveListUrl?: string; share?: CorreLaVoz; now?: Date } & BrandAssets,
+  links: { unsubscribeUrl: string; leaveListUrl?: string; share?: CorreLaVoz; wine?: WineBlock; now?: Date } & BrandAssets,
 ): { html: string; text: string } {
   const c = input.content
   const inviteLine = newsletterInviteLine(links.now)
@@ -282,6 +300,7 @@ ${row(
 ${c.star.meta ? `<p style="margin:0 0 16px;font-family:${SANS};font-size:14px;line-height:1.45;color:${MUTED};">${esc(c.star.meta)}</p>` : ''}
 ${paragraphs(c.star.body, BODY)}`,
 )}
+${links.wine ? wineBlockHtml(links.wine) : ''}
 ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
   const html = emailDocument(
     input.subject,
@@ -318,6 +337,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
     c.star.body,
     c.star.url,
     '',
+    ...(links.wine ? wineBlockText(links.wine) : []),
     `${c.cta.label}: ${c.cta.url}`,
     '',
     ...(c.sections ?? []).flatMap((s) => [
@@ -671,6 +691,8 @@ export interface NewsletterDeps {
   stats?: NewsletterStatsRepo
   /** PRO-1020: present → each account gets its own recipe and tip (`newsletterTips.ts`). */
   tips?: NewsletterTipsRepo
+  /** PRO-395: present (with `tips`) → the wine that goes with each account's recipe (`newsletterWine.ts`). */
+  wines?: NewsletterWineRepo
   /** The clock of the tip rules (tests). */
   now?: () => Date
 }
@@ -682,6 +704,7 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
     sendOne: (m) => sendEmail(m),
     stats: createDbNewsletterStatsRepo(),
     tips: createDbNewsletterTipsRepo(),
+    wines: createDbNewsletterWineRepo(),
     ...urls,
   }
 }
@@ -692,6 +715,8 @@ type RecipeCandidate = NonNullable<NewsletterContent['recipes']>[number]
 export interface PersonalPick {
   recipe?: RecipeCandidate
   tip?: NewsletterTip
+  /** PRO-395: the wine under their recipe (its link is added per email). */
+  wine?: Omit<WineBlock, 'url'>
 }
 
 interface PersonalChoice {
@@ -710,6 +735,7 @@ async function choosePersonal(
   userIds: string[],
   tips: NewsletterTipsRepo,
   now: Date,
+  wines?: NewsletterWineRepo,
 ): Promise<Map<string, PersonalChoice>> {
   const out = new Map<string, PersonalChoice>()
   if (userIds.length === 0) return out
@@ -740,7 +766,42 @@ async function choosePersonal(
     console.warn('[newsletter] no personal recipe or tip (everyone gets the general ones):', err?.message ?? err)
     out.clear()
   }
+  if (wines) await addWines(input, out, wines)
   return out
+}
+
+/**
+ * PRO-395: the wine under each account's recipe, from the base (`pickWine`).
+ * Off until Legal's yes and her signature (`wineEnabled`); only under a recipe
+ * of the issue (the star has none) and only for whom `wineAllowed` (adult,
+ * nobody at home «sin alcohol», halal, pregnant or breastfeeding; a failed
+ * check, no wine). Never fails the send: an error leaves everyone without wine.
+ */
+async function addWines(input: NewsletterSendInput, choices: Map<string, PersonalChoice>, wines: NewsletterWineRepo): Promise<void> {
+  const withRecipe = [...choices].filter(([, c]) => c.pick.recipe)
+  if (withRecipe.length === 0) return
+  try {
+    const base = await wines.base()
+    const settings = base?.settings ?? null
+    if (!base || !wineEnabled(settings) || base.wines.length === 0) return
+    const userIds = withRecipe.map(([userId]) => userId)
+    const recipes = await wines.recipes([...new Set(withRecipe.map(([, c]) => c.pick.recipe!.recipeId))])
+    const audiences = await wines.audiences(userIds)
+    const shown = await wines.shown(userIds)
+    for (const [userId, c] of withRecipe) {
+      const r = c.pick.recipe!
+      const known = recipes.get(r.recipeId)
+      if (!known || !wineAllowed(audiences.get(userId))) continue
+      const dishType = r.dishType ?? dishTypeOf(known)
+      // «No va con» looks at the catalogue's name and the issue's title of the recipe, and its ingredients.
+      const recipe = { title: `${known.title} · ${r.title}`, ingredients: known.ingredients, dishType }
+      const wine = pickWine(recipe, base.wines, settings, shown.get(userId) ?? [], `${input.issueId}|${userId}`)
+      if (wine) c.pick.wine = { wine, signatureName: settings.signatureName, moderationLine: settings.moderationLine }
+    }
+  } catch (err: any) {
+    console.warn('[newsletter] no wine this issue:', err?.message ?? err)
+    for (const c of choices.values()) delete c.pick.wine
+  }
 }
 
 /**
@@ -798,6 +859,17 @@ export function withPersonalPick(
   return out
 }
 
+/** PRO-395: the wine's link (only when the base has one), through our counter (slot `vino`) or straight there. */
+function wineUrl(
+  w: NonNullable<PersonalPick['wine']>,
+  web: string,
+  issueId: string | undefined,
+  track?: { issueId: string; proof: boolean },
+): string | undefined {
+  if (!w.wine.link) return undefined
+  return track ? trackedPersonalUrl(web, track.issueId, 'vino', w.wine.id, track.proof) : wineDestination(w.wine.link, issueId ?? 'prueba')
+}
+
 export function buildNewsletterMessage(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   to: string,
@@ -814,7 +886,8 @@ export function buildNewsletterMessage(
   const share = tokens.referralCode ? correLaVozLinks(web, tokens.referralCode, tokens.inviteKind ?? 'lista', track) : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
   const content = withPersonalPick(input.content, pick, web, track)
-  const { html, text } = renderNewsletterEmail({ ...input, content }, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
+  const wine = pick?.wine ? { ...pick.wine, url: wineUrl(pick.wine, web, issueId, track) } : undefined
+  const { html, text } = renderNewsletterEmail({ ...input, content }, { unsubscribeUrl, leaveListUrl, share, wine, ...brandAssets(web) })
   return {
     to,
     subject: input.subject,
@@ -849,7 +922,9 @@ async function trackContent(input: NewsletterSendInput, deps: NewsletterDeps, pr
   if (!deps.stats) return input
   const links = contentLinks(input.content)
   // The «Corre la voz» slot rows (PRO-1019) go with them, and the recipe and tip ones when personalised (PRO-1020).
-  await deps.stats.registerLinks(input.issueId, [...links, ...slotLinks(deps.tips ? ['corre_la_voz', 'receta', 'truco'] : ['corre_la_voz'])])
+  // And the wine's (PRO-395) when there is a wine base.
+  const slots = deps.tips ? (['corre_la_voz', 'receta', 'truco', ...(deps.wines ? (['vino'] as const) : [])] as const) : (['corre_la_voz'] as const)
+  await deps.stats.registerLinks(input.issueId, [...links, ...slotLinks(slots)])
   return { ...input, content: withTrackedLinks(input.content, links, deps.publicUrl, input.issueId, proof) }
 }
 
@@ -882,7 +957,17 @@ async function recordPersonal(
   results: EmailResult[],
   choices: Map<string, PersonalChoice>,
   tips: NewsletterTipsRepo,
+  wines?: NewsletterWineRepo,
 ): Promise<void> {
+  // PRO-395: each wine that went out, so it doesn't come back in 4 issues.
+  if (wines) {
+    const rows = mine.flatMap((r, k) => {
+      const c = r.userId ? choices.get(r.userId) : undefined
+      if (!c?.pick.wine || results[k]?.status !== 'sent') return []
+      return [{ userId: r.userId!, householdId: c.householdId, wineId: c.pick.wine.wine.id }]
+    })
+    await wines.record(issueId, rows).catch((err: any) => console.warn('[newsletter] wine log not saved:', err?.message ?? err))
+  }
   try {
     const rows = mine.flatMap((r, k) => {
       const c = r.userId ? choices.get(r.userId) : undefined
@@ -908,7 +993,8 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
     const adminCode = deps.repo.ensureAccountCode ? await deps.repo.ensureAccountCode({ email: input.testTo }).catch(() => null) : null
     // And the admin's own recipe and tip (PRO-1020), never recorded.
     const adminId = deps.tips ? await deps.tips.userIdByEmail(input.testTo).catch(() => null) : null
-    const mine = adminId && deps.tips ? (await choosePersonal(input, [adminId], deps.tips, now)).get(adminId) : undefined
+    // And the admin's own wine (PRO-395), never recorded either.
+    const mine = adminId && deps.tips ? (await choosePersonal(input, [adminId], deps.tips, now, deps.wines)).get(adminId) : undefined
     const msg = buildNewsletterMessage(
       { ...tracked, subject: `[Prueba] ${input.subject}` },
       input.testTo,
@@ -947,7 +1033,7 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   )
   const track = deps.stats && recipients.length > 0 ? { issueId: input.issueId, proof: false } : undefined
   const accountIds = mine.flatMap((r) => (r.source === 'user' && r.userId ? [r.userId] : []))
-  const choices = deps.tips ? await choosePersonal(input, accountIds, deps.tips, now) : new Map<string, PersonalChoice>()
+  const choices = deps.tips ? await choosePersonal(input, accountIds, deps.tips, now, deps.wines) : new Map<string, PersonalChoice>()
   const results = await deps.sendBatch(
     mine.map((r) =>
       buildNewsletterMessage(
@@ -976,7 +1062,7 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   })
   await deps.repo.markSent(input.issueId, sent)
   await deps.repo.release(input.issueId, notSent)
-  if (deps.tips && choices.size > 0) await recordPersonal(input.issueId, mine, results, choices, deps.tips)
+  if (deps.tips && choices.size > 0) await recordPersonal(input.issueId, mine, results, choices, deps.tips, deps.wines)
   console.log(
     `[newsletter] ${input.issueId}: sent ${sent.length}, failed ${failed}, skipped ${skipped}, already ${claimedBefore.size + (recipients.length - mine.length)}`,
   )

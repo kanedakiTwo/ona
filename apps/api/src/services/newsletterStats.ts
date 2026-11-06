@@ -63,6 +63,8 @@ export const NEWSLETTER_SLOT_LINKS = [
   // PRO-1020: each person's recipe (`?r=<recipe id>`) and tip (`?t=<tip id>`).
   { index: 43, slot: 'receta', button: 'abrir' },
   { index: 44, slot: 'truco', button: 'abrir' },
+  // PRO-395: each person's wine (`?v=<wine id>`), to where it is bought.
+  { index: 45, slot: 'vino', button: 'abrir' },
 ] as const
 export type NewsletterSlotLink = (typeof NEWSLETTER_SLOT_LINKS)[number]
 export type InviteKind = 'lista' | 'hogar'
@@ -90,10 +92,13 @@ export function trackedSlotUrl(publicUrl: string, issueId: string, link: Newslet
   return `${trackedUrl(publicUrl, issueId, link.index)}?c=${encodeURIComponent(code)}&k=${kind}${proof ? '&prueba=1' : ''}`
 }
 
-/** PRO-1020: `<web>/n/<issueId>/43?r=<recipe id>` or `/44?t=<tip id>` (+ `&prueba=1` on a proof). */
-export function trackedPersonalUrl(publicUrl: string, issueId: string, slot: 'receta' | 'truco', id: string, proof = false): string {
+/** The query parameter of each personal slot's id. */
+export const PERSONAL_SLOT_PARAM = { receta: 'r', truco: 't', vino: 'v' } as const
+
+/** PRO-1020: `<web>/n/<issueId>/43?r=<recipe id>` or `/44?t=<tip id>`; PRO-395: `/45?v=<wine id>` (+ `&prueba=1` on a proof). */
+export function trackedPersonalUrl(publicUrl: string, issueId: string, slot: 'receta' | 'truco' | 'vino', id: string, proof = false): string {
   const link = slotLinkFor(slot, 'abrir')
-  return `${trackedUrl(publicUrl, issueId, link.index)}?${slot === 'receta' ? 'r' : 't'}=${encodeURIComponent(id)}${proof ? '&prueba=1' : ''}`
+  return `${trackedUrl(publicUrl, issueId, link.index)}?${PERSONAL_SLOT_PARAM[slot]}=${encodeURIComponent(id)}${proof ? '&prueba=1' : ''}`
 }
 
 /** Pure: the content with each link replaced by its tracked URL. */
@@ -294,7 +299,7 @@ function issueRows(
 export const NEWSLETTER_STATS_DEFINITIONS = {
   sent: 'Emails that went out for the issue (newsletter_sends with status sent), by source: user (accounts) and waitlist.',
   clicks:
-    'Our own counter (PRO-191): times each link of the content was opened through <web>/n/<issue>/<index>. Clicks, not people: one person can click twice and nobody is identified. HEAD requests, proofs (?prueba=1) and known mail scanners or link previewers (by user-agent) do not count. Resend tracking stays off. links: the content links; slots: the per-recipient places (PRO-1019: corre_la_voz → whatsapp and copiar, the «Corre la voz» buttons), counted without knowing whose link it was; PRO-1020: receta and truco → abrir, the recipe and the tip chosen for each person, counted without knowing whose or which; total: both.',
+    'Our own counter (PRO-191): times each link of the content was opened through <web>/n/<issue>/<index>. Clicks, not people: one person can click twice and nobody is identified. HEAD requests, proofs (?prueba=1) and known mail scanners or link previewers (by user-agent) do not count. Resend tracking stays off. links: the content links; slots: the per-recipient places (PRO-1019: corre_la_voz → whatsapp and copiar, the «Corre la voz» buttons), counted without knowing whose link it was; PRO-1020: receta and truco → abrir, the recipe and the tip chosen for each person, counted without knowing whose or which; PRO-395: vino → abrir, the link to where each person’s wine is bought, the same way; total: both.',
   unsubscribes:
     'Newsletter-only opt-outs done from that issue’s link (since PRO-191), by source, counted under the issue only when it was sent to that address. Opt-outs whose link has no issue (earlier emails), or names an issue not sent to that address, count under unsubscribesWithoutIssue.',
 }

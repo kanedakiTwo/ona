@@ -38,6 +38,7 @@ export type AdminAction =
   | 'invite_campaign.create'
   | 'invite_campaign.delete'
   | 'newsletter.send'
+  | 'newsletter.wines_load'
   // Admin «Recetas pendientes» (specs/catalog-import.md)
   | 'catalog_draft.publish'
   | 'catalog_draft.discard'

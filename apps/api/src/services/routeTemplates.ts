@@ -40,6 +40,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/admin/month-menus',
   '/admin/newsletter/send',
   '/admin/newsletter/stats',
+  '/admin/newsletter/wines',
   '/admin/price-survey',
   '/admin/recipe-gaps',
   '/admin/regen-output',

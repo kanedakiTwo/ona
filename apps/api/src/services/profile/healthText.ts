@@ -22,6 +22,12 @@
  */
 import { normalizeText } from '../dietaryRestrictions.js'
 
+/**
+ * Pregnancy and breastfeeding, on their own too: the newsletter's wine never
+ * goes to a household that mentions them (PRO-395). Matched like the rest.
+ */
+export const PREGNANCY_TEXT_PATTERNS: ReadonlyArray<RegExp> = [/\bembaraz/, /\blactancia\b/, /\bdando el pecho\b/, /\bamamant/]
+
 /** Matched against `normalizeText` (lowercase, no accents). */
 export const HEALTH_TEXT_PATTERNS: ReadonlyArray<RegExp> = [
   // Allergies, intolerances, coeliac disease.
@@ -35,7 +41,7 @@ export const HEALTH_TEXT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bmedicacion\b/, /\bmedicamento/, /\bpastillas?\b/, /\btratamiento\b/, /\bmedic[oa]s?\b/, /\bdoctor[a]?\b/, /\bendocrin/,
   /\bnutricionista\b/, /\bdietista\b/, /\bpediatra\b/,
   // Pregnancy and breastfeeding.
-  /\bembaraz/, /\blactancia\b/, /\bdando el pecho\b/,
+  ...PREGNANCY_TEXT_PATTERNS,
   // Body data.
   /\b(peso|pesa|pesamos|pesan|mido|mide|medimos)\s+(unos?\s+|mas de\s+|menos de\s+)?\d/, /\b\d+([.,]\d+)?\s*(kg|kilos)\s+de\s+(mas|menos)\b/,
   /\bkilos de mas\b/, /\b(perder|bajar|subir|ganar) (de )?peso\b/, /\badelgaz/, /\bsobrepeso\b/, /\bobesidad\b/, /\bimc\b/,

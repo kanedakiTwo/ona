@@ -31,6 +31,7 @@ import {
 } from '../services/newsletter.js'
 import type { EmailMessage, EmailResult } from '../services/email.js'
 import type { NewsletterTipsRepo, RecipeFacts, TipLogRow, TipPersona } from '../services/newsletterTips.js'
+import type { NewsletterWineRepo, ParsedWineBase, Wine, WineAudience, WineSettings } from '../services/newsletterWine.js'
 import {
   buildIssueStats,
   contentLinks,
@@ -1101,5 +1102,278 @@ describe('a recipe and a tip for each person (PRO-1020)', () => {
     expect(row.clicks.slots.receta).toEqual({ total: 1, buttons: { abrir: 1 } })
     expect(row.clicks.slots.truco).toEqual({ total: 2, buttons: { abrir: 2 } })
     expect(JSON.stringify(report)).not.toContain('tachar_lista')
+  })
+})
+
+describe('the wine under each person’s recipe (PRO-395)', () => {
+  const ANA_ID = '44444444-4444-4444-8444-444444444441'
+  const BEA_ID = '44444444-4444-4444-8444-444444444442'
+  const KID_ID = '44444444-4444-4444-8444-444444444443'
+  const ADMIN_ID = '44444444-4444-4444-8444-444444444444'
+  const LENTEJAS = '88888888-8888-4888-8888-888888888881'
+  const MERLUZA = '88888888-8888-4888-8888-888888888882'
+  const NOW = new Date('2026-11-20T08:00:00.000Z')
+  const BROWSER = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'
+  const MODERATION = 'Disfruta del vino con moderación. No lo compartas con menores de 18 años.'
+
+  const N5 = newsletterSendSchema.parse({
+    ...ISSUE,
+    issueId: 'n5',
+    content: {
+      ...ISSUE.content,
+      recipes: [
+        { recipeId: LENTEJAS, title: 'Lentejas de la abuela', body: 'De cuchara.', imageUrl: 'https://mimoia.com/l.jpg', imageAlt: 'Lentejas' },
+        { recipeId: MERLUZA, title: 'Merluza en salsa verde', body: 'Para el viernes.', imageUrl: 'https://mimoia.com/m.jpg', imageAlt: 'Merluza' },
+      ],
+    },
+  })
+
+  const persona = (userId: string): TipPersona & { log: TipLogRow[] } => ({
+    userId,
+    householdId: `h-${userId}`,
+    signedUpAt: new Date('2026-10-01T08:00:00.000Z'),
+    whatsapp: { linked: true, notify: true, declined: false },
+    push: true,
+    accounts: 1,
+    isOwner: true,
+    adults: 1,
+    familyInviteDeclined: false,
+    inviteOfferDeclined: false,
+    usage: {},
+    shown: [],
+    log: [],
+  })
+
+  /** Ana and the kid get the lentils; Bea and the admin the hake. */
+  function memoryTips(): NewsletterTipsRepo {
+    const eats: Record<string, string> = { [ANA_ID]: LENTEJAS, [BEA_ID]: MERLUZA, [KID_ID]: LENTEJAS, [ADMIN_ID]: MERLUZA }
+    return {
+      personas: async (ids) => new Map(ids.map((i) => [i, persona(i)])),
+      recipeFacts: async (ids) =>
+        new Map(ids.map((i) => [i, { blocked: new Set([LENTEJAS, MERLUZA].filter((r) => r !== eats[i])), sentBefore: new Set<string>() }])),
+      record: async () => {},
+      markAdopted: async () => {},
+      userIdByEmail: async (email) => (email === 'admin@mimoia.com' ? ADMIN_ID : null),
+    }
+  }
+
+  const TINTO: Wine = {
+    id: 'v001',
+    num: 1,
+    name: 'Tinto de Prueba',
+    winery: 'Bodega Uno',
+    type: 'tinto',
+    grape: 'Tempranillo',
+    zone: 'Rioja',
+    vintage: null,
+    price: '9',
+    whereToBuy: 'Supermercados',
+    link: 'https://tienda.example/tinto',
+    categories: ['legumbres-guisos'],
+    noGo: [],
+    phrase: 'Con un guiso de cuchara, un tinto joven.',
+    relation: null,
+  }
+  const BLANCO: Wine = { ...TINTO, id: 'v002', num: 2, name: 'Blanco de Prueba', type: 'blanco', link: null, categories: ['pescado-blanco'], phrase: 'Para el pescado.' }
+  const SETTINGS: WineSettings = {
+    signatureName: 'Laura',
+    signatureAbout: null,
+    signatureAccepted: true,
+    rules: [],
+    videoWineId: null,
+    legalApproved: true,
+    legalRef: 'LEG-505',
+    moderationLine: MODERATION,
+  }
+
+  function memoryWines(settings: WineSettings = SETTINGS) {
+    const recorded: Array<{ issueId: string; userId: string; wineId: string }> = []
+    let base: { settings: WineSettings; wines: Wine[] } | null = { settings, wines: [TINTO, BLANCO] }
+    const replaced: Array<{ parsed: ParsedWineBase; legal: Partial<WineSettings> }> = []
+    const audiences: Record<string, WineAudience> = {
+      [ANA_ID]: { age: 41, householdRestrictions: [], householdTexts: [] },
+      [BEA_ID]: { age: 35, householdRestrictions: [], householdTexts: [] },
+      [KID_ID]: { age: 16, householdRestrictions: [], householdTexts: [] },
+      [ADMIN_ID]: { age: 50, householdRestrictions: [], householdTexts: [] },
+    }
+    const wines: NewsletterWineRepo = {
+      base: async () => base,
+      recipes: async (ids) =>
+        new Map(
+          ids.map((id) => [
+            id,
+            id === LENTEJAS ? { title: 'Lentejas estofadas', ingredients: ['lentejas', 'chorizo'] } : { title: 'Merluza en salsa verde', ingredients: ['merluza', 'perejil'] },
+          ]),
+        ),
+      audiences: async (ids) => new Map(ids.filter((i) => audiences[i]).map((i) => [i, audiences[i]])),
+      shown: async () => new Map(),
+      record: async (issueId, rows) => {
+        recorded.push(...rows.map((r) => ({ issueId, userId: r.userId, wineId: r.wineId })))
+      },
+      replace: async (parsed, legal) => {
+        replaced.push({ parsed, legal })
+        base = { settings: { ...parsed.settings, ...legal }, wines: parsed.wines }
+      },
+      link: async (id) => base?.wines.find((w) => w.id === id)?.link ?? null,
+    }
+    return { wines, recorded, replaced, audiences }
+  }
+
+  const people = () => [
+    userCand('ana@example.com', { userId: ANA_ID, token: newsletterTokenForUser(ANA_ID) }),
+    userCand('bea@example.com', { userId: BEA_ID, token: newsletterTokenForUser(BEA_ID) }),
+    userCand('kid@example.com', { userId: KID_ID, token: newsletterTokenForUser(KID_ID) }),
+    cand('lista@example.com', { unsubscribeToken: TOKEN_C }),
+  ]
+
+  it('goes right under the person’s recipe, with her signature and the moderation line; never to a minor or the waitlist; logged', async () => {
+    const { repo } = memoryRepo(people())
+    const { wines, recorded } = memoryWines()
+    const batch = okBatch()
+    expect(await sendNewsletter(N5, { ...deps(repo, batch), tips: memoryTips(), wines, now: () => NOW })).toMatchObject({ sent: 4 })
+    const [toAna, toBea, toKid, toList] = batch.mock.calls[0][0]
+    expect(toAna.html).toContain('El vino, por Laura')
+    expect(toAna.html).toContain('Tinto de Prueba · Bodega Uno')
+    expect(toAna.html).toContain('Tinto · Rioja · Tempranillo')
+    expect(toAna.html).toContain('Unos 9 € · Supermercados')
+    expect(toAna.html).toContain(MODERATION)
+    expect(toAna.html).not.toContain('Blanco de Prueba')
+    // Right under the recipe, before the issue's button.
+    const at = (s: string) => toAna.html.indexOf(s)
+    expect(at('De cuchara.')).toBeLessThan(at('El vino, por Laura'))
+    expect(at('El vino, por Laura')).toBeLessThan(at('Abrir Mimoia'))
+    // Without our counter, straight to the shop, with its utm and no affiliation.
+    expect(toAna.html).toContain('href="https://tienda.example/tinto?utm_source=newsletter&amp;utm_medium=email&amp;utm_campaign=vino-n5"')
+    expect(toAna.text).toContain('EL VINO, POR LAURA: Tinto de Prueba · Bodega Uno')
+    expect(toAna.text).toContain(MODERATION)
+    // The hake gets the white; it has no link, so no link.
+    expect(toBea.html).toContain('Blanco de Prueba')
+    expect(toBea.html).not.toContain('tienda.example')
+    expect(toKid.html).toContain('Lentejas de la abuela')
+    expect(toKid.html).not.toContain('El vino, por')
+    expect(toList.html).not.toContain('El vino, por')
+    expect(recorded).toEqual([
+      { issueId: 'n5', userId: ANA_ID, wineId: 'v001' },
+      { issueId: 'n5', userId: BEA_ID, wineId: 'v002' },
+    ])
+  })
+
+  it('off without Legal’s yes or her signature; an account whose check is missing gets none', async () => {
+    for (const settings of [
+      { ...SETTINGS, legalApproved: false },
+      { ...SETTINGS, moderationLine: null },
+      { ...SETTINGS, signatureAccepted: false },
+    ]) {
+      const { repo } = memoryRepo(people())
+      const { wines, recorded } = memoryWines(settings)
+      const batch = okBatch()
+      await sendNewsletter(N5, { ...deps(repo, batch), tips: memoryTips(), wines, now: () => NOW })
+      for (const m of batch.mock.calls[0][0]) expect(m.html).not.toContain('El vino, por')
+      expect(recorded).toEqual([])
+    }
+    const { repo } = memoryRepo(people())
+    const mem = memoryWines()
+    delete mem.audiences[ANA_ID]
+    const batch = okBatch()
+    await sendNewsletter(N5, { ...deps(repo, batch), tips: memoryTips(), wines: mem.wines, now: () => NOW })
+    expect(batch.mock.calls[0][0][0].html).not.toContain('El vino, por')
+    expect(batch.mock.calls[0][0][1].html).toContain('El vino, por Laura')
+  })
+
+  it('a failing wine repo → nobody gets wine and the send goes on', async () => {
+    const { repo } = memoryRepo(people())
+    const { wines } = memoryWines()
+    const broken: NewsletterWineRepo = { ...wines, audiences: async () => Promise.reject(new Error('db down')) }
+    const batch = okBatch()
+    expect(await sendNewsletter(N5, { ...deps(repo, batch), tips: memoryTips(), wines: broken, now: () => NOW })).toMatchObject({ sent: 4 })
+    for (const m of batch.mock.calls[0][0]) expect(m.html).not.toContain('El vino, por')
+    expect(batch.mock.calls[0][0][0].html).toContain('Lentejas de la abuela')
+  })
+
+  it('Miguel’s dish type in the editor wins over the rules', async () => {
+    const { repo } = memoryRepo(people().slice(0, 1))
+    const { wines } = memoryWines()
+    const batch = okBatch()
+    const asFish = newsletterSendSchema.parse({
+      ...N5,
+      content: { ...N5.content, recipes: N5.content.recipes!.map((r) => (r.recipeId === LENTEJAS ? { ...r, dishType: 'pescado-blanco' } : r)) },
+    })
+    await sendNewsletter(asFish, { ...deps(repo, batch), tips: memoryTips(), wines, now: () => NOW })
+    expect(batch.mock.calls[0][0][0].html).toContain('Blanco de Prueba')
+    expect(newsletterSendSchema.safeParse({ ...N5, content: { ...N5.content, recipes: [{ ...N5.content.recipes![0], dishType: 'postres' }] } }).success).toBe(false)
+  })
+
+  it('the Wednesday proof carries the admin’s own wine, and is not logged', async () => {
+    const { repo } = memoryRepo(people(), ['admin@mimoia.com'])
+    const { wines, recorded } = memoryWines()
+    const sendOne = vi.fn(async () => ({ status: 'sent', id: 'one' }) as EmailResult)
+    await sendNewsletter({ ...N5, testTo: 'admin@mimoia.com' }, { ...deps(repo, okBatch()), sendOne, tips: memoryTips(), wines, now: () => NOW })
+    const html = (sendOne.mock.calls[0] as any)[0].html as string
+    expect(html).toContain('Merluza en salsa verde')
+    expect(html).toContain('Blanco de Prueba')
+    expect(recorded).toEqual([])
+  })
+
+  function app(sendBatch: ReturnType<typeof okBatch>, mem: ReturnType<typeof memoryWines>, audit = vi.fn(async () => 'a1')) {
+    const { repo } = memoryRepo(people())
+    const { stats } = memoryStats(() => [{ issueId: 'n5', source: 'user' }])
+    const asAdmin: RequestHandler = (req, _res, next) => {
+      ;(req as any).userId = '11111111-1111-4111-8111-111111111111'
+      next()
+    }
+    return createNewsletterRouter({
+      repo,
+      stats,
+      wines: mem.wines,
+      adminAuth: [asAdmin],
+      statsAuth: asAdmin,
+      unsubscribeLimiter: noLimit,
+      audit: audit as any,
+      makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats, tips: memoryTips(), wines: mem.wines, now: () => NOW }),
+      publicUrl: () => 'https://mimoia.com',
+    })
+  }
+
+  it('its link goes through our counter (slot vino) to the base’s link; a bad or link-less wine → 404', async () => {
+    const sendBatch = okBatch()
+    const b = await serve(express().use(express.json()).use(app(sendBatch, memoryWines())))
+    await fetch(`${b}/admin/newsletter/send`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(N5) })
+    const [toAna] = sendBatch.mock.calls[0][0]
+    expect(toAna.html).toContain('https://mimoia.com/n/n5/45?v=v001')
+    expect(toAna.html).not.toContain('tienda.example')
+    const click = (path: string) => fetch(`${b}${path}`, { headers: { 'user-agent': BROWSER } })
+    expect(await (await click('/newsletter/click/n5/45?v=v001')).json()).toEqual({
+      url: 'https://tienda.example/tinto?utm_source=newsletter&utm_medium=email&utm_campaign=vino-n5',
+    })
+    await click('/newsletter/click/n5/45?v=v001&prueba=1')
+    for (const p of ['/newsletter/click/n5/45', '/newsletter/click/n5/45?v=v002', '/newsletter/click/n5/45?v=v999', `/newsletter/click/n5/45?v=${encodeURIComponent('https://malo.example')}`]) {
+      expect((await click(p)).status, p).toBe(404)
+    }
+    const report = await (await fetch(`${b}/admin/newsletter/stats`)).json()
+    const row = report.issues.find((i: any) => i.issueId === 'n5')
+    expect(row.clicks.slots.vino).toEqual({ total: 1, buttons: { abrir: 1 } })
+    expect(JSON.stringify(report)).not.toContain('v001')
+  })
+
+  it('PUT /admin/newsletter/wines loads vinos/base.md with Legal’s yes, answers counts and audits them', async () => {
+    const mem = memoryWines()
+    const audit = vi.fn(async () => 'a1')
+    const b = await serve(express().use(express.json({ limit: '1mb' })).use(app(okBatch(), mem, audit)))
+    const md = `## Firma\n\n- nombre: Laura\n- acepta: sí\n\n## Sus reglas para todos los vinos\n\n- arroces → nunca tinto\n- algo que no cabe\n\n## Vinos\n\n### v007 · Rosado de Prueba · Bodega Siete\n- estado: ok\n- tipo: rosado\n- categorias: arroces, pasta\n- frase: «Fresco.»\n\n### v008 · Otro · Bodega\n- estado: revisar\n`
+    const put = (body: unknown) => fetch(`${b}/admin/newsletter/wines`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    expect((await put({})).status).toBe(400)
+    expect((await put({ base: md, legal: { approved: true } })).status).toBe(400)
+
+    const off = await (await put({ base: md })).json()
+    expect(off).toMatchObject({ wines: 1, skipped: [{ id: 'v008', reason: 'sin visto bueno' }], byDishType: { arroces: 1, pasta: 1 }, rules: 1, unparsedRules: ['algo que no cabe'], signatureAccepted: true, legalApproved: false, enabled: false })
+    expect(mem.replaced[0].legal).toEqual({ legalApproved: false, legalRef: null, moderationLine: null })
+
+    const on = await (await put({ base: md, legal: { approved: true, ref: 'LEG-505', moderationLine: MODERATION } })).json()
+    expect(on).toMatchObject({ wines: 1, legalApproved: true, enabled: true })
+    expect(mem.replaced[1].parsed.wines.map((w) => w.id)).toEqual(['v007'])
+    expect(audit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ action: 'newsletter.wines_load', payload: { wines: 1, skipped: 1, legalApproved: true, signatureAccepted: true, enabled: true } }),
+    )
+    expect(JSON.stringify((audit.mock.calls as any[]).map((c) => c[0]))).not.toContain('Rosado')
   })
 })

@@ -1622,6 +1622,71 @@ export const newsletterTipLog = pgTable('newsletter_tip_log', {
 ])
 
 /**
+ * PRO-395 (D-180): la base de vinos de la newsletter, cargada desde HQ
+ * (`PUT /admin/newsletter/wines`, nunca en el repo). Solo los vinos con su
+ * visto bueno (`estado: ok`); cada carga reemplaza la base entera.
+ */
+export const newsletterWines = pgTable('newsletter_wines', {
+  /** `v001`, `v002`… (el id de su página). */
+  id: text('id').primaryKey(),
+  num: integer('num'),
+  name: text('name').notNull(),
+  winery: text('winery').notNull(),
+  /** blanco | tinto | rosado | espumoso | generoso | dulce */
+  type: text('type').notNull(),
+  grape: text('grape'),
+  zone: text('zone'),
+  vintage: text('vintage'),
+  /** Euros, aproximado, tal cual («12», «10-12»). */
+  price: text('price'),
+  whereToBuy: text('where_to_buy'),
+  /** Sin afiliación; solo https. */
+  link: text('link'),
+  /** Los tipos de plato (`WINE_DISH_TYPES`). */
+  categories: text('categories').array().notNull().default([]),
+  /** Palabras clave de «no va con», normalizadas. */
+  noGo: text('no_go').array().notNull().default([]),
+  phrase: text('phrase').notNull(),
+  relation: text('relation'),
+  loadedAt: timestamp('loaded_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** PRO-395: lo de la base que no es un vino (una sola fila, id 1): su firma, sus reglas, el vídeo y el sí de Legal. */
+export const newsletterWineSettings = pgTable('newsletter_wine_settings', {
+  id: integer('id').primaryKey().default(1),
+  signatureName: text('signature_name'),
+  signatureAbout: text('signature_about'),
+  /** La casilla «Acepto que Mimoia publique…». */
+  signatureAccepted: boolean('signature_accepted').notNull().default(false),
+  /** `[{ category? | term?, never }]`: «tipo de plato o palabra → nunca tal tipo de vino». */
+  rules: jsonb('rules').notNull().default([]),
+  /** El vino del vídeo de esta semana (`newsletter_wines.id`). */
+  videoWineId: text('video_wine_id'),
+  /** LEG-505: sin su sí (y su línea de moderación) no sale ningún vino. */
+  legalApproved: boolean('legal_approved').notNull().default(false),
+  legalRef: text('legal_ref'),
+  moderationLine: text('moderation_line'),
+  loadedAt: timestamp('loaded_at', { withTimezone: true }).notNull().defaultNow(),
+}, () => [check('newsletter_wine_settings_single', sql.raw('id = 1'))])
+
+/**
+ * PRO-395: el vino que se le mandó a cada persona, una fila por número y
+ * cuenta, para no repetirlo en 4 números. Solo lo lee el compositor. Se
+ * borra con la cuenta y con el hogar.
+ */
+export const newsletterWineLog = pgTable('newsletter_wine_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  wineId: text('wine_id').notNull(),
+  shownAt: timestamp('shown_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_newsletter_wine_log_issue_user').on(t.issueId, t.userId),
+  index('idx_newsletter_wine_log_user').on(t.userId),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).

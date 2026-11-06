@@ -23,6 +23,14 @@ import {
 } from '../services/newsletterStats.js'
 import { parseSlotParams, slotDestination } from '../services/newsletterShare.js'
 import { personalSlotDestination } from '../services/newsletterTips.js'
+import {
+  WINE_ID_RE,
+  createDbNewsletterWineRepo,
+  parseWineBase,
+  wineDestination,
+  wineEnabled,
+  type NewsletterWineRepo,
+} from '../services/newsletterWine.js'
 import { metricsAuth } from '../middleware/metricsAuth.js'
 
 /**
@@ -43,13 +51,31 @@ import { metricsAuth } from '../middleware/metricsAuth.js'
  *                                  The person's recipe (43, `?r=<recipe id>`) and tip (44,
  *                                  `?t=<tip id>`, PRO-1020) answer our recipe page or the
  *                                  tip's screen; a bad id → 404.
+ *                                  The person's wine (45, `?v=<wine id>`, PRO-395) answers
+ *                                  the base's link to where it is bought; a bad id → 404.
  *   GET  /admin/newsletter/stats   admin JWT or x-metrics-token: per issue sent, clicks
  *                                  per link and opt-outs. Counts only.
+ *   PUT  /admin/newsletter/wines   admin JWT (PRO-395): `{ base, legal? }` = HQ's
+ *                                  `vinos/base.md` as written and LEG-505's yes with its
+ *                                  moderation line. Replaces the whole wine base; answers
+ *                                  counts and whether wine can go out.
  */
 
 const ISSUE_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 const unsubscribeSchema = z.object({ token: z.string().trim().min(3).max(200) })
+const winesSchema = z.object({
+  /** `departments/marketing/vinos/base.md`, as written. */
+  base: z.string().min(1).max(500_000),
+  /** LEG-505: without its yes and its moderation line no wine goes out. */
+  legal: z
+    .object({
+      approved: z.boolean(),
+      ref: z.string().trim().max(40).optional(),
+      moderationLine: z.string().trim().min(1).max(300),
+    })
+    .optional(),
+})
 const optInSchema = z.object({ optIn: z.boolean() })
 
 /** The API's own origin, for the one-click URL (behind Railway: `trust proxy` is on). */
@@ -88,6 +114,8 @@ export interface NewsletterRouterDeps {
   stats: NewsletterStatsRepo
   /** Admin JWT or the read-only metrics token used by internal reporting. */
   statsAuth: RequestHandler
+  /** PRO-395: the wine base. */
+  wines: NewsletterWineRepo
 }
 
 export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> = {}): Router {
@@ -104,6 +132,7 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
     makeDeps: (urls) => ({ ...defaultNewsletterDeps(urls), repo, stats }),
     audit: recordAudit,
     publicUrl: () => env.WEB_PUBLIC_URL,
+    wines: overrides.wines ?? createDbNewsletterWineRepo(),
     ...overrides,
   }
   const router = Router()
@@ -222,6 +251,11 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       if (slot?.slot === 'corre_la_voz') {
         const params = parseSlotParams(req.query.c, req.query.k)
         built = params ? slotDestination(slot, deps.publicUrl(), params.code, params.kind) : null
+      } else if (slot?.slot === 'vino') {
+        // The person's wine (PRO-395): the base's link, never a URL from the request.
+        const id = req.query.v
+        const link = typeof id === 'string' && WINE_ID_RE.test(id) ? await deps.wines.link(id) : null
+        built = link ? wineDestination(link, issueId) : null
       } else if (slot) {
         built = personalSlotDestination(slot.slot, deps.publicUrl(), slot.slot === 'receta' ? req.query.r : req.query.t)
       }
@@ -247,6 +281,49 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
       res.json({ ...(await deps.stats.stats()), definitions: NEWSLETTER_STATS_DEFINITIONS })
     } catch (err: any) {
       console.error('[newsletter] stats failed:', err?.message ?? err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  })
+
+  router.put('/admin/newsletter/wines', ...deps.adminAuth, async (req: AuthRequest, res: Response) => {
+    const parsed = winesSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Pasa `base` (el texto de vinos/base.md) y, si Legal ha dicho que sí, `legal`.', code: 'INVALID_WINE_BASE' })
+      return
+    }
+    try {
+      const base = parseWineBase(parsed.data.base)
+      const legal = parsed.data.legal
+      const legalApproved = legal?.approved === true
+      const settings = {
+        legalApproved,
+        legalRef: legal?.ref ?? null,
+        moderationLine: legalApproved ? legal!.moderationLine : null,
+      }
+      await deps.wines.replace(base, settings)
+      const enabled = wineEnabled({ ...base.settings, ...settings }) && base.wines.length > 0
+      const byDishType: Record<string, number> = {}
+      for (const w of base.wines) for (const c of w.categories) byDishType[c] = (byDishType[c] ?? 0) + 1
+      const summary = {
+        wines: base.wines.length,
+        skipped: base.skipped,
+        byDishType,
+        rules: base.settings.rules.length,
+        unparsedRules: base.unparsedRules,
+        videoWineId: base.settings.videoWineId,
+        signatureAccepted: base.settings.signatureAccepted,
+        legalApproved,
+        enabled,
+      }
+      await deps.audit({
+        adminId: req.userId!,
+        action: 'newsletter.wines_load',
+        targetType: 'newsletter_issue',
+        payload: { wines: summary.wines, skipped: summary.skipped.length, legalApproved, signatureAccepted: summary.signatureAccepted, enabled },
+      })
+      res.json(summary)
+    } catch (err: any) {
+      console.error('[newsletter] wine base load failed:', err?.message ?? err)
       res.status(500).json({ error: 'Internal server error' })
     }
   })

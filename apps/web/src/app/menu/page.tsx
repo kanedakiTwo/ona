@@ -17,11 +17,8 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
-<<<<<<< d647af43ed4df58ed2331d450988bf4e7f79357f
 import { AutoplanCard } from "@/components/menu/AutoplanCard"
-=======
 import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
 import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"

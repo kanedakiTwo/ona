@@ -17,13 +17,31 @@ import {
   createDbNewsletterStatsRepo,
   slotLinkFor,
   slotLinks,
+  trackedPersonalUrl,
   trackedSlotUrl,
   withTrackedLinks,
   type InviteKind,
   type NewsletterStatsRepo,
 } from './newsletterStats.js'
 import { correLaVozCopyUrl, correLaVozWhatsappHref, personalInviteUrl } from './newsletterShare.js'
+import {
+  createDbNewsletterTipsRepo,
+  pickRecipe,
+  pickTip,
+  tipAdoptedAt,
+  type NewsletterTip,
+  type NewsletterTipsRepo,
+} from './newsletterTips.js'
 import { ensureReferralCode } from './accountReferrals.js'
+import {
+  EMPTY_LETTER_FACTS,
+  createDbNewsletterLetterRepo,
+  fillLetter,
+  reasonLine,
+  waitlistLetterFacts,
+  type LetterFacts,
+  type NewsletterLetterRepo,
+} from './newsletterLetter.js'
 import {
   ACCENT,
   BODY,
@@ -69,6 +87,8 @@ import {
  *     invite link (the household's `/i/<code>`, or the list's `?invita=`,
  *     PRO-130) and two buttons, WhatsApp and copy, counted in the slot
  *     «corre_la_voz» (`newsletterStats.ts`).
+ *   - Every account gets its own recipe and tip (PRO-1020, `newsletterTips.ts`),
+ *     counted in the slots «receta» and «truco» and logged in `newsletter_tip_log`.
  */
 
 // ─── Content ─────────────────────────────────────────────────────
@@ -111,8 +131,27 @@ export const newsletterContentSchema = z.object({
     /** One line under the title, e.g. «Cuchara · 3 horas · para 6». */
     meta: z.string().trim().max(120).optional(),
   }),
+  /**
+   * PRO-1020: catalogue recipes to choose from for each account (its
+   * household can eat it, hasn't said «Mejor no», hasn't had it before).
+   * Waitlist people, and accounts none of them fits, get the `star`.
+   */
+  recipes: z
+    .array(
+      z.object({
+        recipeId: z.string().uuid(),
+        title: z.string().trim().min(1).max(160),
+        body: z.string().trim().min(1).max(1200),
+        imageUrl: httpsUrl,
+        imageAlt: z.string().trim().min(1).max(200),
+        meta: z.string().trim().max(120).optional(),
+      }),
+    )
+    .max(8)
+    .optional(),
   sections: z.array(section).max(4).optional(),
   news: block.optional(),
+  /** The general tip; with personalisation (PRO-1020), only for whoever has no tip of their own. */
   tip: block.optional(),
   cta: z.object({ label: z.string().trim().min(1).max(60), url: httpsUrl }),
   /** Small print (e.g. how the photos are made). */
@@ -394,6 +433,8 @@ export interface NewsletterCandidate {
   referralCode?: string | null
   /** The account's id; user only. */
   userId?: string
+  /** PRO-1123: what the waitlist entry told us (its name, its household); waitlist only. Accounts' come from `letters`. */
+  letter?: LetterFacts
 }
 
 export interface NewsletterRecipient {
@@ -404,6 +445,7 @@ export interface NewsletterRecipient {
   leaveToken?: string
   referralCode?: string
   userId?: string
+  letter?: LetterFacts
 }
 
 /**
@@ -429,6 +471,7 @@ export function selectNewsletterRecipients(
       ...(c.leaveToken ? { leaveToken: c.leaveToken } : {}),
       ...(c.referralCode ? { referralCode: c.referralCode } : {}),
       ...(c.source === 'user' && c.userId ? { userId: c.userId } : {}),
+      ...(c.letter ? { letter: c.letter } : {}),
     })
   }
   return out
@@ -484,6 +527,9 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
           status: waitlistEntries.status,
           unsubscribeToken: waitlistEntries.unsubscribeToken,
           referralCode: waitlistEntries.referralCode,
+          firstName: waitlistEntries.firstName,
+          householdSize: waitlistEntries.householdSize,
+          currentMethod: waitlistEntries.currentMethod,
         })
         .from(waitlistEntries)
         .where(and(eq(waitlistEntries.newsletterOptIn, true), ne(waitlistEntries.status, 'unsubscribed')))
@@ -505,6 +551,7 @@ export function createDbNewsletterRepo(db: Db = defaultDb): NewsletterRepo {
           token: newsletterTokenForWaitlist(r.unsubscribeToken),
           leaveToken: r.unsubscribeToken,
           referralCode: r.referralCode,
+          letter: waitlistLetterFacts(r),
         })),
       ]
     },
@@ -639,6 +686,12 @@ export interface NewsletterDeps {
    * `<web>/n/<issue>/<index>` and are saved before sending. Absent → links as written.
    */
   stats?: NewsletterStatsRepo
+  /** PRO-1020: present → each account gets its own recipe and tip (`newsletterTips.ts`). */
+  tips?: NewsletterTipsRepo
+  /** PRO-1123: what we know of each account's household, for its letter. Absent → name-less, generic reason. */
+  letters?: NewsletterLetterRepo
+  /** The clock of the tip rules (tests). */
+  now?: () => Date
 }
 
 export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string }): NewsletterDeps {
@@ -647,8 +700,67 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
     sendBatch: (m) => sendEmailBatch(m),
     sendOne: (m) => sendEmail(m),
     stats: createDbNewsletterStatsRepo(),
+    tips: createDbNewsletterTipsRepo(),
+    letters: createDbNewsletterLetterRepo(),
     ...urls,
   }
+}
+
+type RecipeCandidate = NonNullable<NewsletterContent['recipes']>[number]
+
+/** What one account gets in this issue (PRO-1020); nothing = the issue's star and general tip. */
+export interface PersonalPick {
+  recipe?: RecipeCandidate
+  tip?: NewsletterTip
+}
+
+interface PersonalChoice {
+  householdId: string
+  pick: PersonalPick
+  /** Earlier tips of theirs that turn out adopted (first use within 14 days). */
+  adopted: Array<{ id: string; adoptedAt: Date }>
+}
+
+/**
+ * Each account's recipe and tip (PRO-1020, §6.3 of Marketing's tips). Never
+ * fails the send: an error leaves everyone with the star and the general tip.
+ */
+async function choosePersonal(
+  input: NewsletterSendInput,
+  userIds: string[],
+  tips: NewsletterTipsRepo,
+  now: Date,
+): Promise<Map<string, PersonalChoice>> {
+  const out = new Map<string, PersonalChoice>()
+  if (userIds.length === 0) return out
+  try {
+    const personas = await tips.personas(userIds)
+    const candidates = input.content.recipes ?? []
+    const ids = candidates.map((c) => c.recipeId)
+    const facts = ids.length > 0 ? await tips.recipeFacts([...personas.keys()], ids) : new Map()
+    for (const [userId, p] of personas) {
+      const picked = pickTip(p, now)
+      // Without its facts (it couldn't be checked) no candidate goes: the star.
+      const recipeId = ids.length > 0 ? pickRecipe(ids, facts.get(userId) ?? { blocked: new Set(ids), sentBefore: new Set() }, `${input.issueId}|${userId}`) : null
+      const adopted = p.log.flatMap((l) => {
+        if (!l.tip || l.adoptedAt) return []
+        const at = tipAdoptedAt(l.tip, l.shownAt, p.usage)
+        return at ? [{ id: l.id, adoptedAt: at }] : []
+      })
+      out.set(userId, {
+        householdId: p.householdId,
+        pick: {
+          ...(recipeId ? { recipe: candidates.find((c) => c.recipeId === recipeId) } : {}),
+          ...(picked ? { tip: picked.tip } : {}),
+        },
+        adopted,
+      })
+    }
+  } catch (err: any) {
+    console.warn('[newsletter] no personal recipe or tip (everyone gets the general ones):', err?.message ?? err)
+    out.clear()
+  }
+  return out
 }
 
 /**
@@ -675,6 +787,77 @@ export function correLaVozLinks(
   }
 }
 
+/**
+ * PRO-1020: the content with the person's own recipe in place of the star and
+ * their tip in place of the general one. With `track`, both go through our
+ * counter (slots `receta` and `truco`); without it, straight to the page.
+ */
+export function withPersonalPick(
+  content: NewsletterContent,
+  pick: PersonalPick | undefined,
+  publicUrl: string,
+  track?: { issueId: string; proof: boolean },
+): NewsletterContent {
+  if (!pick || (!pick.recipe && !pick.tip)) return content
+  const web = publicUrl.replace(/\/+$/, '')
+  const out = { ...content }
+  if (pick.recipe) {
+    const { recipeId, ...rest } = pick.recipe
+    out.star = {
+      ...rest,
+      url: track ? trackedPersonalUrl(web, track.issueId, 'receta', recipeId, track.proof) : `${web}/recipes/${recipeId}`,
+    }
+  }
+  if (pick.tip) {
+    out.tip = {
+      title: pick.tip.title,
+      body: pick.tip.body,
+      url: track ? trackedPersonalUrl(web, track.issueId, 'truco', pick.tip.id, track.proof) : `${web}${pick.tip.path}`,
+    }
+  }
+  return out
+}
+
+/** PRO-1123: who the letter is for. Without it, a name-less letter with the generic reason. */
+export interface PersonalLetter {
+  name: string | null
+  reason: string
+}
+
+export const GENERIC_LETTER: PersonalLetter = { name: null, reason: reasonLine(EMPTY_LETTER_FACTS, undefined, new Date()) }
+
+/**
+ * PRO-1123: Miguel's template filled in for one person: `{nombre}`,
+ * `{receta}` (the recipe they get, after `withPersonalPick`) and `{porque}`
+ * in the subject, the preheader, the letter (greeting, headline, intro,
+ * signoff, small print), the star's text and the sections. A template without
+ * placeholders comes out as written.
+ */
+export function withPersonalLetter(
+  input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
+  letter: PersonalLetter = GENERIC_LETTER,
+): Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'> {
+  const c = input.content
+  const vars = { name: letter.name, recipe: c.star.title, reason: letter.reason }
+  const f = (s: string) => fillLetter(s, vars)
+  const opt = (s: string | undefined) => (s === undefined ? undefined : f(s))
+  return {
+    ...input,
+    subject: f(input.subject),
+    preheader: opt(input.preheader),
+    content: {
+      ...c,
+      preface: opt(c.preface),
+      headline: opt(c.headline),
+      intro: opt(c.intro),
+      signoff: opt(c.signoff),
+      note: opt(c.note),
+      star: { ...c.star, body: f(c.star.body), meta: opt(c.star.meta) },
+      sections: c.sections?.map((s) => ({ ...s, title: opt(s.title), quote: opt(s.quote), body: f(s.body) })),
+    },
+  }
+}
+
 export function buildNewsletterMessage(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   to: string,
@@ -682,6 +865,8 @@ export function buildNewsletterMessage(
   urls: { publicUrl: string; apiUrl: string },
   issueId?: string,
   track?: { issueId: string; proof: boolean },
+  pick?: PersonalPick,
+  letter?: PersonalLetter,
 ): EmailMessage {
   const web = urls.publicUrl.replace(/\/+$/, '')
   const api = urls.apiUrl.replace(/\/+$/, '')
@@ -689,10 +874,11 @@ export function buildNewsletterMessage(
   const leaveListUrl = tokens.leaveToken ? `${web}${waitlistUnsubscribePath(tokens.leaveToken)}` : undefined
   const share = tokens.referralCode ? correLaVozLinks(web, tokens.referralCode, tokens.inviteKind ?? 'lista', track) : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
-  const { html, text } = renderNewsletterEmail(input, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
+  const personal = withPersonalLetter({ ...input, content: withPersonalPick(input.content, pick, web, track) }, letter)
+  const { html, text } = renderNewsletterEmail(personal, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
   return {
     to,
-    subject: input.subject,
+    subject: personal.subject,
     html,
     text,
     headers: {
@@ -723,8 +909,8 @@ export class NewsletterTestAddressError extends Error {}
 async function trackContent(input: NewsletterSendInput, deps: NewsletterDeps, proof: boolean): Promise<NewsletterSendInput> {
   if (!deps.stats) return input
   const links = contentLinks(input.content)
-  // The «Corre la voz» slot rows (PRO-1019) go with them.
-  await deps.stats.registerLinks(input.issueId, [...links, ...slotLinks()])
+  // The «Corre la voz» slot rows (PRO-1019) go with them, and the recipe and tip ones when personalised (PRO-1020).
+  await deps.stats.registerLinks(input.issueId, [...links, ...slotLinks(deps.tips ? ['corre_la_voz', 'receta', 'truco'] : ['corre_la_voz'])])
   return { ...input, content: withTrackedLinks(input.content, links, deps.publicUrl, input.issueId, proof) }
 }
 
@@ -746,22 +932,141 @@ async function withAccountCodes(recipients: NewsletterRecipient[], repo: Newslet
   return out
 }
 
-const inviteKindOf = (r: Pick<NewsletterRecipient, 'source'>): InviteKind => (r.source === 'user' ? 'hogar' : 'lista')
+/**
+ * PRO-1020: what went out to each account goes in `newsletter_tip_log`, and
+ * earlier tips now adopted get their date. Only for emails that were sent;
+ * a failure here only warns (the emails are already out).
+ */
+async function recordPersonal(
+  issueId: string,
+  mine: NewsletterRecipient[],
+  results: EmailResult[],
+  choices: Map<string, PersonalChoice>,
+  tips: NewsletterTipsRepo,
+): Promise<void> {
+  try {
+    const rows = mine.flatMap((r, k) => {
+      const c = r.userId ? choices.get(r.userId) : undefined
+      if (!c || results[k]?.status !== 'sent') return []
+      return [{ userId: r.userId!, householdId: c.householdId, tip: c.pick.tip?.id ?? null, recipeId: c.pick.recipe?.recipeId ?? null }]
+    })
+    await tips.record(issueId, rows)
+    await tips.markAdopted([...choices.values()].flatMap((c) => c.adopted))
+  } catch (err: any) {
+    console.warn('[newsletter] recipe and tip log not saved:', err?.message ?? err)
+  }
+}
+
+const inviteKindOf =(r: Pick<NewsletterRecipient, 'source'>): InviteKind => (r.source === 'user' ? 'hogar' : 'lista')
+
+/**
+ * PRO-1123: each recipient's letter (by email hash): their name and why their
+ * recipe was chosen for them, from what we know of their household (never
+ * their health). Never fails the send: an error leaves the name-less letter
+ * with the generic reason.
+ */
+async function composeLetters(
+  recipients: Array<Pick<NewsletterRecipient, 'hash' | 'source' | 'userId' | 'letter'>>,
+  choices: Map<string, PersonalChoice>,
+  deps: Pick<NewsletterDeps, 'letters'>,
+  now: Date,
+): Promise<Map<string, PersonalLetter>> {
+  const accountIds = recipients.flatMap((r) => (r.source === 'user' && r.userId ? [r.userId] : []))
+  let facts = new Map<string, LetterFacts>()
+  let seasons = new Map<string, string[]>()
+  if (deps.letters) {
+    try {
+      facts = await deps.letters.accountFacts(accountIds, now)
+      const ids = [...new Set([...choices.values()].flatMap((c) => (c.pick.recipe ? [c.pick.recipe.recipeId] : [])))]
+      seasons = await deps.letters.recipeSeasons(ids)
+    } catch (err: any) {
+      console.warn('[newsletter] no household facts for the letters (name-less letters):', err?.message ?? err)
+      facts = new Map()
+      seasons = new Map()
+    }
+  }
+  const out = new Map<string, PersonalLetter>()
+  for (const r of recipients) {
+    const f = (r.source === 'user' ? (r.userId ? facts.get(r.userId) : undefined) : r.letter) ?? EMPTY_LETTER_FACTS
+    const recipeId = r.userId ? choices.get(r.userId)?.pick.recipe?.recipeId : undefined
+    out.set(r.hash, { name: f.firstName, reason: reasonLine(f, recipeId ? seasons.get(recipeId) : undefined, now) })
+  }
+  return out
+}
+
+/** The opt-out token of proofs and previews: it unsubscribes nobody. */
+const PROOF_TOKEN = 'w.prueba-no-da-de-baja-a-nadie'
+
+/** One person's email as the preview shows it (PRO-1123): never sent, never tracked, never logged. */
+export interface NewsletterPreview {
+  /** Masked address (`a***@example.com`). */
+  to: string
+  source: 'user' | 'waitlist'
+  subject: string
+  html: string
+}
+
+/**
+ * PRO-1123: the template as 2–3 real recipients would get it (accounts first,
+ * one waitlist person when there is one), for the admin's eyes only. Reads
+ * only: no claim, no invite code assigned, no tracked links, no log.
+ */
+export async function previewNewsletter(
+  input: Pick<NewsletterSendInput, 'issueId' | 'subject' | 'preheader' | 'content'>,
+  deps: NewsletterDeps,
+  size = 3,
+): Promise<NewsletterPreview[]> {
+  const now = deps.now?.() ?? new Date()
+  const all = selectNewsletterRecipients(await deps.repo.candidates(), new Set())
+  const accounts = all.filter((r) => r.source === 'user')
+  const waitlist = all.filter((r) => r.source === 'waitlist')
+  const people = [...accounts.slice(0, waitlist.length > 0 ? size - 1 : size), ...waitlist].slice(0, size)
+  const full = { ...input, testTo: undefined, dryRun: undefined, includes: undefined }
+  const ids = people.flatMap((r) => (r.userId ? [r.userId] : []))
+  const choices = deps.tips ? await choosePersonal(full, ids, deps.tips, now) : new Map<string, PersonalChoice>()
+  const letters = await composeLetters(people, choices, deps, now)
+  return people.map((r) => {
+    const msg = buildNewsletterMessage(
+      input,
+      r.email,
+      // Their opt-out links never leave the server: the preview's are dummies, like a proof's.
+      { token: PROOF_TOKEN, referralCode: r.referralCode, inviteKind: inviteKindOf(r) },
+      { publicUrl: deps.publicUrl, apiUrl: deps.apiUrl },
+      undefined,
+      undefined,
+      r.userId ? choices.get(r.userId)?.pick : undefined,
+      letters.get(r.hash),
+    )
+    return { to: maskEmail(r.email), source: r.source, subject: msg.subject, html: msg.html }
+  })
+}
 
 export async function sendNewsletter(input: NewsletterSendInput, deps: NewsletterDeps): Promise<NewsletterOutcome> {
   const urls = { publicUrl: deps.publicUrl, apiUrl: deps.apiUrl }
+  const now = deps.now?.() ?? new Date()
   if (input.testTo) {
     if (!(await deps.repo.isAdminEmail(input.testTo))) throw new NewsletterTestAddressError(input.testTo)
     const tracked = await trackContent(input, deps, true)
     // The proof carries the admin's own «Corre la voz» (their household's link), never anyone else's.
     const adminCode = deps.repo.ensureAccountCode ? await deps.repo.ensureAccountCode({ email: input.testTo }).catch(() => null) : null
+    // And the admin's own recipe and tip (PRO-1020), never recorded.
+    const adminId = deps.tips ? await deps.tips.userIdByEmail(input.testTo).catch(() => null) : null
+    const adminChoices = adminId && deps.tips ? await choosePersonal(input, [adminId], deps.tips, now) : new Map<string, PersonalChoice>()
+    const mine = adminId ? adminChoices.get(adminId) : undefined
+    // And the admin's own letter (PRO-1123): their name and their household's reason.
+    const hash = recipientHash(input.testTo)
+    const letter = adminId
+      ? (await composeLetters([{ hash, source: 'user', userId: adminId }], adminChoices, deps, now)).get(hash)
+      : undefined
     const msg = buildNewsletterMessage(
       { ...tracked, subject: `[Prueba] ${input.subject}` },
       input.testTo,
-      { token: 'w.prueba-no-da-de-baja-a-nadie', ...(adminCode ? { referralCode: adminCode, inviteKind: 'hogar' as const } : {}) },
+      { token: PROOF_TOKEN, ...(adminCode ? { referralCode: adminCode, inviteKind: 'hogar' as const } : {}) },
       urls,
       undefined,
       deps.stats ? { issueId: input.issueId, proof: true } : undefined,
+      mine?.pick,
+      letter,
     )
     const r = await deps.sendOne(msg)
     return { mode: 'test', issueId: input.issueId, to: maskEmail(input.testTo), status: r.status }
@@ -791,6 +1096,9 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
     deps.repo,
   )
   const track = deps.stats && recipients.length > 0 ? { issueId: input.issueId, proof: false } : undefined
+  const accountIds = mine.flatMap((r) => (r.source === 'user' && r.userId ? [r.userId] : []))
+  const choices = deps.tips ? await choosePersonal(input, accountIds, deps.tips, now) : new Map<string, PersonalChoice>()
+  const letters = await composeLetters(mine, choices, deps, now)
   const results = await deps.sendBatch(
     mine.map((r) =>
       buildNewsletterMessage(
@@ -800,6 +1108,8 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
         urls,
         input.issueId,
         track,
+        r.userId ? choices.get(r.userId)?.pick : undefined,
+        letters.get(r.hash),
       ),
     ),
   )
@@ -818,6 +1128,7 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   })
   await deps.repo.markSent(input.issueId, sent)
   await deps.repo.release(input.issueId, notSent)
+  if (deps.tips && choices.size > 0) await recordPersonal(input.issueId, mine, results, choices, deps.tips)
   console.log(
     `[newsletter] ${input.issueId}: sent ${sent.length}, failed ${failed}, skipped ${skipped}, already ${claimedBefore.size + (recipients.length - mine.length)}`,
   )

@@ -80,7 +80,7 @@ import { scaleRecipe } from '../services/recipeScaler.js'
 import {
   extractRecipeFromUrl,
   NotARecipeError,
-  SocialCaptionUnavailableError,
+  NeedsScreenshotError,
 } from '../services/recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../services/sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../services/net/publicFetch.js'
@@ -88,6 +88,8 @@ import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/sco
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { findPantryMatches } from '../services/pantryMatcher.js'
 import { chosenFromIds, findRecipesWithWhatIHave, loadUserRestrictions, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
+import { recipeIdsNamedByDislikes } from '../services/dishDislikes.js'
+import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { recipeIdsBreakingRestrictions } from '../services/dietaryRestrictions.js'
 import { isCoeliacHousehold, recipeDietNotices } from '../services/glutenFreeCharcuterie.js'
@@ -97,6 +99,7 @@ import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
 import { isBookRecipe, loadSitemapRecipes } from '../services/recipeSeo.js'
 import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
+import { ingredientMarksOf } from '../services/ingredientRoles.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
@@ -173,6 +176,9 @@ interface RecipeRow {
   tips: string | null
   substitutions: string | null
   storage: string | null
+  /** PRO-372 (migration 0097); absent on pre-migration rows. */
+  freezable?: boolean | null
+  fridgeDays?: number | null
   /** PRO-220 (migration 0071); absent on pre-migration rows. */
   advancePrep?: Array<{ text: string; hoursBefore: number }> | null
   nutritionPerServing: Recipe['nutritionPerServing']
@@ -180,6 +186,7 @@ interface RecipeRow {
   nutritionIncomplete?: boolean | null
   tags: string[] | null
   internalTags: string[] | null
+  course?: string | null
   sourceUrl: string | null
   sourceType: string | null
   /** PRO-299: the catalogue recipe a copy was made from. */
@@ -213,6 +220,13 @@ interface RecipeCard {
   /** Only `kcal` is exposed on the card (per spec). */
   nutritionPerServing: { kcal: number } | null
   allergens: string[]
+  /** PRO-376: for the «Para picar» chip. */
+  course: string | null
+  /**
+   * PRO-376: the importer wasn't sure of the allergens (internal tag
+   * `alergenos:duda`, never sent itself); «Sin gluten» leaves it out.
+   */
+  allergenDoubt: boolean
   /** The signed-in reader marked it (their own heart); absent for anonymous callers. */
   is_favorite?: boolean
 }
@@ -224,6 +238,9 @@ async function favoriteIdsOf(userId: string | undefined, recipeIds: string[]): P
     .where(and(eq(userFavorites.userId, userId), inArray(userFavorites.recipeId, recipeIds)))
   return new Set(rows.map((r) => r.recipeId))
 }
+
+/** Internal tag the catalogue import sets when the allergens are in doubt (`services/catalogImport.ts`). */
+const ALLERGEN_DOUBT_TAG = 'alergenos:duda'
 
 function toCard(row: RecipeRow): RecipeCard {
   return {
@@ -244,7 +261,25 @@ function toCard(row: RecipeRow): RecipeCard {
         ? { kcal: row.nutritionPerServing.kcal }
         : null,
     allergens: row.allergens ?? [],
+    course: row.course ?? null,
+    allergenDoubt: (row.internalTags ?? []).some((t) => t.toLowerCase() === ALLERGEN_DOUBT_TAG),
   }
+}
+
+/**
+ * Catalogue cards for `ids`, in that order, with the reader's hearts — the
+ * same card `GET /recipes` lists (used by the collections, PRO-374). The
+ * caller has already checked the ids are visible.
+ */
+export async function recipeCardsByIds(ids: string[], userId: string | undefined): Promise<RecipeCard[]> {
+  if (ids.length === 0) return []
+  const rows = (await db.select().from(recipes).where(inArray(recipes.id, ids))) as RecipeRow[]
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const favs = await favoriteIdsOf(userId, ids)
+  return ids
+    .map((id) => byId.get(id))
+    .filter((r): r is RecipeRow => r != null)
+    .map((r) => (userId ? { ...toCard(r), is_favorite: favs.has(r.id) } : toCard(r)))
 }
 
 interface IngredientRow {
@@ -363,6 +398,9 @@ function toDetailRecipe(
   // PRO-1077: a book recipe stays out of search engines until Legal's OK.
   if (isBookRecipe(row.catalogSource)) detail.fromBook = true
   if (row.advancePrep?.length) detail.advancePrep = row.advancePrep
+  // PRO-372: the ficha's «Se puede congelar» / «Aguanta N días en nevera» seals.
+  if (row.freezable != null) detail.freezable = row.freezable
+  if (row.fridgeDays != null) detail.fridgeDays = row.fridgeDays
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".
 
@@ -446,9 +484,10 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
         : []
     const customTags = sanitizeCustomTags(customTagsList)
     // ?fitsMe=1 (PRO-61): hide recipes that break the caller's allergies or
-    // diet (profile + memory; dislikes are not applied — an explicit pick may
-    // override a dislike, never an allergy). Used by the menu's «Elegir otra
-    // receta» picker. Anonymous callers: ignored.
+    // diet (profile + memory; ingredient dislikes are not applied — an explicit
+    // pick may override a dislike, never an allergy — but a dislike that names
+    // the dish is, PRO-1142). Used by the menu's «Elegir otra receta» picker.
+    // Anonymous callers: ignored.
     const fitsMe = req.query.fitsMe === '1' || req.query.fitsMe === 'true'
     // ?mine=1 (PRO-299): only the caller's own recipes («Mis recetas»). The
     // web used to filter the first page of the whole catalogue, where the
@@ -519,9 +558,13 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
       }
     }
     if (req.userId && fitsMe) {
-      const { restrictions } = await loadUserRestrictions(req.userId, db)
-      if (restrictions.length > 0) {
-        const excluded = recipeIdsBreakingRestrictions(await loadMatchableRecipes(req.userId, db), restrictions)
+      const { restrictions, dislikes: own } = await loadUserRestrictions(req.userId, db)
+      // PRO-1142: and the dishes a dislike of the household names, unless a
+      // «Me apetece» came after it.
+      const { dislikes } = withFichaFilters({ dislikes: own, availableEquipment: undefined }, await loadFichaMenuConstraints(req.userId, { db }))
+      if (restrictions.length > 0 || dislikes.length > 0) {
+        const pool = await loadMatchableRecipes(req.userId, db)
+        const excluded = [...recipeIdsBreakingRestrictions(pool, restrictions), ...recipeIdsNamedByDislikes(pool, dislikes)]
         if (excluded.length > 0) conditions.push(notInArray(recipes.id, excluded))
       }
     }
@@ -829,9 +872,10 @@ router.post(
     } catch (err: any) {
       console.error('Extract recipe from URL error:', err)
 
-      // Instagram / TikTok post whose caption doesn't hold the recipe:
-      // plan B is a screenshot (photo import). Same sentence as WhatsApp.
-      if (err instanceof SocialCaptionUnavailableError) {
+      // Instagram / TikTok post whose caption doesn't hold the recipe, or a
+      // page we aren't let in to read: plan B is a screenshot (photo
+      // import). Same sentence as WhatsApp.
+      if (err instanceof NeedsScreenshotError) {
         res.status(422).json({ error: err.message, code: 'NEEDS_SCREENSHOT' })
         return
       }
@@ -1135,6 +1179,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
             optional: ing.optional,
             note: ing.note,
             displayOrder: ing.displayOrder ?? i,
+            ...ingredientMarksOf(ing),
           })),
         )
       }
@@ -1450,6 +1495,7 @@ router.get('/user/:id/recipes', authMiddleware, async (req: AuthRequest, res) =>
         nutritionPerServing: recipes.nutritionPerServing,
         tags: recipes.tags,
         internalTags: recipes.internalTags,
+        course: recipes.course,
         sourceUrl: recipes.sourceUrl,
         sourceType: recipes.sourceType,
         createdAt: recipes.createdAt,

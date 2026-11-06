@@ -10,7 +10,8 @@ import { madridParts } from '../madridTime.js'
 import { generatedWeeksOf } from '../menuWeek.js'
 import { SchoolMenuFileError, isHeicUpload, isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
 import { getPrimaryHouseholdId } from '../scopeResolver.js'
-import { runWithCostUser } from '../costLedger.js'
+import { currentCostChannel, runWithCostUser } from '../costLedger.js'
+import { recordCapHit, type CapHitInput } from '../capHits.js'
 import type { SchoolLunch } from '@ona/shared'
 import { getMemoryForUser } from '../userMemoryStore.js'
 import { regionFromMemory } from '../menuHolidays.js'
@@ -97,13 +98,23 @@ export function buildInboundDeps(): InboundDeps {
     chat: (userId, message, history, opts) => chat(userId, message, history, db, opts),
     // The chat's own € budget AND the monthly cap on all paid AI work
     // (spendCap.ts), both before any paid step. Admins are exempt from the cap.
+    // PRO-1090: the first hit of the month leaves a cap_hits row (WhatsApp
+    // only: Telegram shares these deps and isn't one of its channels).
     checkBudget: async (userId) => {
+      const telegram = currentCostChannel() === 'telegram'
+      const note = async (hit: Omit<CapHitInput, 'userId' | 'channel'>) =>
+        telegram ? false : recordCapHit({ ...hit, userId, channel: 'whatsapp' })
       const advisor = await checkAdvisorBudget(userId, db)
-      if (advisor.exceeded) return advisor
+      if (advisor.exceeded) {
+        await note({ cap: 'asistente', spentEur: advisor.spentMicros / 1_000_000, capEur: advisor.budgetMicros / 1_000_000 })
+        return advisor
+      }
       const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
       if (row?.role === 'admin') return advisor
       const cap = await spendCapStatus(userId)
-      return cap.exceeded ? { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) } : advisor
+      if (!cap.exceeded) return advisor
+      await note({ cap: 'ia', spentEur: cap.spentEur, capEur: cap.capEur })
+      return { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) }
     },
     recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
     isPaused: (userId) => isAccountPaused(userId),

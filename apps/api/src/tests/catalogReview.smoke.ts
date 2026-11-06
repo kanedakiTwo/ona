@@ -7,6 +7,8 @@
  *     the same transaction; an audit issue holds it (nothing written);
  *   - «Descartar» / «Recuperar» set and take back Miguel's verdict, audited;
  *   - «Publicar las aprobadas» publishes only what the rule allows;
+ *   - the source of a catalogue recipe (link + credit) changes without
+ *     touching the rest, audited; a user's recipe is never touched (PRO-1015);
  *   - the import job store appends outcomes in order and a boot marks a job
  *     left running as interrupted.
  *
@@ -26,6 +28,7 @@ import {
   publishApprovedInBatch,
   publishCatalogDraft,
   restoreCatalogDraft,
+  updateCatalogSource,
 } from '../services/catalogReview.js'
 
 const tag = `revision${Date.now().toString(36)}`
@@ -196,4 +199,25 @@ describe.skipIf(!reachable)('admin «Recetas pendientes» against Postgres', () 
     expect(await store.get(stale.id)).toMatchObject({ status: 'interrupted' })
     expect(await store.findRunning()).toBeNull()
   }, 30_000)
+
+  it('the source of a catalogue recipe: link and credit, nothing else, audited (PRO-1015)', async () => {
+    const id = await insertDraft(`Sopa de prueba ${tag}`, { credit: 'Inspirada en una receta de Maribel', page: '2026-10-01' })
+    const [before] = await db.select({ tips: recipes.tips, course: recipes.course, status: recipes.status }).from(recipes).where(eq(recipes.id, id))
+    const r = await updateCatalogSource(id, { sourceUrl: 'https://www.youtube.com/watch?v=prueba', credit: 'Inspirada en una receta de Maribel Reig' }, USER_ID)
+    expect(r).toMatchObject({ ok: true, id, sourceUrl: 'https://www.youtube.com/watch?v=prueba', sourceCredit: 'Inspirada en una receta de Maribel Reig' })
+    const [row] = await db.select({ sourceUrl: recipes.sourceUrl, sourceType: recipes.sourceType, catalogSource: recipes.catalogSource, tips: recipes.tips, course: recipes.course, status: recipes.status }).from(recipes).where(eq(recipes.id, id))
+    expect(row).toMatchObject({ sourceUrl: 'https://www.youtube.com/watch?v=prueba', sourceType: 'youtube', tips: before.tips, course: before.course, status: before.status })
+    expect(row.catalogSource).toMatchObject({ credit: 'Inspirada en una receta de Maribel Reig', page: '2026-10-01', batch: tag })
+    const audit = (await auditFor(id)).filter((a) => a.action === 'catalog_recipe.source')
+    expect(audit).toHaveLength(1)
+    expect(audit[0].payload).toMatchObject({ before: { credit: 'Inspirada en una receta de Maribel' }, after: { credit: 'Inspirada en una receta de Maribel Reig' } })
+
+    // Only the credit: the link stays.
+    expect(await updateCatalogSource(id, { credit: null }, USER_ID)).toMatchObject({ ok: true, sourceUrl: 'https://www.youtube.com/watch?v=prueba', sourceCredit: null })
+
+    // A user's recipe is not the catalogue's.
+    const [own] = await db.select({ id: recipes.id }).from(recipes).where(eq(recipes.authorId, USER_ID)).limit(1)
+    if (own) expect(await updateCatalogSource(own.id, { credit: 'x' }, USER_ID)).toEqual({ ok: false, code: 'NOT_FOUND' })
+  }, 30_000)
+
 })

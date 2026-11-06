@@ -7,7 +7,7 @@ import { SITE_URL } from "./site"
  * `GET /recipes/sitemap` lists — published, without the book ones (PRO-1077,
  * D-104). Pure, so the tests can check it without a server.
  */
-export const PUBLIC_PAGES = ["/", "/como-funciona", "/recipes", "/blog", "/privacidad", "/terminos", "/aviso-legal"]
+export const PUBLIC_PAGES = ["/", "/como-funciona", "/recipes", "/receta-del-dia", "/blog", "/privacidad", "/terminos", "/aviso-legal"]
 
 export interface SitemapRecipe {
   id: string

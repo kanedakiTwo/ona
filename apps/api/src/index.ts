@@ -27,6 +27,7 @@ import unitsRouter from './routes/units.js'
 import memoryRoutes from './routes/memory.js'
 import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
+import cookNowRoutes from './routes/cookNow.js'
 import staplesRoutes from './routes/staples.js'
 import pushRoutes from './routes/push.js'
 import notificationRoutes from './routes/notifications.js'
@@ -37,6 +38,7 @@ import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
+import ingredientRoleRoutes from './routes/ingredientRoles.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
@@ -47,18 +49,23 @@ import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import priceSurveyRoutes from './routes/priceSurvey.js'
 import feedbackRoutes from './routes/feedback.js'
+import whatsappQuestionRoutes from './routes/whatsappQuestion.js'
 import tasteRoutes from './routes/taste.js'
 import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
+import catalogCollectionsRoutes from './routes/catalogCollections.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
+import { startCatalogStorageLabels } from './services/catalogStorageLabels.js'
 import { startMenuRecipeRecheck } from './services/menuRecipeRecheck.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
 import householdProfileRoutes from './routes/householdProfile.js'
 import schoolMenuRoutes from './routes/schoolMenu.js'
 import blindComparisonRoutes from './routes/blindComparison.js'
+import monthMenusRoutes from './routes/monthMenus.js'
+import recipeOfTheDayRoutes from './routes/recipeOfTheDay.js'
 import { trackShoppingActivity } from './services/activityEvents.js'
 import { trackUsageRoutes } from './services/usageEvents.js'
 import { warnDroppedExtraRefSources } from './services/agentView.js'
@@ -158,10 +165,13 @@ app.use(emailSinkRoutes)
 app.use(billingRoutes)
 app.use(priceSurveyRoutes)
 app.use(feedbackRoutes)
+// «Pregunta única por WhatsApp» (PRO-1091): per-route admin auth.
+app.use(whatsappQuestionRoutes)
 // «Afina tu menú» (PRO-146): per-route auth.
 app.use(tasteRoutes)
 app.use(noticesRoutes)
 app.use(catalogWishesRoutes)
+app.use(catalogCollectionsRoutes)
 // How the household cooks (PRO-217): per-route auth.
 app.use(householdHabitsRoutes)
 // «Tu ficha» (PRO-317): per-route auth.
@@ -170,6 +180,10 @@ app.use(householdProfileRoutes)
 app.use(schoolMenuRoutes)
 // Menú inteligente: comparación a ciegas en los hogares de prueba (PRO-256).
 app.use(blindComparisonRoutes)
+// Menú del mes (PRO-378): per-route auth.
+app.use(monthMenusRoutes)
+// La receta del día (PRO-1099): public.
+app.use(recipeOfTheDayRoutes)
 app.use(recipeRoutes)
 app.use(ingredientRoutes)
 // pushRoutes is mostly auth-protected (per-route authMiddleware) but the
@@ -187,6 +201,8 @@ app.use(telegramRoutes)
 // GET /admin/metrics accepts `x-metrics-token` instead of a JWT, so it must
 // be mounted before the catch-all `router.use(authMiddleware)` routers below.
 app.use(metricsRoutes)
+// Same reason: the ingredient-role routes accept `x-cocina-token` (specs/cook-now.md).
+app.use(ingredientRoleRoutes)
 // Same reason: GET /admin/errors also accepts `x-metrics-token`.
 app.use(appErrorsRoutes)
 // Same reason: GET /admin/waitlist accepts `x-metrics-token` (invite is admin JWT only).
@@ -204,6 +220,7 @@ app.use('/', unitsRouter)
 app.use(memoryRoutes)
 app.use(householdRoutes)
 app.use(cookLogRoutes)
+app.use(cookNowRoutes)
 app.use(staplesRoutes)
 app.use(recipeNotesRoutes)
 app.use(pantryRoutes)
@@ -230,6 +247,8 @@ app.listen(env.PORT, () => {
   void interruptStaleCatalogImports()
   // Catalogue photos are made before a recipe goes out (and for any published without one).
   startCatalogPhotos()
+  // PRO-372: catalogue recipes without «se congela» / «días en nevera» get them, 20 at a time.
+  startCatalogStorageLabels()
   // PRO-345: saved menus whose recipe changed (catalogue fixes on deploy, scripts) or was deleted.
   startMenuRecipeRecheck()
 })

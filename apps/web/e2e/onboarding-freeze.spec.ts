@@ -6,7 +6,7 @@
  * shows and changes it. At 390×844 (iPhone 14).
  */
 import { test, expect } from '@playwright/test'
-import { registerFreshUser } from './_helpers'
+import { answerShopper, registerFreshUser } from './_helpers'
 
 test.use({ viewport: { width: 390, height: 844 } })
 
@@ -21,10 +21,9 @@ test('«¿Congeláis la carne o el pescado?» in the sign-up → «Lo que recuer
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
 
-  // Step 3: the freezing question sits under «¿Cómo cocináis en casa?», optional.
+  // The freezing question sits under «¿Cómo cocináis en casa?», optional.
   const freeze = page.getByTestId('onboarding-freeze')
   await expect(freeze).toContainText('¿Congeláis la carne o el pescado cuando compráis?')
   for (const label of ['Sí, casi siempre', 'A veces', 'No']) {
@@ -39,9 +38,7 @@ test('«¿Congeláis la carne o el pescado?» in the sign-up → «Lo que recuer
   const onboarding = page.waitForRequest((r) => r.method() === 'POST' && /\/user\/[^/]+\/onboarding$/.test(r.url()))
   await page.getByRole('button', { name: /sin prisa/i }).click()
   await next.click()
-  await next.click() // no restrictions
-  await page.getByRole('button', { name: /salud/i }).click()
-  await page.getByRole('button', { name: /empezar/i }).click()
+  await page.getByRole('button', { name: /empezar/i }).click() // no restrictions
   expect(JSON.parse((await onboarding).postData() ?? '{}').freezesMeatFish).toBe('sometimes')
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
 

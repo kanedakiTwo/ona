@@ -76,14 +76,10 @@ describe('complete_onboarding', () => {
   it('exists, and takes no health fields to save (PRO-1041: the said allergies only shape the first menu)', () => {
     expect(completeOnboarding).toBeDefined()
     const props = Object.keys((completeOnboarding.parameters as any).properties)
-<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
-    expect(props.sort()).toEqual(['adults', 'cookingFreq', 'cookingStyle', 'favoriteDishes', 'kidsCount', 'priority', 'restrictions_said'])
+    expect(props.sort()).toEqual(['adults', 'cookingFreq', 'cookingStyle', 'favoriteDishes', 'kidsCount', 'priority', 'restrictions_said', 'shopper'])
     expect((completeOnboarding.parameters as any).properties.restrictions_said.description).toMatch(/solo a este menu y no se guardan/)
-=======
-    expect(props.sort()).toEqual(['adults', 'cookingFreq', 'cookingStyle', 'favoriteDishes', 'kidsCount', 'priority', 'shopper'])
     // PRO-383: who does the shopping is never required (only 2 adults or more are asked).
     expect((completeOnboarding.parameters as any).required).toEqual(['adults', 'kidsCount'])
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   })
 
   it('2026-11-03: how they cook is the web\'s four answers; the priority has no default', () => {

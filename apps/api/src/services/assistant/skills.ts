@@ -52,13 +52,9 @@ import { unlistedDietMentions } from '../stepDietMentions.js'
 import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
-<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
 import { withMenuOnlyRestrictions } from '../menuOnlyRestrictions.js'
 import { loadRecentUserTexts, saidRestrictionsForMenu, saidRestrictionsLine, type SaidRestrictions } from '../saidRestrictions.js'
-import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
-=======
 import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../glutenFreeCharcuterie.js'
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
@@ -1123,24 +1119,17 @@ const completeOnboarding: SkillDefinition = {
         enum: [...PRIORITIES],
         description: 'Solo si dice lo que mas le importa (quick = rapido, varied = variado, healthy = sano, cheap = barato). No lo preguntes; si no lo ha dicho, omitelo.',
       },
-<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
-      restrictions_said: RESTRICTIONS_SAID_PROP,
-=======
       shopper: {
         type: 'string',
         enum: [...SHOPPERS],
         description: 'Solo con 2 adultos o mas: quien hace la compra. me = el usuario ("Yo"); other = otra persona de casa; shared = se turnan. Con other o shared la herramienta devuelve el mensaje con el enlace de invitacion para esa persona. Con 1 adulto, omitelo.',
       },
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
+      restrictions_said: RESTRICTIONS_SAID_PROP,
     },
     required: ['adults', 'kidsCount'],
   },
   async handler(
-<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
-    params: { adults?: number; kidsCount?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; priority?: string; restrictions_said?: string[] },
-=======
-    params: { adults?: number; kidsCount?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; priority?: string; shopper?: string },
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
+    params: { adults?: number; kidsCount?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; priority?: string; shopper?: string; restrictions_said?: string[] },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -1194,11 +1183,7 @@ const completeOnboarding: SkillDefinition = {
     const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.channel)}` : ''
     return {
       ...menu,
-<<<<<<< 5afc39953cc80522183d7f7fc0aa39c4fdfc397d
-      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños). ${menu.summary}${nextLine}${saidLine}`,
-=======
-      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}`,
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
+      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}${saidLine}`,
     }
   },
 }

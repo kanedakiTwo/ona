@@ -6,7 +6,7 @@ import { skills, getToolDefinitions } from './skills.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
 import { recordSkillUsage } from '../usageEvents.js'
-import { claimsAction, toolMadeChange } from './claims.js'
+import { admitsNotDone, claimsAction, toolMadeChange, unconfirmedCalls } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
@@ -210,6 +210,16 @@ export const TRUNCATED_NOTE =
 export const UNBACKED_CLAIM_NOTE =
   '[Nota del sistema, no la menciones] En este turno no has hecho ningun cambio: no ha corrido ninguna herramienta que cambie algo. Si el ultimo mensaje del usuario te pide un cambio, hazlo ahora con la herramienta; si no puedes hacerlo, o ya estaba asi de antes y lo has comprobado, dilo con claridad sin afirmar que acabas de hacerlo. Si su ultimo mensaje es una pregunta o no pide ningun cambio, contesta solo a esa pregunta: sin decir que no has cambiado nada y sin repetir lo hecho en turnos anteriores. No pidas perdon por esta nota ni hables de herramientas.'
 
+/**
+ * PRO-349: the reply says it changed things, something did change, but a tool
+ * that changes things failed or changed nothing (and wasn't fixed later in
+ * the turn). Same extra round, naming what wasn't confirmed.
+ */
+export function partialClaimNote(unconfirmed: readonly string[]): string {
+  const what = unconfirmed.map((s) => `«${s.replace(/\s+/g, ' ').trim().slice(0, 200)}»`).join('; ')
+  return `[Nota del sistema, no la menciones] Parte de lo que dices que has hecho no esta hecho. Esto no se ha confirmado: ${what}. Hazlo ahora con la herramienta o dile al usuario con claridad que eso no esta hecho. Di "hecho" solo de lo que se ha confirmado. No pidas perdon por esta nota ni hables de herramientas.`
+}
+
 const REFUSAL_REPLY = 'Perdona, con eso no te puedo ayudar. ¿Te echo una mano con el menú, una receta o la compra?'
 
 type MessagesClient = { messages: { create: (args: any, options?: any) => Promise<any> } }
@@ -348,17 +358,21 @@ export async function runToolLoop(params: {
       // replies of all; since then it only flagged turns with no tool at all,
       // so «Ya está apuntado como cocinado» after `get_shopping_list` slipped
       // through. The note goes as an extra round, never shown to the user.
+      // PRO-349: also when something changed but another changing tool of
+      // the turn failed or changed nothing (a «Hecho» only half true).
       const changed = executed.some((e) => toolMadeChange(e.name, e.result.summary, e.isError))
-      if (!changed && claimsAction(text)) {
+      const unconfirmed = unconfirmedCalls(executed.map((e) => ({ name: e.name, summary: e.result.summary, error: e.isError })))
+      const halfTrue = changed && unconfirmed.length > 0 && !admitsNotDone(text)
+      if ((!changed || halfTrue) && claimsAction(text)) {
         if (!retriedClaim && round < maxRounds) {
           retriedClaim = true
           flags.push('claim_retry')
-          console.warn('[assistant] claimed a change without a changing tool; one more round')
+          console.warn(changed ? '[assistant] claimed a change a tool did not confirm; one more round' : '[assistant] claimed a change without a changing tool; one more round')
           messages.push({ role: 'assistant', content: content as any })
-          messages.push({ role: 'user', content: UNBACKED_CLAIM_NOTE })
+          messages.push({ role: 'user', content: changed ? partialClaimNote(unconfirmed.map((u) => String(u.summary ?? ''))) : UNBACKED_CLAIM_NOTE })
           continue
         }
-        flags.push('unverified_claim')
+        flags.push(changed ? 'partial_claim' : 'unverified_claim')
       }
       return buildResponse(text, executed, usage, flags)
     }

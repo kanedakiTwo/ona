@@ -18,6 +18,7 @@ import {
   type TokenUsage,
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+import { dbTurnStore, remoteMessagesClient } from './mimoRemoto.js'
 import { hasLikedRecipes } from '../tasteStore.js'
 import { noteApiCallOk } from '../apiSaldo.js'
 
@@ -70,7 +71,8 @@ export async function chat(
   db: any,
   opts: ChatOptions = {},
 ): Promise<AssistantResponse & { usage: TokenUsage }> {
-  const anthropic = getClient()
+  // PRO-1102: staging's «Mimo remoto» — the office answers each round, not Anthropic.
+  const anthropic: MessagesClient = env.MIMO_REMOTO ? remoteMessagesClient(dbTurnStore(db)) : getClient()
   const mode = opts.mode ?? 'text'
 
   // 1. Load user context
@@ -304,7 +306,8 @@ export async function runToolLoop(params: {
     )
     usage = addAnthropicUsage(usage, response.usage)
     // PRO-1101: Anthropic contesta, así que hay saldo: cierra la racha `saldo_api` si la había.
-    noteApiCallOk()
+    // PRO-1102: con «Mimo remoto» contesta la oficina, que no dice nada del saldo.
+    if (!env.MIMO_REMOTO) noteApiCallOk()
 
     if (response.stop_reason === 'refusal') {
       flags.push('refusal')

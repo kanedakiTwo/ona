@@ -210,6 +210,21 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - Tests: `apps/api/src/tests/chatMessages.test.ts` (rows + route, engine faked) and `chatMessages.smoke.ts` (purge 91 vs 89 days, account deletion, real Postgres).
 - Source: [apps/api/src/services/chatMessages.ts](../apps/api/src/services/chatMessages.ts), table `chat_messages` in [schema.ts](../apps/api/src/db/schema.ts) (migration `0055_chat_messages`), purge call in [notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts).
 
+## Mimo remoto en staging (PRO-1102, D-157)
+
+Staging's test households used to cost 5–6 $ of API an afternoon. With **`MIMO_REMOTO=1`** (staging only) no round of Mimo goes to Anthropic: the office answers it with the subscription.
+
+- **Never in production.** The API refuses to boot with the mode on when `NODE_ENV=production` or `RAILWAY_ENVIRONMENT` / `RAILWAY_ENVIRONMENT_NAME` is `production` (`config/mimoRemoto.ts`, read by `env.ts`). Off is the default.
+- **Every round, every channel** (app, WhatsApp, Telegram): where `runToolLoop` would call `messages.create`, `chat()` gives it `remoteMessagesClient` instead. The request goes as is (model, system, messages, tools, `tool_choice`, `max_tokens`…) into a new row of **`mimo_turnos_remotos`** (`id`, `creado`, `estado` `pendiente | cogido | respondido | caducado`, `peticion`, `respuesta`; migration `0108_mimo_turnos_remotos`), and the engine polls it every 0.5 s for **at most 120 s**. No answer by then → `caducado` and an error, exactly as when Anthropic fails (WhatsApp sends its usual error message, the app its 500). An answer that lands while it expires is used.
+- **The office's routes**, with their own Bearer token **`MIMO_REMOTO_TOKEN`** (mode off or no token → 404; wrong token → 401):
+  - `POST /agent/mimo-remoto/siguiente` → the oldest `pendiente` round, now `cogido` (`{ id, creado, peticion }`; `FOR UPDATE SKIP LOCKED`, so two runs never get the same one). Waits up to **25 s** for one; **204** when none came.
+  - `POST /agent/mimo-remoto/:id/respuesta` with `{ content, stop_reason }` in the Messages API format: `content` is a list of `{ type: 'text', text }` and `{ type: 'tool_use', id, name, input }` blocks; `stop_reason` one of `end_turn`, `tool_use`, `max_tokens`, `stop_sequence`, `refusal`. → `{ ok: true }`; 400 for a bad body, 404 for an unknown round, 409 `{ estado }` when it was already `respondido` or `caducado`.
+- With the answer the engine carries on as if Anthropic had sent it: it runs every `tool_use`, sends the results back as the next round (a new row), and so on; the truncation, refusal and «hecho sin herramienta» rules behave the same.
+- **Nothing is paid, nothing is metered:** the answer has no `usage`, and `recordAdvisorUsage` writes nothing to `cost_events` nor to the user's monthly budget while the mode is on. Other paid steps of a turn (transcription, photo import, guided texts) are unchanged.
+- The office side (the Hogares run answers with a «Mimo» subagent using the same prompt) is a separate piece of work.
+- Tests: `mimoRemoto.test.ts` (request saved as is, `tool_use` → tool runs → another round, expiry at 120 s, routes, the API not booting in production) and `mimoRemoto.smoke.ts` (a test WhatsApp message through `processInbound` against Postgres: pending round, `cogido`, `tool_use`, second round, reply, no `cost_events`; expiry).
+- Source: [services/assistant/mimoRemoto.ts](../apps/api/src/services/assistant/mimoRemoto.ts), [routes/mimoRemoto.ts](../apps/api/src/routes/mimoRemoto.ts), [config/mimoRemoto.ts](../apps/api/src/config/mimoRemoto.ts).
+
 ## Related specs
 
 - [Menus](./menus.md) — assistant can read and modify menus

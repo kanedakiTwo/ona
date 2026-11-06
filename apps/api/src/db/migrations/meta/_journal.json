@@ -722,6 +722,13 @@
       "when": 1793942618716,
       "tag": "0107_ingredient_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1793950577623,
+      "tag": "0108_mimo_turnos_remotos",
+      "breakpoints": true
     }
   ]
 }

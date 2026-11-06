@@ -38,6 +38,7 @@ import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
+import mimoRemotoRoutes from './routes/mimoRemoto.js'
 import ingredientRoleRoutes from './routes/ingredientRoles.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
@@ -207,6 +208,8 @@ app.use(ingredientRoleRoutes)
 app.use(appErrorsRoutes)
 // Same reason: GET /admin/waitlist accepts `x-metrics-token` (invite is admin JWT only).
 app.use(adminWaitlistRouter)
+// «Mimo remoto» (PRO-1102): own Bearer token, 404 unless MIMO_REMOTO=1 (staging).
+app.use(mimoRemotoRoutes)
 app.use(inviteCampaignRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)

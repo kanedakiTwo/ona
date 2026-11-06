@@ -27,13 +27,8 @@
  * Everything that talks to the AI or the database is injected (`CatalogImportDeps`)
  * so the orchestration is tested without either.
  */
-<<<<<<< fdc9ab2c98a55580f71459bd5b42efc6d416e259
 import type { Difficulty, IngredientRole, Meal, Season, Unit } from '@ona/shared'
-import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS } from '@ona/shared'
-=======
-import type { Difficulty, Meal, Season, Unit } from '@ona/shared'
 import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS, isIsoDay } from '@ona/shared'
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
@@ -174,7 +169,8 @@ export interface PersistDraftInput {
   /** PRO-372: the ficha's storage seals; null = no data. */
   freezable: boolean | null
   fridgeDays: number | null
-<<<<<<< fdc9ab2c98a55580f71459bd5b42efc6d416e259
+  /** PRO-1099: «la receta del día» of that day (AAAA-MM-DD); null = none. */
+  featuredOn?: string | null
   ingredients: Array<{
     ingredientId: string
     quantity: number
@@ -186,11 +182,6 @@ export interface PersistDraftInput {
     role: IngredientRole | null
     substituteIngredientIds: string[]
   }>
-=======
-  /** PRO-1099: «la receta del día» of that day (AAAA-MM-DD); null = none. */
-  featuredOn?: string | null
-  ingredients: Array<{ ingredientId: string; quantity: number; unit: Unit; note: string | null; optional: boolean; section: string | null; displayOrder: number }>
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   steps: Array<{ index: number; text: string; durationMin: number | null; temperature: number | null; technique: string | null; ingredientRefs: string[] }>
   catalogSource: CatalogSourceRef & { batch: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
 }

@@ -62,12 +62,9 @@ import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
-<<<<<<< fdc9ab2c98a55580f71459bd5b42efc6d416e259
 import { ingredientMarksOf } from '../ingredientRoles.js'
-=======
 import { shopperInviteForSignUp } from '../shopperInvite.js'
 import { SHOPPERS, asksShopper, isShopper, shopperInvites } from '@ona/shared'
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
 import { schoolDinnerPool } from '../schoolMenu.js'
 import { weekHolidaySummary } from '../menuHolidays.js'

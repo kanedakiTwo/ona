@@ -25,7 +25,7 @@ TODO(spec): the tab, the search, «Cocinar esta», the pantry move and the event
 
 - **Marks survive edits**: saving a recipe (`persistRecipe`, edit mode) carries each row's role and substitutes to the new rows, first by row id when the ingredient is the same, then by ingredient id (the same ingredient in two sections keeps each row its own marks). A new ingredient comes unmarked; a row id reused for another ingredient doesn't carry the old marks (`carryIngredientMarks`). The recipe form doesn't send marks, so an edit keeps them; an explicit `role` in the write input (Cocina's batch) wins.
 - **Marks travel with copies**: «Añadir a mis recetas» on the web (`POST /recipes/:id/copy`) and through Mimo copy each row's role and substitutes (`ingredientMarksOf`). From then on the copy is the household's and Cocina never sees it.
-- Columns `recipe_ingredients.role` (text, null = unmarked, checked `essential | secondary`) and `recipe_ingredients.substitute_ingredient_ids` (uuid[], default empty), migration `0105_ingredient_roles` (only adds).
+- Columns `recipe_ingredients.role` (text, null = unmarked, checked `essential | secondary`) and `recipe_ingredients.substitute_ingredient_ids` (uuid[], default empty), migration `0107_ingredient_roles` (only adds).
 - Substitute ids aren't foreign keys: a substitute ingredient deleted later just stops matching.
 
 ## Related specs

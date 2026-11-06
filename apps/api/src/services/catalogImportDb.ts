@@ -126,7 +126,6 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
   }
 }
 
-<<<<<<< fdc9ab2c98a55580f71459bd5b42efc6d416e259
 /**
  * «Cocinar ahora»: Cocina's `sustitutos` names → catalogue ingredient ids
  * (token-set match, same order; null = no match). Never creates an ingredient.
@@ -138,7 +137,8 @@ export async function findCatalogIngredientIds(names: readonly string[], db: Pic
     const v = tokenSetMatch(n, catalog)
     return v.kind === 'no-match' ? null : v.catalog.id
   })
-=======
+}
+
 /** «El 2026-11-05 ya tiene receta del día («Lentejas estofadas»).» */
 export function featuredOnTaken(day: string, name: string | null): string {
   return `El ${day} ya tiene receta del día${name ? ` («${name}»)` : ''}: solo hay una por día (featuredOn).`
@@ -148,7 +148,6 @@ function isFeaturedOnConflict(err: unknown): boolean {
   const e = err as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } } | null
   const pg = e?.cause ?? e
   return pg?.code === '23505' && (pg?.constraint ?? '').includes('featured_on')
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 }
 
 export function createDbCatalogImportDeps(

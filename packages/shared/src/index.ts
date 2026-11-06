@@ -24,13 +24,9 @@ export type {
 export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
 export { menuFitLevel } from './types/menu.js'
 export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/menuDish.js'
-<<<<<<< fdc9ab2c98a55580f71459bd5b42efc6d416e259
-export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine } from './types/menuDish.js'
+export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish } from './types/menuDish.js'
 export { INGREDIENT_ROLES, ingredientRoleMarkSchema, ingredientRolesUpdateSchema } from './types/ingredientRole.js'
 export type { IngredientRole, IngredientRoleMark } from './types/ingredientRole.js'
-=======
-export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish } from './types/menuDish.js'
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 export type {
   MemoryKey,
   MemorySource,

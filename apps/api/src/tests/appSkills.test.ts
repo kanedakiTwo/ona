@@ -177,6 +177,19 @@ describe('menu skills', () => {
     expect(writes(g.calls)).toEqual([{ method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish/random', body: undefined }])
   })
 
+  // PRO-349 (Dani y Sara, 2026-10-22): the route takes the day out of
+  // skippedDays; the summary tells Mimo so it can say it.
+  it('add_dish and set_meal_note on a «sin cocinar» day say it is active again; on another day, nothing', async () => {
+    const skipped = { ...MENU, skippedDays: [5] }
+    const f = fakeApi({ 'GET /recipes': [], 'GET /menu/u1/*': skipped })
+    const added = await get('add_dish').handler({ dayIndex: 5, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(added.summary).toMatch(/El sábado \d+ de \w+ estaba marcado sin cocinar: ya vuelve a estar activo\./)
+    const note = await get('set_meal_note').handler({ dayIndex: 5, meal: 'lunch', text: 'Arroz de limpieza' }, ctx(f.api))
+    expect(note.summary).toContain('estaba marcado sin cocinar: ya vuelve a estar activo.')
+    const other = await get('add_dish').handler({ dayIndex: 2, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(other.summary).not.toContain('sin cocinar')
+  })
+
   it('remove_dish deletes by position found by name', async () => {
     const f = fakeApi()
     await get('remove_dish').handler({ dayIndex: 0, meal: 'lunch', dishName: 'ensalada' }, ctx(f.api))
@@ -364,13 +377,16 @@ describe('shopping, pantry, staples', () => {
     const r = await get('get_shopping_list').handler({}, ctx(f.api))
     expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado: 1. En casa: 1.')
     expect(r.uiHint).toBe('shopping_list')
+    // PRO-380: handing out the whole list counts as `shopping_list_shared`.
+    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/list-shared', body: { channel: 'web' } }])
   })
 
-  it('get_shopping_list: all done, and empty list', async () => {
+  it('get_shopping_list: all done, and empty list (nothing handed out, nothing counted)', async () => {
     const done = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i1', name: 'Pan', checked: true }] } })
     expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado: 1.')
     const empty = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [] } })
     expect((await get('get_shopping_list').handler({}, ctx(empty.api))).summary).toContain('está vacía')
+    expect([...writes(done.calls), ...writes(empty.calls)]).toEqual([])
   })
 
   it('remove_shopping_items deletes matches and reports the rest', async () => {

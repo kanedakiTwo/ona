@@ -45,6 +45,7 @@ import {
   saveOwnRecipeImage,
 } from '../services/recipeOwnImage.js'
 import { recipeShoppingIssues } from '../services/recipeShoppability.js'
+import { isInternalCall, trackEvent } from '../services/usageEvents.js'
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -90,6 +91,8 @@ import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/sco
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
 import { findPantryMatches } from '../services/pantryMatcher.js'
 import { chosenFromIds, findRecipesWithWhatIHave, loadUserRestrictions, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
+import { recipeIdsNamedByDislikes } from '../services/dishDislikes.js'
+import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { recipeIdsBreakingRestrictions } from '../services/dietaryRestrictions.js'
 import { isCoeliacHousehold, recipeDietNotices } from '../services/glutenFreeCharcuterie.js'
@@ -98,6 +101,7 @@ import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisib
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
 import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
+import { ingredientMarksOf } from '../services/ingredientRoles.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
@@ -480,9 +484,10 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
         : []
     const customTags = sanitizeCustomTags(customTagsList)
     // ?fitsMe=1 (PRO-61): hide recipes that break the caller's allergies or
-    // diet (profile + memory; dislikes are not applied — an explicit pick may
-    // override a dislike, never an allergy). Used by the menu's «Elegir otra
-    // receta» picker. Anonymous callers: ignored.
+    // diet (profile + memory; ingredient dislikes are not applied — an explicit
+    // pick may override a dislike, never an allergy — but a dislike that names
+    // the dish is, PRO-1142). Used by the menu's «Elegir otra receta» picker.
+    // Anonymous callers: ignored.
     const fitsMe = req.query.fitsMe === '1' || req.query.fitsMe === 'true'
     // ?mine=1 (PRO-299): only the caller's own recipes («Mis recetas»). The
     // web used to filter the first page of the whole catalogue, where the
@@ -553,9 +558,13 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
       }
     }
     if (req.userId && fitsMe) {
-      const { restrictions } = await loadUserRestrictions(req.userId, db)
-      if (restrictions.length > 0) {
-        const excluded = recipeIdsBreakingRestrictions(await loadMatchableRecipes(req.userId, db), restrictions)
+      const { restrictions, dislikes: own } = await loadUserRestrictions(req.userId, db)
+      // PRO-1142: and the dishes a dislike of the household names, unless a
+      // «Me apetece» came after it.
+      const { dislikes } = withFichaFilters({ dislikes: own, availableEquipment: undefined }, await loadFichaMenuConstraints(req.userId, { db }))
+      if (restrictions.length > 0 || dislikes.length > 0) {
+        const pool = await loadMatchableRecipes(req.userId, db)
+        const excluded = [...recipeIdsBreakingRestrictions(pool, restrictions), ...recipeIdsNamedByDislikes(pool, dislikes)]
         if (excluded.length > 0) conditions.push(notInArray(recipes.id, excluded))
       }
     }
@@ -1163,6 +1172,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
             optional: ing.optional,
             note: ing.note,
             displayOrder: ing.displayOrder ?? i,
+            ...ingredientMarksOf(ing),
           })),
         )
       }
@@ -1542,12 +1552,13 @@ router.post(
         await db
           .delete(userFavorites)
           .where(and(eq(userFavorites.userId, userId), eq(userFavorites.recipeId, recipeId)))
-        res.json({ favorited: false })
       } else {
         const householdId = await getPrimaryHouseholdId(userId)
         await db.insert(userFavorites).values({ userId, householdId, recipeId })
-        res.json({ favorited: true })
       }
+      // PRO-1024: `user_favorites` has no date; the event does (Mimo's toggle_favorite counts in the skill runner).
+      if (!isInternalCall(req)) trackEvent('favorite_toggled', { userId, channel: 'web', props: { on: !existing } })
+      res.json({ favorited: !existing })
     } catch (err) {
       console.error('Toggle favorite error:', err)
       res.status(500).json({ error: 'Internal server error' })

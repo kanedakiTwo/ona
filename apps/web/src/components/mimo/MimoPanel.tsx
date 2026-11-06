@@ -9,7 +9,7 @@ import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
-import { markRecipeFromMimo } from '@/lib/usageEvents'
+import { markRecipeFromMimo, trackUsage } from '@/lib/usageEvents'
 import { useBilling } from '@/hooks/useBilling'
 import { AccountAccessNotice, isOnGratis } from '@/components/billing/AccountAccessNotice'
 
@@ -141,7 +141,7 @@ export default function MimoPanel() {
 
         {/* Conversation */}
         <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4" data-testid="mimo-messages">
-          {/* PRO-136: the day-7 founder-price offer, as a message from Mimo (text for Legal to review). */}
+          {/* PRO-136: the founder-price offer (first resolved week or day 10, PRO-384), as a message from Mimo (text for Legal to review). */}
           {offer && billing.data && (
             <div className="flex justify-start" data-testid="mimo-founder-offer">
               <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F2EDE0] px-3.5 py-2.5 text-[14px] leading-relaxed text-[#1A1612]">
@@ -232,6 +232,7 @@ export default function MimoPanel() {
                 onClick={() => {
                   const next = !mimo.handsFree
                   mimo.setHandsFree(next)
+                  if (next) trackUsage('handsfree_started', { where: 'panel' })
                   if (next && mimo.status === 'idle') mimo.toggleListening()
                 }}
                 aria-pressed={mimo.handsFree}

@@ -28,22 +28,22 @@ If you're not sure which specs apply, run `/spec study` to load all of them into
 2. Did this change rename, move, or delete a file referenced in a spec's `## Source` section?
 3. Did this change add or remove a constraint, edge case, or known limitation?
 
-If the answer to any of these is **yes**, update the relevant spec(s) before finishing the task. The spec must reflect the current reality of the code; a divergence between spec and code is a bug in itself.
+If the answer to **1** is **yes** (or a 3 that a user would notice), update the relevant spec(s) in the same commit, before finishing the task. If only 2 or 3 apply and nothing the user sees changed, the spec can catch up later, when convenient (D-181). The spec must reflect the current reality of the code; a divergence between spec and code is a bug in itself.
 
 If the change introduces a new system not covered by any existing spec (e.g., notifications, admin panel, payments), create a new spec file and add an entry to [`specs/index.md`](./specs/index.md). Keep specs under 200 lines and write from the user's perspective.
 
 ### Definition of done — spec gate
 
-**A task is not done until its spec impact has been resolved in the same commit / PR.** Use this checklist before reporting a task complete:
+**A task that changes what a user can observe is not done until its spec impact has been resolved in the same commit / PR.** Changes that don't (refactors, internal scripts, tests, tooling, infra) don't need a spec edit in the same commit (D-181); `kb/sobre-mimoia.md` always does. Use this checklist before reporting a task complete:
 
 ```
-[ ] Did I change anything in apps/api/src/routes/, apps/api/src/services/,
-    apps/web/src/app/, apps/web/src/components/, apps/web/src/hooks/,
-    packages/shared/src/types/, or any DB migration?
-[ ] If yes → I ran the spec table below and updated every spec affected.
-[ ] If a referenced file moved/renamed/disappeared → I fixed `## Source` links.
-[ ] If a behavior the user can observe changed → I rewrote the affected
-    `## User Capabilities` / `## Constraints` lines.
+[ ] Did I change something a user can observe (a screen, a flow, a message,
+    an API response the app shows, what Mimo says)?
+[ ] If yes → I ran the spec table below and updated every spec affected, and
+    rewrote the affected `## User Capabilities` / `## Constraints` lines.
+[ ] If a referenced file moved/renamed/disappeared → I fixed `## Source` links
+    (now or later; not required in the same commit if nothing user-visible
+    changed, D-181).
 [ ] If a brand-new system landed → I added a new spec file AND a row to
     `specs/index.md`.
 [ ] If something a user could ask Mimo about Mimoia changed (a feature,
@@ -125,8 +125,8 @@ The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT
 - **Specs document what exists**, not aspirational features. If the code disagrees with a spec, fix the spec or the code — never ignore the divergence.
 - **Update specs when you change behavior** (see "Specs are a living document" above).
 - **Prefer the editorial design system** (`@theme` tokens in `globals.css`) for new UI: cream `#FAF6EE`, ink `#1A1612`, terracotta `#C65D38`, forest `#2D6A4F`, Fraunces + Cormorant + Inter.
-- **All UI strings are in Spanish.** No i18n setup; just write in Spanish.
-- **Mobile-first always.** Test at 390×844 (iPhone 14) viewport using Playwright MCP before declaring UI work done.
+- **All UI strings are in Spanish** while there is no translation system in `master`. When it lands (PRO-327, branch `feat/ingles-base`), every UI and API string goes through it, in both languages (D-111); orders to shops stay in Spanish.
+- **Mobile-first always.** Before declaring UI work done, check it at 390×844 (iPhone 14): a Playwright e2e at the mobile viewport (the test gate) is enough; if the task has none, check it by hand with Playwright MCP (D-181). Never say it is shipped without having tested the flow end to end.
 
 ## Common pitfalls
 

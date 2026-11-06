@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { DIFFICULTIES, MEALS, SEASONS, UNITS } from '../constants/enums.js'
+import { isIsoDay } from './recipeOfTheDay.js'
 import { COURSES } from './recipe.js'
 
 /**
@@ -49,6 +50,10 @@ const ingredientSchema = z
     note: z.string().max(300).nullish(),
     optional: z.boolean().optional(),
     section: z.string().max(80).nullish(),
+    /** «Cocinar ahora»: true = without it it isn't the dish; false = it can be left out. Absent = automatic rule. */
+    imprescindible: z.boolean().optional(),
+    /** «Cocinar ahora»: catalogue ingredient names that can stand in for this one (nata → leche). */
+    sustitutos: z.array(z.string().trim().min(1).max(120)).max(5).optional(),
   })
   .superRefine((i, ctx) => {
     const key = i.qty == null && i.quantity != null ? 'quantity' : 'qty'
@@ -109,6 +114,11 @@ export const cocinaRecipeSchema = catalogRewriteLabelsSchema.extend({
   freezable: z.boolean().nullish(),
   /** PRO-372: «Aguanta N días en nevera». Absent = the rewriter guesses it. */
   fridgeDays: z.number().int().min(1).max(30).nullish(),
+  /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día»; one recipe per day. */
+  featuredOn: z
+    .string()
+    .nullish()
+    .refine((v) => v == null || isIsoDay(v), { message: 'la fecha de la receta del día (featuredOn) tiene que ser un día AAAA-MM-DD (por ejemplo, 2026-11-05)' }),
   source: sourceSchema.optional(),
 })
 
@@ -123,6 +133,19 @@ export const cocinaBatchFileSchema = z.preprocess(
      */
     reescrita: z.boolean().optional(),
     recipes: z.array(cocinaRecipeSchema).min(1).max(CATALOG_IMPORT_MAX_RECIPES),
+  }).superRefine((file, ctx) => {
+    // PRO-1099: one recipe of the day per day, inside the file too.
+    const firstOn = new Map<string, number>()
+    file.recipes.forEach((r, i) => {
+      if (!r.featuredOn) return
+      const first = firstOn.get(r.featuredOn)
+      if (first == null) return void firstOn.set(r.featuredOn, i)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recipes', i, 'featuredOn'],
+        message: `la fecha de la receta del día (featuredOn) ${r.featuredOn} ya es la de la receta ${first + 1}; solo hay una receta del día por día`,
+      })
+    })
   }),
 )
 export type CocinaBatchFile = z.infer<typeof cocinaBatchFileSchema>
@@ -160,6 +183,7 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   text: { label: 'el texto' },
   freezable: { label: 'si se congela (freezable)' },
   fridgeDays: { label: 'los días en nevera (fridgeDays)', plural: true },
+  featuredOn: { label: 'la fecha de la receta del día (featuredOn)' },
   source: { label: 'source' },
   origin: { label: 'el origen (source.origin)' },
   book: { label: 'el libro (source.book)' },

@@ -28,7 +28,7 @@ import {
   type PersistDraftInput,
 } from '../services/catalogImport.js'
 import { parseRewrite, rewriteMessage } from '../services/catalogRewriter.js'
-import { cocinaBatchFileSchema } from '@ona/shared'
+import { checkCocinaBatch, cocinaBatchFileSchema } from '@ona/shared'
 import { aggregateNutrition, type IngredientCatalogEntry } from '../services/nutrition/aggregate.js'
 
 // Three made-up pages of a made-up book.
@@ -109,6 +109,7 @@ function fakeDeps(over: Partial<CatalogImportDeps> = {}) {
       return rewriteFor(d, HOUSE_STEPS[d.name])
     },
     matchIngredients: async (_n, ings) => ings.map((i, k) => ({ ingredientId: `ing-${k}`, name: i.name, quantity: i.quantity, unit: i.unit as any, unitWeight: i.unit === 'u' ? 60 : null })),
+    findIngredientIds: async (names) => names.map(() => null),
     persistDraft: async (input) => {
       saved.push(input)
       return { ok: true, recipeId: `r${saved.length}` }
@@ -146,6 +147,45 @@ describe('import of three pages (PRO-154)', () => {
     expect(saved[0].internalTags).toEqual(expect.arrayContaining(['catalogo-tanda', 'proteina:legumbre', 'tecnica:sofreir', 'cocina:espanola', 'tipo:guiso']))
     expect(saved[0]).toMatchObject({ prepTime: 20, cookTime: 20, course: 'main', difficulty: 'easy' })
     expect(saved[0].steps[0].ingredientRefs).toEqual(['ing_0'])
+  })
+
+  it('«Cocinar ahora»: the marks travel to persistDraft, substitutes as catalogue ids', async () => {
+    const lines: string[] = []
+    const asked: string[][] = []
+    const { deps, saved } = fakeDeps({
+      findIngredientIds: async (names) => {
+        asked.push(names)
+        return names.map((n) => (n === 'leche' ? 'ing-leche' : null))
+      },
+      log: (l) => lines.push(l),
+    })
+    const page = PAGES[0]
+    const marked = {
+      ...page,
+      ingredients: page.ingredients.map((ing, k) =>
+        k === 0 ? { ...ing, role: 'essential' as const } : k === 1 ? { ...ing, role: 'secondary' as const, substitutes: ['leche', 'bebida de unicornio'] } : ing,
+      ),
+    }
+    await importCatalogBatch([marked], 't', deps)
+    expect(saved).toHaveLength(1)
+    const ings = saved[0].ingredients
+    expect(ings[0]).toMatchObject({ role: 'essential', substituteIngredientIds: [] })
+    expect(ings[1]).toMatchObject({ role: 'secondary', substituteIngredientIds: ['ing-leche'] })
+    expect(ings[2]).toMatchObject({ role: null, substituteIngredientIds: [] })
+    expect(asked).toEqual([['leche', 'bebida de unicornio']])
+    expect(lines.some((l) => l.includes('sustituto sin casar: bebida de unicornio'))).toBe(true)
+  })
+
+  it('a recipe without substitutes never asks the catalogue for them', async () => {
+    let calls = 0
+    const { deps } = fakeDeps({
+      findIngredientIds: async (names) => {
+        calls++
+        return names.map(() => null)
+      },
+    })
+    await importCatalogBatch([PAGES[0]], 't', deps)
+    expect(calls).toBe(0)
   })
 
   it('a rewrite that keeps copying the book is rejected and never saved', async () => {
@@ -528,6 +568,26 @@ describe('storage seals: «Se puede congelar» and days in the fridge (PRO-372)'
     expect(saved[0]).toMatchObject({ freezable: true, fridgeDays: 4 })
     // Cocina said nothing: the rewriter's guess is saved.
     expect(saved[1]).toMatchObject({ freezable: false, fridgeDays: 3 })
+  })
+
+  it('PRO-1099: the batch file takes featuredOn (a real day), one per day, and the importer saves it', async () => {
+    const featured = { ...cocinaJson, recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, cocinaJson.recipes[1]] }
+    expect(cocinaBatchFileSchema.safeParse(featured).success).toBe(true)
+    // Not a day: refused, in Spanish, with where it is.
+    const bad = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-02-30' }] })
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.problems[0]).toMatch(/^Receta 1 \(«.+»\): la fecha de la receta del día \(featuredOn\) tiene que ser un día AAAA-MM-DD/)
+    // Two recipes on the same day inside the file: the second is a problem.
+    const twice = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, { ...cocinaJson.recipes[1], featuredOn: '2026-11-05' }] })
+    expect(twice.ok).toBe(false)
+    if (!twice.ok) expect(twice.problems).toEqual([expect.stringMatching(/^Receta 2 .*2026-11-05 ya es la de la receta 1; solo hay una receta del día por día\.$/)])
+
+    const drafts = draftsFromCocinaJson(featured, { origin: 'cocina' })
+    expect(drafts.map((d) => d.featuredOn)).toEqual(['2026-11-05', null])
+    expect(draftsFromCocinaJson({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: 'mañana' }] }, { origin: 'cocina' })[0].featuredOn).toBeNull()
+    const { deps, saved } = fakeDeps({ rewrite: async (d) => rewriteFor(d, HOUSE_STEPS[d.name]) })
+    await importCatalogBatch(drafts, 'cocina-del-dia', deps)
+    expect(saved.map((s) => s.featuredOn)).toEqual(['2026-11-05', null])
   })
 
   it('the rewriter\'s unsure or odd answers are no data', () => {

@@ -36,6 +36,7 @@ import { AddToMenuSheet } from "@/components/recipes/detail/AddToMenuSheet"
 import { RecipeHeroPhoto } from "@/components/recipes/detail/RecipeHeroPhoto"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
+import { trackUsage } from "@/lib/usageEvents"
 import {
   BookmarkPlus,
   CalendarPlus,
@@ -60,10 +61,13 @@ import {
   timelineString,
 } from "@/lib/recipeView"
 import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
-import { BRAND_NAME, recipeSharePayload } from "@ona/shared"
+import { BRAND_NAME, normalizeReferralCode, recipeSharePayload } from "@ona/shared"
 import { ApiError } from "@/lib/api"
 import { loginHrefFor } from "@/lib/routeAccess"
+import { recipeBackTarget } from "@/lib/menuReturn"
 import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
+import { useReferralLink } from "@/components/referrals/InviteHouseholdButton"
+import { rememberSignupAttribution } from "@/lib/signupAttribution"
 
 /**
  * Recipe detail — "D · Luz y foto" (2026-10-08).
@@ -92,10 +96,25 @@ export default function RecipeDetailPage() {
   const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
   const isDesktop = useIsDesktop()
+  // «Volver» goes back to the menu when the recipe was opened from it
+  // (`?desde=menu`, Miguel 2026-11-05); read after mount, like `?servings=`.
+  const [back, setBack] = useState(() => recipeBackTarget(""))
+  useEffect(() => setBack(recipeBackTarget(window.location.search)), [])
   // Signed out this page wears the public chrome (RootShell): a fixed
   // PublicNavbar on top, so the photo, sticky tabs and sticky hero start
   // below it, and a waitlist block closes the page (specs/recipes.md).
   const publicChrome = !authLoading && !user
+  // PRO-1016 (D-132): a share carries the household's invitation. Signed in,
+  // our own code goes into the shared link; signed out, a link that came with
+  // `?invita=<code>` is remembered for the sign-up and shown at the foot.
+  const referral = useReferralLink(!!user)
+  const [invitedBy, setInvitedBy] = useState<string | null>(null)
+  useEffect(() => {
+    const code = normalizeReferralCode(new URLSearchParams(window.location.search).get("invita"))
+    // Only a household's share is remembered: a plain visit keeps attribution as before.
+    if (code) rememberSignupAttribution()
+    setInvitedBy(code)
+  }, [])
 
   const [servings, setServings] = useState<number | null>(null)
   // Once we know the recipe's authored servings, the scaler "seeds" itself.
@@ -248,8 +267,11 @@ export default function RecipeDetailPage() {
     haptic.light()
     // "Pásalo": catalogue recipes share this very page's link (it opens
     // without an account, with the waitlist block); private ones go as text
-    // + a link to Mimoia.
-    await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
+    // + a link to Mimoia. Either way with this household's invitation.
+    const shared = await share(
+      recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : "", referral.data?.code),
+    )
+    if (shared.success) trackUsage("content_shared", { what: "receta" })
   }
 
   const stepCount = recipe.steps?.length ?? 0
@@ -491,11 +513,19 @@ export default function RecipeDetailPage() {
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1A1612]/40 to-transparent" />
           )}
           <Link
-            href="/recipes"
+            href={back.href}
+            data-testid="recipe-back"
+            onClick={(e) => {
+              // From the menu: back to the week and the day it was showing.
+              if (back.fromMenu && window.history.length > 1) {
+                e.preventDefault()
+                router.back()
+              }
+            }}
             className="absolute left-4 top-4 flex h-11 items-center gap-1 rounded-full bg-[#FFFEFA] pl-2.5 pr-4 text-[14px] font-semibold text-[#1A1612] shadow-sm transition-transform active:scale-95"
           >
             <ChevronLeft size={20} aria-hidden />
-            Recetas
+            {back.label}
           </Link>
           {heroEdit && <div className="absolute right-4 top-4">{heroEdit}</div>}
           <div
@@ -567,7 +597,7 @@ export default function RecipeDetailPage() {
 
           <DesktopSection title="Notas">{notesBlock}</DesktopSection>
 
-          {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-6" />}
+          {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} inviteCode={invitedBy} className="mt-6" />}
         </motion.div>
       </div>
     )
@@ -605,7 +635,7 @@ export default function RecipeDetailPage() {
         )}
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-4">
-          <BackButton fallbackHref="/recipes" />
+          <BackButton fallbackHref={back.href} />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -672,7 +702,7 @@ export default function RecipeDetailPage() {
         {hasNutrition && panel("nutricion", "Nutrición", nutritionBlock)}
         {panel("notas", "Notas", notesBlock)}
 
-        {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-12" />}
+        {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} inviteCode={invitedBy} className="mt-12" />}
       </motion.div>
 
       <RecipeActionBar
@@ -945,8 +975,9 @@ function RecipeGoneNotice() {
 /**
  * Hero back button. Goes back in history when the user arrived from inside
  * the app (menu, catalogue, cookbook…); a link opened cold (WhatsApp, a new
- * tab) has nothing to go back to, so it falls through to the catalogue
- * (`/recipes`, public signed out too).
+ * tab) has nothing to go back to, so it falls through to `fallbackHref`:
+ * the menu for a recipe opened from it, the catalogue otherwise (`/recipes`,
+ * public signed out too).
  */
 function BackButton({ fallbackHref }: { fallbackHref: string }) {
   const router = useRouter()

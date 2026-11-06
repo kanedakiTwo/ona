@@ -45,11 +45,8 @@ import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
-<<<<<<< e91772ecc0483ba15ee0e1d7b9828fa4c0f02182
 import { babyMenuSkills } from './babyMenuSkills.js'
-=======
 import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { unlistedDietMentions } from '../stepDietMentions.js'
@@ -3069,13 +3066,10 @@ export const skills: SkillDefinition[] = [
   ...schoolMenuSkills,
   // PRO-228: «Sí, mételo» al repaso mensual del congelador.
   ...freezerSkills,
-<<<<<<< e91772ecc0483ba15ee0e1d7b9828fa4c0f02182
   // PRO-1035: los platos de la semana, mirados para la ración del bebé.
   ...babyMenuSkills,
-=======
   // La receta del día (PRO-1099, specs/recipe-of-the-day.md):
   ...recipeOfTheDaySkills,
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 ]
 
 /**

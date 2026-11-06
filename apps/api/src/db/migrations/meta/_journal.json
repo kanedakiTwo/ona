@@ -712,13 +712,15 @@
     {
       "idx": 106,
       "version": "7",
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
-      "when": 1793935094711,
-      "tag": "0107_newsletter_wines",
-=======
       "when": 1793884741521,
       "tag": "0106_newsletter_drafts",
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793939874852,
+      "tag": "0107_newsletter_wines",
       "breakpoints": true
     }
   ]

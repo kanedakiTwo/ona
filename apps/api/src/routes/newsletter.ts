@@ -69,12 +69,10 @@ import {
  *                                  the base's link to where it is bought; a bad id → 404.
  *   GET  /admin/newsletter/stats   admin JWT or x-metrics-token: per issue sent, clicks
  *                                  per link and opt-outs. Counts only.
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
  *   PUT  /admin/newsletter/wines   admin JWT (PRO-395): `{ base, legal? }` = HQ's
  *                                  `vinos/base.md` as written and LEG-505's yes with its
  *                                  moderation line. Replaces the whole wine base; answers
  *                                  counts and whether wine can go out.
-=======
  *
  * The Admin «Newsletter» editor (PRO-1123, D-176), admin JWT:
  *   GET    /admin/newsletter/drafts                       the last issues and their state
@@ -86,7 +84,6 @@ import {
  *   POST   /admin/newsletter/drafts/:issueId/schedule     Friday 9:00 Madrid, only with a proof of the saved template
  *   DELETE /admin/newsletter/drafts/:issueId/schedule     unschedule
  * A real `POST /admin/newsletter/send` also needs that proof and the very same template.
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
  */
 
 const ISSUE_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
@@ -142,10 +139,8 @@ export interface NewsletterRouterDeps {
   stats: NewsletterStatsRepo
   /** Admin JWT or the read-only metrics token used by internal reporting. */
   statsAuth: RequestHandler
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
   /** PRO-395: the wine base. */
   wines: NewsletterWineRepo
-=======
   /** PRO-1123: the Admin «Newsletter» editor (recommendation, template, proof, schedule). */
   drafts: NewsletterDraftsRepo
   /** The email of the signed-in admin's own account (the proof goes there). */
@@ -174,7 +169,6 @@ function draftView(d: NewsletterDraft, now: Date, full: boolean) {
     notReady: ready.ok ? null : ready.reason,
     ...(full ? { recommendation: d.recommendation, template: d.template } : {}),
   }
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 }
 
 export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> = {}): Router {
@@ -191,13 +185,10 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
     makeDeps: (urls) => ({ ...defaultNewsletterDeps(urls), repo, stats }),
     audit: recordAudit,
     publicUrl: () => env.WEB_PUBLIC_URL,
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
     wines: overrides.wines ?? createDbNewsletterWineRepo(),
-=======
     drafts: overrides.drafts ?? createDbNewsletterDraftsRepo(),
     adminEmail: accountEmail,
     now: () => new Date(),
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     ...overrides,
   }
   const router = Router()

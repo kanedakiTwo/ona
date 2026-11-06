@@ -1330,6 +1330,7 @@ describe('the wine under each person’s recipe (PRO-395)', () => {
       repo,
       stats,
       wines: mem.wines,
+      drafts: readyDrafts(N5),
       adminAuth: [asAdmin],
       statsAuth: asAdmin,
       unsubscribeLimiter: noLimit,

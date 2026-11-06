@@ -38,15 +38,12 @@ export type AdminAction =
   | 'invite_campaign.create'
   | 'invite_campaign.delete'
   | 'newsletter.send'
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
   | 'newsletter.wines_load'
-=======
   // Admin «Newsletter» editor (PRO-1123)
   | 'newsletter.template_save'
   | 'newsletter.preview'
   | 'newsletter.proof'
   | 'newsletter.schedule'
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   // Admin «Recetas pendientes» (specs/catalog-import.md)
   | 'catalog_draft.publish'
   | 'catalog_draft.discard'

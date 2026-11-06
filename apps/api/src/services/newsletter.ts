@@ -34,7 +34,6 @@ import {
 } from './newsletterTips.js'
 import { ensureReferralCode } from './accountReferrals.js'
 import {
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
   WINE_DISH_TYPES,
   createDbNewsletterWineRepo,
   dishTypeOf,
@@ -47,7 +46,7 @@ import {
   type NewsletterWineRepo,
   type WineBlock,
 } from './newsletterWine.js'
-=======
+import {
   EMPTY_LETTER_FACTS,
   createDbNewsletterLetterRepo,
   fillLetter,
@@ -56,7 +55,6 @@ import {
   type LetterFacts,
   type NewsletterLetterRepo,
 } from './newsletterLetter.js'
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 import {
   ACCENT,
   BODY,
@@ -710,13 +708,10 @@ export interface NewsletterDeps {
   stats?: NewsletterStatsRepo
   /** PRO-1020: present → each account gets its own recipe and tip (`newsletterTips.ts`). */
   tips?: NewsletterTipsRepo
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
   /** PRO-395: present (with `tips`) → the wine that goes with each account's recipe (`newsletterWine.ts`). */
   wines?: NewsletterWineRepo
-=======
   /** PRO-1123: what we know of each account's household, for its letter. Absent → name-less, generic reason. */
   letters?: NewsletterLetterRepo
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   /** The clock of the tip rules (tests). */
   now?: () => Date
 }
@@ -728,11 +723,8 @@ export function defaultNewsletterDeps(urls: { publicUrl: string; apiUrl: string 
     sendOne: (m) => sendEmail(m),
     stats: createDbNewsletterStatsRepo(),
     tips: createDbNewsletterTipsRepo(),
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
     wines: createDbNewsletterWineRepo(),
-=======
     letters: createDbNewsletterLetterRepo(),
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     ...urls,
   }
 }
@@ -887,7 +879,6 @@ export function withPersonalPick(
   return out
 }
 
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
 /** PRO-395: the wine's link (only when the base has one), through our counter (slot `vino`) or straight there. */
 function wineUrl(
   w: NonNullable<PersonalPick['wine']>,
@@ -897,7 +888,8 @@ function wineUrl(
 ): string | undefined {
   if (!w.wine.link) return undefined
   return track ? trackedPersonalUrl(web, track.issueId, 'vino', w.wine.id, track.proof) : wineDestination(w.wine.link, issueId ?? 'prueba')
-=======
+}
+
 /** PRO-1123: who the letter is for. Without it, a name-less letter with the generic reason. */
 export interface PersonalLetter {
   name: string | null
@@ -936,7 +928,6 @@ export function withPersonalLetter(
       sections: c.sections?.map((s) => ({ ...s, title: opt(s.title), quote: opt(s.quote), body: f(s.body) })),
     },
   }
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
 }
 
 export function buildNewsletterMessage(
@@ -955,14 +946,9 @@ export function buildNewsletterMessage(
   const leaveListUrl = tokens.leaveToken ? `${web}${waitlistUnsubscribePath(tokens.leaveToken)}` : undefined
   const share = tokens.referralCode ? correLaVozLinks(web, tokens.referralCode, tokens.inviteKind ?? 'lista', track) : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
-  const content = withPersonalPick(input.content, pick, web, track)
-  const wine = pick?.wine ? { ...pick.wine, url: wineUrl(pick.wine, web, issueId, track) } : undefined
-  const { html, text } = renderNewsletterEmail({ ...input, content }, { unsubscribeUrl, leaveListUrl, share, wine, ...brandAssets(web) })
-=======
   const personal = withPersonalLetter({ ...input, content: withPersonalPick(input.content, pick, web, track) }, letter)
-  const { html, text } = renderNewsletterEmail(personal, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
+  const wine = pick?.wine ? { ...pick.wine, url: wineUrl(pick.wine, web, issueId, track) } : undefined
+  const { html, text } = renderNewsletterEmail(personal, { unsubscribeUrl, leaveListUrl, share, wine, ...brandAssets(web) })
   return {
     to,
     subject: personal.subject,
@@ -1150,18 +1136,14 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
     const adminCode = deps.repo.ensureAccountCode ? await deps.repo.ensureAccountCode({ email: input.testTo }).catch(() => null) : null
     // And the admin's own recipe and tip (PRO-1020), never recorded.
     const adminId = deps.tips ? await deps.tips.userIdByEmail(input.testTo).catch(() => null) : null
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
     // And the admin's own wine (PRO-395), never recorded either.
-    const mine = adminId && deps.tips ? (await choosePersonal(input, [adminId], deps.tips, now, deps.wines)).get(adminId) : undefined
-=======
-    const adminChoices = adminId && deps.tips ? await choosePersonal(input, [adminId], deps.tips, now) : new Map<string, PersonalChoice>()
+    const adminChoices = adminId && deps.tips ? await choosePersonal(input, [adminId], deps.tips, now, deps.wines) : new Map<string, PersonalChoice>()
     const mine = adminId ? adminChoices.get(adminId) : undefined
     // And the admin's own letter (PRO-1123): their name and their household's reason.
     const hash = recipientHash(input.testTo)
     const letter = adminId
       ? (await composeLetters([{ hash, source: 'user', userId: adminId }], adminChoices, deps, now)).get(hash)
       : undefined
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     const msg = buildNewsletterMessage(
       { ...tracked, subject: `[Prueba] ${input.subject}` },
       input.testTo,
@@ -1201,12 +1183,8 @@ export async function sendNewsletter(input: NewsletterSendInput, deps: Newslette
   )
   const track = deps.stats && recipients.length > 0 ? { issueId: input.issueId, proof: false } : undefined
   const accountIds = mine.flatMap((r) => (r.source === 'user' && r.userId ? [r.userId] : []))
-<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
   const choices = deps.tips ? await choosePersonal(input, accountIds, deps.tips, now, deps.wines) : new Map<string, PersonalChoice>()
-=======
-  const choices = deps.tips ? await choosePersonal(input, accountIds, deps.tips, now) : new Map<string, PersonalChoice>()
   const letters = await composeLetters(mine, choices, deps, now)
->>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   const results = await deps.sendBatch(
     mine.map((r) =>
       buildNewsletterMessage(

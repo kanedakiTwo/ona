@@ -267,14 +267,11 @@ export default function RecipeDetailPage() {
     haptic.light()
     // "Pásalo": catalogue recipes share this very page's link (it opens
     // without an account, with the waitlist block); private ones go as text
-<<<<<<< 1660f5702bf2b0e8ad8dfd8b042e3f2efd8f3dc4
-    // + a link to Mimoia.
-    const shared = await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
-    if (shared.success) trackUsage("content_shared", { what: "receta" })
-=======
     // + a link to Mimoia. Either way with this household's invitation.
-    await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : "", referral.data?.code))
->>>>>>> e24ea7011a0bf6c2aa761a2450257e0d8a246a6d
+    const shared = await share(
+      recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : "", referral.data?.code),
+    )
+    if (shared.success) trackUsage("content_shared", { what: "receta" })
   }
 
   const stepCount = recipe.steps?.length ?? 0

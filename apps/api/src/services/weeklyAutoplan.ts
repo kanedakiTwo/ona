@@ -26,7 +26,7 @@ import { alertKindOn, type AutoplanNotice } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { menus, notificationSchedule } from '../db/schema.js'
-import { isAccountPaused } from './accountAccess.js'
+import { isOnFreePlan } from './accountAccess.js'
 import { addDays, madridMidnightUtc, madridParts, mondayOf } from './madridTime.js'
 import { resolveScope } from './scopeResolver.js'
 import { trackEvent, type UsageChannel } from './usageEvents.js'
@@ -232,7 +232,7 @@ async function loadFromDb(weekStart: string, now: Date): Promise<{ people: Autop
       isOwner: Boolean(r.is_owner),
       since: r.since ? new Date(r.since) : null,
       prefs: [r.alert_prefs, r.wa_prefs],
-      freePlan: await isAccountPaused(r.user_id, now),
+      freePlan: await isOnFreePlan(r.user_id, now),
     })
   }
   return { people, weeks }

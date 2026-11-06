@@ -21,7 +21,14 @@ export const ACTION_LABELS: Record<string, string> = {
   'invite_campaign.create': 'Enlace de invitación creado',
   'invite_campaign.delete': 'Enlace de invitación eliminado',
   'newsletter.send': 'Newsletter enviada',
+<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
   'newsletter.wines_load': 'Base de vinos de la newsletter cargada',
+=======
+  'newsletter.template_save': 'Plantilla de la newsletter guardada',
+  'newsletter.preview': 'Vista previa de la newsletter',
+  'newsletter.proof': 'Prueba de la newsletter enviada',
+  'newsletter.schedule': 'Newsletter programada o desprogramada',
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   'catalog_draft.publish': 'Receta del catálogo publicada',
   'catalog_draft.discard': 'Borrador del catálogo descartado',
   'catalog_draft.restore': 'Borrador del catálogo recuperado',

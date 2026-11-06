@@ -572,6 +572,7 @@ describe('swap_meal', () => {
       [],                                           // menu owner (audit options)
       [],                                           // recipe ingredients
       [],                                           // step counts
+      [], [],                                       // dislike overrides (PRO-1142): no household, no «Me apetece»
       [{ ...menu, days: [...menu.days] }],          // returning updated
     )
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
@@ -595,6 +596,7 @@ describe('swap_meal', () => {
       [],
       [],
       [],
+      [], [],
       [{ ...menu, days: [...menu.days] }],
     )
     vi.mocked(findRecipeForSlot).mockClear()
@@ -644,6 +646,7 @@ describe('swap_meal', () => {
         [], // menu owner (audit options)
         [],
         [],
+        [], [], // dislike overrides (PRO-1142)
         [{ ...menu, days: [...menu.days] }],
       )
       await skill.handler({ dayIndex: 3, meal: 'lunch' }, ctx(db))

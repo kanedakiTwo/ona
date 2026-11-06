@@ -1,5 +1,9 @@
 {
+<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
   "id": "02a0c680-7b17-4ba1-b704-9ab6820a5639",
+=======
+  "id": "cb7f3c0f-8752-4c90-9aa8-d91bba38bdad",
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
   "prevId": "20cb27e9-4514-44cd-914d-38d05b16acaa",
   "version": "7",
   "dialect": "postgresql",
@@ -4625,6 +4629,151 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
+=======
+    "public.newsletter_drafts": {
+      "name": "newsletter_drafts",
+      "schema": "",
+      "columns": {
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "recommendation": {
+          "name": "recommendation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recommended_at": {
+          "name": "recommended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "template": {
+          "name": "template",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saved_by": {
+          "name": "saved_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saved_at": {
+          "name": "saved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proof_sent_at": {
+          "name": "proof_sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_for": {
+          "name": "scheduled_for",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_by": {
+          "name": "scheduled_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "api_url": {
+          "name": "api_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "send_result": {
+          "name": "send_result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_newsletter_drafts_scheduled": {
+          "name": "idx_newsletter_drafts_scheduled",
+          "columns": [
+            {
+              "expression": "scheduled_for",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "newsletter_drafts_saved_by_users_id_fk": {
+          "name": "newsletter_drafts_saved_by_users_id_fk",
+          "tableFrom": "newsletter_drafts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "saved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "newsletter_drafts_scheduled_by_users_id_fk": {
+          "name": "newsletter_drafts_scheduled_by_users_id_fk",
+          "tableFrom": "newsletter_drafts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "scheduled_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     "public.newsletter_sends": {
       "name": "newsletter_sends",
       "schema": "",
@@ -4917,6 +5066,7 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+<<<<<<< 4945beb5eca27da30e41ee26e3d030df5fd33dde
     "public.newsletter_wine_log": {
       "name": "newsletter_wine_log",
       "schema": "",
@@ -5227,6 +5377,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+=======
+>>>>>>> b4a050c0748c0606e08e83257e70b75c50836039
     "public.notice_candidates": {
       "name": "notice_candidates",
       "schema": "",

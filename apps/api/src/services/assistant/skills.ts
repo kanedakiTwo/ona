@@ -12,7 +12,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isFixedDish, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
 import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
 import { describeWeekPlan } from '../weekPlan.js'
@@ -52,7 +52,7 @@ import { unlistedDietMentions } from '../stepDietMentions.js'
 import { generationSkips, loadPreviousWeek } from '../menuWeek.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
-import { isBrandDependentGlutenCharcuterie, isCoeliacHousehold, recipeDietNotices } from '../glutenFreeCharcuterie.js'
+import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
@@ -481,9 +481,9 @@ const getRecipeDetails: SkillDefinition = {
       quantity: ratio === 1 || r.quantity == null ? r.quantity : scaleRound(Number(r.quantity) * ratio, r.unit ?? 'g'),
     }))
     const ingredientList = scaledRows.map((r: any) => `${r.ingredientName}: ${r.quantity}${r.unit ?? 'g'}`)
-    // PRO-196: same notice as the web ficha for a coeliac household.
+    // PRO-196, PRO-1063: same notices as the web ficha for a coeliac household.
     const ingNames = riRows.map((r: any) => String(r.ingredientName))
-    const dietNotices = ingNames.some(isBrandDependentGlutenCharcuterie)
+    const dietNotices = ingNames.some(needsGlutenFreeLabel)
       ? recipeDietNotices(ingNames, isCoeliacHousehold((await restrictionsFor(ctx)).restrictions))
       : []
     const details = recipeDetailsSummary({
@@ -1326,6 +1326,17 @@ const swapMeal: SkillDefinition = {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
         summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
+      }
+    }
+
+    // A ficha's «plato fijo» (PRO-1141) is never swapped at random: only for a named recipe.
+    const fixedHere = days[dayIndex]?.[meal]?.dishes.find(isFixedDish)
+    if (fixedHere) {
+      const name = fixedHere.kind === 'recipe' ? fixedHere.recipeName ?? 'el plato fijo' : fixedHere.text
+      return {
+        data: null,
+        summary: `No he cambiado nada: "${name}" es un plato fijo de la ficha del hogar para la ${slotLabel}. Si quiere otro, pregúntale cuál y vuelve a llamar con recipeName.`,
+        uiHint: 'text',
       }
     }
 

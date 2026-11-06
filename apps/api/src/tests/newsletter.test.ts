@@ -39,6 +39,7 @@ import {
   type NewsletterStatsRepo,
   type TrackedLink,
 } from '../services/newsletterStats.js'
+import { readyDrafts } from './fixtures/memoryNewsletterDrafts.js'
 
 /** In-memory clicks / opt-outs with the same semantics as the SQL (PRO-191). */
 function memoryStats(sendsOf: () => Array<{ issueId: string; source: string; hash?: string }> = () => []) {
@@ -590,6 +591,7 @@ describe('newsletter routes', () => {
           audit: audit as any,
           makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls }),
           publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts(ISSUE),
         }),
       )
     const b = await serve(app)
@@ -764,6 +766,7 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
           audit: (async () => 'a1') as any,
           makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats }),
           publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts({ ...ISSUE, issueId: 'prueba-clics' }),
         }),
       )
     const b = await serve(app)
@@ -837,6 +840,7 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
           audit: (async () => 'a1') as any,
           makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats }),
           publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts({ ...ISSUE, issueId: 'n3' }),
         }),
       )
     const b = await serve(app)
@@ -1074,6 +1078,7 @@ describe('a recipe and a tip for each person (PRO-1020)', () => {
           audit: (async () => 'a1') as any,
           makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats, tips, now: () => NOW }),
           publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts(N4),
         }),
       )
     const b = await serve(app)

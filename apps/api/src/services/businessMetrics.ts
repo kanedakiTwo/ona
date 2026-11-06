@@ -16,6 +16,8 @@ import { loadErrorSummary } from './appErrors.js'
 import { loadWaitlistSummary } from './waitlist.js'
 import { buildInstalledOpens, buildPushEnabled, deviceCountsFor, loadInstallRows } from './appInstalls.js'
 import { NOTICE_DEFINITIONS, loadNoticeMetrics } from './notifications/metrics.js'
+import { loadKFactor } from './kFactor.js'
+import { campaignOrigin, invitationOrigin, loadCircleCodes, type CampaignOrigin, type InvitationOrigin } from './circleInvitations.js'
 
 type Db = typeof defaultDb
 
@@ -55,6 +57,12 @@ export interface MetricsInput {
   menus: Array<HouseholdWeek & { firstCreatedAt?: string | null }>
   /** Days a household interacted with its shopping list. */
   shoppingDays: HouseholdDay[]
+  /**
+   * Days a household sent the list out (PRO-380): «Mandar la lista» or Mimo
+   * handing it out (`shopping_list_shared`), or an order sent to a shop or
+   * the súper (`shop_orders.sent_at`). Count like `shoppingDays`. Absent = none.
+   */
+  listSentDays?: HouseholdDay[]
   /** Household creation day. */
   signups: HouseholdDay[]
   costs: CostRow[]
@@ -174,7 +182,7 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
   const active = groupSets(input.activity)
   const menus = groupSets(input.menus)
   const shopped = groupSets(
-    input.shoppingDays.flatMap((s) => shoppingWeeksFor(s.day).map((week) => ({ householdId: s.householdId, week }))),
+    [...input.shoppingDays, ...(input.listSentDays ?? [])].flatMap((s) => shoppingWeeksFor(s.day).map((week) => ({ householdId: s.householdId, week }))),
   )
   const signups = groupSets(signupWeeks(input.signups))
 
@@ -239,6 +247,12 @@ export function buildCohorts(input: MetricsInput): CohortMetrics[] {
 export interface CampaignMetrics {
   /** Campaign name; null = signed up without a campaign link. */
   campaign: string | null
+  /**
+   * PRO-1017: `circulo` (Miguel's circle, D-129), `campaña` (any other link), and without a link
+   * `desconocido-por-invitacion` (personal link of a circle household, D-132), `invita` (any other
+   * household's link) or `sin-enlace`.
+   */
+  origin: CampaignOrigin
   signups: number
   /** Active in their signup week. */
   activated: number
@@ -255,22 +269,30 @@ const rate = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10_000) / 1
 /**
  * Signups in the window grouped by the campaign link they used (PRO-27), so
  * Miguel's circle ("familia", "amigos-padel"…) is read apart from strangers.
+ * Households without a campaign link are split by who invited them (PRO-1017).
  */
-export function buildCampaigns(input: MetricsInput, campaignOf: Map<string, string | null>): CampaignMetrics[] {
+export function buildCampaigns(
+  input: MetricsInput,
+  campaignOf: Map<string, string | null>,
+  invitationOf: Map<string, InvitationOrigin | null> = new Map(),
+): CampaignMetrics[] {
   const active = groupSets(input.activity)
-  const groups = new Map<string | null, HouseholdWeek[]>()
+  const groups = new Map<string, { campaign: string | null; origin: CampaignOrigin; members: HouseholdWeek[] }>()
   for (const s of signupWeeks(input.signups)) {
-    const c = campaignOf.get(s.householdId) ?? null
-    if (!groups.has(c)) groups.set(c, [])
-    groups.get(c)!.push(s)
+    const campaign = campaignOf.get(s.householdId) ?? null
+    const origin = campaignOrigin(campaign, invitationOf.get(s.householdId) ?? null)
+    const key = JSON.stringify([campaign, origin])
+    if (!groups.has(key)) groups.set(key, { campaign, origin, members: [] })
+    groups.get(key)!.members.push(s)
   }
-  return [...groups.entries()]
-    .map(([campaign, members]) => {
+  return [...groups.values()]
+    .map(({ campaign, origin, members }) => {
       const activated = members.filter((m) => active.get(m.week)?.has(m.householdId)).length
       const eligible = members.filter((m) => addDays(m.week, 21) <= input.currentWeek)
       const week3Active = eligible.filter((m) => active.get(addDays(m.week, 21))?.has(m.householdId)).length
       return {
         campaign,
+        origin,
         signups: members.length,
         activated,
         activationRate: rate(activated, members.length),
@@ -279,7 +301,7 @@ export function buildCampaigns(input: MetricsInput, campaignOf: Map<string, stri
         week3Rate: rate(week3Active, eligible.length),
       }
     })
-    .sort((a, b) => b.signups - a.signups || String(a.campaign).localeCompare(String(b.campaign)))
+    .sort((a, b) => b.signups - a.signups || String(a.campaign).localeCompare(String(b.campaign)) || a.origin.localeCompare(b.origin))
 }
 
 export function buildTotals(input: MetricsInput, weekly: WeeklyMetrics[]) {
@@ -314,9 +336,9 @@ export const DEFINITIONS = {
   excluded:
     'Admin accounts (role=admin) and suspended users are excluded from every count and from costEur; their spend is reported as internalCostEur. There is no demo-account flag. `includeInternal=1` counts them.',
   activeHouseholds:
-    'Distinct households with at least one meaningful action in the week: generated a menu, logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to Mimo, or triggered a paid AI feature (talking to Mimo typed or spoken, recipe import, image). Weeks before 2026-10-09 also count OpenAI Realtime voice sessions (retired, D-023). Opening a screen is not tracked.',
+    'Distinct households with at least one meaningful action in the week: generated a menu, logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to Mimo, changed something in their ficha (confirm, correct, forget), or triggered a paid AI feature (talking to Mimo typed or spoken, recipe import, image). Calls Mimoia makes by itself do not count, even when billed to the household (PRO-1069): the ficha refiner\'s nightly and weekly passes (`ficha`), the messages Mimo sends on its own (`whatsapp_guided`, `whatsapp_template`, `whatsapp_service`) and any other night job. Weeks before 2026-10-09 also count OpenAI Realtime voice sessions (retired, D-023). Opening a screen is not tracked.',
   resolvedWeekHouseholds:
-    'Households that (a) have a menu whose week_start is that week AND (b) used the shopping list (checked an item, toggled in-stock, or added an item — web or assistant) during that week or the Saturday/Sunday right before it. Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
+    'Households that (a) have a menu whose week_start is that week AND (b) used or sent the shopping list during that week or the Saturday/Sunday right before it: checked an item, toggled in-stock or added an item (web or assistant); sent the list («Mandar la lista» on the web, or Mimo handing out the whole list in the chat or on WhatsApp: shopping_list_shared, PRO-380); or sent an order to a shop or the súper (an undone send does not count). Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
   menuHouseholds:
     'Households with a menu whose week_start is that week (generated, regenerated or emptied — any menu row for the week). Counts only.',
   menuReadyByMondayHouseholds:
@@ -335,12 +357,14 @@ export const DEFINITIONS = {
   errors:
     'In-house error tracker (specs/errors.md), last 7 days by last_seen: newGroups = error groups first seen in the window, activeGroups / openGroups = groups seen (unresolved), events = Σ count of those groups (cumulative, an upper bound). Detail: GET /admin/errors.',
   campaigns:
-    'Households that signed up in the window, by the campaign invitation link their first user registered with (null = no link: waitlist invitation, household invitation, admin or open registration). activated = active (see activeHouseholds) in the signup week; week3 = active in signup week + 3, over the signups whose week 3 has started.',
+    'Households that signed up in the window, by the campaign invitation link their first user registered with (null = no link: waitlist invitation, household invitation, admin or open registration). origin: circulo = a link of Miguel’s circle (circulo-*, beta-privada-*, colegio-estudio); campaña = any other link; without a link, desconocido-por-invitacion = signed up with the personal link of a circle household (they don’t know Miguel: counts for the 13-nov signal), invita = with the personal link of any other household, sin-enlace = none. activated = active (see activeHouseholds) in the signup week; week3 = active in signup week + 3, over the signups whose week 3 has started.',
   installedAppHouseholds:
     'Households (counted users) that opened Mimoia as an installed app (display-mode standalone) at least once that week, by device (android / ios / desktop, deduced from the browser; total counts each household once). The web reports at most one open per household and day. Starts when this shipped (PRO-83): earlier weeks read 0.',
   pushEnabledHouseholds:
     'Households (counted users) with push notifications on at the end of the week: a push subscription that still exists today and was created on or before that Sunday, by device (from the browser). Turning notifications off deletes the subscription, so past weeks are a lower bound.',
   notifications: NOTICE_DEFINITIONS,
+  kFactor:
+    'Invitations to another household (PRO-1018, D-132), each week of the window and cumulative (`cumulative`: from the first record to that Sunday; `allTime`: all history). inviteShared = taps on «Invitar a otro hogar» (invite_shared: WhatsApp, Copiar, or Mimo giving the link); inviteSignups = new households whose first account registered with another household’s code (joining the inviter’s own household does not count; campaign links such as Miguel’s circle are in campaigns, not here); invitingHouseholds = distinct households that shared or whose code brought a sign-up in the period; kFactor = inviteSignups / invitingHouseholds, 2 decimals, null with no inviting household. A sign-up counts in its sign-up week. Counts only: no codes, ids or emails.',
   waitlist:
     'Pre-launch waitlist (specs/waitlist.md), all time: entries by status, last7Days = signups in the last 7 × 24 h, referredSignups / newsletterOptIns = active entries (not unsubscribed) that came with someone’s link / opted in to the weekly menu email. Segments, sources and the suggested next batch: GET /admin/waitlist.',
 } as const
@@ -359,8 +383,8 @@ export const FEATURE_DEFINITIONS: Record<string, string> = {
   whatsapp_service: 'One free-form WhatsApp message sent by Mimo (reply or proactive inside the 24 h window); 0 € for the first 1,000 of the month.',
   whatsapp_template: 'One template message sent by Mimo outside the 24 h window (Meta utility template).',
   whatsapp_review: 'One call of the daily conversation reviewer (system cost; an admin re-run is another row).',
-  voice_note_transcription: 'One WhatsApp voice note transcribed.',
-  mimo_voice_transcription: "One recording of the user's voice in the app transcribed (POST /stt).",
+  voice_note_transcription: 'One WhatsApp voice note transcribed by one provider (Groq, AiKit or OpenAI; the provider says which). When one hears nothing and the next one tries, each is a row.',
+  mimo_voice_transcription: "One recording of the user's voice in the app transcribed by one provider (POST /stt; Groq, AiKit or OpenAI, as voice_note_transcription).",
   chat_tts: "One of Mimo's replies read aloud (POST /tts).",
   voice_realtime: 'Historical: one OpenAI Realtime voice session (retired 2026-10-09).',
   recipe_extract_photo: 'One recipe read from a photo (web or WhatsApp).',
@@ -377,6 +401,7 @@ export const FEATURE_DEFINITIONS: Record<string, string> = {
   taste_reason: 'One reason the user gave in the taste game read into the household file.',
   shop_quote_parse: "One shop's reply read for a shop order.",
   catalog_import_rewrite: 'One recipe rewritten for the catalogue import (system cost).',
+  catalog_storage_labels: 'One lot of up to 20 catalogue recipes labelled «se congela» / «días en nevera» (PRO-372, system cost).',
 }
 
 // ─── SQL loader ──────────────────────────────────────────────────
@@ -389,19 +414,25 @@ export interface LoadOptions {
 
 const TZ = 'Europe/Madrid'
 
-export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb) {
-  const now = opts.now ?? new Date()
-  const weeks = lastWeekStarts(now, opts.weeks)
-  const fromDay = weeks[0]
-  const from = madridMidnightUtc(fromDay)
-  const inc = opts.includeInternal
+/**
+ * Ledger features that Mimoia runs by itself, with no gesture of the household behind them
+ * (PRO-1069): Mimo's own WhatsApp messages (templates, service replies, and the writer of the
+ * proactive ones) and the ficha's refiner (`ficha`: the nightly and weekly batches; its passes
+ * at the moment follow a gesture that already counts). They are billed to the household but
+ * don't make it active. A correction in «Tu ficha» is also billed as `ficha`; it counts through
+ * `profile_changes` (origin `user`), like every other change the person makes in their ficha.
+ */
+export const NO_GESTURE_FEATURES = ['whatsapp_template', 'whatsapp_service', 'whatsapp_guided', 'ficha'] as const
 
-  // Counted users (admins / suspended excluded unless includeInternal).
-  const counted = sql`(${inc}::boolean OR (u.role <> 'admin' AND u.suspended_at IS NULL))`
-  const weekOf = (col: ReturnType<typeof sql>) => sql`to_char(date_trunc('week', ${col} AT TIME ZONE ${TZ}), 'YYYY-MM-DD')`
-  const dayOf = (col: ReturnType<typeof sql>) => sql`to_char(${col} AT TIME ZONE ${TZ}, 'YYYY-MM-DD')`
+/** Counted users (admins / suspended excluded unless includeInternal); the user is `u`. */
+const countedUsers = (inc: boolean) => sql`(${inc}::boolean OR (u.role <> 'admin' AND u.suspended_at IS NULL))`
+const weekOf = (col: ReturnType<typeof sql>) => sql`to_char(date_trunc('week', ${col} AT TIME ZONE ${TZ}), 'YYYY-MM-DD')`
 
-  const activityQ = db.execute(sql`
+/** Distinct (household, week) pairs with a meaningful action since `from` (see DEFINITIONS.activeHouseholds). */
+export async function loadActivity(from: Date, includeInternal: boolean, db: Db = defaultDb): Promise<HouseholdWeek[]> {
+  const counted = countedUsers(includeInternal)
+  const noGesture = sql.join(NO_GESTURE_FEATURES.map((f) => sql`${f}`), sql`, `)
+  const res = await db.execute(sql`
     WITH ev AS (
       SELECT COALESCE(m.household_id, u.primary_household_id) AS hh, m.created_at AS at
         FROM menus m JOIN users u ON u.id = m.user_id WHERE m.created_at >= ${from} AND ${counted}
@@ -423,16 +454,35 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
         FROM voice_transcripts v JOIN users u ON u.id = v.user_id
         WHERE v.role = 'user' AND v.created_at >= ${from} AND ${counted}
       UNION ALL
-      -- Paid features the user triggered (Mimo's own WhatsApp messages — templates and service replies — are not the user's activity).
+      -- What the person changed in their ficha (confirm, correct, forget, a person…; PRO-1069).
+      SELECT pc.household_id, pc.created_at
+        FROM profile_changes pc JOIN users u ON u.id = pc.actor_user_id
+        WHERE pc.origin = 'user' AND pc.created_at >= ${from} AND ${counted}
+      UNION ALL
+      -- Paid features the user triggered (not those Mimoia runs by itself: NO_GESTURE_FEATURES).
       SELECT COALESCE(ce.household_id, u.primary_household_id), ce.created_at
         FROM cost_events ce JOIN users u ON u.id = ce.user_id
-        WHERE ce.feature NOT IN ('whatsapp_template', 'whatsapp_service') AND ce.created_at >= ${from} AND ${counted}
+        WHERE ce.feature NOT IN (${noGesture}) AND ce.created_at >= ${from} AND ${counted}
     )
     SELECT ev.hh::text AS household_id, ${weekOf(sql`ev.at`)} AS week
       FROM ev
       WHERE ev.hh IS NOT NULL
       GROUP BY 1, 2
   `)
+  return (res.rows as any[]).map((r) => ({ householdId: r.household_id, week: r.week }))
+}
+
+export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb) {
+  const now = opts.now ?? new Date()
+  const weeks = lastWeekStarts(now, opts.weeks)
+  const fromDay = weeks[0]
+  const from = madridMidnightUtc(fromDay)
+  const inc = opts.includeInternal
+
+  const counted = countedUsers(inc)
+  const dayOf = (col: ReturnType<typeof sql>) => sql`to_char(${col} AT TIME ZONE ${TZ}, 'YYYY-MM-DD')`
+
+  const activityQ = loadActivity(from, inc, db)
 
   const menusQ = db.execute(sql`
     SELECT COALESCE(m.household_id, u.primary_household_id)::text AS household_id, to_char(m.week_start, 'YYYY-MM-DD') AS week,
@@ -444,11 +494,30 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
   `)
 
   // From the Saturday before the window so a weekend shop counts for week 1.
+  const shoppingFrom = madridMidnightUtc(addDays(fromDay, -2))
   const shoppingQ = db.execute(sql`
     SELECT COALESCE(a.household_id, u.primary_household_id)::text AS household_id, ${dayOf(sql`a.created_at`)} AS day
       FROM activity_events a JOIN users u ON u.id = a.user_id
-      WHERE a.kind LIKE 'shopping_%' AND a.created_at >= ${madridMidnightUtc(addDays(fromDay, -2))} AND ${counted}
+      WHERE a.kind LIKE 'shopping_%' AND a.created_at >= ${shoppingFrom} AND ${counted}
         AND COALESCE(a.household_id, u.primary_household_id) IS NOT NULL
+      GROUP BY 1, 2
+  `)
+
+  // PRO-380: sending the list out, or an order to a shop / the súper, also resolves the week.
+  // An undone send goes back to draft with sent_at NULL, so it drops out by itself.
+  const listSentQ = db.execute(sql`
+    WITH sent AS (
+      SELECT COALESCE(e.household_id, u.primary_household_id) AS hh, e.created_at AS at
+        FROM usage_events e JOIN users u ON u.id = e.user_id
+        WHERE e.name = 'shopping_list_shared' AND e.created_at >= ${shoppingFrom} AND ${counted}
+      UNION ALL
+      SELECT o.household_id, o.sent_at
+        FROM shop_orders o JOIN users u ON u.id = o.user_id
+        WHERE o.sent_at IS NOT NULL AND o.status <> 'cancelled' AND o.sent_at >= ${shoppingFrom} AND ${counted}
+    )
+    SELECT sent.hh::text AS household_id, ${dayOf(sql`sent.at`)} AS day
+      FROM sent
+      WHERE sent.hh IS NOT NULL
       GROUP BY 1, 2
   `)
 
@@ -460,7 +529,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
   `)
 
   const campaignsQ = db.execute(sql`
-    SELECT h.id::text AS household_id, MIN(c.name) AS campaign
+    SELECT h.id::text AS household_id, MIN(c.name) AS campaign, MIN(u.invited_by_code) AS invited_by_code
       FROM households h
       JOIN users u ON u.primary_household_id = h.id
       LEFT JOIN invite_campaigns c ON c.id = u.invite_campaign_id
@@ -487,22 +556,25 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications] = await Promise.all([
-    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
+  const [activity, menuRows, shopping, listSent, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor, circleCodes] = await Promise.all([
+    activityQ, menusQ, shoppingQ, listSentQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
     campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
     loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
+    loadKFactor(weeks, inc, db),
+    loadCircleCodes(db),
   ])
 
   const input: MetricsInput = {
     weeks,
     currentWeek: weeks[weeks.length - 1],
-    activity: (activity.rows as any[]).map((r) => ({ householdId: r.household_id, week: r.week })),
+    activity,
     menus: (menuRows.rows as any[]).map((r) => ({
       householdId: r.household_id,
       week: r.week,
       firstCreatedAt: r.first_created_at ? new Date(r.first_created_at).toISOString() : null,
     })),
     shoppingDays: (shopping.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
+    listSentDays: (listSent.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     signups: (signups.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     costs: (costs.rows as any[]).map((r) => ({
       week: r.week,
@@ -536,11 +608,13 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     campaigns: buildCampaigns(
       input,
       new Map((campaignRows.rows as any[]).map((r) => [r.household_id as string, (r.campaign as string | null) ?? null])),
+      new Map((campaignRows.rows as any[]).map((r) => [r.household_id as string, invitationOrigin(r.invited_by_code, circleCodes)])),
     ),
     totals: buildTotals(input, weekly),
     errors,
     waitlist,
     notifications,
+    kFactor,
     definitions: { ...DEFINITIONS, featureDefinitions: FEATURE_DEFINITIONS },
   }
 }

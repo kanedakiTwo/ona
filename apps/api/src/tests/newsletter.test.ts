@@ -9,9 +9,11 @@ import type { RequestHandler } from 'express'
 import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { afterAll, describe, expect, it, vi } from 'vitest'
+import { inviteHouseholdShareText, waitlistShareText } from '@ona/shared'
 import { createNewsletterRouter } from '../routes/newsletter.js'
 import {
   buildNewsletterMessage,
+  correLaVozLinks,
   forgetNewsletterSends,
   newsletterSendSchema,
   newsletterTokenForUser,
@@ -28,6 +30,7 @@ import {
   type NewsletterSendInput,
 } from '../services/newsletter.js'
 import type { EmailMessage, EmailResult } from '../services/email.js'
+import type { NewsletterTipsRepo, RecipeFacts, TipLogRow, TipPersona } from '../services/newsletterTips.js'
 import {
   buildIssueStats,
   contentLinks,
@@ -35,6 +38,7 @@ import {
   type NewsletterStatsRepo,
   type TrackedLink,
 } from '../services/newsletterStats.js'
+import { readyDrafts } from './fixtures/memoryNewsletterDrafts.js'
 
 /** In-memory clicks / opt-outs with the same semantics as the SQL (PRO-191). */
 function memoryStats(sendsOf: () => Array<{ issueId: string; source: string; hash?: string }> = () => []) {
@@ -99,8 +103,12 @@ function cand(email: string | null, extra: CandInput = {}): NewsletterCandidate 
 const USER_ID = '22222222-2222-4222-8222-222222222222'
 
 function userCand(email: string, extra: Partial<NewsletterCandidate> = {}): NewsletterCandidate {
-  return { source: 'user', email, status: 'active', newsletterOptIn: true, token: newsletterTokenForUser(USER_ID), ...extra }
+  return { source: 'user', email, status: 'active', newsletterOptIn: true, token: newsletterTokenForUser(USER_ID), userId: USER_ID, ...extra }
 }
+
+/** The code `ensureAccountCode` gives an account (or an admin, by email) in the memory repo. */
+const ACCOUNT_CODE = 'hgar2345'
+const ADMIN_CODE = 'adm4n567'
 
 const ISSUE: NewsletterSendInput = newsletterSendSchema.parse({
   issueId: '2026-10-16',
@@ -234,6 +242,10 @@ function memoryRepo(candidates: NewsletterCandidate[], admins: string[] = []) {
     async isAdminEmail(email) {
       return admins.includes(email)
     },
+    async ensureAccountCode(ref) {
+      if ('userId' in ref) return ref.userId === USER_ID ? ACCOUNT_CODE : null
+      return admins.includes(ref.email) ? ADMIN_CODE : null
+    },
     async unsubscribe(token) {
       if (!parseNewsletterToken(token)) return { outcome: 'not_found', recipientHash: null }
       const e = entries.find((x) => x.token === token)
@@ -330,10 +342,11 @@ describe('sendNewsletter', () => {
     await expect(sendNewsletter({ ...ISSUE, testTo: 'ana@example.com' }, d)).rejects.toThrow()
   })
 
-  it('each waitlist recipient gets their own invite link, never someone else\'s; accounts get none (PRO-130)', async () => {
-    const codes: Record<string, string> = { 'ana@example.com': 'anacode1', 'bea@example.com': 'beacode2' }
+  it('«Corre la voz»: an account gets its household code, a waitlist person their `invita`, never someone else\'s (PRO-1019, PRO-130)', async () => {
+    const codes: Record<string, string> = { 'cuenta@example.com': ACCOUNT_CODE, 'ana@example.com': 'anacode1', 'bea@example.com': 'beacode2' }
     const { repo } = memoryRepo([
-      userCand('cuenta@example.com'),
+      // No code yet: `ensureAccountCode` assigns it at send.
+      userCand('cuenta@example.com', { referralCode: null }),
       cand('ana@example.com', { unsubscribeToken: TOKEN_A, referralCode: codes['ana@example.com'] }),
       cand('bea@example.com', { unsubscribeToken: TOKEN_B, referralCode: codes['bea@example.com'] }),
     ])
@@ -348,24 +361,37 @@ describe('sendNewsletter', () => {
         expect(m.html).not.toContain(code)
         expect(m.text).not.toContain(code)
       }
-      if (own) {
-        expect(m.html).toContain(newsletterInviteLine())
+      expect(m.html).toContain('Corre la voz')
+      expect(m.html).toContain('Compartir por WhatsApp')
+      expect(m.html).toContain('Copiar el enlace')
+      expect(m.text).toContain('CORRE LA VOZ:')
+      if (m.to === 'cuenta@example.com') {
+        expect(m.html).toContain(`href="https://mimoia.com/i/${own}"`)
+        expect(m.text).toContain(`Mándale tu enlace para que pruebe Mimoia: https://mimoia.com/i/${own}`)
+        expect(m.html).not.toContain('?invita=')
+        // WhatsApp opens with the app's message and the household link (no stats repo: straight to wa.me).
+        expect(m.html).toContain(`https://wa.me/?text=${encodeURIComponent(inviteHouseholdShareText(`https://mimoia.com/i/${own}`))}`)
+        expect(m.html).toContain(`https://mimoia.com/newsletter/comparte?c=${own}&amp;k=hogar`)
+      } else {
+        expect(m.html).toContain(newsletterInviteLine().replace(/:$/, ''))
         expect(m.html).toContain(`href="https://mimoia.com/?invita=${own}"`)
         expect(m.text).toContain(`${newsletterInviteLine()} https://mimoia.com/?invita=${own}`)
-      } else {
-        expect(m.html).not.toContain('Invita a tu hogar')
-        expect(m.text).not.toContain('Invita a tu hogar')
-        expect(m.html).not.toContain('?invita=')
+        expect(m.html).toContain(`https://mimoia.com/newsletter/comparte?c=${own}&amp;k=lista`)
       }
     }
   })
 
-  it('the admin proof carries no invite link (PRO-130)', async () => {
+  it('the admin proof carries the block with the admin\'s own household link, never a recipient\'s (PRO-1019)', async () => {
     const { repo } = memoryRepo([cand('ana@example.com', { referralCode: 'anacode1' })], ['miguel@mimoia.com'])
     const d = deps(repo, okBatch())
     await sendNewsletter({ ...ISSUE, testTo: 'miguel@mimoia.com' }, d)
     const msg = (d.sendOne as any).mock.calls[0][0] as EmailMessage
     expect(msg.html).not.toContain('?invita=')
+    expect(msg.html).not.toContain('anacode1')
+    expect(msg.html).toContain('Corre la voz')
+    expect(msg.html).toContain('Compartir por WhatsApp')
+    expect(msg.html).toContain('Copiar el enlace')
+    expect(msg.html).toContain(`href="https://mimoia.com/i/${ADMIN_CODE}"`)
   })
 
   it('the newsletter opt-out leaves the entry on the list; a second click says already', async () => {
@@ -403,7 +429,7 @@ describe('sendNewsletter', () => {
 })
 
 describe('the invite line stops promising «entráis antes» when the registration opens (PRO-311)', () => {
-  const invite = { unsubscribeUrl: 'https://mimoia.com/x', inviteUrl: 'https://mimoia.com/?invita=anacode1' }
+  const invite = { unsubscribeUrl: 'https://mimoia.com/x', share: correLaVozLinks('https://mimoia.com', 'anacode1', 'lista') }
 
   it('until 15-nov (Madrid) it says «y entráis antes»; from 16-nov 00:00 Madrid, «a Mimoia»', () => {
     // 2026-11-16 00:00 in Madrid is 2026-11-15 23:00 UTC (winter time, UTC+1).
@@ -414,7 +440,8 @@ describe('the invite line stops promising «entráis antes» when the registrati
 
   it('the newsletter of Friday 13-nov carries «entráis antes»; the one of 20-nov does not', () => {
     const before = renderNewsletterEmail(ISSUE, { ...invite, now: new Date('2026-11-13T07:00:00Z') })
-    expect(before.html).toContain('Invita a tu hogar y entráis antes:')
+    // The «Corre la voz» title (PRO-1019) is the line without its colon.
+    expect(before.html).toContain('Invita a tu hogar y entráis antes</p>')
     expect(before.text).toContain('Invita a tu hogar y entráis antes: https://mimoia.com/?invita=anacode1')
 
     const after = renderNewsletterEmail(ISSUE, { ...invite, now: new Date('2026-11-20T07:00:00Z') })
@@ -422,7 +449,7 @@ describe('the invite line stops promising «entráis antes» when the registrati
       expect(out).not.toContain('entráis antes')
       expect(out).not.toContain('entrais antes')
     }
-    expect(after.html).toContain('Invita a tu hogar a Mimoia:')
+    expect(after.html).toContain('Invita a tu hogar a Mimoia</p>')
     expect(after.html).toContain('href="https://mimoia.com/?invita=anacode1"')
     expect(after.text).toContain('Invita a tu hogar a Mimoia: https://mimoia.com/?invita=anacode1')
   })
@@ -563,6 +590,7 @@ describe('newsletter routes', () => {
           audit: audit as any,
           makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls }),
           publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts(ISSUE),
         }),
       )
     const b = await serve(app)
@@ -737,6 +765,7 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
           audit: (async () => 'a1') as any,
           makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats }),
           publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts({ ...ISSUE, issueId: 'prueba-clics' }),
         }),
       )
     const b = await serve(app)
@@ -790,6 +819,75 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
     expect(report.definitions.clicks).toMatch(/not people/)
   })
 
+  it('«Corre la voz»: each button goes through our counter with the recipient\'s code and counts in the slot corre_la_voz (PRO-1019)', async () => {
+    const { repo } = memoryRepo([cand('ana@example.com', { unsubscribeToken: TOKEN_A, referralCode: 'ana23456' }), userCand('bea@example.com', { referralCode: null })])
+    const { stats } = memoryStats(() => [{ issueId: 'n3', source: 'waitlist' }])
+    const sendBatch = okBatch()
+    const asAdmin: RequestHandler = (req, _res, next) => {
+      ;(req as any).userId = '11111111-1111-4111-8111-111111111111'
+      next()
+    }
+    const app = express()
+      .use(express.json())
+      .use(
+        createNewsletterRouter({
+          repo,
+          stats,
+          adminAuth: [asAdmin],
+          statsAuth: asAdmin,
+          unsubscribeLimiter: noLimit,
+          audit: (async () => 'a1') as any,
+          makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats }),
+          publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts({ ...ISSUE, issueId: 'n3' }),
+        }),
+      )
+    const b = await serve(app)
+    const sent = await fetch(`${b}/admin/newsletter/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...ISSUE, issueId: 'n3' }),
+    })
+    expect(await sent.json()).toMatchObject({ mode: 'send', sent: 2 })
+    const [toAna, toBea] = sendBatch.mock.calls[0][0]
+    expect(toAna.html).toContain('https://mimoia.com/n/n3/41?c=ana23456&amp;k=lista')
+    expect(toAna.html).toContain('https://mimoia.com/n/n3/42?c=ana23456&amp;k=lista')
+    expect(toAna.html).not.toContain('wa.me')
+    expect(toBea.html).toContain(`https://mimoia.com/n/n3/41?c=${ACCOUNT_CODE}&amp;k=hogar`)
+    expect(toBea.text).toContain(`Compartir por WhatsApp: https://mimoia.com/n/n3/41?c=${ACCOUNT_CODE}&k=hogar`)
+
+    const click = (path: string, ua = BROWSER) => fetch(`${b}${path}`, { headers: { 'user-agent': ua } })
+    const wa = await (await click('/newsletter/click/n3/41?c=ana23456&k=lista')).json()
+    expect(wa.url).toBe(`https://wa.me/?text=${encodeURIComponent(waitlistShareText('https://mimoia.com/?invita=ana23456'))}`)
+    const waHogar = await (await click(`/newsletter/click/n3/41?c=${ACCOUNT_CODE}&k=hogar`)).json()
+    expect(waHogar.url).toBe(`https://wa.me/?text=${encodeURIComponent(inviteHouseholdShareText(`https://mimoia.com/i/${ACCOUNT_CODE}`))}`)
+    const copy = await (await click(`/newsletter/click/n3/42?c=${ACCOUNT_CODE}&k=hogar`)).json()
+    expect(copy.url).toBe(`https://mimoia.com/newsletter/comparte?c=${ACCOUNT_CODE}&k=hogar`)
+    // Not clicks: a proof, a scanner. Not links: no code, a bad code, a bad kind, a URL instead of a code.
+    await click('/newsletter/click/n3/41?c=ana23456&k=lista&prueba=1')
+    await click('/newsletter/click/n3/42?c=ana23456&k=lista', 'Mozilla/5.0 (compatible; Mimecast)')
+    for (const p of [
+      '/newsletter/click/n3/41',
+      '/newsletter/click/n3/41?c=ANA!&k=lista',
+      '/newsletter/click/n3/41?c=ana23456&k=otro',
+      `/newsletter/click/n3/41?c=${encodeURIComponent('https://malo.example')}&k=lista`,
+      '/newsletter/click/no-existe/41?c=ana23456&k=lista',
+    ]) {
+      const r = await click(p)
+      expect(r.status, p).toBe(404)
+      expect(await r.json()).not.toHaveProperty('url')
+    }
+
+    const report = await (await fetch(`${b}/admin/newsletter/stats`)).json()
+    const row = report.issues.find((i: any) => i.issueId === 'n3')
+    expect(row.clicks.slots).toEqual({ corre_la_voz: { total: 3, buttons: { whatsapp: 2, copiar: 1 } } })
+    expect(row.clicks.links.map((l: any) => l.index)).toEqual([1, 2])
+    expect(row.clicks.total).toBe(3)
+    // Counts only: no code is kept anywhere in the report.
+    expect(JSON.stringify(report)).not.toContain('ana23456')
+    expect(JSON.stringify(report)).not.toContain(ACCOUNT_CODE)
+  })
+
   it('a proof (testTo) uses the same links with ?prueba=1, which never count', async () => {
     const { repo } = memoryRepo([cand('ana@example.com')], ['admin@mimoia.com'])
     const { stats, links } = memoryStats()
@@ -797,7 +895,10 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
     await sendNewsletter({ ...ISSUE, issueId: 'n2', testTo: 'admin@mimoia.com' }, { ...deps(repo, okBatch()), sendOne, stats })
     const html = (sendOne.mock.calls[0] as any)[0].html as string
     expect(html).toContain('https://mimoia.com/n/n2/1?prueba=1')
-    expect(links.size).toBe(2)
+    // The «Corre la voz» buttons too (PRO-1019), with the admin's code.
+    expect(html).toContain(`https://mimoia.com/n/n2/41?c=${ADMIN_CODE}&amp;k=hogar&amp;prueba=1`)
+    expect(html).toContain(`https://mimoia.com/n/n2/42?c=${ADMIN_CODE}&amp;k=hogar&amp;prueba=1`)
+    expect(links.size).toBe(4)
     expect(countsAsClick({ method: 'GET', userAgent: BROWSER, proof: true })).toBe(false)
   })
 
@@ -808,5 +909,202 @@ describe('newsletter clicks, counted by us (PRO-191)', () => {
     for (const ua of ['Googlebot/2.1', 'Mozilla/5.0 (compatible; Mimecast)', 'Microsoft Office SafeLinks', 'WhatsApp/2.23', 'curl/8.4.0', 'python-requests/2.31']) {
       expect(countsAsClick({ method: 'GET', userAgent: ua }), ua).toBe(false)
     }
+  })
+})
+
+// ─── Receta y truco por persona (PRO-1020) ───────────────────────
+
+describe('a recipe and a tip for each person (PRO-1020)', () => {
+  const ANA_ID = '44444444-4444-4444-8444-444444444444'
+  const BEA_ID = '55555555-5555-4555-8555-555555555555'
+  const ADMIN_ID = '66666666-6666-4666-8666-666666666666'
+  const R1 = '77777777-7777-4777-8777-777777777771'
+  const R2 = '77777777-7777-4777-8777-777777777772'
+  const NOW = new Date('2026-11-06T08:00:00.000Z')
+  const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000)
+  const BROWSER = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'
+
+  const N4 = newsletterSendSchema.parse({
+    ...ISSUE,
+    issueId: 'n4',
+    content: {
+      ...ISSUE.content,
+      recipes: [
+        { recipeId: R1, title: 'Crema de calabaza', body: 'Para la primera noche de frío.', imageUrl: 'https://mimoia.com/c.jpg', imageAlt: 'Crema de calabaza' },
+        { recipeId: R2, title: 'Pollo al horno con patatas', body: 'El domingo, sin prisa.', imageUrl: 'https://mimoia.com/p.jpg', imageAlt: 'Pollo al horno' },
+      ],
+    },
+  })
+
+  function persona(userId: string, extra: Partial<TipPersona & { log: TipLogRow[] }> = {}): TipPersona & { log: TipLogRow[] } {
+    return {
+      userId,
+      householdId: `h-${userId}`,
+      signedUpAt: daysAgo(20),
+      whatsapp: { linked: true, notify: true, declined: false },
+      push: false,
+      accounts: 1,
+      isOwner: true,
+      adults: 1,
+      familyInviteDeclined: false,
+      inviteOfferDeclined: false,
+      usage: {},
+      shown: [],
+      log: [],
+      ...extra,
+    }
+  }
+
+  /** Ana: week 3, uses the list → «tacha la lista»; can't have R2. Bea: no WhatsApp → «Mimo por WhatsApp»; can't have R1. */
+  function memoryTips() {
+    const people: Record<string, TipPersona & { log: TipLogRow[] }> = {
+      [ANA_ID]: persona(ANA_ID, {
+        usage: { lista_compra: { firstUsedAt: daysAgo(18), lastUsedAt: daysAgo(2) }, afinar_menu: { firstUsedAt: daysAgo(30), lastUsedAt: daysAgo(30) } },
+        log: [{ id: 'l1', userId: ANA_ID, issueId: 'n2', tip: 'afinar_menu', recipeId: null, shownAt: daysAgo(35), adoptedAt: null }],
+        shown: [{ tip: 'afinar_menu', shownAt: daysAgo(35) }],
+      }),
+      [BEA_ID]: persona(BEA_ID, { signedUpAt: daysAgo(3), whatsapp: { linked: false, notify: false, declined: false } }),
+      [ADMIN_ID]: persona(ADMIN_ID, { whatsapp: { linked: false, notify: false, declined: false } }),
+    }
+    const facts: Record<string, RecipeFacts> = {
+      [ANA_ID]: { blocked: new Set([R2]), sentBefore: new Set() },
+      [BEA_ID]: { blocked: new Set([R1]), sentBefore: new Set() },
+      [ADMIN_ID]: { blocked: new Set([R1]), sentBefore: new Set() },
+    }
+    const recorded: Array<{ issueId: string; userId: string; tip: string | null; recipeId: string | null }> = []
+    const adopted: Array<{ id: string; adoptedAt: Date }> = []
+    const tips: NewsletterTipsRepo = {
+      async personas(ids) {
+        return new Map(ids.filter((i) => people[i]).map((i) => [i, people[i]]))
+      },
+      async recipeFacts(ids) {
+        return new Map(ids.map((i) => [i, facts[i]]))
+      },
+      async record(issueId, rows) {
+        recorded.push(...rows.map((r) => ({ issueId, userId: r.userId, tip: r.tip, recipeId: r.recipeId })))
+      },
+      async markAdopted(rows) {
+        adopted.push(...rows)
+      },
+      async userIdByEmail(email) {
+        return email === 'admin@mimoia.com' ? ADMIN_ID : null
+      },
+    }
+    return { tips, recorded, adopted }
+  }
+
+  const accounts = () => [
+    userCand('ana@example.com', { userId: ANA_ID, token: newsletterTokenForUser(ANA_ID) }),
+    userCand('bea@example.com', { userId: BEA_ID, token: newsletterTokenForUser(BEA_ID) }),
+    cand('lista@example.com', { unsubscribeToken: TOKEN_C }),
+  ]
+
+  it('two people get a different recipe and a different tip; the waitlist the star and the general tip; all logged', async () => {
+    const { repo } = memoryRepo(accounts())
+    const { tips, recorded, adopted } = memoryTips()
+    const sendBatch = okBatch()
+    expect(await sendNewsletter(N4, { ...deps(repo, sendBatch), tips, now: () => NOW })).toMatchObject({ sent: 3 })
+    const [toAna, toBea, toList] = sendBatch.mock.calls[0][0]
+    expect(toAna.html).toContain('Crema de calabaza')
+    expect(toAna.html).not.toContain('Pollo al horno')
+    expect(toAna.html).toContain('Tacha la lista en el súper')
+    expect(toAna.html).toContain(`href="https://mimoia.com/recipes/${R1}"`)
+    expect(toAna.html).toContain('href="https://mimoia.com/shopping"')
+    expect(toBea.html).toContain('Pollo al horno con patatas')
+    expect(toBea.html).not.toContain('Crema de calabaza')
+    expect(toBea.html).toContain('Mimo, también por WhatsApp')
+    expect(toBea.text).toContain('LA RECETA DE LA SEMANA: Pollo al horno con patatas')
+    expect(toList.html).toContain('Lentejas estofadas')
+    expect(toList.html).toContain('¿Qué ceno con lo que tengo?')
+    expect(toList.html).not.toContain('Crema de calabaza')
+    expect(recorded).toEqual([
+      { issueId: 'n4', userId: ANA_ID, tip: 'tachar_lista', recipeId: R1 },
+      { issueId: 'n4', userId: BEA_ID, tip: 'whatsapp', recipeId: R2 },
+    ])
+    // Ana's earlier «Afina tu menú» (n2, 35 days ago) was first used 5 days after: adopted.
+    expect(adopted).toEqual([{ id: 'l1', adoptedAt: daysAgo(30) }])
+  })
+
+  it('no candidate fits → the star; a failing tips repo → everyone gets the general ones, and the send goes on', async () => {
+    const { repo } = memoryRepo(accounts())
+    const { tips } = memoryTips()
+    const blocked: NewsletterTipsRepo = {
+      ...tips,
+      recipeFacts: async (ids) => new Map(ids.map((i) => [i, { blocked: new Set([R1, R2]), sentBefore: new Set<string>() }])),
+    }
+    const batch = okBatch()
+    await sendNewsletter(N4, { ...deps(repo, batch), tips: blocked, now: () => NOW })
+    expect(batch.mock.calls[0][0][0].html).toContain('Lentejas estofadas')
+    expect(batch.mock.calls[0][0][0].html).toContain('Tacha la lista en el súper')
+
+    const other = memoryRepo(accounts())
+    const broken: NewsletterTipsRepo = { ...tips, personas: async () => Promise.reject(new Error('db down')) }
+    const batch2 = okBatch()
+    expect(await sendNewsletter(N4, { ...deps(other.repo, batch2), tips: broken, now: () => NOW })).toMatchObject({ sent: 3 })
+    expect(batch2.mock.calls[0][0][0].html).toContain('Lentejas estofadas')
+    expect(batch2.mock.calls[0][0][0].html).toContain('¿Qué ceno con lo que tengo?')
+  })
+
+  it("the proof carries the admin's own recipe and tip, and is not logged", async () => {
+    const { repo } = memoryRepo(accounts(), ['admin@mimoia.com'])
+    const { tips, recorded } = memoryTips()
+    const sendOne = vi.fn(async () => ({ status: 'sent', id: 'one' }) as EmailResult)
+    await sendNewsletter({ ...N4, testTo: 'admin@mimoia.com' }, { ...deps(repo, okBatch()), sendOne, tips, now: () => NOW })
+    const html = (sendOne.mock.calls[0] as any)[0].html as string
+    expect(html).toContain('Pollo al horno con patatas')
+    expect(html).toContain('Mimo, también por WhatsApp')
+    expect(recorded).toEqual([])
+  })
+
+  it('both go through our counter and count in the slots receta and truco; a bad id → 404', async () => {
+    const { repo } = memoryRepo(accounts())
+    const { tips } = memoryTips()
+    const { stats } = memoryStats(() => [{ issueId: 'n4', source: 'user' }])
+    const sendBatch = okBatch()
+    const asAdmin: RequestHandler = (req, _res, next) => {
+      ;(req as any).userId = '11111111-1111-4111-8111-111111111111'
+      next()
+    }
+    const app = express()
+      .use(express.json())
+      .use(
+        createNewsletterRouter({
+          repo,
+          stats,
+          adminAuth: [asAdmin],
+          statsAuth: asAdmin,
+          unsubscribeLimiter: noLimit,
+          audit: (async () => 'a1') as any,
+          makeDeps: (urls) => ({ ...deps(repo, sendBatch), ...urls, stats, tips, now: () => NOW }),
+          publicUrl: () => 'https://mimoia.com',
+          drafts: readyDrafts(N4),
+        }),
+      )
+    const b = await serve(app)
+    await fetch(`${b}/admin/newsletter/send`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(N4) })
+    const [toAna] = sendBatch.mock.calls[0][0]
+    expect(toAna.html).toContain(`https://mimoia.com/n/n4/43?r=${R1}`)
+    expect(toAna.html).toContain('https://mimoia.com/n/n4/44?t=tachar_lista')
+    expect(toAna.html).not.toContain(`https://mimoia.com/recipes/${R1}`)
+
+    const click = (path: string) => fetch(`${b}${path}`, { headers: { 'user-agent': BROWSER } })
+    expect(await (await click(`/newsletter/click/n4/43?r=${R1}`)).json()).toEqual({ url: `https://mimoia.com/recipes/${R1}` })
+    expect(await (await click('/newsletter/click/n4/44?t=tachar_lista')).json()).toEqual({ url: 'https://mimoia.com/shopping' })
+    await click('/newsletter/click/n4/44?t=whatsapp')
+    await click('/newsletter/click/n4/44?t=whatsapp&prueba=1')
+    for (const p of [
+      '/newsletter/click/n4/43',
+      '/newsletter/click/n4/43?r=no-es-un-id',
+      '/newsletter/click/n4/44?t=no_existe',
+      `/newsletter/click/n4/44?t=${encodeURIComponent('https://malo.example')}`,
+    ]) {
+      const r = await click(p)
+      expect(r.status, p).toBe(404)
+    }
+    const report = await (await fetch(`${b}/admin/newsletter/stats`)).json()
+    const row = report.issues.find((i: any) => i.issueId === 'n4')
+    expect(row.clicks.slots.receta).toEqual({ total: 1, buttons: { abrir: 1 } })
+    expect(row.clicks.slots.truco).toEqual({ total: 2, buttons: { abrir: 2 } })
+    expect(JSON.stringify(report)).not.toContain('tachar_lista')
   })
 })

@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { TASTE_STARTER_DECK, type TasteNextResponse } from '@ona/shared'
 import { API_URL, reachable } from './smokeEnv.js'
+import { hasLikedRecipes } from '../services/tasteStore.js'
 
 async function call(method: string, path: string, payload?: unknown, headers: Record<string, string> = {}) {
   const r = await fetch(`${API_URL}${path}`, {
@@ -146,4 +147,19 @@ describe.skipIf(!reachable)('«Afina tu menú» smoke', () => {
     expect((await call('POST', '/taste/flags', { group: 'carne' }, auth)).body.flags).toEqual(['carne'])
     expect((await call('GET', '/taste/next', undefined)).status).toBe(401)
   }, 30_000)
+})
+
+describe.skipIf(!reachable)('the WhatsApp sign-up knows whether the cards said what they like (2026-11-03)', () => {
+  it('only «Me apetece» or «Me encanta» count; «No para mí» and a skip do not', async () => {
+    const { auth, userId } = await freshUser()
+    expect(await hasLikedRecipes(userId)).toBe(false)
+    const next = await call('GET', '/taste/next?limit=3', undefined, auth)
+    expect(next.status).toBe(200)
+    const [a, b, c] = (next.body as TasteNextResponse).cards
+    expect((await call('POST', '/taste', { recipeId: a.recipeId, verdict: 'nope', reason: { kind: 'none' } }, auth)).status).toBe(200)
+    expect((await call('POST', '/taste', { recipeId: b.recipeId, verdict: 'skip' }, auth)).status).toBe(200)
+    expect(await hasLikedRecipes(userId)).toBe(false)
+    expect((await call('POST', '/taste', { recipeId: c.recipeId, verdict: 'like' }, auth)).status).toBe(200)
+    expect(await hasLikedRecipes(userId)).toBe(true)
+  })
 })

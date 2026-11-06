@@ -13,7 +13,9 @@ import {
   HEALTH_CONSENT_VERSION,
   HEALTH_MEMORY_KEYS,
   HEALTH_PROFILE_FIELDS,
+  consentCoversReligiousDiet,
   isHealthConsentActive,
+  isReligiousDiet,
   needsHealthConsentPrompt,
   type HealthConsentState,
 } from '@ona/shared'
@@ -30,12 +32,30 @@ export const WHATSAPP_HEALTH_DATA_REPLY = `Por WhatsApp no guardo datos de salud
 /** What the assistant says when asked to store health data without consent. */
 export const HEALTH_CONSENT_SKILL_REPLY = `No lo he guardado: las alergias, intolerancias y datos físicos son datos de salud y solo los guardo si das tu consentimiento en tu perfil: ${env.WEB_PUBLIC_URL}/profile`
 
+/** …and a diet for religious reasons under a consent text that didn't name it (v1, Legal E-19). */
+export const RELIGION_CONSENT_SKILL_REPLY = `No lo he guardado: para guardar una dieta por motivos religiosos (como halal) necesito que aceptes el texto nuevo del consentimiento en tu perfil: ${env.WEB_PUBLIC_URL}/profile`
+
+export const RELIGION_CONSENT_MESSAGE = 'Para guardar una dieta por motivos religiosos (como halal) necesitas aceptar el texto nuevo del consentimiento en tu perfil.'
+
 export class HealthConsentRequiredError extends Error {
-  readonly code = 'HEALTH_CONSENT_REQUIRED'
-  constructor() {
-    super('Para guardar datos de salud necesitas dar tu consentimiento en tu perfil.')
+  readonly code: string = 'HEALTH_CONSENT_REQUIRED'
+  constructor(message = 'Para guardar datos de salud necesitas dar tu consentimiento en tu perfil.') {
+    super(message)
     this.name = 'HealthConsentRequiredError'
   }
+}
+
+export class ReligionConsentRequiredError extends HealthConsentRequiredError {
+  override readonly code = 'RELIGION_CONSENT_REQUIRED'
+  constructor() {
+    super(RELIGION_CONSENT_MESSAGE)
+    this.name = 'ReligionConsentRequiredError'
+  }
+}
+
+/** Pure: the religious diets in a list of restrictions («halal», «soy musulmán»). */
+export function religiousDietsIn(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && isReligiousDiet(v)) : []
 }
 
 export async function getHealthConsent(userId: string): Promise<HealthConsentState | null> {
@@ -85,6 +105,21 @@ export async function hasHealthConsent(userId: string): Promise<boolean> {
     .where(eq(users.id, userId))
     .limit(1)
   return !!u && isHealthConsentActive(u.consentAt, u.withdrawnAt)
+}
+
+/** The consent in force names a diet for religious reasons (v2 on). */
+export async function healthConsentCoversReligion(userId: string): Promise<boolean> {
+  const [u] = await db
+    .select({ consentAt: users.healthConsentAt, withdrawnAt: users.healthConsentWithdrawnAt, version: users.healthConsentVersion })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  return !!u && isHealthConsentActive(u.consentAt, u.withdrawnAt) && consentCoversReligiousDiet(u.version)
+}
+
+/** Throws when `restrictions` hold a religious diet the user's consent doesn't cover yet. */
+export async function assertReligionConsent(userId: string, restrictions: unknown): Promise<void> {
+  if (religiousDietsIn(restrictions).length > 0 && !(await healthConsentCoversReligion(userId))) throw new ReligionConsentRequiredError()
 }
 
 export async function grantHealthConsent(userId: string): Promise<void> {
@@ -142,6 +177,18 @@ export function stripHealthProfileFields<T extends Record<string, unknown>>(body
   const out: Record<string, unknown> = { ...body }
   for (const f of HEALTH_PROFILE_FIELDS) delete out[f]
   return out as Partial<T>
+}
+
+/**
+ * The profile page's blob, keeping its restrictions but a religious diet the
+ * consent doesn't cover yet (v1, Legal E-19): the account's copy got a 403.
+ */
+export function withoutUncoveredReligiousDiets(template: unknown, covered: boolean): unknown {
+  if (covered || !template || typeof template !== 'object' || Array.isArray(template)) return template
+  const prefs = (template as Record<string, unknown>).preferences as Record<string, unknown> | undefined
+  if (!prefs || typeof prefs !== 'object' || !Array.isArray(prefs.restrictions)) return template
+  const restrictions = (prefs.restrictions as unknown[]).filter((r) => !(typeof r === 'string' && isReligiousDiet(r)))
+  return { ...(template as Record<string, unknown>), preferences: { ...prefs, restrictions } }
 }
 
 /**

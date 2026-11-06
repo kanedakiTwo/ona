@@ -4,10 +4,11 @@
  * The week's "···" sheet on /menu (2026-10-08 redesign). Holds what used to
  * sit in the header and toolbar: week navigation (anterior / siguiente /
  * volver a esta semana), Regenerar semana, Compartir, Vaciar semana, the
- * Día/Semana view switch (mobile only) and the history link.
+ * Día/Semana view switch (mobile only) and the history link. «Rehacer la
+ * semana con mis favoritas» (PRO-377) sits under Regenerar.
  * Past weeks are read-only: no Regenerar / Vaciar.
  */
-import { CalendarDays, ChevronLeft, ChevronRight, History, LayoutList, Printer, RefreshCw, Share2, Trash2 } from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight, Heart, History, LayoutList, Printer, RefreshCw, Share2, Trash2 } from "lucide-react"
 import { MenuSheet, SheetAction } from "./MenuSheet"
 
 interface Props {
@@ -26,6 +27,8 @@ interface Props {
   onNextWeek: () => void
   onThisWeek: () => void
   onRegenerate: () => void
+  /** PRO-377: «Rehacer la semana con mis favoritas». */
+  onRegenerateFavorites: () => void
   onShare: () => void
   onClear: () => void
   onToggleView: () => void
@@ -74,6 +77,15 @@ export function WeekActionsSheet(p: Props) {
             hint="Los platos fijados se quedan"
             disabled={p.isGenerating}
             onClick={run(p.onRegenerate)}
+          />
+        )}
+        {!p.isPastWeek && (
+          <SheetAction
+            icon={Heart}
+            label="Rehacer la semana con mis favoritas"
+            hint="Solo tus recetas guardadas, sin descubrir nuevas"
+            disabled={p.isGenerating}
+            onClick={run(p.onRegenerateFavorites)}
           />
         )}
         {p.hasMenu && (

@@ -11,12 +11,16 @@ import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
 import { maybeAppendLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
+import { recordQuestionAnswer } from '../whatsapp/oneOffQuestion.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
   type TokenUsage,
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+import { dbTurnStore, remoteMessagesClient } from './mimoRemoto.js'
+import { hasLikedRecipes } from '../tasteStore.js'
+import { noteApiCallOk } from '../apiSaldo.js'
 
 let client: Anthropic | null = null
 
@@ -67,7 +71,8 @@ export async function chat(
   db: any,
   opts: ChatOptions = {},
 ): Promise<AssistantResponse & { usage: TokenUsage }> {
-  const anthropic = getClient()
+  // PRO-1102: staging's «Mimo remoto» — the office answers each round, not Anthropic.
+  const anthropic: MessagesClient = env.MIMO_REMOTO ? remoteMessagesClient(dbTurnStore(db)) : getClient()
   const mode = opts.mode ?? 'text'
 
   // 1. Load user context
@@ -81,7 +86,10 @@ export async function chat(
   // 2026-10-16 the time was still in the context block, which re-wrote the
   // context and the history on every message. The clock now rides on the
   // newest message (buildTurnMessages).
-  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, surface: opts.surface })
+  // WhatsApp sign-up: ask for a few favourite dishes only when «Afina tu menú»
+  // got no «Me apetece» / «Me encanta» (2026-11-03). On a failed read, don't ask.
+  const askFavorites = opts.onboarding === true && !(await hasLikedRecipes(userId, db).catch(() => true))
+  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, askFavorites, surface: opts.surface })
   const system = [
     { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
     { type: 'text' as const, text: context },
@@ -108,6 +116,8 @@ export async function chat(
   if (familyOfferMode) await recordFamilyInviteAnswer(userId, message, history)
   // PRO-285: the message right after Mimo's leftovers question is its answer (tagged `sobras`).
   if (mode === 'whatsapp' && offersOn) await recordLeftoversAnswer(userId, message, history)
+  // PRO-1091: the next message after the «pregunta única» is its answer (tagged `pregunta_unica`).
+  if (mode === 'whatsapp' && opts.surface !== 'telegram') await recordQuestionAnswer(userId, message, db)
 
   // 5. Model ↔ tools loop (see runToolLoop).
   const result = await runToolLoop({
@@ -116,7 +126,7 @@ export async function chat(
     tools,
     messages,
     skills,
-    ctx: { userId, db, channel: mode },
+    ctx: { userId, db, channel: mode, surface: opts.surface },
     onToolStart: opts.onToolStart,
   })
 
@@ -305,6 +315,9 @@ export async function runToolLoop(params: {
       { headers: { 'anthropic-beta': FALLBACK_BETA } },
     )
     usage = addAnthropicUsage(usage, response.usage)
+    // PRO-1101: Anthropic contesta, así que hay saldo: cierra la racha `saldo_api` si la había.
+    // PRO-1102: con «Mimo remoto» contesta la oficina, que no dice nada del saldo.
+    if (!env.MIMO_REMOTO) noteApiCallOk()
 
     if (response.stop_reason === 'refusal') {
       flags.push('refusal')

@@ -71,8 +71,16 @@ describe.skipIf(!reachable)('health-data consent (smoke)', () => {
     expect((await api('POST', `/user/${b.userId}/onboarding`, onboarding(true))).status).toBe(200)
     const user = (await api('GET', `/user/${b.userId}`)).json
     expect(user.restrictions).toEqual(['sin gluten'])
-    expect(user.healthConsentVersion).toBe('salud-v1-2026-10')
+    expect(user.healthConsentVersion).toBe('salud-v2-2026-10')
     expect(Date.parse(user.healthConsentAt)).toBeGreaterThan(Date.now() - 120_000)
+  })
+
+  it('the current text covers «halal»: it is saved through the profile and the memory (2026-10-25)', async () => {
+    const api = call(b)
+    expect((await api('PUT', `/user/${b.userId}`, { restrictions: ['sin gluten', 'halal'] })).status).toBe(200)
+    expect((await api('GET', `/user/${b.userId}`)).json.restrictions).toEqual(['sin gluten', 'halal'])
+    expect((await api('PATCH', '/memory', { key: 'restrictions', value: ['halal'] })).status).toBe(200)
+    expect((await api('PUT', `/user/${b.userId}`, { restrictions: ['sin gluten'] })).status).toBe(200)
   })
 
   it('withdrawing the consent deletes the health data everywhere', async () => {

@@ -178,7 +178,9 @@ describe('errorType', () => {
     // Never the rest of the message: a fixed word, or React's number.
     expect(stored('Failed to fetch de Ana García, calle Mayor 5')).toBe('other')
     expect(stored('Minified React error #31; visit https://react.dev/errors/31?args[]=Ana for the full message')).toBe('React #31')
-    for (const t of MESSAGE_ERROR_TYPES) expect(t).toMatch(/^[A-Za-z]{1,32}$/)
+    // PRO-1101: `saldo_api` is the one with an underscore (the type the office reads).
+    expect(stored('saldo_api: la API de Anthropic no tiene saldo (credit balance is too low)')).toBe('saldo_api')
+    for (const t of MESSAGE_ERROR_TYPES) expect(t).toMatch(/^[A-Za-z_]{1,32}$/)
   })
 
   it('PRO-306: the stored message keeps React’s error code, and only that number', () => {
@@ -418,6 +420,21 @@ describe('waitlistForAgents', () => {
     expect(JSON.stringify(v)).not.toMatch(/\bana\b|garcia|celiaca|calle|k3mzabqr|"e1"/i)
     expect(v.definitions?.suggestedNextBatch).toBe(WAITLIST_DEFINITIONS.suggestedNextBatch)
     expect(WAITLIST_DEFINITIONS.suggestedNextBatch).not.toMatch(/Solo ids/)
+  })
+
+  it('PRO-1017: «desconocido por invitación» and `invita` reach the token as counts only', () => {
+    const base = { householdSize: '2', plannerRole: 'yo', currentMethod: 'lista', status: 'waiting', createdAt: new Date('2026-10-20T10:00:00Z'), platform: 'ios', wantsWhatsapp: false, newsletterOptIn: false, source: 'invita', utmSource: null, utmMedium: null, utmCampaign: null, batch: null } as const
+    const report = buildWaitlistReport(
+      [
+        { ...base, id: 'e1', referralCode: 'k3mzabq1', referredByCode: 'circ0001' },
+        { ...base, id: 'e2', referralCode: 'k3mzabq2', referredByCode: 'otro0001' },
+      ],
+      { now: new Date('2026-10-20T12:00:00Z'), days: 30, batchSize: 20, circleCodes: new Set(['circ0001']) },
+    )
+    const v = waitlistForAgents({ ...report, invitations: { ...report.invitations, invita: { ...report.invitations.invita, code: 'otro0001' } } })
+    expect(v.invitations).toEqual({ invita: { count: 1, inTarget: 1 }, desconocidoPorInvitacion: { count: 1, inTarget: 1 } })
+    expect(v.definitions?.invitations).toBe(WAITLIST_DEFINITIONS.invitations)
+    expect(JSON.stringify(v)).not.toMatch(/circ0001|otro0001|k3mzabq/)
   })
 
   it('utm only as counts by a closed list of sources; no referral codes, no entry ids', () => {

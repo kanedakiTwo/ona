@@ -62,6 +62,10 @@ const CANONICAL: Record<string, string> = {
   vegana: 'vegano',
   cerdo: 'sin cerdo',
   carne: 'sin carne',
+  musulman: 'halal',
+  musulmana: 'halal',
+  musulmanes: 'halal',
+  musulmanas: 'halal',
 }
 
 /** Words read with typos (allergens and diets), normalised. */
@@ -70,6 +74,7 @@ const VOCABULARY = [
   'frutos secos', 'nueces', 'almendras', 'avellanas', 'pistachos', 'anacardos', 'cacahuete', 'cacahuetes', 'soja',
   'marisco', 'mariscos', 'crustaceos', 'moluscos', 'pescado', 'apio', 'mostaza', 'sesamo', 'altramuces', 'sulfitos',
   'vegetariano', 'vegetariana', 'vegano', 'vegana', 'pescetariano', 'pescetariana', 'cerdo', 'halal', 'alcohol',
+  'musulman', 'musulmana', 'musulmanes', 'musulmanas',
 ]
 
 /** Pure: a recognised key → the form stored in `users.restrictions`. */

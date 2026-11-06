@@ -28,22 +28,22 @@ If you're not sure which specs apply, run `/spec study` to load all of them into
 2. Did this change rename, move, or delete a file referenced in a spec's `## Source` section?
 3. Did this change add or remove a constraint, edge case, or known limitation?
 
-If the answer to any of these is **yes**, update the relevant spec(s) before finishing the task. The spec must reflect the current reality of the code; a divergence between spec and code is a bug in itself.
+If the answer to **1** is **yes** (or a 3 that a user would notice), update the relevant spec(s) in the same commit, before finishing the task. If only 2 or 3 apply and nothing the user sees changed, the spec can catch up later, when convenient (D-181). The spec must reflect the current reality of the code; a divergence between spec and code is a bug in itself.
 
 If the change introduces a new system not covered by any existing spec (e.g., notifications, admin panel, payments), create a new spec file and add an entry to [`specs/index.md`](./specs/index.md). Keep specs under 200 lines and write from the user's perspective.
 
 ### Definition of done — spec gate
 
-**A task is not done until its spec impact has been resolved in the same commit / PR.** Use this checklist before reporting a task complete:
+**A task that changes what a user can observe is not done until its spec impact has been resolved in the same commit / PR.** Changes that don't (refactors, internal scripts, tests, tooling, infra) don't need a spec edit in the same commit (D-181); `kb/sobre-mimoia.md` always does. Use this checklist before reporting a task complete:
 
 ```
-[ ] Did I change anything in apps/api/src/routes/, apps/api/src/services/,
-    apps/web/src/app/, apps/web/src/components/, apps/web/src/hooks/,
-    packages/shared/src/types/, or any DB migration?
-[ ] If yes → I ran the spec table below and updated every spec affected.
-[ ] If a referenced file moved/renamed/disappeared → I fixed `## Source` links.
-[ ] If a behavior the user can observe changed → I rewrote the affected
-    `## User Capabilities` / `## Constraints` lines.
+[ ] Did I change something a user can observe (a screen, a flow, a message,
+    an API response the app shows, what Mimo says)?
+[ ] If yes → I ran the spec table below and updated every spec affected, and
+    rewrote the affected `## User Capabilities` / `## Constraints` lines.
+[ ] If a referenced file moved/renamed/disappeared → I fixed `## Source` links
+    (now or later; not required in the same commit if nothing user-visible
+    changed, D-181).
 [ ] If a brand-new system landed → I added a new spec file AND a row to
     `specs/index.md`.
 [ ] If something a user could ask Mimo about Mimoia changed (a feature,
@@ -89,6 +89,20 @@ When in doubt: open `specs/index.md`, grep for keywords related to your change, 
 
 A code-only PR that touches user-observable behavior with no corresponding test is a bug, equivalent to a missing spec update. The spec-gate above and the test-gate here are sibling checks — both run before a task is reported done.
 
+### Definition of done — growth gate
+
+**A user-visible change says which step of the growth line it moves, and how we will see it** (D-158, 2026-11-03). The growth line: signup → first menu → first strike (cooks a dish from the menu and sends or uses the shopping list within 7 days) → two weeks in a row with the menu ready before Monday (within 21 days) → pays. Until the launch (2026-12-15) this line is the product's first priority, right after diet safety.
+
+```
+[ ] Which step of the growth line does this change move or protect?
+[ ] Which `usage_events` event shows it? If none does, add the event and
+    its count in /admin/usage (specs/metrics.md) with a unit test, in the
+    same PR.
+[ ] Does it add a step, a card, a question or a wait between signup and
+    the first resolved week? Then say why in the PR: every extra step
+    costs households. One next step at a time on /menu.
+```
+
 ## What Mimoia is
 
 Mimoia is a **mobile-first meal planner** for Spanish speakers. It generates a weekly menu from a recipe catalog, produces a shopping list, manages pantry stock, and provides an AI advisor for nutrition questions. The app is currently mid-migration toward an **editorial visual style** (cream/warm-black palette, Fraunces serif, motion/react animations) — see [`specs/design-system.md`](./specs/design-system.md) for which pages are migrated and which still use the legacy "app mode" green palette.
@@ -104,14 +118,15 @@ The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT
 - `notion-export/` — source of the 79 seeded recipes
 - `kb/` — knowledge base / agent context
 - `docs/deploy.md` — Railway deploy flow (CLI commands, env vars, migrations, troubleshooting, **staging**). Read this **before** trying to ship to prod or diagnose a stale deploy. There is a `staging` environment (https://ona-web-staging.up.railway.app) and a nightly agent ("Taller") that merges and deploys backlog tasks marked `lista` — check `git log origin/master` for its overnight commits before you start.
+- **Deploy:** el código llega a `master` solo publicando desde la oficina (el botón «Publicar» de la app o `hq publicar`). Directo a `master`, solo documentación.
 
 ## Working principles
 
 - **Specs document what exists**, not aspirational features. If the code disagrees with a spec, fix the spec or the code — never ignore the divergence.
 - **Update specs when you change behavior** (see "Specs are a living document" above).
 - **Prefer the editorial design system** (`@theme` tokens in `globals.css`) for new UI: cream `#FAF6EE`, ink `#1A1612`, terracotta `#C65D38`, forest `#2D6A4F`, Fraunces + Cormorant + Inter.
-- **All UI strings are in Spanish.** No i18n setup; just write in Spanish.
-- **Mobile-first always.** Test at 390×844 (iPhone 14) viewport using Playwright MCP before declaring UI work done.
+- **All UI strings are in Spanish** while there is no translation system in `master`. When it lands (PRO-327, branch `feat/ingles-base`), every UI and API string goes through it, in both languages (D-111); orders to shops stay in Spanish.
+- **Mobile-first always.** Before declaring UI work done, check it at 390×844 (iPhone 14): a Playwright e2e at the mobile viewport (the test gate) is enough; if the task has none, check it by hand with Playwright MCP (D-181). Never say it is shipped without having tested the flow end to end.
 
 ## Common pitfalls
 
@@ -155,62 +170,6 @@ _Responsive desktop — shipped 2026-06-04 across 5 PRs. `<DesktopSidebar />` at
 
 ## Todo Miguel
 
-This is the **single source of truth** for work that's pending on Miguel's side (out of Claude's reach: device tests, asset replacement, manual ops, third-party setup, etc).
-
-**Convention**:
-- Every item has an id `MIG-NN` (next free number, never reused) and this shape, so the Mimoia HQ panel can show it as a plain task with a checkbox:
-  `- [ ] **MIG-NN · Título corto** · *plazo opcional* — Por qué importa, en una frase.` then sub-bullets with the steps (`Cómo:` first). Write it in plain Spanish, for Miguel, with no jargon he doesn't use. The optional `· *plazo*` (e.g. `*hoy*`, `*antes del 16 de noviembre*`) shows as a tag in the panel. A plazo that starts with `aplazada`, `desde`, `a partir de` or `no antes de` (e.g. `*desde el 16 de noviembre*`, `*aplazada hasta el fin de la beta*`) puts the task under «Aplazadas» in the panel until that date (with no date, until the text changes).
-- Never write figures that change on their own (waitlist signups, households, costs, errors) inside an item: they go stale and Miguel reads them as current. The panel shows them live under «Números»; point there instead.
-- Whenever a task finishes but leaves something for Miguel to do, Claude adds it here in that shape.
-- Miguel ticks tasks off in the panel (they are stored in the panel's database, collection `hechas`), or tells Claude. `/ona-dia` (or Claude when told) removes ticked items from this list.
-- Items are ordered by priority (top = next).
-
-**Scope**: Only items that genuinely require Miguel — external account setup, physical device testing, branded artwork, etc. Code work that Claude can do (refactors, bug fixes, page migrations) does NOT belong here; those go in regular tasks.
-
-### Pending
-
-- [ ] **MIG-22 · Verificar el negocio en Meta** · *antes del 16 de noviembre (beta abierta, D-057)* — Hoy Meta dice que el negocio no está verificado (`not_verified`): Mimo solo puede escribir primero a 250 personas al día, el nombre «Mimoia» no se muestra como verificado y, con la beta abierta, se queda corto. El número sí está verificado; el negocio, no.
-  - Cómo: business.facebook.com → Configuración → Centro de seguridad → «Verificación del negocio» → Empezar. Como autónomo: nombre legal y NIF, dirección, teléfono y web (mimoia.com), y un documento que lo pruebe (alta en Hacienda o recibo de autónomo, o una factura de luz o teléfono a tu nombre en esa dirección). Suele tardar de 2 a 10 días.
-  - Hecho cuando: Meta lo marca «Verificado» (Claude lo comprueba por la API).
-
-- [ ] **MIG-21 · Stripe: de modo prueba a cobrar de verdad** · *prueba hoy; real antes del 15-dic (salida adelantada, D-057)* — El cobro está montado (D-054, [specs/billing.md](./specs/billing.md)); falta tu cuenta.
-  - Hoy: en Stripe (modo de prueba) copia la clave secreta `sk_test_…` y en el Terminal `pbpaste > ~/.config/mimoia/stripe-secret-test`. Con ella Claude crea productos, precios, webhook y portal (`scripts/stripeSetup.ts`) y lo prueba en staging.
-  - En el Dashboard: Settings → Managed Payments → aceptar los términos (sin eso Checkout rechaza la sesión).
-  - Para cobrar de verdad: alta de autónomo o SL (gestoría), activar la cuenta de Stripe (datos fiscales y banco) y pasar la clave `sk_live_…` del mismo modo a `~/.config/mimoia/stripe-secret-live`. Hecho = un pago real en producción, reembolsado.
-- [ ] **MIG-19 · Mandar a tu círculo el mensaje de la lista de espera** · *falta la mitad* — **2026-10-17: mandado (con la invitación a la beta) a la mitad de tu círculo; falta la otra mitad.** La lista está abierta desde el 13 (cuántos hay, en vivo en «Números» del panel); el plan de validación necesita que tu círculo entre con su propia etiqueta para separarlo de los desconocidos (≥ 150 antes del 13 de noviembre).
-  - Cómo: el texto aprobado está en ona-hq `approvals/approved/2026-10-12-marketing-mensaje-circulo-lista.md` (versión A para personas, con `?ref=circulo-miguel`; versión B para grupos, con `?ref=circulo-grupos`). Reescríbelo a tu manera, pero deja los enlaces tal cual. Mándalo por WhatsApp a unas 20 personas y a tus grupos.
-  - Hecho cuando: lo has mandado y le dices a Claude a cuántas personas y grupos, para leer la conversión.
-
-- [ ] **MIG-02 · Pasar el contacto del/de la dietista** — Queremos que un profesional colegiado revise recetas y mensajes antes de abrir (D-005).
-  - Cómo: dile a Claude su nombre y cómo contactar. El primer mensaje lo prepara Marketing.
-
-- [ ] **MIG-03 · Activar las copias de seguridad de la base de datos** · *aplazada hasta el fin de la beta* — Hoy, si se pierde la base de datos de producción, se pierde todo: menús, recetas y hogares.
-  - **2026-10-10:** Railway no permite backups en el plan Hobby; hace falta Pro. Miguel lo deja así hasta el fin de la beta, salvo que otro requisito pida Pro antes (D-030 en ona-hq). Riesgo aceptado.
-  - Cómo: en Railway → proyecto `ona-app` → servicio Postgres (producción) → Backups, actívalos y haz una restauración de prueba en staging.
-  - Además: una copia periódica del volumen `ona-api-volume`, donde están las fotos que suben los usuarios.
-
-- [ ] **MIG-04 · Hacer un pedido real a tus tiendas** — Es la única forma de comprobar «Compra en mis tiendas» con respuestas de verdad, y sirven para afinar cómo Mimo las lee.
-  - Cómo: avisa en persona a la frutería y a la carnicería de que les pedirás por WhatsApp con una lista y que te digan precio por kilo y total. Luego, por WhatsApp a Mimo: «hazme la compra» → envía cada enlace → reenvíale lo que contesten → aprueba → cierra al recoger.
-  - Hecho cuando: un pedido cerrado por tienda. Tus tiendas ya están dadas de alta: The Fruits of the World, Ben-Car Boadilla, Pescaderías Los Alonso y El Corte Inglés (web).
-  - Al avisarlas, pregunta: mínimo de jamón y de picada (Ben-Car), pedido mínimo y franja de reparto a domicilio, y si les vale una línea sin cantidad («Galletas Daniela»). Revisa también los valores por defecto (tomate de ensalada, pimiento verde italiano, naranja de zumo, carne picada mixta, dorada).
-  - Opcional: Los Alonso reparte gratis en Pozuelo/Boadilla si pides antes de las 13:00; para usarlo, cambia la entrega a «A domicilio» en `/compra/tiendas`.
-
-- [ ] **MIG-10 · Probar en tu móvil lo que no se puede probar solo** — Hay cosas que solo se ven en un teléfono de verdad.
-  - Instalar la app en Android (Chrome) y en iPhone (Safari): que se abra a pantalla completa, con el color crema y respetando la barra de estado.
-  - En una receta, «Empezar a cocinar» y bloquear el móvil: la pantalla debe seguir encendida al volver.
-  - Notificaciones del móvil: en el perfil, «Activar notificaciones» y «Enviar prueba»; al tocar el aviso debe abrir la app.
-  - Vibración al tocar (solo Android), botón de compartir en una receta y en la lista de la compra, y la sensación general al cambiar de pantalla y deslizar entre pestañas.
-
-- [ ] **MIG-12 · Revisión legal de la privacidad y los términos** · *antes del 11 de diciembre* (D-078, haya SL o no: se cobra como autónomo desde el 15-dic) — Revisión de bajo coste del 1 al 10 de diciembre para publicar el 11; el presupuesto te llega como aprobación. Un abogado tiene que revisar `/privacidad` y los términos de contratación: responsable con nombre real, datos de salud con consentimiento explícito, envíos a EE. UU. y el apartado de la lista de espera.
-  - Cuándo: con la forma jurídica decidida (16 de noviembre). Ver `specs/privacy.md`.
-
-- [ ] **MIG-13 · Registrar la marca Mimoia** · *aplazada hasta el 16 de noviembre (D-024)* — Nadie tiene MIMOIA, pero hay muchas marcas «MIMO» (Starship, para apps de pedir comida; Mimo GmbH; Xiaomi).
-  - Cuándo: no antes de la decisión del 16 de noviembre (D-024: ningún gasto de más de 200 € hasta validar la beta).
-  - Coste: en España (OEPM) 127,88 € la primera clase y 82,84 € cada clase más (clases 9 y 42: 210,72 €), sin agente. En la UE (EUIPO) 850 € la primera clase y 50 € la segunda, más 300–600 € de agente si se encarga.
-  - Detalle en `reports/A tu gusto y Apapacho como marca.md`.
-
-- [ ] **MIG-14 · Abrir el registro (beta abierta, D-057)** · *desde el 16 de noviembre* — Hasta ese día solo se entra con invitación (beta cerrada).
-  - Cómo: ese día, pon `REGISTRATION_MODE=open` en `ona-api` de producción (o pídeselo a Claude). Opcional antes: la clave `USDA_FDC_API_KEY` en GitHub Actions para que el CI pruebe también la búsqueda de ingredientes.
-
-- [ ] **MIG-17 · Revisar el tope mensual de Mimo por usuario** — Desde el 12 de octubre Mimo usa Claude Sonnet 5.5 (antes Haiku 4.5): cada mensaje cuesta unos 0,02–0,03 $ en vez de unos 0,018 $, así que los 5 € de `ADVISOR_MONTHLY_BUDGET_EUR` dan para unos 200–500 mensajes al mes.
-  - Cómo: decidid con Finanzas (FIN-09, topes por plan) si se queda en 5 € o se sube; el cambio es una variable en `ona-api`. Hecho = cifra decidida y puesta.
+El “Todo Miguel” vive desde el 2026-10-26 en `ona-hq/miguel.md` (privado).
+Apunta ahí lo que solo puede hacer Miguel, con la misma forma (`MIG-NN`).
+No escribas tareas de Miguel en este repo, que es público.

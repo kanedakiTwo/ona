@@ -71,4 +71,22 @@ describe.skipIf(!reachable)('cómo cocina el hogar en la ficha (PRO-217)', () =>
     expect(changes.map((c) => c.action).sort()).toEqual(['fact_added', 'fact_updated', 'fact_updated'])
     expect(changes.find((c) => c.action === 'fact_added')?.origin).toBe('onboarding')
   })
+
+  it('2026-11-03: the web sign-up sends no frequency nor priority; how often is read from how they cook', async () => {
+    const u = `cocina3_${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+    const reg = await call('POST', '/register', { username: u, email: `${u}@test.local`, password: 'smokepass123', ageConfirmed: true })
+    expect(reg.status).toBe(201)
+    const userId = reg.body.user.id as string
+    const token = reg.body.token as string
+
+    // Neither how they cook nor how often: refused, nothing saved.
+    const bare = { adults: 2, kidsCount: 1, restrictions: [], weekdayCooking: 'rapido' }
+    expect((await call('POST', `/user/${userId}/onboarding`, bare, token)).status).toBe(400)
+
+    const saved = await call('POST', `/user/${userId}/onboarding`, { ...bare, cookingStyle: 'batch' }, token)
+    expect(saved.status).toBe(200)
+    expect(saved.body).toMatchObject({ onboardingDone: true, cookingFreq: 'rarely', priority: null })
+    expect((await call('GET', COOKING_STYLE_PATH, undefined, token)).body.style).toBe('batch')
+  })
 })
+

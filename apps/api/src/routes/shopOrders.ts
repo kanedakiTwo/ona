@@ -17,7 +17,9 @@
  *   POST   /shop-orders/:id/close       — collected / delivered (ticks the list)
  *   POST   /shop-orders/:id/cancel
  *   POST   /shop-orders/:id/carrefour-click — the user tapped «Hacer este pedido en Carrefour.es» on a súper card (counts the click, 204)
- *   GET    /shop-extension/status          — ¿ve este usuario «Enviar a <cadena>»? (BASKET_EXTENSION_EMAILS)
+ *   GET    /shop-extension/status          — ¿ve este usuario «Enviar a <cadena>»? (BASKET_EXTENSION_EMAILS) y sus avisos aceptados
+ *   POST   /shop-extension/consent         — acepta el aviso de una cadena antes del primer envío (D-154)
+ *   DELETE /shop-extension/consent/:cadena — «Desactivar» en Perfil: borra lo aceptado
  *   POST   /shop-orders/:id/extension-result — resultado de la extensión del navegador (súper)
  *   POST   /shop-orders/:id/extension-undo   — deshacer el envío vivo (vuelve a borrador)
  *
@@ -26,13 +28,13 @@
 
 import { Router, type Response } from 'express'
 import { z } from 'zod'
-import { approveShopOrderSchema, basketSendResultSchema, patchShopOrderSchema, shopInputSchema } from '@ona/shared'
+import { approveShopOrderSchema, basketConsentSchema, basketSendResultSchema, patchShopOrderSchema, shopInputSchema } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { appApiFor } from '../services/assistant/appApi.js'
 import { addDays, madridParts } from '../services/madridTime.js'
 import { basketSentProps, carrefourClickProps, trackEvent } from '../services/usageEvents.js'
-import { basketExtensionEnabledFor } from '../services/basketExtension.js'
+import { acceptBasketConsent, basketExtensionEnabledFor, listBasketConsents, revokeBasketConsent } from '../services/basketExtension.js'
 import {
   addShop,
   approveOrder,
@@ -243,9 +245,30 @@ router.post('/shop-orders/:id/carrefour-click', withOrder(async (req, res) => {
 
 router.get('/shop-extension/status', async (req: AuthRequest, res) => {
   try {
-    res.json({ enabled: await basketExtensionEnabledFor(req.userId!) })
+    const [enabled, consents] = await Promise.all([basketExtensionEnabledFor(req.userId!), listBasketConsents(req.userId!)])
+    res.json({ enabled, consents })
   } catch (err) {
     fail(res, err, 'GET /shop-extension/status')
+  }
+})
+
+router.post('/shop-extension/consent', async (req: AuthRequest, res) => {
+  try {
+    if (!(await basketExtensionEnabledFor(req.userId!))) return void res.status(403).json({ error: 'No disponible.' })
+    const parsed = basketConsentSchema.safeParse(req.body)
+    if (!parsed.success) return void res.status(400).json({ error: 'Aviso no válido.' })
+    res.json({ consent: await acceptBasketConsent(req.userId!, parsed.data) })
+  } catch (err) {
+    fail(res, err, 'POST /shop-extension/consent')
+  }
+})
+
+router.delete('/shop-extension/consent/:cadena', async (req: AuthRequest, res) => {
+  try {
+    // Sin mirar la lista de emails: desactivar siempre se puede.
+    res.json({ removed: await revokeBasketConsent(req.userId!, String(req.params.cadena)) })
+  } catch (err) {
+    fail(res, err, 'DELETE /shop-extension/consent/:cadena')
   }
 })
 

@@ -7,7 +7,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { registerFreshUser } from './_helpers'
+import { answerShopper, registerFreshUser } from './_helpers'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -22,8 +22,7 @@ async function onboardWithGlutenFree(page: Page) {
   await page.goto('/onboarding')
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
@@ -32,8 +31,6 @@ async function onboardWithGlutenFree(page: Page) {
   await next.click()
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await page.getByRole('button', { name: /sin gluten/i }).click()
-  await next.click()
-  await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
 }
@@ -77,8 +74,7 @@ test('PRO-144: «sin alcohol» is a chip in onboarding and in the profile, and i
   await page.goto('/onboarding')
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
-  await page.getByRole('button', { name: /3-4 veces/i }).click()
-  await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
@@ -87,9 +83,8 @@ test('PRO-144: «sin alcohol» is a chip in onboarding and in the profile, and i
   await next.click()
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await expect(page.getByRole('button', { name: /^sin alcohol$/i })).toBeEnabled()
+  await expect(page.getByRole('button', { name: /^halal$/i })).toBeEnabled()
   await page.getByRole('button', { name: /sin gluten/i }).click()
-  await next.click()
-  await page.getByRole('button', { name: /salud/i }).click()
   await page.getByRole('button', { name: /empezar/i }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
 
@@ -106,4 +101,27 @@ test('PRO-144: «sin alcohol» is a chip in onboarding and in the profile, and i
 
   await page.reload()
   await expect(page.getByRole('button', { name: 'Quitar sin alcohol' })).toBeVisible({ timeout: 15_000 })
+})
+
+test('halal (2026-10-25) is a chip in onboarding and in the profile, and it is saved', async ({ page }) => {
+  test.setTimeout(90_000)
+  await registerFreshUser(page)
+  await onboardWithGlutenFree(page)
+
+  // Onboarding offered it with the rest (the PRO-144 test walks that screen); here, the profile.
+  await page.goto('/profile')
+  await expect(page.getByRole('button', { name: 'Quitar sin gluten' })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: /^halal$/i }).click()
+  await expect(page.getByRole('button', { name: 'Quitar halal' })).toBeVisible()
+  // Legal (E-19): Mimoia leaves pork and alcohol out; it doesn't certify anything.
+  await expect(page.getByTestId('religion-consent')).toContainText('Sin cerdo ni alcohol. La carne y los productos, búscalos con sello halal.')
+  await page.getByRole('button', { name: /guardar/i }).click()
+  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+
+  const s = await session(page)
+  const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
+  expect(account.restrictions).toEqual(['sin gluten', 'halal'])
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Quitar halal' })).toBeVisible({ timeout: 15_000 })
 })

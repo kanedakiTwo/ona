@@ -13,6 +13,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { REFERRAL_CODE_RE } from '@ona/shared'
 import { API_URL, reachable } from './smokeEnv.js'
 import { db } from '../db/connection.js'
 import { newsletterSends, newsletterUnsubscribes } from '../db/schema.js'
@@ -113,7 +114,15 @@ describe.skipIf(!reachable)('newsletter (real API + DB)', () => {
     const repo = createDbNewsletterRepo()
     const has = async () => selectNewsletterRecipients(await repo.candidates(), new Set()).some((p) => p.email === `nl_user_${id}@test.local`)
     expect(await has()).toBe(true)
+    // PRO-1019: «Corre la voz» carries the account's own code, the same by id or by email and the same as /referrals/me.
+    const byId = await repo.ensureAccountCode!({ userId: reg.body.user.id })
+    expect(byId).toMatch(REFERRAL_CODE_RE)
+    expect(await repo.ensureAccountCode!({ email: `NL_USER_${id}@test.local` })).toBe(byId)
+    expect(await repo.ensureAccountCode!({ email: `nadie_${id}@test.local` })).toBeNull()
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${reg.body.token}` }
+    const referral = await fetch(`${API_URL}/referrals/me`, { headers })
+    expect((await referral.json()).code).toBe(byId)
+    expect(selectNewsletterRecipients(await repo.candidates(), new Set()).find((p) => p.email === `nl_user_${id}@test.local`)?.referralCode).toBe(byId)
     const me = await fetch(`${API_URL}/newsletter/me`, { headers })
     expect(await me.json()).toEqual({ optIn: true })
     const off = await fetch(`${API_URL}/newsletter/me`, { method: 'PUT', headers, body: JSON.stringify({ optIn: false }) })

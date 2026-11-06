@@ -7,10 +7,12 @@ import {
   HOUSEHOLD_INVITE_TTL_DAYS,
   capitalize,
   familyInviteShareText,
+  consentCoversReligiousDiet,
   formatQty,
   householdInvitePath,
   inviteHouseholdShareText,
   isAlertKind,
+  isReligiousDiet,
   prettyName,
   whatsappShareHref,
   type AlertKind,
@@ -22,7 +24,7 @@ import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
-import { HEALTH_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
@@ -782,7 +784,7 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:
-    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista".',
+    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista", "hazme la lista de la compra", "mandame la lista".',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const list = await currentList(ctx)
@@ -805,6 +807,8 @@ const getShoppingList: SkillDefinition = {
     }
     const shown = missing.slice(0, 60).map(itemLabel)
     const more = missing.length > shown.length ? ` y ${missing.length - shown.length} más` : ''
+    // PRO-380: Mimo handing out the whole list counts like «Mandar la lista» (a resolved week).
+    await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
     return {
       data,
       summary: `Te faltan ${missing.length} cosas: ${shown.join(', ')}${more}. ${extra}`.trim(),
@@ -1347,15 +1351,23 @@ const updateProfile: SkillDefinition = {
     // Sex, age, weight, height, activity and restrictions are health data:
     // only with the art. 9 consent in force (PRO-21).
     const health = ['sex', 'age', 'weight', 'height', 'activityLevel', 'restrictions'].filter((k) => k in body)
+    let religionNote = ''
     if (health.length > 0) {
-      const consent = await api(ctx)<{ active?: boolean }>('GET', `/user/${ctx.userId}/health-consent`)
+      const consent = await api(ctx)<{ active?: boolean; version?: string | null }>('GET', `/user/${ctx.userId}/health-consent`)
       if (!consent?.active) {
         for (const k of health) delete body[k]
         if (Object.keys(body).length === 0) return text(HEALTH_CONSENT_SKILL_REPLY)
+      } else if (Array.isArray(body.restrictions) && !consentCoversReligiousDiet(consent.version)) {
+        // «halal» under a v1 consent: the current text first, in the profile (Legal, E-19).
+        const kept = (body.restrictions as string[]).filter((r) => !isReligiousDiet(r))
+        if (kept.length < (body.restrictions as string[]).length) {
+          body.restrictions = kept
+          religionNote = ` ${RELIGION_CONSENT_SKILL_REPLY}`
+        }
       }
     }
     await api(ctx)('PUT', `/user/${ctx.userId}`, body)
-    return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).`)
+    return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).${religionNote}`)
   },
 }
 
@@ -1477,7 +1489,7 @@ const setWhatsappNotifications: SkillDefinition = {
 
 /** The «Avisos» list as Mimo reads it (PRO-237): one line per kind. */
 export function describeAlerts(o: AlertsOverview): string {
-  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', off: 'no llega' }
+  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', app: 'en su menú de la app', off: 'no llega' }
   const lines = o.kinds.map((k) => {
     if (!k.on) return `- ${k.title} (${k.kind}): apagado`
     const tail = k.channel === 'off' ? `no llega${k.note ? ` (${k.note})` : ''}` : `${where[k.channel]}${k.fallback ? ' (si WhatsApp falla, notificación del móvil)' : ''}`
@@ -1491,7 +1503,7 @@ export function describeAlerts(o: AlertsOverview): string {
 const getAlerts: SkillDefinition = {
   name: 'get_alerts',
   description:
-    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
+    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, la semana hecha cada jueves, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil, en el menu de la app o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const o = await api(ctx)<AlertsOverview>('GET', '/notifications/prefs')
@@ -1502,7 +1514,7 @@ const getAlerts: SkillDefinition = {
 const setAlerts: SkillDefinition = {
   name: 'set_alerts',
   description:
-    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
+    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), weekly_autoplan (los jueves Mimo deja lista la semana proxima; "no me hagas la semana tu" lo apaga, y entonces vuelve la pregunta del domingo), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
   parameters: {
     type: 'object',
     properties: {

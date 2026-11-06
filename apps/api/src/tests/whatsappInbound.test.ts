@@ -13,6 +13,8 @@ import type { HistoryRow } from '../services/whatsapp/history.js'
 import type { OutboundMessage } from '../services/whatsapp/render.js'
 import { EMPTY_USAGE } from '../services/advisorBudget.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
+import Anthropic from '@anthropic-ai/sdk'
+import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -158,8 +160,9 @@ describe('processInbound — unlinked numbers', () => {
     expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
     expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
-    expect(m).toMatch(/\*2\.\* ¿Cuánto cocináis en casa/)
-    // PRO-245 / D-064: no favourite dishes in the sign-up any more.
+    // 2026-11-03: the web's «¿Cómo cocináis en casa?», not how often.
+    expect(m).toMatch(/\*2\.\* ¿Cómo cocináis en casa: cada día, unos días y aprovecháis para otros, batch cooking/)
+    // PRO-245 / D-064: no favourite dishes in the first message (Mimo asks later, only without «Me apetece»).
     expect(m).not.toMatch(/platos/)
   })
 
@@ -331,6 +334,25 @@ describe('processInbound — chat round-trip', () => {
     await processInbound(msg(), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.error }])
     expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'failed', errorMessage: 'Anthropic down' })
+  })
+
+  it('PRO-1101: Anthropic sin saldo → el texto propio de Mimo, y queda apuntado', async () => {
+    const record = vi.fn(async () => true)
+    setApiSaldoWriterForTests({ record, close: async () => true })
+    const t = setup()
+    t.chat.mockRejectedValueOnce(
+      new Anthropic.BadRequestError(
+        400,
+        { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.' } },
+        undefined,
+        new Headers(),
+      ),
+    )
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: API_SALDO_REPLY }])
+    expect(API_SALDO_REPLY).toBe('Ahora mismo no puedo contestarte; lo estamos arreglando. Vuelve a escribirme en un rato.')
+    expect(record).toHaveBeenCalledTimes(1)
+    setApiSaldoWriterForTests(null)
   })
 
   it('logs a failed send instead of throwing', async () => {

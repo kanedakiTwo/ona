@@ -18,12 +18,17 @@ import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
 import { alignHouseholdMemory } from '../services/userMemoryStore.js'
 import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
+import { householdRestrictionsBefore, reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
 import {
   getHealthConsent,
   grantHealthConsent,
+  assertReligionConsent,
   hasHealthConsent,
+  healthConsentCoversReligion,
+  ReligionConsentRequiredError,
   stripHealthFromTemplate,
+  withoutUncoveredReligiousDiets,
   stripHealthProfileFields,
   withdrawHealthConsent,
 } from '../services/healthConsent.js'
@@ -129,6 +134,9 @@ router.get('/user/:id', async (req: AuthRequest, res) => {
     res.json({
       ...rest,
       onboardingRequired: status?.onboardingRequired ?? !user.onboardingDone,
+      // PRO-1042: the sign-up still to do, offered apart when a menu is already there.
+      onboardingPending: status?.onboardingPending ?? !user.onboardingDone,
+      hasMenu: status?.hasMenu ?? false,
       onboardingDraft: status?.onboardingDraft ?? null,
       imageGenQuota: { used, limit: env.IMAGE_GEN_MONTHLY_LIMIT, monthKey },
     })
@@ -155,9 +163,19 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
       })
       return
     }
+    // «halal» under a v1 consent: the current text first (Legal, E-19).
+    try {
+      await assertReligionConsent(req.userId!, body.restrictions)
+    } catch (e) {
+      if (!(e instanceof ReligionConsentRequiredError)) throw e
+      res.status(403).json({ error: e.message, code: e.code })
+      return
+    }
 
     // Restrictions saved: a former «No tengo ninguna» (PRO-347) no longer holds.
     const noneCleared = Array.isArray(body.restrictions) && body.restrictions.length > 0 ? { allergiesNoneAt: null } : {}
+    // PRO-1067: what the household had, so the review knows what was just saved.
+    const restrictionsBefore = 'restrictions' in body ? await householdRestrictionsBefore(req.params.id) : null
     const [updated] = await db
       .update(users)
       .set({ ...body, ...noneCleared })
@@ -189,6 +207,8 @@ router.put('/user/:id', validate(updateProfileSchema), async (req: AuthRequest, 
     if ('adults' in body || 'kidsCount' in body) {
       await alignHouseholdMemory(updated.id, updated).catch((err) => console.error('Align household memory error:', err))
     }
+    // PRO-364: the household's saved menus from today on drop what no longer fits.
+    if ('restrictions' in body) await reviewHouseholdMenusSafely(updated.id, restrictionsBefore)
 
     res.json(updated)
   } catch (err) {
@@ -225,11 +245,11 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish, shopper } = req.body
     // Allergies / restrictions are health data: stored only with the
     // separate consent box ticked (RGPD art. 9, PRO-21) — see saveOnboarding.
     const updated = await saveOnboarding(req.params.id, {
-      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish,
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish, shopper, via: 'web',
     })
 
     if (!updated) {
@@ -244,7 +264,7 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     const analysis = trackOnboardingAnalysis(
       userId,
       analyzeOnboardingIntoMemory(userId, {
-        adults, kidsCount, cookingFreq, favoriteDishes, priority, weekdayCooking, cookingNote,
+        adults, kidsCount, cookingFreq, cookingStyle, favoriteDishes, priority, weekdayCooking, cookingNote,
       }),
     )
     analysis.catch((err) => console.warn('[onboarding-analysis] failed:', err?.message ?? err))
@@ -315,8 +335,12 @@ router.post('/user/:id/health-consent', async (req: AuthRequest, res) => {
       res.status(400).json({ error: 'Body must be { consent: boolean }' })
       return
     }
-    if (req.body.consent) await grantHealthConsent(req.params.id)
-    else await withdrawHealthConsent(req.params.id)
+    if (req.body.consent) {
+      const restrictionsBefore = await householdRestrictionsBefore(req.params.id)
+      await grantHealthConsent(req.params.id)
+      // PRO-364: with the consent, the restrictions it lets in count for the saved menus.
+      await reviewHouseholdMenusSafely(req.params.id, restrictionsBefore)
+    } else await withdrawHealthConsent(req.params.id)
     res.json(await getHealthConsent(req.params.id))
   } catch (err) {
     console.error('Set health consent error:', err)
@@ -407,7 +431,7 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     }
 
     const template = (await hasHealthConsent(req.params.id))
-      ? req.body.template
+      ? withoutUncoveredReligiousDiets(req.body.template, await healthConsentCoversReligion(req.params.id))
       : stripHealthFromTemplate(req.body.template)
     // Comidas fijas (PRO-218): keep only well-formed ones.
     if (template && typeof template === 'object' && !Array.isArray(template) && 'fixedMeals' in template) {

@@ -5,30 +5,34 @@ import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { mergeRestrictions } from '../services/dietaryRestrictions.js'
 import { withHouseholdRestrictions } from '../services/householdAllergies.js'
+<<<<<<< 36570a14b1d03bed449ed5693ef5ab516799f65c
 import { generationSkips, keepLockedSlots, loadPreviousWeek, menuHasDishes, unskipDay } from '../services/menuWeek.js'
+=======
+import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from '../services/menuWeek.js'
+>>>>>>> e3172410f454534e181098a739dd1781a4f57875
 import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { menus, menuEdits, menuLogs, users, userSettings } from '../db/schema.js'
+import { menus, menuEdits, users, userSettings } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireActiveAccount } from '../services/accountAccess.js'
 import { validate } from '../middleware/validate.js'
-import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
+import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
 import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
-import { defaultTemplate, generateMenu, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
+import { defaultTemplate, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
-import { calculateMenuCaloriesFromDB } from '../services/calorieCalculator.js'
-import { calculateMenuNutrientsFromDB } from '../services/nutrientCalculator.js'
-import { updateBalance } from '../services/nutrientBalance.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek, isLeftoverSource } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
-import { startShadowPlan } from '../services/menuPlannerShadow.js'
+import { generateAndSaveMenu } from '../services/menuGenerate.js'
+import { autoplanNoticeFor, markAutoplanViewed, noteAutoplanChange } from '../services/weeklyAutoplan.js'
+import { loadSlotPickContext, slotPickOptions } from '../services/menuSlotPick.js'
 import {
+  menuEditWho,
   recordMenuEdits,
   slotDiff,
   slotRemoved,
@@ -177,7 +181,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
 // A paused account (PRO-135) can't generate a new menu; an empty week stays open.
 router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req) => req.body?.empty === true }), validate(generateMenuSchema), async (req: AuthRequest, res) => {
   try {
-    const { userId, weekStart, customTemplate, empty, force, weekPlan, fromDate } = req.body
+    const { userId, weekStart, customTemplate, empty, force, weekPlan, fromDate, onlyFavorites } = req.body
 
     if (userId !== req.userId) {
       res.status(403).json({ error: 'No puedes generar el menú de otro usuario.' })
@@ -273,78 +277,30 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
       plan = { ...weekPlan, fridgeItems: gate.items }
     }
 
-    // Generate the menu. PRO-244: the first menu starts on the sign-up day —
-    // days before `fromDate` are left out of generation (no dishes, nothing
-    // on the list); they are not stored as "sin cocinar".
-    const { days, warnings } = await generateMenu(
+    // Generate the menu (services/menuGenerate.ts, also Mimo's Thursday week,
+    // PRO-381). PRO-244: the first menu starts on the sign-up day — days
+    // before `fromDate` are left out of generation (no dishes, nothing on the
+    // list); they are not stored as "sin cocinar".
+    // PRO-377: `onlyFavorites` — «Rehacer la semana con mis favoritas».
+    const { menu, days, warnings, favoritesShort } = await generateAndSaveMenu({
       userId,
       weekStart,
       customTemplate,
-      db,
-      previous.locked,
-      previous.days,
-      carryBanned,
-      generationSkips(carrySkipped, weekStart, fromDate),
-      plan,
-    )
-
-    // Save to menus table — carry the lists forward so the matcher honours
-    // them next regeneration too.
-    const [menu] = await db
-      .insert(menus)
-      .values({
-        userId,
-        householdId,
-        weekStart,
-        days,
-        locked: previous.locked,
-        bannedRecipeIds: [...carryBanned],
-        skippedDays: [...carrySkipped],
-      })
-      .returning()
-
-    // Calculate calories and nutrients for the menu log
-    const caloriesTotal = await calculateMenuCaloriesFromDB(days, db)
-    const aggregatedNutrients = await calculateMenuNutrientsFromDB(days, db)
-
-    // Create menu_log entry
-    await db.insert(menuLogs).values({
-      userId,
-      menuId: menu.id,
-      weekStart,
-      aggregatedNutrients,
-      caloriesTotal,
+      weekPlan: plan,
+      fromDate,
+      onlyFavorites: onlyFavorites === true,
+      previous,
     })
 
-    // Update nutrient balance
-    await updateBalance(userId, aggregatedNutrients, db)
-
-    // Enqueue prep-time alerts for this menu (PR-D). Best-effort: a
-    // failure here must NOT take the menu down — we log and continue.
-    // Opt-in: only fires when the user has matching `prep_habits`.
-    enqueuePrepAlertsForMenu(menu.id).catch((err) => {
-      console.warn('[menus.generate] enqueuePrepAlertsForMenu failed:', err)
-    })
-
-    // Menú inteligente a la sombra (PRO-255): Mimo piensa la misma semana
-    // and stores its proposal in `menu_plans`; the household keeps seeing
-    // this one. Not awaited: it never delays or breaks the menu.
-    startShadowPlan({
-      menuId: menu.id,
-      userId,
-      weekStart,
-      days,
-      locked: previous.locked,
-      bannedRecipeIds: carryBanned,
-      skippedDays: carrySkipped,
-    })
+    // PRO-381: redoing the week Mimo left done on Thursday is changing it.
+    noteAutoplanChange(userId, weekStart, menuEditWho(req).channel)
 
     // «Cuánto ha acertado» (PRO-155): one small Haiku call, stored on the
     // row. Null (no key, error, slow) → the menu goes out without the line.
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days })
 
     const hydrated = await hydrateMenuImages(menu)
-    res.status(201).json({ ...hydrated, fit, warnings })
+    res.status(201).json({ ...hydrated, fit, warnings, ...(favoritesShort !== undefined ? { favoritesShort } : {}) })
   } catch (err) {
     console.error('Generate menu error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -353,6 +309,33 @@ router.post('/menu/generate', authMiddleware, requireActiveAccount({ skip: (req)
 
 // All remaining routes require auth
 router.use(authMiddleware)
+
+// PRO-381 · Piloto automático: the card «Mimo os ha dejado hecha la semana…»
+// on /menu (null when there is nothing to show). Declared before the
+// `:menuId` routes so «autoplan» is never read as a menu id.
+router.get('/menu/autoplan', async (req: AuthRequest, res) => {
+  try {
+    res.json({ notice: await autoplanNoticeFor(req.userId!) })
+  } catch (err) {
+    console.error('Autoplan notice error:', err)
+    res.json({ notice: null })
+  }
+})
+
+// The person opened that week: the card goes (once per person, `autoplan_viewed`).
+router.post('/menu/autoplan/viewed', async (req: AuthRequest, res) => {
+  const weekStart = typeof req.body?.weekStart === 'string' ? req.body.weekStart : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+    res.status(400).json({ error: 'weekStart (YYYY-MM-DD) es obligatorio.' })
+    return
+  }
+  try {
+    res.json({ ok: await markAutoplanViewed(req.userId!, weekStart) })
+  } catch (err) {
+    console.error('Autoplan viewed error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 /**
  * IDOR guard for every `/menu/:menuId/...` mutation route. The slot routes
@@ -530,6 +513,11 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     // path used by the menu UI's "cambiar plato" picker and by the assistant's
     // swap_meal skill when the user names a specific recipe.
     const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
+    // PRO-1141: «Cambiar al azar» never replaces a ficha's «plato fijo»; choosing a recipe by hand does.
+    if (!manualRecipeId && slot.dishes.some(isFixedDish)) {
+      res.status(409).json({ error: 'Es un plato fijo de vuestra ficha: elige otra receta a mano si queréis cambiarlo.' })
+      return
+    }
     if (manualRecipeId) {
       const [chosen] = await db
         .select({ id: recipes.id, name: recipes.name, course: recipes.course })
@@ -545,7 +533,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       // grid's "+ Añadir" path), `.map` returns `[]` and the recipe is
       // never persisted. Detect that case and APPEND the chosen recipe
       // as the first dish instead.
-      const replaced: Dish[] = slot.dishes.map((dish) => {
+      // A ficha's fixed dish written as a note (PRO-1141) gives way to the chosen recipe.
+      const replaced: Dish[] = slot.dishes.filter((dish) => !(dish.kind === 'note' && isFixedDish(dish))).map((dish) => {
         if (dish.kind !== 'recipe') return dish
         return {
           kind: 'recipe',
@@ -600,60 +589,10 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       }
     }
 
-    // Fetch user for restrictions + load dislikes from long-term memory.
-    const [user] = await db
-      .select({ restrictions: users.restrictions })
-      .from(users)
-      .where(eq(users.id, menu.userId))
-      .limit(1)
-    const memory = await getMemoryForUser(menu.userId).catch(() => null)
-    // PRO-305: every member's allergies and diet, like the weekly menu.
-    const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memory), menu.userId)
-    const dislikesValue = memory?.dislikes?.value
-    const equipmentValue = memory?.equipment?.value
-    // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes, availableEquipment, unavailableEquipment: unavailEquip1 } = withFichaFilters(
-      {
-        dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
-        availableEquipment: Array.isArray(equipmentValue) ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment)) : undefined,
-      },
-      await loadFichaMenuConstraints(menu.userId),
-    )
-    // PRO-138: the day's limit on total or hands-on time.
-    const timeBudget = slotTimeBudget(memory, menu.weekStart, dayIndex)
-
-    // Fetch favorites — household-scoped when the flag is on so the
-    // matcher boosts recipes any household member has starred.
-    const favScope = await resolveScope(menu.userId)
-    const favRows = await db
-      .select({ recipeId: userFavorites.recipeId })
-      .from(userFavorites)
-      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScope))
-
-    // «¿Qué tal?» ratings (PRO-111): 5 stars boost, 1 star never auto-picked.
-    const rated = withHouseholdRatings(
-      new Set<string>(favRows.map((f: any) => f.recipeId)),
-      new Set(menu.bannedRecipeIds ?? []),
-      await loadHouseholdRatingSets(req.userId!),
-    )
-
-    // Load all recipes with ingredients for matching
-    // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-    const recipesWithIngredients = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, dayIndex, meal)
-
-    const season = detectSeason()
-
-    const matcherOptions = {
-      meal: meal as Meal,
-      season,
-      usedRecipeIds,
-      restrictions,
-      ...rated,
-      dislikes,
-      availableEquipment,
-      unavailableEquipment: unavailEquip1,
-      timeBudget,
-    }
+    // Allergies and diet of the whole household, dislikes, equipment,
+    // favourites, ratings and the catalogue (shared with PRO-364's review).
+    const pickCtx = await loadSlotPickContext(menu, req.userId!)
+    const { pool: recipesWithIngredients, options: matcherOptions } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds)
 
     // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
     // Note dishes stay in place unchanged.
@@ -1600,6 +1539,9 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const dish = slot.dishes[position]
     if (dish.kind === 'note') {
       res.status(400).json({ error: 'Cannot regenerate a note dish' }); return
+    }
+    if (isFixedDish(dish)) {
+      res.status(409).json({ error: 'Es un plato fijo de vuestra ficha: elige otra receta a mano si queréis cambiarlo.' }); return
     }
 
     // Build matcher options — same pattern as PUT /meal/:meal above.

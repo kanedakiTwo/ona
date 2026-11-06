@@ -9,6 +9,7 @@ import {
   date,
   jsonb,
   bigint,
+  smallint,
   uniqueIndex,
   index,
   check,
@@ -307,6 +308,14 @@ export const recipes = pgTable('recipes', {
   substitutions: text('substitutions'),
   storage: text('storage'),
   /**
+   * PRO-372: «Se puede congelar» / «No se congela» and «Aguanta N días en
+   * nevera» seals on the ficha. Null = no data yet (no seal). Filled by
+   * Cocina in the batch, by the rewriter, or by the boot backfill
+   * (`catalogStorageLabels.ts`) for catalogue recipes.
+   */
+  freezable: boolean('freezable'),
+  fridgeDays: smallint('fridge_days'),
+  /**
    * PRO-220 (D-069): «preparativos con antelación» of the recipe itself —
    * `[{ text: 'Saca el filete del frigorífico', hoursBefore: 1.5 }]`. Prep
    * alerts come from these without the household's prep habits. Filled by
@@ -370,11 +379,18 @@ export const recipes = pgTable('recipes', {
   catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
   /** Batch id of the catalogue import (PRO-154); null otherwise. */
   importBatch: text('import_batch'),
+  /**
+   * PRO-1099 (specs/recipe-of-the-day.md): the day (Madrid, YYYY-MM-DD) this
+   * catalogue recipe is «la receta del día». One recipe per day (unique);
+   * null for every other recipe. Set by the batch import (`featuredOn`).
+   */
+  featuredOn: date('featured_on'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (t) => [
   index('idx_recipes_import_batch').on(t.importBatch),
+  uniqueIndex('uq_recipes_featured_on').on(t.featuredOn),
   check('recipes_status_check', sql.raw("status IN ('draft','published')")),
 ])
 
@@ -424,6 +440,14 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
   displayQuantity: real('display_quantity'),
   /** Human-readable unit as the recipe originally stated it (e.g. "taza", "cucharada"). */
   displayUnit: text('display_unit'),
+  /**
+   * «Cocinar ahora»: essential | secondary, marked by Cocina for catalogue
+   * recipes (services/ingredientRoles.ts). Null = not marked: the automatic
+   * rule decides. Survives edits (persistRecipe) and copies.
+   */
+  role: text('role'),
+  /** Catalogue ingredients that can stand in for this one (nata → leche). */
+  substituteIngredientIds: uuid('substitute_ingredient_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
 }, (table) => [
   index('idx_recipe_ingredients_recipe').on(table.recipeId),
   index('idx_recipe_ingredients_ingredient').on(table.ingredientId),
@@ -433,6 +457,7 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
     'recipe_ingredients_unit_check',
     sql.raw(`unit IN (${UNITS.map((u) => `'${u}'`).join(', ')})`),
   ),
+  check('recipe_ingredients_role_check', sql`role IS NULL OR role IN ('essential', 'secondary')`),
 ])
 
 // ─── 6. recipe_steps ────────────────────────────────────────
@@ -1259,6 +1284,79 @@ export const usageEvents = pgTable('usage_events', {
   index('idx_usage_events_household_created').on(t.householdId, t.createdAt),
 ])
 
+/**
+ * Uso de cada función por hogar (PRO-1023, specs/feature-usage.md): una fila
+ * por hogar (o persona, `user_id`) y función del catálogo
+ * (`FEATURE_CATALOG`, @ona/shared). La rellena cada noche
+ * `services/featureUsage.ts` desde `usage_events`, que se borran a los 180
+ * días: `uses_total` sigue sumando después. Guarda cifras y fechas, nada
+ * más; CASCADE con el hogar y con la cuenta.
+ */
+export const householdFeatureUsage = pgTable('household_feature_usage', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** null = fila del hogar; con valor = la de esa persona en ese hogar. */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  feature: text('feature').notNull(),
+  firstUsedAt: timestamp('first_used_at', { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull(),
+  /** Usos en los 30 días antes de `counted_until` (un ajuste: semanas en que actuó). */
+  uses30d: integer('uses_30d').notNull().default(0),
+  usesTotal: integer('uses_total').notNull().default(0),
+  /** Los eventos anteriores a este instante ya están contados. */
+  countedUntil: timestamp('counted_until', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_household_feature_usage').on(t.householdId, sql`COALESCE(${t.userId}, '00000000-0000-0000-0000-000000000000'::uuid)`, t.feature),
+  index('idx_household_feature_usage_feature').on(t.feature),
+  index('idx_household_feature_usage_user').on(t.userId),
+])
+
+/**
+ * PRO-1090 (D-148): la primera vez de cada usuario y mes (Madrid) que salta
+ * un tope de gasto — el de Mimo (`asistente`, ADVISOR_BUDGET_EXCEEDED) o el
+ * de toda la IA (`ia`, SPEND_CAP_EXCEEDED) — en la app o por WhatsApp. Los
+ * 429 siguientes de ese mes no escriben nada. Los admins no cuentan.
+ * Lo lee `/admin/metrics` → `capHits` (services/capHits.ts).
+ */
+export const capHits = pgTable('cap_hits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'set null' }),
+  /** AAAA-MM en hora de Madrid. */
+  month: text('month').notNull(),
+  /** 'asistente' | 'ia'. */
+  cap: text('cap').notNull(),
+  spentMicros: bigint('spent_micros', { mode: 'number' }).notNull(),
+  capMicros: bigint('cap_micros', { mode: 'number' }).notNull(),
+  /** 'app' | 'whatsapp'. */
+  channel: text('channel').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_cap_hits_user_month').on(t.userId, t.month),
+  index('idx_cap_hits_month').on(t.month),
+  check('cap_hits_cap_check', sql.raw("cap IN ('asistente','ia')")),
+  check('cap_hits_channel_check', sql.raw("channel IN ('app','whatsapp')")),
+])
+
+// ─── «Mimo remoto» en staging (PRO-1102, D-157) ─────────────────────
+// With MIMO_REMOTO=1 each round Mimo would send to Anthropic waits here for
+// the office to answer it (services/assistant/mimoRemoto.ts). Never used in
+// production: the API refuses to boot there with the mode on.
+export const mimoTurnosRemotos = pgTable('mimo_turnos_remotos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  creado: timestamp('creado', { withTimezone: true }).notNull().defaultNow(),
+  /** 'pendiente' | 'cogido' | 'respondido' | 'caducado'. */
+  estado: text('estado').notNull().default('pendiente'),
+  /** The Messages request as it would go to Anthropic: model, system, messages, tools… */
+  peticion: jsonb('peticion').notNull(),
+  /** `{ content, stop_reason }` in the Messages API format, once answered. */
+  respuesta: jsonb('respuesta'),
+}, (t) => [
+  index('idx_mimo_turnos_remotos_estado').on(t.estado, t.creado),
+  check('mimo_turnos_remotos_estado_check', sql.raw("estado IN ('pendiente','cogido','respondido','caducado')")),
+])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and
@@ -1332,6 +1430,22 @@ export const shopOrders = pgTable('shop_orders', {
 }, (t) => [
   uniqueIndex('uq_shop_orders_token').on(t.token),
   index('idx_shop_orders_household_status').on(t.householdId, t.status),
+])
+
+// «Enviar a <cadena>» (specs/shop-orders.md, D-154): el aviso que aceptó cada
+// cuenta antes de su primer envío a una cadena. `cadena` es el host de la web
+// de la tienda (el repo nunca nombra la cadena); `version`, la del texto que
+// leyó. «Desactivar» en Perfil borra la fila; un texto nuevo pide aceptarlo otra vez.
+export const basketExtensionConsents = pgTable('basket_extension_consents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  cadena: text('cadena').notNull(),
+  /** Nombre de la cadena tal como lo dio la extensión, para enseñarlo en Perfil. */
+  etiqueta: text('etiqueta').notNull(),
+  version: text('version').notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_basket_extension_consent').on(t.userId, t.cadena),
 ])
 
 // ─── In-house error tracker (specs/errors.md) ────────────────────────
@@ -1511,6 +1625,62 @@ export const newsletterUnsubscribes = pgTable('newsletter_unsubscribes', {
 ])
 
 /**
+ * PRO-1020 (D-122 punto 4): la receta y el truco que la newsletter eligió
+ * para cada persona, una fila por número y cuenta. Lo lee solo el compositor
+ * (no repetir receta, descanso de los trucos, adoptado en 14 días); los
+ * agentes, recuentos por truco. `clicked_at` queda vacío mientras los clics
+ * sean anónimos (PRO-191). Se borra con la cuenta y con el hogar.
+ */
+export const newsletterTipLog = pgTable('newsletter_tip_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  issueId: text('issue_id').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  /** Id del truco (`NEWSLETTER_TIPS`); null = el general del número. */
+  tip: text('tip'),
+  /** La receta elegida; null = la receta de la semana. */
+  recipeId: uuid('recipe_id').references(() => recipes.id, { onDelete: 'set null' }),
+  shownAt: timestamp('shown_at', { withTimezone: true }).notNull().defaultNow(),
+  clickedAt: timestamp('clicked_at', { withTimezone: true }),
+  adoptedAt: timestamp('adopted_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_newsletter_tip_log_issue_user').on(t.issueId, t.userId),
+  index('idx_newsletter_tip_log_user').on(t.userId),
+])
+
+/**
+ * PRO-1123 (D-176): one row per newsletter issue, for the Admin «Newsletter»
+ * editor. Marketing's recommendation, the template Miguel corrects and saves
+ * (the letter with its `{nombre}`, `{receta}` and `{porque}`), when he got its
+ * proof, and the Friday 9:00 it is scheduled for. A new save clears the proof
+ * and the schedule: nothing goes out without the proof of what goes out.
+ */
+export const newsletterDrafts = pgTable('newsletter_drafts', {
+  issueId: text('issue_id').primaryKey(),
+  /** `{ subject, preheader?, content }` as Marketing proposed it. */
+  recommendation: jsonb('recommendation'),
+  recommendedAt: timestamp('recommended_at', { withTimezone: true }),
+  /** `{ subject, preheader?, content }` as the admin saved it. */
+  template: jsonb('template'),
+  savedBy: uuid('saved_by').references(() => users.id, { onDelete: 'set null' }),
+  savedAt: timestamp('saved_at', { withTimezone: true }),
+  /** The last proof of the saved template, to the admin's own account email. */
+  proofSentAt: timestamp('proof_sent_at', { withTimezone: true }),
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+  scheduledBy: uuid('scheduled_by').references(() => users.id, { onDelete: 'set null' }),
+  /** The API origin for the one-click opt-out, taken from the scheduling call. */
+  apiUrl: text('api_url'),
+  /** Claimed by the scheduler (or a send) — set once. */
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  /** `{ sent, failed, skipped, alreadySent }`, counts only. */
+  sendResult: jsonb('send_result'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_newsletter_drafts_scheduled').on(t.scheduledFor),
+])
+
+/**
  * What this household chose when a product needs a choice (jamón → serrano,
  * pescado entero → lubina, carne picada → de ternera). Applied the next time
  * Mimoia drafts an order (specs/shop-orders.md → Buy rules).
@@ -1613,6 +1783,36 @@ export const userFeedback = pgTable('user_feedback', {
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),
   check('user_feedback_channel_check', sql.raw("channel IN ('app','chat','whatsapp')")),
+])
+
+// ─── Pregunta única por WhatsApp (PRO-1091, specs/whatsapp.md) ──
+// Customer Success's one-off question to a group of households, sent from
+// Admin by the `pregunta_unica` template. One question = one text; each
+// household gets it at most once (unique question + household). The reply
+// lands in `user_feedback` with the tag `pregunta_unica`.
+export const whatsappQuestions = pgTable('whatsapp_questions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** The `{{1}}` of the template, as the admin wrote it. */
+  text: text('text').notNull().unique(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const whatsappQuestionSends = pgTable('whatsapp_question_sends', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  questionId: uuid('question_id').notNull().references(() => whatsappQuestions.id, { onDelete: 'cascade' }),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  phone: text('phone').notNull(),
+  /** 'sent' | 'failed' (a failed one is not retried: never twice to a household). */
+  status: text('status').notNull().default('sent'),
+  errorMessage: text('error_message'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  /** The person's next message after it, saved in `user_feedback`. */
+  answeredAt: timestamp('answered_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('uq_whatsapp_question_send').on(t.questionId, t.householdId),
+  index('idx_whatsapp_question_sends_user').on(t.userId),
 ])
 
 // ─── «Afina tu menú» (specs/taste.md, PRO-146) ──────────────
@@ -1905,6 +2105,36 @@ export const catalogImportJobs = pgTable('catalog_import_jobs', {
   index('idx_catalog_import_jobs_created').on(t.createdAt),
   check('catalog_import_jobs_status_check', sql.raw("status IN ('running','done','failed','interrupted')")),
 ])
+
+// ─── catalog_collections (PRO-374) ───────────────────────────
+// Editorial collections of the catalogue («Vuelta al cole», «Otoño»), made by
+// Cocina as a JSON file and uploaded from Admin → «Recetas pendientes»
+// (specs/catalog-import.md → «Colecciones»). Shown as a row on `/recipes` and
+// at `/recipes/coleccion/<slug>`. `recipe_ids` keeps Cocina's order; a recipe
+// retired or turned back into a draft later just stops showing.
+// PRO-378 «Menú del mes»: `kind = 'menu_mes'`, one per `month` (YYYY-MM), and
+// `week` = 7 days (Monday first), per meal the recipe ids (services/monthMenus.ts).
+// Migration 0099 only adds those columns. The collections' row and pages read
+// only `kind = 'coleccion'`.
+export const catalogCollections = pgTable('catalog_collections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  subtitle: text('subtitle'),
+  /** 'spring' | 'summer' | 'autumn' | 'winter', or null (not tied to one). */
+  season: text('season'),
+  recipeIds: jsonb('recipe_ids').notNull().default([]).$type<string[]>(),
+  published: boolean('published').notNull().default(true),
+  /** 'coleccion' (PRO-374) | 'menu_mes' (PRO-378). */
+  kind: text('kind').notNull().default('coleccion'),
+  /** YYYY-MM, only for `menu_mes`. */
+  month: text('month'),
+  /** `menu_mes`: `[{ lunch: [recipeId…], dinner: […] }, …]`, Monday to Sunday. */
+  week: jsonb('week').$type<Array<Partial<Record<'breakfast' | 'lunch' | 'dinner' | 'snack', string[]>>>>(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /** One recipe's result in `catalog_import_jobs.outcomes`. */
 export interface CatalogImportOutcomeRecord {

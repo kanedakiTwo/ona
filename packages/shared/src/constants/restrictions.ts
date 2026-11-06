@@ -20,6 +20,10 @@ export const RESTRICTION_PRESETS = [
   'soja',
   'vegetariano',
   'vegano',
+  // 2026-10-25: no pork or anything made from it, no blood, gelatine or lard
+  // of unknown origin, no alcohol. A religion-based diet: special-category
+  // data like the rest, stored only with the health consent.
+  'halal',
   // PRO-144: skips recipes with wine, sherry, beer… (not health data per se).
   'sin alcohol',
 ] as const

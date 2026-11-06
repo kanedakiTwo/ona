@@ -71,6 +71,12 @@ describe('the reading without the model', () => {
     expect(readByRules('soy celíaca', CATALOG).restrictions).toEqual(['sin gluten'])
   })
 
+  it('«soy musulmán» is the halal chip (2026-10-25)', () => {
+    for (const text of ['halal', 'soy musulmán', 'somos musulmanes', 'en casa somos musulmanes, nada de cerdo', 'musulmana']) {
+      expect(readByRules(text, CATALOG).restrictions, text).toContain('halal')
+    }
+  })
+
   it('a catalogue ingredient is a restriction; gibberish is asked', () => {
     expect(readByRules('intolerancia al pimiento', CATALOG)).toMatchObject({ restrictions: ['pimiento'], understood: true })
     expect(readByRules('cilantro', CATALOG)).toMatchObject({ restrictions: ['cilantro'], understood: true })

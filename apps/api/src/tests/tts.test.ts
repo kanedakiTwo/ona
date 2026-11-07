@@ -38,7 +38,7 @@ describe('synthesize', () => {
 
   it('streams from ElevenLabs with the voice, Spanish and the model, and records the characters', async () => {
     const events: any[] = []
-    setCostSinkForTests((e: any) => events.push(e))
+    setCostSinkForTests(async (e: any) => { events.push(e) })
     const fetchMock = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'Content-Type': 'audio/mpeg' } }))
     const body = await synthesize('Hola, soy Mimo.', voice, { fetch: fetchMock as any })
     expect(body).toBeTruthy()

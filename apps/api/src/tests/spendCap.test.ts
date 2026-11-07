@@ -38,21 +38,25 @@ function fakeRes() {
 describe('requireSpendCapacity', () => {
   const over = async () => ({ exceeded: true, spentEur: 10.4, capEur: 10 })
 
-  it('answers 429 SPEND_CAP_EXCEEDED and stops the request', async () => {
+  it('answers 429 SPEND_CAP_EXCEEDED, stops the request and notes the cap hit (PRO-1090)', async () => {
     const res = fakeRes()
     const next = vi.fn()
-    await requireSpendCapacity(over)({ userId: 'u', user: { role: 'user' } } as any, res, next)
+    const record = vi.fn(async () => true)
+    await requireSpendCapacity(over, record)({ userId: 'u', user: { role: 'user' } } as any, res, next)
     expect(next).not.toHaveBeenCalled()
     expect(res.statusCode).toBe(429)
     expect(res.body).toMatchObject({ code: 'SPEND_CAP_EXCEEDED', capEur: 10 })
     expect(res.body.error).toMatch(/límite de uso de la IA/)
+    expect(record).toHaveBeenCalledWith({ userId: 'u', cap: 'ia', spentEur: 10.4, capEur: 10, channel: 'app' })
   })
 
-  it('lets admins and users under the cap through', async () => {
+  it('lets admins and users under the cap through, without noting a cap hit', async () => {
     const next = vi.fn()
-    await requireSpendCapacity(over)({ userId: 'a', user: { role: 'admin' } } as any, fakeRes(), next)
-    await requireSpendCapacity(async () => ({ exceeded: false, spentEur: 1, capEur: 10 }))({ userId: 'u', user: { role: 'user' } } as any, fakeRes(), next)
+    const record = vi.fn(async () => true)
+    await requireSpendCapacity(over, record)({ userId: 'a', user: { role: 'admin' } } as any, fakeRes(), next)
+    await requireSpendCapacity(async () => ({ exceeded: false, spentEur: 1, capEur: 10 }), record)({ userId: 'u', user: { role: 'user' } } as any, fakeRes(), next)
     expect(next).toHaveBeenCalledTimes(2)
+    expect(record).not.toHaveBeenCalled()
   })
 })
 

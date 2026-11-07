@@ -19,6 +19,7 @@ import { allCatalogNames, publishBatch } from './catalogImportDb.js'
 import { wakeCatalogPhotos } from './catalogPhotos.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
+import { detectSourceType } from './sources/sourceType.js'
 
 type Db = typeof defaultDb
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0]
@@ -228,6 +229,57 @@ export async function publishCatalogDraft(id: string, adminId: string, db: Db = 
   })
   if (result.ok && result.waitingPhoto) wake()
   return result
+}
+
+export interface CatalogSourcePatch {
+  /** The original's address; null takes the link off. Absent = unchanged. */
+  sourceUrl?: string | null
+  /** The ficha's line under the title (D-067); null = no line. Absent = unchanged. */
+  credit?: string | null
+}
+
+export type CatalogSourceResult =
+  | { ok: true; id: string; name: string; sourceUrl: string | null; sourceCredit: string | null }
+  | { ok: false; code: 'NOT_FOUND' }
+
+/**
+ * Where a catalogue recipe comes from, fixed by hand (PRO-1015): the link to
+ * the original (`recipes.source_url` + its type) and the credit line kept in
+ * `catalog_source.credit`. Drafts and published recipes alike; never a
+ * user's recipe. Nothing else of the recipe is touched — unlike `PUT
+ * /recipes/:id`, which rewrites the whole recipe from the public payload
+ * (and so loses its tip, notes and course). Audited in the same transaction.
+ */
+export async function updateCatalogSource(id: string, patch: CatalogSourcePatch, adminId: string, db: Db = defaultDb): Promise<CatalogSourceResult> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: recipes.id, name: recipes.name, sourceUrl: recipes.sourceUrl, catalogSource: recipes.catalogSource })
+      .from(recipes)
+      .where(and(eq(recipes.id, id), isNull(recipes.authorId)))
+      .for('update')
+    if (!row) return { ok: false, code: 'NOT_FOUND' } as const
+    const source = (row.catalogSource ?? {}) as Partial<CatalogSourceInfo>
+    const set: Record<string, unknown> = { updatedAt: new Date() }
+    const before: Record<string, unknown> = {}
+    const after: Record<string, unknown> = {}
+    if (patch.sourceUrl !== undefined) {
+      set.sourceUrl = patch.sourceUrl
+      set.sourceType = patch.sourceUrl ? detectSourceType(patch.sourceUrl) : null
+      before.sourceUrl = row.sourceUrl ?? null
+      after.sourceUrl = patch.sourceUrl
+    }
+    let catalogSource = source
+    if (patch.credit !== undefined) {
+      catalogSource = { ...source, credit: text(patch.credit) }
+      set.catalogSource = catalogSource as CatalogSourceInfo
+      before.credit = catalogSourceCredit(source)
+      after.credit = catalogSourceCredit(catalogSource)
+    }
+    await tx.update(recipes).set(set).where(eq(recipes.id, id))
+    await record({ adminId, action: 'catalog_recipe.source', targetType: 'recipe', targetId: id, payload: { name: row.name, before, after } }, tx)
+    const sourceUrl = patch.sourceUrl !== undefined ? patch.sourceUrl : row.sourceUrl ?? null
+    return { ok: true, id, name: row.name, sourceUrl, sourceCredit: catalogSourceCredit(catalogSource) } as const
+  })
 }
 
 /** «Descartar»: Miguel's «no» (`review --no`). The draft stays hidden, so a re-import skips it. */

@@ -9,7 +9,8 @@
  *   2. Ingredients in the "otros" aisle bucket
  *   3. Ingredients missing density (oils, sauces, milks…)
  *   4. Ingredients missing unitWeight (produce items that ship per-unit)
- *   5. Allergen tag suggestions (heuristic > current)
+ *   5. Allergen tag suggestions (heuristic > current), with the za'atar &
+ *      co. stored without sesame and their published recipes on top (PRO-1096)
  *   6. Recipes with incomplete nutrition (kcal == 0 / null)
  *   7. Recent regen output (failed/skipped JSONL)
  *   8. Usuarios — search + suspend + reset-link generator
@@ -22,6 +23,12 @@
  *      (specs/catalog-import.md)
  *  13. Uso de funciones — one row per Mimoia feature, filters and the
  *      newsletter tricks, aggregates only (PRO-1025, specs/feature-usage.md)
+ *  14. Pregunta por WhatsApp — one question to a group of households, the
+ *      count before sending, once per household (PRO-1091, specs/whatsapp.md)
+ *  15. Newsletter — Marketing's recommendation, Miguel's template with the
+ *      personal letter's placeholders, a preview with real people, the proof
+ *      to his own email and «Programar» for Friday 9:00 (PRO-1123,
+ *      specs/newsletter.md)
  *
  * Each row offers an inline edit (PATCH) or a "Re-mapear a USDA" modal.
  * Access is gated to `user.role === 'admin'`. The full server check is
@@ -49,6 +56,7 @@ import {
   DensitySection,
   UnitWeightSection,
   AllergenSection,
+  SesameMissingSection,
 } from "../sections/IngredientSections"
 import { RecipesSection, RegenSection } from "../sections/RecipeSections"
 import { RemapModal } from "../sections/RemapModal"
@@ -61,6 +69,8 @@ import { CatalogWishesSection } from "../sections/CatalogWishesSection"
 import { WaitlistAdminSection } from "../sections/WaitlistAdminSection"
 import { PendingRecipesSection } from "../sections/PendingRecipesSection"
 import { FeatureUsageSection } from "../sections/FeatureUsageSection"
+import { WhatsAppQuestionSection } from "../sections/WhatsAppQuestionSection"
+import { NewsletterSection } from "../sections/NewsletterSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
 type SectionKey =
@@ -80,6 +90,8 @@ type SectionKey =
   | "feedback"
   | "drafts"
   | "features"
+  | "question"
+  | "newsletter"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "fdc", label: "Ingredientes sin USDA" },
@@ -96,7 +108,9 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "voice", label: "Voz" },
   { key: "invites", label: "Invitaciones" },
   { key: "waitlist", label: "Lista de espera" },
+  { key: "newsletter", label: "Newsletter" },
   { key: "feedback", label: "Opiniones" },
+  { key: "question", label: "Pregunta por WhatsApp" },
   { key: "features", label: "Uso de funciones" },
 ]
 
@@ -105,7 +119,9 @@ const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
   usuarios: "users",
   invitaciones: "invites",
   "lista-espera": "waitlist",
+  newsletter: "newsletter",
   opiniones: "feedback",
+  "pregunta-whatsapp": "question",
   funciones: "features",
   auditoria: "audit",
   voz: "voice",
@@ -117,7 +133,9 @@ const AREA_HEADER: Record<AdminArea, { title: string; intro: string }> = {
   usuarios: { title: "Usuarios", intro: "Busca cuentas, suspéndelas o genera un enlace para cambiar la contraseña." },
   invitaciones: { title: "Invitaciones", intro: "Enlaces de invitación por campaña para entrar en la beta cerrada, con sus altas y su uso." },
   "lista-espera": { title: "Lista de espera", intro: "Quién se ha apuntado, de qué canal viene y la siguiente tanda para invitar por correo." },
+  newsletter: { title: "Newsletter", intro: "La carta de los viernes: parte de la recomendación de Marketing, corrígela y guárdala como plantilla. Cada persona recibe la suya. Nada sale sin que veas la prueba en tu correo." },
   opiniones: { title: "Opiniones", intro: "Lo que nos cuentan los hogares de la beta, desde el botón «Opinión», el chat o WhatsApp." },
+  "pregunta-whatsapp": { title: "Pregunta por WhatsApp", intro: "Una pregunta única a un grupo de hogares, con la plantilla aprobada en Meta. Ves cuántos la recibirán antes de enviar; cada hogar, una sola vez. Las respuestas llegan a Opiniones." },
   funciones: { title: "Uso de funciones", intro: "Cuántos hogares usan cada función de Mimoia y a quién proponerle cada truco en la newsletter. Solo cifras; los grupos de menos de 5 no llevan número." },
   auditoria: { title: "Auditoría", intro: "Lo que ha hecho cada admin y cuándo. Cada acción queda registrada." },
   voz: { title: "Voz", intro: "Histórico del antiguo modo de voz (retirado el 2026-10-09). Ya no entran conversaciones nuevas." },
@@ -128,7 +146,9 @@ const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
   users: "/admin/usuarios",
   invites: "/admin/invitaciones",
   waitlist: "/admin/lista-espera",
+  newsletter: "/admin/newsletter",
   feedback: "/admin/opiniones",
+  question: "/admin/pregunta-whatsapp",
   features: "/admin/funciones",
   audit: "/admin/auditoria",
   voice: "/admin/voz",
@@ -208,6 +228,8 @@ export default function AdminPage() {
     feedback: 0,
     drafts: 0,
     features: 0,
+    question: 0,
+    newsletter: 0,
   }
 
   const isCatalogTab =
@@ -289,7 +311,7 @@ export default function AdminPage() {
               }`}
             >
               {s.label}
-              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && s.key !== "wishes" && s.key !== "drafts" && s.key !== "features" && (
+              {s.key !== "users" && s.key !== "audit" && s.key !== "voice" && s.key !== "waitlist" && s.key !== "wishes" && s.key !== "drafts" && s.key !== "features" && s.key !== "question" && s.key !== "newsletter" && (
                 <span className="ml-1.5 text-[10px] opacity-60">
                   {counts[s.key]}
                 </span>
@@ -320,7 +342,10 @@ export default function AdminPage() {
           <UnitWeightSection rows={ingredientGaps.data?.missingUnitWeight ?? []} />
         )}
         {!isLoading && active === "allergens" && (
-          <AllergenSection rows={ingredientGaps.data?.allergenSuggestions ?? []} />
+          <>
+            <SesameMissingSection rows={ingredientGaps.data?.sesameMissing ?? []} />
+            <AllergenSection rows={ingredientGaps.data?.allergenSuggestions ?? []} />
+          </>
         )}
         {!isLoading && active === "recipes" && (
           <RecipesSection rows={recipeGaps.data?.missingNutrition ?? []} />
@@ -337,6 +362,8 @@ export default function AdminPage() {
         {active === "wishes" && <CatalogWishesSection />}
         {active === "drafts" && <PendingRecipesSection />}
         {active === "features" && <FeatureUsageSection />}
+        {active === "question" && <WhatsAppQuestionSection />}
+        {active === "newsletter" && <NewsletterSection />}
       </main>
 
       {remapTarget && (

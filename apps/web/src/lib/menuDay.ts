@@ -154,6 +154,18 @@ export function absentMeals(
   )
 }
 
+/**
+ * The rows of the desktop «La semana» (opción C, Miguel 2026-10-27): one per
+ * meal the week uses — a cooked (not skipped) day has a slot for it, empty or
+ * not — in the order of the day (desayuno, comida, merienda, cena). A week
+ * with none (every day skipped or emptied) still gets lunch and dinner, so
+ * each day keeps somewhere to click and to drop a dish.
+ */
+export function weekMealRows(days: (DayMenu | undefined | null)[], skippedDays: number[]): MealKey[] {
+  const used = DAY_MEAL_ORDER.filter((m) => days.some((d, i) => !skippedDays.includes(i) && d?.[m] != null))
+  return used.length > 0 ? used : ["lunch", "dinner"]
+}
+
 /** True when a leftover of the week points at this slot: it's the batch, so it can't be a freezer táper. */
 export function feedsLeftovers(days: (DayMenu | undefined | null)[], day: number, meal: string): boolean {
   return days.some((d) =>

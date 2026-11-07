@@ -168,10 +168,10 @@ describe('the menu never picks a base as a dish', () => {
 
   it('loadMatchableRecipes leaves bases out of every automatic pick', async () => {
     const row = (id: string, name: string, tags: string[]) => ({ id, name, authorId: null, servings: 4, course: 'main', meals: ['lunch', 'dinner'], seasons: [], tags, allergens: [] })
-    // Queries: recipes, the ficha (household, facts, persons, portrait), ingredient lines, steps.
+    // Queries: recipes, the ficha (household, facts, persons, portrait), ingredient lines, steps, dish dislikes (user, verdicts).
     const pool = await loadMatchableRecipes(
       'u-1',
-      makeDb([row('b1', 'Sofrito', ['base']), row('d1', 'Lentejas con sofrito', [])], [{ householdId: 'h1' }], [], [], [], [], []),
+      makeDb([row('b1', 'Sofrito', ['base']), row('d1', 'Lentejas con sofrito', [])], [{ householdId: 'h1' }], [], [], [], [], [], [], []),
     )
     expect(pool.map((r) => r.id)).toEqual(['d1'])
   })

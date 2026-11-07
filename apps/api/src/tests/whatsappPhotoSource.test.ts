@@ -28,6 +28,14 @@ describe('unreadLinkForScreenshot', () => {
   it('the link that got «mándame una captura» in the last 30 min', () => {
     expect(unreadLinkForScreenshot([unread(ago(29))], NOW)).toBe(TT)
   })
+  it('a recipe page we were not let in to read counts too', () => {
+    const page = 'https://www.casanoguera.com/ca/recepta-botifarra-amb-seques/'
+    const wall: HistoryRow = {
+      ...unread(ago(3), page),
+      meta: { toolTrace: [{ name: 'import_recipe_from_url', input: JSON.stringify({ url: page }), summary: 'Responde al usuario exactamente: «No he podido leer la receta de esta página; mándame una captura».' }] },
+    }
+    expect(unreadLinkForScreenshot([wall], NOW)).toBe(page)
+  })
   it('older than 30 min → none', () => {
     expect(unreadLinkForScreenshot([unread(ago(31))], NOW)).toBeNull()
   })

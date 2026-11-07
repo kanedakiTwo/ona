@@ -38,12 +38,21 @@ export type AdminAction =
   | 'invite_campaign.create'
   | 'invite_campaign.delete'
   | 'newsletter.send'
+  // Admin «Newsletter» editor (PRO-1123)
+  | 'newsletter.template_save'
+  | 'newsletter.preview'
+  | 'newsletter.proof'
+  | 'newsletter.schedule'
   // Admin «Recetas pendientes» (specs/catalog-import.md)
   | 'catalog_draft.publish'
   | 'catalog_draft.discard'
   | 'catalog_draft.restore'
   | 'catalog_batch.publish'
   | 'catalog_import.start'
+  | 'catalog_collection.import'
+  | 'catalog_recipe.source'
+  // «Pregunta única por WhatsApp» (PRO-1091)
+  | 'whatsapp_question.send'
 
 export type AuditTargetType =
   | 'ingredient'
@@ -55,6 +64,8 @@ export type AuditTargetType =
   | 'newsletter_issue'
   | 'catalog_batch'
   | 'catalog_import'
+  | 'catalog_collection'
+  | 'whatsapp_question'
 
 export interface AuditRecord {
   adminId: string

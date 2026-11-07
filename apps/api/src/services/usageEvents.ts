@@ -39,6 +39,8 @@ export const USAGE_EVENTS = [
   'meal_swapped',
   'shopping_list_viewed',
   'shopping_item_checked',
+  // PRO-380: «Mandar la lista» (web) or Mimo handing out the whole list; `props.via` on the web.
+  'shopping_list_shared',
   'recipe_imported',
   'recipe_created',
   'cook_mode_started',
@@ -62,6 +64,11 @@ export const USAGE_EVENTS = [
   'feedback_left',
   // PRO-1022: every Mimo tool that returned data (`props.skill` = the tool's name, `props.canal`). Never text.
   'mimo_skill_used',
+  // «Cocinar ahora» (PRO-1106, specs/cook-now.md): the four questions answered, a proposal chosen.
+  'cook_now_proposed',
+  'cook_now_chosen',
+  // PRO-383: «¿Quién hace la compra?» in the sign-up (`props.value` = me · other · shared; channel web or whatsapp).
+  'shopper_answered',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -231,7 +238,14 @@ const ROUTE_EVENTS: RouteEvent[] = [
     event: (req) => ({ name: 'recipe_imported', props: urlImportProps(req.body?.url, 'web') }),
   },
   { method: 'POST', re: /^\/recipes\/?$/, event: (req) => ({ name: 'recipe_created', props: { withSource: Boolean(req.body?.sourceUrl) } }) },
-  { method: 'POST', re: /^\/cook-logs\/?$/, event: () => ({ name: 'meal_cooked' }) },
+  { method: 'POST', re: /^\/cook-logs\/?$/, event: (req) => ({ name: 'meal_cooked', props: { fromMenu: Boolean(req.body?.menuId) } }) },
+  {
+    method: 'POST',
+    re: /^\/cook-now\/proposal\/?$/,
+    // The «Con lo que tienes» card asks the same route: not a proposal anyone asked for.
+    event: (req) => (req.body?.requirePantryUse ? null : { name: 'cook_now_proposed', props: { canBuy: Boolean(req.body?.canBuy) } }),
+  },
+  { method: 'POST', re: /^\/cook-now\/choose\/?$/, event: (req) => ({ name: 'cook_now_chosen', props: { displaced: req.body?.displacedTo != null } }) },
   // Opening cook mode on the web (PRO-188): the page pings this once on open.
   { method: 'POST', re: /^\/usage\/cook-mode-started\/?$/, event: () => ({ name: 'cook_mode_started' }) },
   {
@@ -369,7 +383,7 @@ export function recordSkillUsage(
 // ─── Events the web sends itself (PRO-120) ─────────────────────────
 
 /** «Primeros pasos» on the web, in the order they're shown (the WhatsApp sign-up is one conversation: see specs/metrics.md). */
-export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'] as const
+export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'quien_compra', 'invitar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'] as const
 export const ONBOARDING_STEP_ACTIONS = ['visto', 'hecho'] as const
 export const USAGE_SCREENS = ['menu', 'lista', 'compra', 'receta', 'recetas', 'perfil', 'despensa', 'avisos', 'casa'] as const
 export const RECIPE_VIEW_FROM = ['menu', 'catalogo', 'mimo', 'lista', 'otro'] as const

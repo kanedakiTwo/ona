@@ -28,22 +28,22 @@ If you're not sure which specs apply, run `/spec study` to load all of them into
 2. Did this change rename, move, or delete a file referenced in a spec's `## Source` section?
 3. Did this change add or remove a constraint, edge case, or known limitation?
 
-If the answer to any of these is **yes**, update the relevant spec(s) before finishing the task. The spec must reflect the current reality of the code; a divergence between spec and code is a bug in itself.
+If the answer to **1** is **yes** (or a 3 that a user would notice), update the relevant spec(s) in the same commit, before finishing the task. If only 2 or 3 apply and nothing the user sees changed, the spec can catch up later, when convenient (D-181). The spec must reflect the current reality of the code; a divergence between spec and code is a bug in itself.
 
 If the change introduces a new system not covered by any existing spec (e.g., notifications, admin panel, payments), create a new spec file and add an entry to [`specs/index.md`](./specs/index.md). Keep specs under 200 lines and write from the user's perspective.
 
 ### Definition of done — spec gate
 
-**A task is not done until its spec impact has been resolved in the same commit / PR.** Use this checklist before reporting a task complete:
+**A task that changes what a user can observe is not done until its spec impact has been resolved in the same commit / PR.** Changes that don't (refactors, internal scripts, tests, tooling, infra) don't need a spec edit in the same commit (D-181); `kb/sobre-mimoia.md` always does. Use this checklist before reporting a task complete:
 
 ```
-[ ] Did I change anything in apps/api/src/routes/, apps/api/src/services/,
-    apps/web/src/app/, apps/web/src/components/, apps/web/src/hooks/,
-    packages/shared/src/types/, or any DB migration?
-[ ] If yes → I ran the spec table below and updated every spec affected.
-[ ] If a referenced file moved/renamed/disappeared → I fixed `## Source` links.
-[ ] If a behavior the user can observe changed → I rewrote the affected
-    `## User Capabilities` / `## Constraints` lines.
+[ ] Did I change something a user can observe (a screen, a flow, a message,
+    an API response the app shows, what Mimo says)?
+[ ] If yes → I ran the spec table below and updated every spec affected, and
+    rewrote the affected `## User Capabilities` / `## Constraints` lines.
+[ ] If a referenced file moved/renamed/disappeared → I fixed `## Source` links
+    (now or later; not required in the same commit if nothing user-visible
+    changed, D-181).
 [ ] If a brand-new system landed → I added a new spec file AND a row to
     `specs/index.md`.
 [ ] If something a user could ask Mimo about Mimoia changed (a feature,
@@ -89,6 +89,20 @@ When in doubt: open `specs/index.md`, grep for keywords related to your change, 
 
 A code-only PR that touches user-observable behavior with no corresponding test is a bug, equivalent to a missing spec update. The spec-gate above and the test-gate here are sibling checks — both run before a task is reported done.
 
+### Definition of done — growth gate
+
+**A user-visible change says which step of the growth line it moves, and how we will see it** (D-158, 2026-11-03). The growth line: signup → first menu → first strike (cooks a dish from the menu and sends or uses the shopping list within 7 days) → two weeks in a row with the menu ready before Monday (within 21 days) → pays. Until the launch (2026-12-15) this line is the product's first priority, right after diet safety.
+
+```
+[ ] Which step of the growth line does this change move or protect?
+[ ] Which `usage_events` event shows it? If none does, add the event and
+    its count in /admin/usage (specs/metrics.md) with a unit test, in the
+    same PR.
+[ ] Does it add a step, a card, a question or a wait between signup and
+    the first resolved week? Then say why in the PR: every extra step
+    costs households. One next step at a time on /menu.
+```
+
 ## What Mimoia is
 
 Mimoia is a **mobile-first meal planner** for Spanish speakers. It generates a weekly menu from a recipe catalog, produces a shopping list, manages pantry stock, and provides an AI advisor for nutrition questions. The app is currently mid-migration toward an **editorial visual style** (cream/warm-black palette, Fraunces serif, motion/react animations) — see [`specs/design-system.md`](./specs/design-system.md) for which pages are migrated and which still use the legacy "app mode" green palette.
@@ -111,8 +125,8 @@ The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT
 - **Specs document what exists**, not aspirational features. If the code disagrees with a spec, fix the spec or the code — never ignore the divergence.
 - **Update specs when you change behavior** (see "Specs are a living document" above).
 - **Prefer the editorial design system** (`@theme` tokens in `globals.css`) for new UI: cream `#FAF6EE`, ink `#1A1612`, terracotta `#C65D38`, forest `#2D6A4F`, Fraunces + Cormorant + Inter.
-- **All UI strings are in Spanish.** No i18n setup; just write in Spanish.
-- **Mobile-first always.** Test at 390×844 (iPhone 14) viewport using Playwright MCP before declaring UI work done.
+- **All UI strings are in Spanish** while there is no translation system in `master`. When it lands (PRO-327, branch `feat/ingles-base`), every UI and API string goes through it, in both languages (D-111); orders to shops stay in Spanish.
+- **Mobile-first always.** Before declaring UI work done, check it at 390×844 (iPhone 14): a Playwright e2e at the mobile viewport (the test gate) is enough; if the task has none, check it by hand with Playwright MCP (D-181). Never say it is shipped without having tested the flow end to end.
 
 ## Common pitfalls
 

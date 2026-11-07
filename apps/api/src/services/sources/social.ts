@@ -17,6 +17,7 @@ import type {
 } from '../recipeExtractor.js'
 import { fetchPublicPage, PageFetchError } from '../net/publicFetch.js'
 import { extractOgImage } from './article.js'
+import { NeedsScreenshotError } from './needsScreenshot.js'
 
 export type SocialPlatform = 'instagram' | 'tiktok'
 
@@ -40,7 +41,7 @@ export function detectSocialPlatform(input: string): SocialPlatform | null {
 export const SOCIAL_SCREENSHOT_MESSAGE =
   'No he podido leer la receta de este vídeo; mándame una captura'
 
-export class SocialCaptionUnavailableError extends Error {
+export class SocialCaptionUnavailableError extends NeedsScreenshotError {
   constructor() {
     super(SOCIAL_SCREENSHOT_MESSAGE)
     this.name = 'SocialCaptionUnavailableError'

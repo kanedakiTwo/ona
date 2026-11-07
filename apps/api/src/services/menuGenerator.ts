@@ -34,6 +34,7 @@ import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
+import { lockedWithFixedDishes, markFixedDishConflicts, resolveFichaFixedDishes, templateWithoutFixedDishes, withFichaFixedDishes } from './fichaFixedDishes.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
@@ -561,7 +562,7 @@ export async function generateMenu(
     weekPlan,
     (d, m) => !!(existingDays?.[d]?.[m] && lockedSlots[String(d)]?.[m]),
   )
-  const template = templateWithoutFixed(plannedTemplate, fixedMeals)
+  const withoutFixedMeals = templateWithoutFixed(plannedTemplate, fixedMeals)
   // Per-meal-type dish count from the same junk-drawer blob:
   // `{ mealDishCounts: { lunch: 2, dinner: 3 } }`. Absent = all 1-dish.
   const mealDishCounts = extractMealDishCounts(rawTemplate)
@@ -605,10 +606,6 @@ export async function generateMenu(
   const height = user.height ?? 170
   const age = user.age ?? 30
   const activity = (user.activityLevel as ActivityLevel) ?? 'none'
-  const totalMeals = countMealSlots(template)
-
-  const targetCalories = calculateMenuTargetCalories(sex, weight, height, age, activity, totalMeals)
-
   // 3. Current season
   const season = detectSeason()
 
@@ -622,6 +619,7 @@ export async function generateMenu(
   const equipmentValue = memory?.equipment?.value
   // The household's ficha on top (PRO-253): every member's dislikes and
   // equipment missing right now («sin horno hasta nuevo aviso»).
+  const ficha = await loadFichaMenuConstraints(userId, { db })
   const { dislikes, availableEquipment, unavailableEquipment } = withFichaFilters(
     {
       dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
@@ -629,7 +627,7 @@ export async function generateMenu(
         ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
         : undefined,
     },
-    await loadFichaMenuConstraints(userId, { db }),
+    ficha,
   )
   // Per-day time limits (PRO-138): total or hands-on minutes; «Rapidez» /
   // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
@@ -656,6 +654,22 @@ export async function generateMenu(
   // group of the kids' lunch.
   const dinnerAvoidGroups = await loadSchoolDinnerAvoidGroups(await getPrimaryHouseholdId(userId, db).catch(() => null), weekStart, db)
 
+  // 5e. Platos fijos de la ficha (PRO-1141): «pizza el viernes por la noche»
+  // goes in first, with the same allergy and diet check; those slots are not
+  // drawn, and their recipes don't come out again in the week.
+  const fichaFixed = resolveFichaFixedDishes(ficha.fixedDishes, allRecipes, restrictions, {
+    template: withoutFixedMeals,
+    skippedDays,
+    lockedSlots,
+    existingDays,
+    bannedRecipeIds: rated.bannedRecipeIds,
+  })
+  const template = templateWithoutFixedDishes(withoutFixedMeals, fichaFixed.slots)
+  const fixedRecipeIds = new Set(fichaFixed.slots.flatMap((s) => (s.dish.kind === 'recipe' ? [s.dish.recipeId] : [])))
+  const drawPool = fixedRecipeIds.size ? allRecipes.filter((r) => !fixedRecipeIds.has(r.id)) : allRecipes
+
+  const targetCalories = calculateMenuTargetCalories(sex, weight, height, age, activity, countMealSlots(template))
+
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
   const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName), season)]))
 
@@ -668,7 +682,7 @@ export async function generateMenu(
   for (let i = 0; i < MENU_GENERATION.MAX_ITERATIONS; i++) {
     const { days: candidateDays, warnings: candidateWarnings, favoritesShort: candidateShort } = buildRandomMenu(
       template,
-      allRecipes,
+      drawPool,
       season,
       restrictions,
       rated.favoriteRecipeIds,
@@ -733,12 +747,18 @@ export async function generateMenu(
     ).days
 
 
-  // Order: the fridge dish (PRO-229) on the drawn week, then tápers (PRO-223), then fixed meals (PRO-218).
+  // Order: the fridge dish (PRO-229) on the drawn week, then the ficha's
+  // fixed dishes (PRO-1141; a slot whose fixed dish breaks a restriction says
+  // so), then tápers (PRO-223), then fixed meals (PRO-218).
   const fixedOpts = { lockedSlots, existingDays, skippedDays, mealDiners }
   // PRO-223: the plantilla's «días de táper» — that lunch is a táper of the dinner before.
-  // Fixed meals (PRO-218) go last, so a fixed slot wins over a táper.
-  const finish = (days: DayMenu[]) =>
-    withFixedMeals(applyTemplateTapers(withFridge(days), rawTemplate, lockedSlots, skippedDays ?? []), fixedMeals, fixedOpts)
+  // A ficha's fixed dish counts as locked for it; fixed meals (PRO-218) go
+  // last, so a fixed slot wins over a táper.
+  const taperLocks = lockedWithFixedDishes(lockedSlots, fichaFixed.slots)
+  const finish = (days: DayMenu[]) => {
+    const drawn = withFichaFixedDishes(markFixedDishConflicts(withFridge(days), fichaFixed.conflicts), fichaFixed.slots, mealDiners)
+    return withFixedMeals(applyTemplateTapers(drawn, rawTemplate, taperLocks, skippedDays ?? []), fixedMeals, fixedOpts)
+  }
 
   // PRO-377: dishes of the generated slots not from the favourites (a táper
   // repeats the dinner before; locked slots were not generated).
@@ -746,12 +766,12 @@ export async function generateMenu(
     onlyFavoriteIds ? { ...out, favoritesShort: countOutsideFavorites(out.days, onlyFavoriteIds, lockedSlots) } : out
 
   if (bestDays) {
-    return withShort({ days: finish(bestDays), warnings: bestWarnings })
+    return withShort({ days: finish(bestDays), warnings: [...fichaFixed.warnings, ...bestWarnings] })
   }
 
   const fallback = buildRandomMenu(
     template,
-    allRecipes,
+    drawPool,
     season,
     restrictions,
     rated.favoriteRecipeIds,
@@ -769,17 +789,17 @@ export async function generateMenu(
     unavailableEquipment,
     onlyFavoriteIds,
   )
-  return withShort({ days: finish(fallback.days), warnings: fallback.warnings })
+  return withShort({ days: finish(fallback.days), warnings: [...fichaFixed.warnings, ...fallback.warnings] })
 }
 
-/** PRO-377: recipe dishes outside the favourites, locked slots and tápers left out. */
+/** PRO-377: recipe dishes outside the favourites, locked slots, tápers and the ficha's fixed dishes (PRO-1141) left out. */
 export function countOutsideFavorites(days: DayMenu[], favoriteIds: ReadonlySet<string>, lockedSlots: LockedSlots = {}): number {
   let n = 0
   days.forEach((day, dayIndex) => {
     for (const [meal, slot] of Object.entries(day ?? {})) {
       if (lockedSlots[String(dayIndex)]?.[meal]) continue
       for (const d of slot?.dishes ?? []) {
-        if (d.kind === 'recipe' && !(d as RecipeDish).leftoverOf && !favoriteIds.has(d.recipeId)) n++
+        if (d.kind === 'recipe' && !(d as RecipeDish).leftoverOf && !d.fixedDish && !favoriteIds.has(d.recipeId)) n++
       }
     }
   })

@@ -9,6 +9,8 @@
  *   - Suspender / Reactivar
  *   - Generar enlace de reset (modal with the magic link)
  *
+ * Above the list, «Han llegado al tope este mes» (CapHitsCard, PRO-1090).
+ *
  * Spec: ../../../../specs/user-management.md
  */
 
@@ -30,6 +32,7 @@ import {
   type AdminResetTokenResponse,
 } from "@/hooks/useAdmin"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
+import { CapHitsCard } from "./CapHitsCard"
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value)
@@ -95,6 +98,8 @@ export function UsersSection() {
 
   return (
     <div>
+      <CapHitsCard />
+
       {/* Filter strip */}
       <div className="rounded-2xl border border-border-soft bg-paper p-3">
         <div className="flex items-center gap-2">

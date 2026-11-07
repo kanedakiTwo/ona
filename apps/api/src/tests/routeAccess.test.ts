@@ -15,6 +15,9 @@ const OPEN = [
   '/precios',
   '/blog',
   '/blog/un-articulo',
+  '/receta-del-dia',
+  '/receta-del-dia/2026-11-04',
+  '/receta-del-dia/2026-11-04/foto/vertical',
   '/privacidad',
   '/terminos',
   '/aviso-legal',
@@ -75,6 +78,11 @@ describe('signedOutChrome', () => {
     expect(signedOutChrome('/whatsapp/conectar')).toBe('page')
     expect(signedOutChrome('/recipes/abc')).toBe('recipe')
     expect(signedOutChrome('/recipes/abc/cook')).toBe('fullscreen')
+  })
+  it('a catalogue collection (PRO-374) is a public page, not a recipe', () => {
+    expect(signedOutChrome('/recipes/coleccion/otono')).toBe('page')
+    expect(signedOutChrome('/recipes/coleccion/cook')).toBe('page')
+    expect(needsAccount('/recipes/coleccion/otono')).toBe(false)
   })
   it('bare and private pages have no session-dependent chrome', () => {
     for (const p of ['/', '/login', '/onboarding', '/menu', '/recipes/new', '/recipes/abc/edit', '/recipes-ona']) {

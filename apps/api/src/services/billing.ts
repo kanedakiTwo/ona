@@ -227,7 +227,18 @@ export function chargeAmount(plan: PlanKey, period: BillingPeriod): string {
 /** What `GET /billing` answers, from the household's latest subscription. */
 export function billingStateFor(
   row: SubscriptionRow | null,
-  opts: { enabled: boolean; canManage: boolean; now: Date; userCreatedAt?: Date | null; householdCreatedAt?: Date | null; trialDays?: number },
+  opts: {
+    enabled: boolean
+    canManage: boolean
+    now: Date
+    userCreatedAt?: Date | null
+    householdCreatedAt?: Date | null
+    trialDays?: number
+    /** PRO-384: the household resolved a week in its trial (`householdWeekResolved`). */
+    weekResolved?: boolean
+    /** PRO-384: `households.founder_offer_at` (the offer already went out: it keeps standing). */
+    founderOfferAt?: Date | null
+  },
 ): BillingState {
   const live = row && LIVE_STATUSES.includes(row.status) ? row : null
   const paid = !!row && PAID_ACCESS_STATUSES.includes(row.status)
@@ -245,7 +256,7 @@ export function billingStateFor(
     founder: {
       household: householdCreatedAt != null && isFoundingHousehold(householdCreatedAt),
       priceIfSubscribing: founderPriceIfSubscribing(householdCreatedAt, opts.now, undefined, trialDays),
-      offer: !live && founderOfferStands(access),
+      offer: !live && (founderOfferStands(access, !!opts.weekResolved) || (access.state === 'trial' && opts.founderOfferAt != null)),
     },
     subscription: live
       ? {

@@ -57,6 +57,12 @@ export interface RecipeDish {
    * already cooked). The day's card warns; any change of the dish drops it.
    */
   restrictionConflict?: boolean
+  /**
+   * PRO-1141: a «plato fijo» of the household's ficha («pizza el viernes por
+   * la noche»), put there by the generator. «Generar» puts it back and
+   * «Cambiar al azar» doesn't touch it; choosing another recipe by hand does.
+   */
+  fixedDish?: boolean
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
   imageUrl?: string | null
   /** Hydrated alongside `imageUrl`. */
@@ -74,6 +80,13 @@ export interface NoteDish {
    * slot's diners. Absent on ordinary notes, which add nothing to the list.
    */
   fixed?: { items: Array<{ name: string; quantity: number; unit: 'u' | 'g' | 'ml' }> }
+  /** PRO-1141: a ficha's «plato fijo» with no recipe that matches it: its name, nothing on the list. */
+  fixedDish?: boolean
+}
+
+/** Pure (PRO-1141): the dish is a ficha's «plato fijo» (not a táper copied from it). */
+export function isFixedDish(d: Dish | null | undefined): boolean {
+  return !!d && d.fixedDish === true && !(d.kind === 'recipe' && d.leftoverOf)
 }
 
 export type Dish = RecipeDish | NoteDish

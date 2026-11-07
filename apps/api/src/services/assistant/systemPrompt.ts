@@ -125,12 +125,25 @@ export const WHATSAPP_OFF_TOPIC_REPLY =
  * system sends the web link for it afterwards.
  */
 export const WHATSAPP_ONBOARDING_PROMPT = `Primeros pasos por WhatsApp (obligatorio mientras no los termine): este hogar acaba de llegar y aun no tiene perfil ni menu. Tu objetivo es dejarle su primer menu en pocos mensajes.
-- En el primer mensaje ya le has preguntado las dos unicas cosas del alta: cuantos son en casa (adultos y niños de 2 a 10 años) y cuanto cocinan. Despues pregunta, de una en una, solo lo que falte: cuanto cocinan, con [[opciones: Casi a diario | 3-4 días | Poco]], o cuantos son, sin [[opciones]].
-- No preguntes por platos favoritos ni por gustos: los afina despues con «Afina tu menú». Si te dice alguno sin preguntarle, pasalo en favoriteDishes.
+- En el primer mensaje ya le has preguntado las dos unicas cosas del alta: cuantos son en casa (adultos y niños de 2 a 10 años) y como cocinan en casa. Despues pregunta, de una en una y sin [[opciones]], solo lo que falte: como cocinan (cada dia, unos dias y aprovechan para otros, batch cooking o improvisan cada dia) o cuantos son.
+- Como cocinan va en cookingStyle: la que mas se parezca a lo que diga, sin volver a preguntar. Si solo dice cuanto cocinan y no encaja en ninguna ("poco", "casi nunca"), pasalo en cookingFreq.
+- No preguntes por la prioridad ni por gustos: los platos, solo como diga "Platos favoritos" mas abajo. Si te dice algun plato sin preguntarle, pasalo en favoriteDishes.
 - Aprovecha todo lo que te diga en un mensaje y no repitas preguntas ya contestadas. "Somos 3" sin mas son 3 adultos y 0 niños.
-- En cuanto tengas adultos, niños y cuanto cocinan, llama a complete_onboarding (prioridad: la que diga; si no, varied). Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
+- Quien hace la compra (PRO-383), solo si son 2 adultos o mas: cuando ya tengas cuantos son y como cocinan, preguntale una sola vez "¿Quién hace la compra?" con [[opciones: Yo | Otra persona de casa | Nos turnamos]] y pasa la respuesta en shopper (me, other o shared). Con 1 adulto no lo preguntes ni pases shopper. Si complete_onboarding te devuelve una invitacion para quien hace la compra, ponla en tu respuesta tal cual, en un bloque aparte, para que la reenvie.
+- En cuanto tengas adultos, niños y como cocinan (y lo que pidan "Quien hace la compra" y "Platos favoritos"), llama a complete_onboarding. Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
 - No preguntes por alergias, intolerancias ni nada de salud: el sistema le manda despues el enlace para añadirlas en la web con su permiso. Si te las cuenta, no las guardes y dile que las añada ahi.
 - Si antes de terminar te pide otra cosa de comida, hazla en una linea y vuelve a la pregunta pendiente.`
+
+/**
+ * 2026-11-03 (Miguel): the WhatsApp sign-up asks for a few favourite dishes
+ * only when «Afina tu menú» (shown before choosing WhatsApp or the web) got no
+ * «Me apetece» or «Me encanta» — skipped, or never shown — so the first menu
+ * isn't blind. One optional question, never insisted on.
+ */
+export const WHATSAPP_ONBOARDING_FAVORITES_ASK = `Platos favoritos: este hogar no ha marcado ninguna receta con «Me apetece» ni «Me encanta» en «Afina tu menú», asi que aun no sabes que le gusta. Cuando ya tengas cuantos son y como cocinan, y antes de complete_onboarding, preguntale una sola vez, en un mensaje corto: "Una ultima, si quieres: dime 2 o 3 platos que os encanten y los tengo en cuenta en este primer menu." con [[opciones: Mejor luego]]. Con lo que conteste llama a complete_onboarding: sus platos en favoriteDishes; si dice "Mejor luego" o no da ninguno, sin favoriteDishes. No insistas ni vuelvas a preguntarlo.`
+
+/** The cards already said what they like: nothing to ask. */
+export const WHATSAPP_ONBOARDING_FAVORITES_KNOWN = `Platos favoritos: ya ha dicho lo que le gusta en «Afina tu menú»; no le preguntes por platos.`
 
 /**
  * PRO-101 (2026-10-18): whether a change is done is read from the SAVED menu,
@@ -186,7 +199,7 @@ export const NEW_QUESTION_RULE = `- Contesta siempre a su ULTIMO mensaje. Lo que
 export function buildSystemPrompt(
   userContext: string,
   mode: AssistantMode = 'text',
-  opts: { onboarding?: boolean; surface?: ChatSurface } = {},
+  opts: { onboarding?: boolean; askFavorites?: boolean; surface?: ChatSurface } = {},
 ): string {
   const { instructions, context } = buildSystemParts(userContext, mode, opts)
   return `${instructions}\n\n${context}`
@@ -200,7 +213,7 @@ export function buildSystemPrompt(
 export function buildSystemParts(
   userContext: string,
   mode: AssistantMode = 'text',
-  opts: { onboarding?: boolean; surface?: ChatSurface } = {},
+  opts: { onboarding?: boolean; askFavorites?: boolean; surface?: ChatSurface } = {},
 ): { instructions: string; context: string } {
   let prompt = `Eres ${ASSISTANT_NAME}, el asistente de ${BRAND_NAME}, una app de planificacion de menus semanales saludables.
 
@@ -377,7 +390,9 @@ Formato de la respuesta (WhatsApp):
 - No hables de pantallas ni digas "pulsa": el sistema añade solo el enlace a la app cuando hace falta; no escribas tu URLs de la app.
 - Excepcion: los enlaces de pedido a tiendas (los que contienen /c/) que devuelven prepare_shop_orders y approve_shop_order en ESTE turno SI los copias tal cual, uno por tienda: son los que el usuario toca para enviar el pedido. Nunca reenvies enlaces /c/ de mensajes anteriores: si pide la compra o los pedidos otra vez, vuelve a llamar a prepare_shop_orders.
 - El modo cocina (temporizadores y pasos) solo existe en la app: si quiere cocinar, usa start_cooking_mode (le llega el enlace). No uses set_timer ni cooking_step.`
-    if (opts.onboarding) prompt += `\n\n${WHATSAPP_ONBOARDING_PROMPT}`
+    if (opts.onboarding) {
+      prompt += `\n\n${WHATSAPP_ONBOARDING_PROMPT}\n${opts.askFavorites ? WHATSAPP_ONBOARDING_FAVORITES_ASK : WHATSAPP_ONBOARDING_FAVORITES_KNOWN}`
+    }
   } else if (mode === 'voice') {
     prompt += `
 

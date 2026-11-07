@@ -663,8 +663,71 @@
     {
       "idx": 99,
       "version": "7",
-      "when": 1793231798673,
-      "tag": "0098_recipe_bases",
+      "when": 1793232057227,
+      "tag": "0098_catalog_collections",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1793365615835,
+      "tag": "0098_newsletter_tip_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1793365700000,
+      "tag": "0099_catalog_collections_month_menu",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1793532686022,
+      "tag": "0100_cap_hits",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1793636449802,
+      "tag": "0102_whatsapp_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1793717887638,
+      "tag": "0104_basket_extension_consents",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793801779340,
+      "tag": "0106_recipe_featured_on",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793884741521,
+      "tag": "0106_newsletter_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793942618716,
+      "tag": "0107_ingredient_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1794010476321,
+      "tag": "0109_recipe_bases",
       "breakpoints": true
     }
   ]

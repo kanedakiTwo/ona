@@ -232,7 +232,7 @@ User-scoped recipe curator inside `/profile` ("Mis recetas" tab). Lists recipes 
 
 PRO-1023 (D-122, punto 4): catálogo de funciones en código, una entrada por truco (`FEATURE_CATALOG`: id, nombre, `accion` | `ajuste`, por hogar o persona, qué `usage_events` cuentan), y tabla `household_feature_usage` (primera vez, última vez, `uses_30d`, `uses_total` y `counted_until` por hogar o persona y función) que rellena cada noche, desde la 01:00 de Madrid, una pasada del planificador sobre los eventos de ayer. Una acción suma un uso por evento; un ajuste, una vez por semana en que actuó. `uses_total` sigue después de la purga de 180 días de los eventos. Solo cifras y fechas; CASCADE con el hogar y con la cuenta.
 
-**Source**: `packages/shared/src/constants/featureCatalog.ts`, `apps/api/src/services/featureUsage.ts`, `apps/api/src/services/notificationScheduler.ts`, `apps/api/src/db/schema.ts` (`householdFeatureUsage`), `apps/api/src/db/migrations/0094_household_feature_usage.sql`, `apps/api/src/tests/featureUsage.test.ts`, `apps/api/src/tests/featureUsage.smoke.ts`
+**Source**: `packages/shared/src/constants/featureCatalog.ts`, `apps/api/src/services/featureUsage.ts`, `apps/api/src/services/notificationScheduler.ts`, `apps/api/src/db/schema.ts` (`householdFeatureUsage`), `apps/api/src/db/migrations/0097_household_feature_usage.sql`, `apps/api/src/tests/featureUsage.test.ts`, `apps/api/src/tests/featureUsage.smoke.ts`
 
 ---
 
@@ -353,7 +353,7 @@ Android app (TWA): Trusted Web Activity, android-browser-helper, sabores pruebas
 
 Server-side Web Push (VAPID keys, `push_subscriptions` table, `web-push` lib) so the assistant can reach the user even with the tab closed — foundation for prep alerts ("saca el pescado del congelador 24h antes"), menu reminders, future heartbeat events. Subscribe / unsubscribe / test endpoints under `/push/*`; service worker handles `push` + `notificationclick`. Dead endpoints (404/410 Gone) auto-reap on next dispatch. Prep alerts are checked against the current menu right before sending (regenerated week, skipped day, dish gone → `cancelled`). Profile card opt-in. One alert, one channel (PRO-234, D-080): WhatsApp when linked, Web Push without it or as fallback, `channelsFor`/`deliverInOrder`; «Es hora de comer» removed. «Avisos» screen `/profile/avisos` (PRO-237): every kind, where it arrives, switch; `users.alert_prefs`; `GET/PATCH /notifications/prefs`; Mimo's `get_alerts` / `set_alerts`. Degrades to "Push no configurado" when VAPID env vars are missing.
 
-**Source**: `apps/api/src/db/schema.ts` (`pushSubscriptions`), `apps/api/src/db/migrations/0015_push_subscriptions.sql`, `apps/api/src/services/pushNotifier.ts`, `apps/api/src/routes/push.ts`, `apps/api/src/config/env.ts` (`VAPID_*`), `apps/web/worker/index.ts`, `apps/web/src/lib/webPush.ts`, `apps/web/src/hooks/useWebPush.ts`, `apps/web/src/app/profile/page.tsx`
+**Source**: `apps/api/src/db/schema.ts` (`pushSubscriptions`), `apps/api/src/db/migrations/0020_push_subscriptions.sql`, `apps/api/src/services/pushNotifier.ts`, `apps/api/src/routes/push.ts`, `apps/api/src/config/env.ts` (`VAPID_*`), `apps/web/worker/index.ts`, `apps/web/src/lib/webPush.ts`, `apps/web/src/hooks/useWebPush.ts`, `apps/web/src/app/profile/page.tsx`
 
 ---
 

@@ -103,3 +103,14 @@ export function generationSkips(skippedDays: Set<number>, weekStart: string, fro
   if (!fromDate) return skippedDays
   return new Set<number>([...skippedDays, ...pastDayIndexes(weekStart, fromDate)])
 }
+
+/**
+ * PRO-349: a dish put on a «sin cocinar» day reactivates it. Every write that
+ * places a dish on a day stores `skippedDays: unskipDay(menu.skippedDays, day)`
+ * next to its `days`. Before, Mimo put «arroz de limpieza» on a skipped
+ * Saturday: the list counted it and the day still said «Día marcado sin
+ * cocinar» (Dani y Sara, 2026-10-22).
+ */
+export function unskipDay(skippedDays: readonly number[] | null | undefined, dayIndex: number): number[] {
+  return (skippedDays ?? []).filter((d) => d !== dayIndex)
+}

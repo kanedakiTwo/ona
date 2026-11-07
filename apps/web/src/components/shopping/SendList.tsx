@@ -3,8 +3,8 @@
 /**
  * «Mandar la lista» (PRO-380, D-158; specs/shopping.md): the list's main
  * button. What is left to buy goes out by aisle (`shoppingListShareText`)
- * with the household's code in the footer link (`?ref=lista&invita=<code>`,
- * PRO-162). Options: on a phone, the system share sheet first; «Por
+ * and ends with the household's invitation, «Hecho con Mimo ·
+ * mimoia.com/i/<code>» (PRO-162, PRO-1016). Options: on a phone, the system share sheet first; «Por
  * WhatsApp» (wa.me); «Copiar»; «Enviar a {súper}» when the browser extension
  * fills the household's súper; «Pedir a mi tienda» when it has shops. Each
  * send counts as `shopping_list_shared` (POST /usage/list-shared), which

@@ -20,6 +20,7 @@ import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../service
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import { householdRestrictionsBefore, reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
+import { requestChannel, templateChanges, trackEvent } from '../services/usageEvents.js'
 import {
   getHealthConsent,
   grantHealthConsent,
@@ -439,7 +440,7 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     }
 
     const [existing] = await db
-      .select({ id: userSettings.id })
+      .select({ id: userSettings.id, template: userSettings.template })
       .from(userSettings)
       .where(eq(userSettings.userId, req.params.id))
       .limit(1)
@@ -457,6 +458,10 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
         .values({ userId: req.params.id, template })
         .returning()
     }
+
+    // PRO-1024: one `template_changed` per part that changed (Perfil, or Mimo's update_weekly_template).
+    const channel = requestChannel(req)
+    for (const what of templateChanges(existing?.template, template)) trackEvent('template_changed', { userId: req.params.id, channel, props: { what } })
 
     res.json(result)
   } catch (err) {

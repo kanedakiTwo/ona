@@ -45,6 +45,7 @@ import {
   saveOwnRecipeImage,
 } from '../services/recipeOwnImage.js'
 import { recipeShoppingIssues } from '../services/recipeShoppability.js'
+import { isInternalCall, trackEvent } from '../services/usageEvents.js'
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -58,6 +59,7 @@ import {
   SEASONS,
   DIFFICULTIES,
   RETIRED_RECIPE_TAG,
+  PLAN_GRATIS_IMPORTS_MESSAGE,
   type Difficulty,
   type Meal,
   type Recipe,
@@ -70,6 +72,7 @@ import {
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
 import { sortCatalog, type CatalogOrderRow } from '../services/recipeCatalogOrder.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
+import { requirePaidPlan } from '../services/accountAccess.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
 import { runWithCostUser } from '../services/costLedger.js'
 import {
@@ -743,10 +746,14 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
   }
 })
 
+// Importing recipes (a photo, a link) isn't in the Gratis plan (PRO-385, D-158).
+const paidPlanForImports = requirePaidPlan({ message: PLAN_GRATIS_IMPORTS_MESSAGE })
+
 // POST /recipes/extract-from-image — extract from photo (auth required).
 router.post(
   '/recipes/extract-from-image',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   upload.single('image'),
   async (req: AuthRequest, res) => {
@@ -802,6 +809,7 @@ const extractFromUrlSchema = z.object({
 router.post(
   '/recipes/extract-from-url',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   async (req: AuthRequest, res) => {
     try {
@@ -1548,12 +1556,13 @@ router.post(
         await db
           .delete(userFavorites)
           .where(and(eq(userFavorites.userId, userId), eq(userFavorites.recipeId, recipeId)))
-        res.json({ favorited: false })
       } else {
         const householdId = await getPrimaryHouseholdId(userId)
         await db.insert(userFavorites).values({ userId, householdId, recipeId })
-        res.json({ favorited: true })
       }
+      // PRO-1024: `user_favorites` has no date; the event does (Mimo's toggle_favorite counts in the skill runner).
+      if (!isInternalCall(req)) trackEvent('favorite_toggled', { userId, channel: 'web', props: { on: !existing } })
+      res.json({ favorited: !existing })
     } catch (err) {
       console.error('Toggle favorite error:', err)
       res.status(500).json({ error: 'Internal server error' })

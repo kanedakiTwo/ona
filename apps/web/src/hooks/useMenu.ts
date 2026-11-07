@@ -92,6 +92,8 @@ export function useRegenerateMeal() {
       meal: string
       /** When provided, the server pins this recipe instead of running the matcher. */
       recipeId?: string
+      /** «Añadir al menú» on a recipe (PRO-1024: only for the usage event). */
+      from?: "receta"
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
 
@@ -113,7 +115,7 @@ export function useRegenerateMeal() {
         return { offline: true } as unknown as Menu
       }
 
-      const body = params.recipeId ? { recipeId: params.recipeId } : undefined
+      const body = params.recipeId ? { recipeId: params.recipeId, ...(params.from ? { from: params.from } : {}) } : undefined
       return api.put<Menu>(url, body)
     },
     onSuccess: (data) => {
@@ -142,9 +144,11 @@ export function useAddMealSlot() {
       day: number
       meal: string
       recipeId?: string
+      /** «Añadir al menú» on a recipe (PRO-1024: only for the usage event). */
+      from?: "receta"
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
-      const body = params.recipeId ? { recipeId: params.recipeId } : {}
+      const body = params.recipeId ? { recipeId: params.recipeId, ...(params.from ? { from: params.from } : {}) } : {}
       return api.post<Menu>(url, body)
     },
     onSuccess: (data) => {

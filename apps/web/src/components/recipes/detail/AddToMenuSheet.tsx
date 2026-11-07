@@ -49,7 +49,7 @@ export function AddToMenuSheet({
   function place(s: AddToMenuSlot) {
     if (!menu || busy || s.action === "locked" || s.action === "already") return
     setError(null)
-    const params = { menuId: menu.id, day: s.day, meal: s.meal, recipeId }
+    const params = { menuId: menu.id, day: s.day, meal: s.meal, recipeId, from: "receta" as const }
     const where = `${weekdayName(s.day)}, ${mealLabel(s.meal).toLowerCase()}`
     const onSuccess = () => {
       haptic.medium()

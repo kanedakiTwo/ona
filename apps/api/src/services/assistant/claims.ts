@@ -13,6 +13,18 @@ export function claimsAction(text: string): boolean {
 }
 
 /**
+ * The reply also says what did NOT get done («…y el butter chicken no lo he
+ * cambiado», «eso no he podido»): a «He apuntado X» next to it is an honest
+ * partial answer, not an unbacked «Hecho» (PRO-349).
+ */
+const ADMITS_NOT_DONE_RE =
+  /\bno (?:lo |la |los |las |te )?(?:he|hemos) (?:podido|cambiado|quitado|hecho|tocado|guardado|apuntado|a[ñn]adido|puesto|borrado|encontrado)\b|\bno (?:est[áa]|queda) (?:hecho|cambiad|guardad|apuntad)|\bno se ha (?:podido|cambiado|hecho|guardado)\b/i
+
+export function admitsNotDone(text: string): boolean {
+  return ADMITS_NOT_DONE_RE.test(text)
+}
+
+/**
  * Tools that only read (or only answer): running one of them doesn't make a
  * "Hecho:" true. Anything else that ran without error counts as a change.
  * Shared by the engine (PRO-239) and the conversation flags.
@@ -27,9 +39,35 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
 ])
 
 /** A tool that ran but reported that nothing changed. */
-export const NO_CHANGE_RE = /\bno (?:he|se ha|hay|tienes|existe|encuentro)\b|\bno he (?:cambiado|guardado|encontrado|podido)\b|^error\b/i
+export const NO_CHANGE_RE = /\bno (?:he|se ha|hay|tienes|existe|encuentro|encontr[eé]|estaba en)\b|\bno he (?:cambiado|guardado|encontrado|podido)\b|^error\b/i
+
+/**
+ * A summary that opens with «Hecho» / «Cambiado» reports a change, even when
+ * it adds «No hay una receta que se llame igual, así que va como nota».
+ */
+const DONE_OPENING_RE = /^(?:hecho|cambiado)\b/i
 
 /** Pure: did this tool call change something? (not read-only, no error, didn't say "no he encontrado…") */
 export function toolMadeChange(name: string, summary: unknown, error: boolean): boolean {
-  return !error && !READ_ONLY_TOOLS.has(name) && !NO_CHANGE_RE.test(String(summary ?? '').trim())
+  if (error || READ_ONLY_TOOLS.has(name)) return false
+  const s = String(summary ?? '').trim()
+  return DONE_OPENING_RE.test(s) || !NO_CHANGE_RE.test(s)
+}
+
+export interface ToolOutcome {
+  name: string
+  summary: unknown
+  error: boolean
+}
+
+/**
+ * PRO-349: the calls of a turn to tools that change things which failed or
+ * changed nothing, and that no later call of the same tool fixed. Any of them
+ * means a «Hecho» isn't backed in full: Laura's «quita el cilantro del butter
+ * chicken» got «Hecho» while the recipe stayed as it was, because another
+ * tool of the turn had changed something.
+ */
+export function unconfirmedCalls<T extends ToolOutcome>(calls: readonly T[]): T[] {
+  const changed = (c: ToolOutcome) => toolMadeChange(c.name, c.summary, c.error)
+  return calls.filter((c, i) => !READ_ONLY_TOOLS.has(c.name) && !changed(c) && !calls.slice(i + 1).some((l) => l.name === c.name && changed(l)))
 }

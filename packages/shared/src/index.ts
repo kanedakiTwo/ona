@@ -296,7 +296,7 @@ export {
   matchesCatalogIntent,
 } from './utils/catalog.js'
 export type { CatalogScope, CatalogRecipeLike, CatalogFilterState, CatalogIntent } from './utils/catalog.js'
-export { menuShareText, recipeSharePayload, shoppingListShareText, shoppingListShareUrl, withOnaFooter } from './utils/sharePayloads.js'
+export { madeWithMimoLine, menuShareText, recipeSharePayload, shortInviteLink, shoppingListShareText, shoppingListShareUrl, withOnaFooter } from './utils/sharePayloads.js'
 export { shoppingProgress, parseShoppingAmount } from './utils/shoppingProgress.js'
 export type { ShoppingProgress } from './utils/shoppingProgress.js'
 export type { SharePayload } from './utils/sharePayloads.js'
@@ -417,7 +417,14 @@ export {
   PAID_ACCESS_STATUSES,
   trialEndsAt,
   accountAccess,
-  ACCOUNT_PAUSED_MESSAGE,
+  PLAN_GRATIS_MESSAGE,
+  PLAN_GRATIS_ORDERS_MESSAGE,
+  PLAN_GRATIS_IMPORTS_MESSAGE,
+  FREE_PLAN_KEY,
+  FREE_PLAN,
+  PAID_PLANS,
+  GRATIS_EXCLUDED,
+  planAllows,
   trialLastDayLabel,
   trialDaysLeftLabel,
   FOUNDER_OFFER_FALLBACK_DAY,
@@ -430,6 +437,10 @@ export {
 } from './types/plans.js'
 export type {
   PlanKey,
+  PlanTier,
+  PaidPlan,
+  FreePlan,
+  PlanFeatureKey,
   BillingPeriod,
   Plan,
   PlanPrice,
@@ -642,10 +653,12 @@ export {
   alertKindOn,
   buildAlertRows,
   isAlertKind,
+  WEEKLY_NUDGE_AUTOPLAN_NOTE,
   type AlertChannel,
   type AlertKind,
   type AlertRow,
   type AlertsOverview,
+  type AutoplanNotice,
 } from './types/alerts.js'
 export type {
   FichaTopic,

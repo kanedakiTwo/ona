@@ -8,7 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../../config/env.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
-import { isAccountPaused } from '../accountAccess.js'
+import { isOnFreePlan } from '../accountAccess.js'
 import { anthropicUnits, recordCost } from '../costLedger.js'
 
 export interface PhraseFactsInput {
@@ -46,7 +46,7 @@ export async function cookNowPhrase(
   deps: { create?: CreateFn; paused?: (id: string) => Promise<boolean>; timeoutMs?: number; householdId?: string | null } = {},
 ): Promise<string | null> {
   try {
-    if (await (deps.paused ?? ((id) => isAccountPaused(id, new Date())))(userId)) return null
+    if (await (deps.paused ?? ((id) => isOnFreePlan(id, new Date())))(userId)) return null
     let create = deps.create
     if (!create) {
       if (!env.ANTHROPIC_API_KEY) return null

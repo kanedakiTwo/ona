@@ -17,6 +17,7 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { AutoplanCard } from "@/components/menu/AutoplanCard"
 import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
 import { TasteIntroScreen, TasteMenuCard } from "@/components/taste/TasteOffers"
@@ -56,6 +57,7 @@ import { haptic } from "@/lib/pwa/haptics"
 import { DAY_PARAM, dayFromSearch, menuRecipeHref } from "@/lib/menuReturn"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
+import { trackUsage } from "@/lib/usageEvents"
 import { absentMeals, batchServings, dateOfDay, dayHeading, feedsLeftovers, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
@@ -271,7 +273,8 @@ export default function MenuPage() {
   async function handleShareWeek() {
     if (!menu) return
     haptic.light()
-    await share({ title: "Mi menú de la semana", text: menuShareText(menu.days as never, window.location.origin) })
+    const shared = await share({ title: "Mi menú de la semana", text: menuShareText(menu.days as never, window.location.origin) })
+    if (shared.success) trackUsage("content_shared", { what: "semana" })
   }
 
   // PRO-225 · «Antes de planificar»: the blank week's optional answers.
@@ -556,6 +559,9 @@ export default function MenuPage() {
     </button>
   )
 
+  // PRO-381: «Mimo os ha dejado hecha la semana…», at the top.
+  const autoplanCard = <AutoplanCard weekStart={weekStart} onOpenWeek={setWeekStart} />
+
   const backToToday = !isCurrentWeek && (
     <button
       type="button"
@@ -745,6 +751,7 @@ export default function MenuPage() {
             header={
               <>
                 {header}
+                {autoplanCard}
                 <AccountAccessNotice />
                 <PendingSignUpCard />
                 <NoHealthDataNotice />
@@ -790,6 +797,7 @@ export default function MenuPage() {
         ) : (
           <div className="mx-auto flex max-w-[var(--page-max)] flex-col gap-4 px-12 pt-8 pb-10">
             {header}
+            {autoplanCard}
             <AccountAccessNotice />
             <NoHealthDataNotice />
             <AfinaNoticeCard />
@@ -822,6 +830,7 @@ export default function MenuPage() {
         {moreButton}
       </header>
 
+      {autoplanCard}
       <AccountAccessNotice />
       <PendingSignUpCard />
 

@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react"
-import { BRAND_NAME } from "@ona/shared"
+import { BRAND_NAME, madeWithMimoLine } from "@ona/shared"
 import { SignupCtaLink, WaitlistOnly } from "@/components/shared/SignupCta"
 
 /** Where every public recipe CTA leads (specs/waitlist.md): the landing's waitlist, tagged as coming from a recipe. */
@@ -9,8 +9,13 @@ export const RECIPE_WAITLIST_HREF = "/?ref=receta#lista-de-espera"
  * «¿Te gusta?» block at the end of the recipe page for signed-out visitors
  * (specs/recipes.md → "Página de receta"): pre-launch, the way in is the
  * waitlist. Public marketing surface — keep health claims out.
+ *
+ * PRO-1016 (D-132): opened from a household's share (`?invita=<code>`), the
+ * way in keeps their code and the block ends, small, with «Hecho con Mimo ·
+ * mimoia.com/i/<code>».
  */
-export function RecipeWaitlistCta({ recipeName, className = "" }: { recipeName: string; className?: string }) {
+export function RecipeWaitlistCta({ recipeName, inviteCode = null, className = "" }: { recipeName: string; inviteCode?: string | null; className?: string }) {
+  const waitlistHref = inviteCode ? `/?ref=receta&invita=${inviteCode}#lista-de-espera` : RECIPE_WAITLIST_HREF
   return (
     <section
       data-testid="recipe-waitlist-cta"
@@ -25,13 +30,18 @@ export function RecipeWaitlistCta({ recipeName, className = "" }: { recipeName: 
         Cuando entres, podrás marcarla como favorita, ponerla en tu menú semanal y que {BRAND_NAME} te haga la lista de la compra.
       </p>
       <SignupCtaLink
-        waitlistHref={RECIPE_WAITLIST_HREF}
+        waitlistHref={waitlistHref}
         waitlistLabel="Únete a la lista de espera"
         openRef="receta"
         testId="recipe-signup-cta-link"
         className="mt-8 inline-flex items-center gap-2.5 rounded-full bg-[#FAF6EE] px-7 py-4 text-base font-medium text-[#1A1612] transition-all hover:gap-3.5 hover:bg-[#C65D38] hover:text-[#FAF6EE]"
         icon={<ArrowUpRight size={18} />}
       />
+      {inviteCode && (
+        <p data-testid="recipe-made-with" className="mt-8 text-xs text-[#FAF6EE]/50">
+          {madeWithMimoLine(typeof window !== "undefined" ? window.location.origin : "", inviteCode)}
+        </p>
+      )}
     </section>
   )
 }

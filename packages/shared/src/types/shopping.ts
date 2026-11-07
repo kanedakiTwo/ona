@@ -31,6 +31,11 @@ export interface ShoppingItem {
   pricePerUnit?: number | null
   /** Recipe notes for this ingredient ("picada", "morada en juliana") — the shop order uses them. */
   notes?: string[]
+  /**
+   * PRO-373: names of the bases (sofrito, verduras asadas…) whose ingredients
+   * are in this line — cooked once for the dishes of the week that use them.
+   */
+  bases?: string[]
   /** Manual items: 'default' when the user typed no amount (stored as 1 u). */
   quantitySource?: 'user' | 'default'
   /**

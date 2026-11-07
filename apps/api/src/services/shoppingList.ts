@@ -4,6 +4,7 @@ import {
   ingredients,
   recipes as recipesTable,
   recipeNotes,
+  recipeBases,
 } from '../db/schema.js'
 import type {
   Aisle,
@@ -191,6 +192,8 @@ interface IngredientBucket {
   parts: Array<{ unit: BuyableUnit; quantity: number; catalog: CatalogRow }>
   /** Distinct recipe notes for this ingredient (shop orders use them). */
   notes: Set<string>
+  /** Bases whose ingredients are in this product (PRO-373). */
+  bases: Set<string>
 }
 
 export interface ScaledRow {
@@ -198,6 +201,48 @@ export interface ScaledRow {
   quantity: number
   unit: Unit
   note?: string | null
+  /** PRO-373: name of the base this row comes from («Sofrito»). */
+  base?: string | null
+}
+
+/** PRO-373: a dish uses `servingsUsed` servings of a base per batch of the dish (`recipe_bases`). */
+export interface RecipeBaseLink {
+  recipeId: string
+  baseRecipeId: string
+  servingsUsed: number
+}
+
+/** Bases of bases the list follows (a sofrito inside a salsa inside a dish). */
+const MAX_BASE_DEPTH = 3
+
+/**
+ * Pure (PRO-373): `dinersByRecipe` plus the servings of every base the dishes
+ * use. A dish cooked for D diners uses `servingsUsed × D / dish.servings`
+ * servings of its base; every dish's share of the same base adds up, so the
+ * base is bought once, for all of them (two dishes on 2 servings of a
+ * 4-serving sofrito → the sofrito once). A base that is also on the menu as a
+ * dish adds to its own servings. Bases of bases follow, up to
+ * `MAX_BASE_DEPTH` levels. Never mutates its input.
+ */
+export function withBaseServings(
+  dinersByRecipe: ReadonlyMap<string, number>,
+  links: readonly RecipeBaseLink[],
+  servingsById: ReadonlyMap<string, number>,
+): Map<string, number> {
+  const out = new Map(dinersByRecipe)
+  let frontier: Map<string, number> = new Map(dinersByRecipe)
+  for (let level = 0; level < MAX_BASE_DEPTH && frontier.size > 0; level++) {
+    const next = new Map<string, number>()
+    for (const l of links) {
+      const diners = frontier.get(l.recipeId)
+      const servings = servingsById.get(l.recipeId)
+      if (!diners || !(diners > 0) || !servings || !(servings > 0) || !(l.servingsUsed > 0)) continue
+      next.set(l.baseRecipeId, (next.get(l.baseRecipeId) ?? 0) + (l.servingsUsed * diners) / servings)
+    }
+    for (const [id, n] of next) out.set(id, (out.get(id) ?? 0) + n)
+    frontier = next
+  }
+  return out
 }
 
 /**
@@ -441,19 +486,36 @@ export async function generateShoppingList(
   // Comidas fijas (PRO-218): their items, per person × the slot's diners.
   const fixedLines = sumFixedItems(menuDays, householdMultiplier)
   if (dinersByRecipe.size === 0 && fixedLines.length === 0) return []
-  const recipeIds = [...dinersByRecipe.keys()]
+  const menuRecipeIds = [...dinersByRecipe.keys()]
 
   // householdMultiplier is provided by the caller (adults + 0.5 × kidsCount).
   // The fallback for legacy/unknown households happens at the route layer.
 
+  // 1b. PRO-373: the bases the week's dishes use (and the bases of those
+  // bases, a few levels down). Their ingredients join the list below.
+  const baseLinks: RecipeBaseLink[] = []
+  const recipeIds = [...menuRecipeIds]
+  let frontier = menuRecipeIds
+  for (let level = 0; level < MAX_BASE_DEPTH && frontier.length > 0; level++) {
+    const links: RecipeBaseLink[] = await db
+      .select({ recipeId: recipeBases.recipeId, baseRecipeId: recipeBases.baseRecipeId, servingsUsed: recipeBases.servingsUsed })
+      .from(recipeBases)
+      .where(inArray(recipeBases.recipeId, frontier))
+    baseLinks.push(...links)
+    frontier = [...new Set(links.map((l) => l.baseRecipeId))].filter((id) => !recipeIds.includes(id))
+    recipeIds.push(...frontier)
+  }
+
   // 2. Fetch recipe servings + ingredient rows + catalog density/unitWeight/aisle.
-  const recipeRows: { id: string; servings: number }[] = recipeIds.length === 0 ? [] : await db
-    .select({ id: recipesTable.id, servings: recipesTable.servings })
+  const recipeRows: { id: string; name: string; servings: number }[] = recipeIds.length === 0 ? [] : await db
+    .select({ id: recipesTable.id, name: recipesTable.name, servings: recipesTable.servings })
     .from(recipesTable)
     .where(inArray(recipesTable.id, recipeIds))
 
   const servingsById = new Map<string, number>()
   for (const r of recipeRows) servingsById.set(r.id, r.servings)
+  const baseIds = new Set(baseLinks.map((l) => l.baseRecipeId))
+  const baseNameById = new Map(recipeRows.filter((r) => baseIds.has(r.id)).map((r) => [r.id, r.name]))
 
   const ingredientRows: Array<{
     recipeId: string
@@ -590,6 +652,10 @@ export async function generateShoppingList(
       rowsByRecipe.set(ovRow.recipeId, transformed)
     }
   }
+  // PRO-373: each base counts once, with the servings every dish that uses it
+  // adds up to (two dishes on 2 servings of sofrito each → one sofrito of 4).
+  if (baseLinks.length > 0) dinersByRecipe = withBaseServings(dinersByRecipe, baseLinks, servingsById)
+
   // Re-flatten back into the iteration order downstream code expects.
   const effectiveRows: RecipeRow[] = []
   for (const list of rowsByRecipe.values()) effectiveRows.push(...list)
@@ -623,6 +689,7 @@ export async function generateShoppingList(
       quantity: row.quantity * factor,
       unit: row.unit,
       note: row.note ?? null,
+      ...(baseNameById.has(row.recipeId) ? { base: baseNameById.get(row.recipeId) } : {}),
     })
   }
 
@@ -775,6 +842,7 @@ export function aggregateScaledRows(scaled: ScaledRow[], catalogById: Map<string
         byUnit: new Map(),
         parts: [],
         notes: new Set(),
+        bases: new Set(),
       }
       buckets.set(group.key, bucket)
     }
@@ -787,6 +855,7 @@ export function aggregateScaledRows(scaled: ScaledRow[], catalogById: Map<string
     bucket.parts.push({ unit, quantity: s.quantity, catalog: cat })
     const note = s.note?.trim()
     if (note && !/añadido automáticamente/i.test(note)) bucket.notes.add(note)
+    if (s.base) bucket.bases.add(s.base)
   }
 
   // 5. Pick canonical unit per product, fold compatible units into it.
@@ -835,6 +904,7 @@ export function aggregateScaledRows(scaled: ScaledRow[], catalogById: Map<string
         inStock: false,
         ...(others.length ? { mergedIngredientIds: others } : {}),
         ...(bucket.notes.size ? { notes: [...bucket.notes] } : {}),
+        ...(bucket.bases.size ? { bases: [...bucket.bases] } : {}),
       })
     }
   }

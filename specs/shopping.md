@@ -37,6 +37,7 @@ Each item in `shopping_lists.items` (JSONB array) has:
 - `unit` — `g | ml | u | cda | cdita`
 - `aisle` — `produce | proteinas | lacteos | panaderia | despensa | congelados | otros`
 - `mergedIngredientIds` — (menu items, optional) the other catalogue ingredients joined into this line because they are the same product (PRO-177)
+- `bases` — (menu items, optional) names of the bases whose ingredients are in this line (PRO-373)
 - `checked` — boolean, user has bought this
 - `inStock` — boolean, user already had this in pantry
 - `haveQuantity` / `haveSource` — (menu items, optional) part already bought / at home (PRO-199)
@@ -82,6 +83,10 @@ Quantities are then rounded **up** to friendly values (100 g steps from 1 kg, sh
 The list is a **rolling window** keyed by user (or household when shared). Every `GET /shopping-list?from=&to=` regenerates the menu-derived items from scratch by aggregating across every menu in the date range, and merges them with the persisted row's manual items + check state via an ingredient overlay (marks follow the ingredient across units, PRO-199). There is one `shopping_lists` row per user — prior rows are deleted before the fresh row is inserted on every fetch. The web client also invalidates `["shopping-list"]` from every menu mutation (`useGenerateMenu`, `useRegenerateMeal`, `useAddMealSlot`, `useDeleteMealSlot`, `useMoveMealSlot`, `useUpdateSlotServings`, `useSkipDay`, `useUnskipDay`, `useMarkLeftover`, etc.) so a menu change refreshes the list automatically.
 
 Default range when neither `from` nor `to` is passed: **today (Madrid) → end of next week** (today's Monday + 13). The `from` day drops meal slots whose clock cutoff has already passed in Madrid time: breakfast after 10:00, lunch after 16:00, snack after 19:00, dinner after 23:00.
+
+### Bases (PRO-373)
+
+A dish that uses a base cooked another day (`recipe_bases`, see [Recipes](./recipes.md) → Bases de batch cooking) adds the base's ingredients to the list. Before scaling, `generateShoppingList` reads the `recipe_bases` of the week's dishes (and of those bases, up to 3 levels) and `withBaseServings` (pure) gives each base the servings the dishes use: a dish cooked for D diners uses `servings_used × D / dish.servings`; the shares of every dish that uses the same base **add up into one base**, so it is bought once, scaled: two dishes for 2 of their 4, each with 2 servings of a 4-serving sofrito → half the sofrito, once (not twice in full). Overrides and «al menos N» of the base apply as for any recipe. A line with ingredients of a base carries `bases` (its names) and reads «Para la base: Sofrito» under the name on `/shopping` (testid `shopping-bases`). There is no «Por recetas» view of the list today; when there is one, it should name the base the same way. Test: `recipeBases.test.ts`.
 
 ### Note dishes (multi-dish slots)
 

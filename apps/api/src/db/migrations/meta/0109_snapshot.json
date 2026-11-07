@@ -1,6 +1,6 @@
 {
   "id": "4d1c5960-f984-49af-85cc-c3c52c25514f",
-  "prevId": "4baa5403-2c70-4059-be9e-5be68beb9742",
+  "prevId": "7743a239-60d2-4294-95cd-877b371d5584",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4549,6 +4549,79 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.mimo_turnos_remotos": {
+      "name": "mimo_turnos_remotos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "creado": {
+          "name": "creado",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "estado": {
+          "name": "estado",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pendiente'"
+        },
+        "peticion": {
+          "name": "peticion",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "respuesta": {
+          "name": "respuesta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_mimo_turnos_remotos_estado": {
+          "name": "idx_mimo_turnos_remotos_estado",
+          "columns": [
+            {
+              "expression": "estado",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "creado",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "mimo_turnos_remotos_estado_check": {
+          "name": "mimo_turnos_remotos_estado_check",
+          "value": "estado IN ('pendiente','cogido','respondido','caducado')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.newsletter_clicks": {

@@ -10,7 +10,7 @@
  *   - Tokens for invites are 32 random hex chars (16 bytes). The owner
  *     shares the link manually (no email auto-sent).
  */
-import { and, eq, asc, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, asc, isNull } from 'drizzle-orm'
 import { randomBytes } from 'node:crypto'
 import { householdInviteExpiresAt, isFoundingHousehold, type HouseholdInviteSource } from '@ona/shared'
 import { db } from '../db/connection.js'

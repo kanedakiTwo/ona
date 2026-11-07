@@ -20,7 +20,7 @@
  * Todo puro: lo de la base de datos lo trae `createDbNewsletterLetterRepo`
  * (newsletter.ts lo usa al componer), y aquí solo se decide el texto.
  */
-import { and, eq, gte, inArray, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray } from 'drizzle-orm'
 import { detectSeason, type Season } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { cookLogs, recipes, users, waitlistEntries } from '../db/schema.js'

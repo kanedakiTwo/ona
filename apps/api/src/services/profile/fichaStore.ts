@@ -41,7 +41,7 @@ import { factsInForce } from './reader.js'
 import { SERVICE_WINDOW_MS } from '../whatsapp/proactive.js'
 import { mentionsHealth } from './healthText.js'
 import { changeView, confidenceFor, factSentence, factView, howIUse, peopleView, type ChangeRow, type FactRow } from './view.js'
-import { madridDate, retireProfileFacts, signalEvidence, upsertProfileFact } from './writer.js'
+import { madridDate, signalEvidence, upsertProfileFact } from './writer.js'
 
 type Db = typeof defaultDb
 

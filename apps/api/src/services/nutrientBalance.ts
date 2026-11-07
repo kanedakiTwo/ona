@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { userNutrientBalance, menuLogs } from '../db/schema.js'
+import { userNutrientBalance } from '../db/schema.js'
 import { updateNutrientBalance } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 

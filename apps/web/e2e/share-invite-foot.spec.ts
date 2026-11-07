@@ -15,6 +15,7 @@ import { createRequire } from 'node:module'
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, e2eInvite, generateWeekWithListRows, registerFreshUser, submitRegisterForm, uniqueId } from './_helpers'
 import { testDatabaseUrl } from './_catalogDrafts'
+import { pinClock } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -31,6 +32,9 @@ const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readTe
 
 test('the shared list and the shared recipe carry the household’s «Hecho con Mimo · …/i/<code>»', async ({ page, browser }) => {
   test.setTimeout(120_000)
+  // The list's dishes go on the pinned day (Thursday): from Saturday on the
+  // real «today» would leave them out of the range (same as shopping-send-list).
+  await pinClock(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
   await generateWeekWithListRows(page)

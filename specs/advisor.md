@@ -221,8 +221,7 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 
 ## Hooks (client)
 
-- `useMimo` (`components/mimo/MimoProvider.tsx`) — the companion's state: open/close, messages, status, send, mic, hands-free, read-aloud, voices
-- `useAssistant` — `POST /assistant/:userId/chat` with `{ message, history }`; `MimoProvider` itself calls `api.post` directly
+- `useMimo` (`components/mimo/MimoProvider.tsx`) — the companion's state: open/close, messages, status, send, mic, hands-free, read-aloud, voices; it calls `POST /assistant/:userId/chat` with `{ message, history }` through `api.post` directly
 - `useAdvisor` (legacy) — wraps `/advisor/:userId/summary` and `/advisor/:userId/ask`; no page uses it any more
 - `useRecorder` records for `POST /stt` (silence detection); `useVoice` — read-aloud through `POST /tts` (ElevenLabs) with the browser voice as fallback (`speak()` resolves when playback ends), plus the Web Speech recogniser fallback. API: [routes/tts.ts](../apps/api/src/routes/tts.ts), [services/tts.ts](../apps/api/src/services/tts.ts)
 
@@ -263,5 +262,5 @@ The advisor's weekly nutrient/calorie aggregators iterate `slot.dishes` and proc
 - [apps/web/src/app/advisor/page.tsx](../apps/web/src/app/advisor/page.tsx) — redirect to `/menu?mimo=1`
 - [apps/web/src/app/debug-advisor/page.tsx](../apps/web/src/app/debug-advisor/page.tsx) — developer utility (inspect the token, ping the endpoint); not linked from the UI
 - [packages/shared/src/constants/aiDisclosure.ts](../packages/shared/src/constants/aiDisclosure.ts) — `AI_DISCLOSURE*` (AI Act art. 50 wording, shared by the Mimo panel and WhatsApp); e2e in `apps/web/e2e/ai-disclosure.spec.ts`
-- [apps/web/src/hooks/useAssistant.ts](../apps/web/src/hooks/useAssistant.ts), [apps/web/src/hooks/useAdvisor.ts](../apps/web/src/hooks/useAdvisor.ts) (legacy)
+- [apps/web/src/hooks/useAdvisor.ts](../apps/web/src/hooks/useAdvisor.ts) (legacy)
 - [apps/web/src/hooks/useRecorder.ts](../apps/web/src/hooks/useRecorder.ts), [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts)

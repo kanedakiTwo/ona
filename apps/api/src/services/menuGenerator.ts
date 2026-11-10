@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { loadHouseholdRatingSets, withHouseholdRatings } from './householdRatings.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
@@ -11,8 +11,6 @@ import {
   users,
   userSettings,
   recipes,
-  recipeIngredients,
-  ingredients,
   userFavorites,
 } from '../db/schema.js'
 import {
@@ -28,7 +26,7 @@ import { applyTemplateTapers } from './taper.js'
 import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
 import { applyWeekPlan } from './weekPlan.js'
 import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
-import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
+import { normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
@@ -36,9 +34,9 @@ import { getMemoryForUser } from './userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
 import { lockedWithFixedDishes, markFixedDishConflicts, resolveFichaFixedDishes, templateWithoutFixedDishes, withFichaFixedDishes } from './fichaFixedDishes.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
-import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
+import { calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
-import type { MealDishCounts, Dish, RecipeDish, Course, FixedMeal, FoodGroup } from '@ona/shared'
+import type { MealDishCounts, Dish, RecipeDish, FixedMeal, FoodGroup } from '@ona/shared'
 import { fixedMealFor, fixedMealsFromTemplate, fixedNoteText } from '@ona/shared'
 import { loadSchoolDinnerAvoidGroups, withoutFoodGroup } from './schoolMenu.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'

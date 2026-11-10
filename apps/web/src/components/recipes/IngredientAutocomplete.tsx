@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Plus, Search, Sparkles, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Ingredient } from "@ona/shared"
+import { hasSameIngredientName, type Ingredient } from "@ona/shared"
 import {
   useAutoCreateIngredient,
   useEstimateNutritionPreview,
@@ -83,12 +83,11 @@ export function IngredientAutocomplete({
   const search = useSearchIngredients(debounced)
 
   const trimmed = query.trim()
+  // Without case or accents: "Brocoli" doesn't offer to create a second "brócoli"
   const showCreateOption =
     trimmed.length >= 2 &&
     !search.isLoading &&
-    !(search.data ?? []).some(
-      (ing) => ing.name.toLowerCase() === trimmed.toLowerCase()
-    )
+    !hasSameIngredientName(search.data ?? [], trimmed)
 
   // Close dropdown on outside click.
   useEffect(() => {

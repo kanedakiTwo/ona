@@ -272,6 +272,7 @@ export { ingredientCalories, recipeCalories, dayCalories, menuCalories } from '.
 export { ingredientNutrients, sumNutrients, nutrientsToPercentages, updateNutrientBalance, normalizeDeviation } from './utils/nutrients.js'
 export { firstMenuWeeks, pastDayIndexes } from './utils/firstMenuWeeks.js'
 export type { FirstMenuWeeks } from './utils/firstMenuWeeks.js'
+export { FOLD_FROM, foldIngredientName, hasSameIngredientName } from './utils/ingredientSearch.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
 export {
   SEASONAL_PRODUCE,

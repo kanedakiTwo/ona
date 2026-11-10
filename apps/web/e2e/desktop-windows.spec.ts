@@ -88,7 +88,6 @@ test.describe('Windows desktop, mouse', () => {
       [/^Casa/, /\/profile\/casa$/],
       [/^Afina tu menú/, /\/afinar$/],
       [/^Creencias/, /\/profile\/creencias$/],
-      [/^Despensa/, /\/profile\/pantry$/],
       [/^Fijos/, /\/profile\/staples$/],
       [/^Recetarios/, /\/profile\/cookbooks$/],
       [/^Suscripción/, /\/profile\/suscripcion$/],
@@ -103,6 +102,14 @@ test.describe('Windows desktop, mouse', () => {
       await expect(page).toHaveURL(/\/profile$/, { timeout: 15_000 })
       await expect(page.getByTestId('profile-ficha')).toBeVisible()
     }
+
+    // «Despensa» lives in the «Cocinar» tab (PRO-1107): no «‹ Perfil» of its own, the sidebar brings you back.
+    await slippyClick(page, page.locator('main').getByRole('link', { name: /^Despensa/ }).first())
+    await expect(page).toHaveURL(/\/cocinar#despensa$/, { timeout: 15_000 })
+    await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 15_000 })
+    await sidebar(page).getByRole('link', { name: 'Perfil' }).click()
+    await expect(page).toHaveURL(/\/profile$/, { timeout: 15_000 })
+    await expect(page.getByTestId('profile-ficha')).toBeVisible()
   })
 
   test('a mouse drag across a page (selecting text) neither slides it nor changes section', async ({ page }) => {

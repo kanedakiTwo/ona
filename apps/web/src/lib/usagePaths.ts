@@ -15,6 +15,7 @@ export type ClientUsageEvent =
   | "handsfree_started"
 export type UsageScreen =
   | "menu"
+  | "cocinar"
   | "lista"
   | "compra"
   | "receta"
@@ -46,6 +47,7 @@ const RECIPE_DETAIL = /^\/recipes\/(?!new\/?$)[^/]+\/?$/
 export function screenOfPath(path: string | null | undefined): UsageScreen | null {
   const p = (path ?? "").replace(/\/+$/, "") || "/"
   if (p === "/menu") return "menu"
+  if (p === "/cocinar") return "cocinar"
   if (p === "/shopping") return "lista"
   if (p === "/compra") return "compra"
   if (p === "/recipes") return "recetas"

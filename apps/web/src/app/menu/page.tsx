@@ -29,6 +29,7 @@ import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles 
 import type { DayMenu, MealSlot } from "@ona/shared"
 import { menuShareText } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
+import { menuDiners } from "@/lib/menuDiners"
 import {
   useMenu,
   useGenerateMenu,
@@ -212,10 +213,10 @@ export default function MenuPage() {
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
   const tasteStatus = useTasteStatus()
-  const householdDiners =
-    ((profile?.adults as number | undefined) ?? user?.adults ?? 0) +
-    ((profile?.kidsCount as number | undefined) ?? user?.kidsCount ?? 0)
-  const defaultDiners = Math.max(1, householdDiners || 2)
+  const defaultDiners = menuDiners({
+    adults: (profile?.adults as number | undefined) ?? user?.adults,
+    kidsCount: (profile?.kidsCount as number | undefined) ?? user?.kidsCount,
+  })
 
   // Initial day from `?day=0…6` (0 = lunes), written with replaceState like
   // `?week=`: «Volver» from a recipe lands on the week and the day you were

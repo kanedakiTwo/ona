@@ -325,11 +325,10 @@ test.describe('desktop', () => {
       .click()
     await expect(page.getByRole('heading', { level: 1 })).toContainText(new RegExp(WEEKDAYS[other], 'i'))
 
-    // Right under the day's meals, before the next day's preview.
+    // Right under the day's meals; the next day's preview that followed is gone (2026-11-10).
     const addMeal = page.getByRole('button', { name: /^añadir comida$/i })
-    const box = (await addMeal.boundingBox())!
-    const preview = (await page.getByTestId('next-day-preview').boundingBox())!
-    expect(box.y + box.height).toBeLessThanOrEqual(preview.y)
+    await expect(addMeal).toBeVisible()
+    await expect(page.getByTestId('next-day-preview')).toHaveCount(0)
 
     await addMeal.click()
     const sheet = page.getByRole('dialog', { name: `Añadir comida al ${WEEKDAYS[other]}` })
@@ -355,7 +354,7 @@ test.describe('desktop', () => {
     const column = page.locator(`[data-day-column="${other}"]`)
     const noLunch = column.locator(`[data-week-cell="${other}-lunch"] [data-absent-meal="lunch"]`)
     await expect(noLunch).toHaveText('no hay', { timeout: 20_000 })
-    await expect(noLunch).toHaveAttribute('aria-label', `Comida: no hay. Ver el ${WEEKDAYS[other]}`)
+    await expect(noLunch).toHaveAttribute('aria-label', `Comida: no hay. Añadir comida al ${WEEKDAYS[other]}`)
     if (dinnerName) {
       await expect(
         column
@@ -364,7 +363,8 @@ test.describe('desktop', () => {
       ).toBeVisible()
     }
 
-    await column.locator('[data-absent-meal="lunch"]').click()
+    // The day label shows the day (the «no hay» cell opens its sheet instead, menu-week-no-hay.spec.ts).
+    await column.locator('button[aria-pressed]').click()
     await expect(page.getByRole('heading', { level: 1 })).toContainText(new RegExp(WEEKDAYS[other], 'i'))
     const absent = page.locator('[data-testid="absent-meal"][data-meal="lunch"]')
     await expect(absent).toContainText(`El ${WEEKDAYS[other]} no hay comida`)
@@ -425,7 +425,7 @@ test.describe('desktop', () => {
 
   // Miguel, 2026-10-19: «también debería poder arrastrarse del plato
   // principal (comida) al secundario (cena) y viceversa» — the hero row
-  // (and the next day's preview) took no part in drag and drop.
+  // took no part in drag and drop.
   test('in the hero row, the lunch dragged onto the dinner swaps them', async ({ page }) => {
     test.setTimeout(90_000)
     const { menu, headers, weekStart } = await userWithMenu(page)
@@ -450,25 +450,6 @@ test.describe('desktop', () => {
     expect(res.ok()).toBeTruthy()
     expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other, fromMeal: 'lunch', toDay: other, toMeal: 'dinner' })
     await expect(page.getByTestId('menu-hero')).toContainText(dinnerName, { timeout: 10_000 })
-  })
-
-  test('a dish dragged from the next day\'s preview onto «El … no hay comida» moves there', async ({ page }) => {
-    test.setTimeout(90_000)
-    const other = today() === 0 ? 1 : 0
-    await weekWithoutLunchOn(page, other)
-
-    await page.goto('/menu')
-    await page.locator(`[data-day-column="${other}"] [data-absent-meal="lunch"]`).click({ timeout: 20_000 })
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(new RegExp(WEEKDAYS[other], 'i'))
-    const target = page.locator('[data-testid="absent-meal"][data-meal="lunch"]')
-    await expect(target).toBeVisible()
-
-    const moved = moveSlotResponse(page)
-    await dragTo(page, page.getByTestId('next-day-preview').locator(`[data-dnd-slot="${other + 1}-lunch"]`), target, { inWeek: false })
-    const res = await moved
-    expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other + 1, fromMeal: 'lunch', toDay: other, toMeal: 'lunch' })
-    await expect(target).toHaveCount(0, { timeout: 10_000 })
   })
 
   // Miguel, 2026-10-20: «la comida y la cena siempre deberían ir en los

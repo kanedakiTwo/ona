@@ -67,6 +67,7 @@ import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
+import { ChangeFailedNotice } from "@/components/menu/ChangeFailedNotice"
 import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
 import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
@@ -808,6 +809,7 @@ export default function MenuPage() {
         )}
         {weekSheet}
         {firstSteps}
+        <ChangeFailedNotice />
         <TasteIntroScreen />
         <PriceSurveySheet />
       </div>
@@ -976,6 +978,7 @@ export default function MenuPage() {
 
       {weekSheet}
       {firstSteps}
+      <ChangeFailedNotice />
       <TasteIntroScreen />
       <PriceSurveySheet />
     </div>

@@ -1,7 +1,20 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query"
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 import type { MenuFit, WeekPlan } from "@ona/shared"
+import {
+  addDishIn,
+  addSlotIn,
+  lockIn,
+  moveSlotIn,
+  patchDishIn,
+  patchSlotIn,
+  pickRecipeIn,
+  removeDishIn,
+  removeSlotIn,
+  type OptimisticMenu,
+  type RecipeLook,
+} from "@/lib/menuOptimistic"
 
 interface MealSlot {
   recipeId: string
@@ -55,6 +68,74 @@ export function useMenu(userId: string | undefined, weekStart: string | undefine
   })
 }
 
+/**
+ * Every change of a week's dishes is one queue (`scope`): it is drawn at once
+ * (`optimistic`), but the requests reach the server one after the other. Two
+ * at once (a recipe and then a note, 2026-11-10) each read the week and wrote
+ * it back, and the second wiped out the first.
+ */
+const MENU_CHANGE = { mutationKey: ["menu-change"], scope: { id: "menu-change" } } as const
+
+/**
+ * After a change: the server's week (when the route returns it) and a fresh
+ * read — but only once the queue is empty, or the answer to the first change
+ * would paint over the ones still on their way (they're on screen already).
+ */
+function settleMenu(queryClient: QueryClient, data: unknown) {
+  // This change still counts as pending while its onSuccess runs.
+  if (queryClient.isMutating({ mutationKey: MENU_CHANGE.mutationKey }) > 1) return
+  const m = data as { userId?: string; weekStart?: string } | null | undefined
+  if (m?.userId && m?.weekStart) queryClient.setQueryData(["menu", m.userId, m.weekStart], data)
+  queryClient.invalidateQueries({ queryKey: ["menu"] })
+  queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
+}
+
+/** Fired when a change shown at once had to be undone: the page says so. */
+export const MENU_CHANGE_FAILED_EVENT = "ona:menu-change-failed"
+
+/** Name and photo of a recipe the page already has (the picker's list, `["recipes", …]`). */
+function recipeLook(queryClient: QueryClient, id: string): RecipeLook {
+  for (const [, data] of queryClient.getQueriesData<unknown>({ queryKey: ["recipes"] })) {
+    if (!Array.isArray(data)) continue
+    const r = data.find((x) => x && typeof x === "object" && (x as { id?: string }).id === id) as
+      | { id: string; name?: string; imageUrl?: string | null }
+      | undefined
+    if (r) return { id, name: r.name, imageUrl: r.imageUrl ?? null }
+  }
+  return { id }
+}
+
+/**
+ * The change on screen at once (2026-11-10, Miguel: «tardan mucho en
+ * mostrarse»): before the request goes out, the cached week gets `apply`
+ * (lib/menuOptimistic.ts); if the API fails it goes back as it was and the
+ * page says so. A refetch in flight is cancelled so it can't paint the old
+ * week over it. `apply` returning null leaves the week alone (e.g. «al azar»,
+ * whose dish only the server knows).
+ */
+function optimistic<V>(
+  queryClient: QueryClient,
+  apply: (menu: OptimisticMenu, v: V) => OptimisticMenu | null,
+) {
+  return {
+    onMutate: async (v: V & { menuId: string }) => {
+      await queryClient.cancelQueries({ queryKey: ["menu"] })
+      const snapshot = queryClient.getQueriesData<unknown>({ queryKey: ["menu"] })
+      queryClient.setQueriesData<unknown>({ queryKey: ["menu"] }, (old: unknown) => {
+        const m = old as OptimisticMenu | null | undefined
+        if (!m || typeof m !== "object" || m.id !== v.menuId || !Array.isArray(m.days)) return old
+        return apply(m, v) ?? old
+      })
+      return { snapshot }
+    },
+    onError: (_err: unknown, _v: V & { menuId: string }, ctx: { snapshot: [QueryKey, unknown][] } | undefined) => {
+      for (const [key, data] of ctx?.snapshot ?? []) queryClient.setQueryData(key, data)
+      if (queryClient.isMutating({ mutationKey: MENU_CHANGE.mutationKey }) <= 1) queryClient.invalidateQueries({ queryKey: ["menu"] })
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(MENU_CHANGE_FAILED_EVENT))
+    },
+  }
+}
+
 export function useGenerateMenu() {
   const queryClient = useQueryClient()
 
@@ -86,6 +167,9 @@ export function useRegenerateMeal() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; recipeId?: string }) =>
+      v.recipeId ? pickRecipeIn(m, v.day, v.meal, recipeLook(queryClient, v.recipeId)) : null),
     mutationFn: async (params: {
       menuId: string
       day: number
@@ -118,12 +202,7 @@ export function useRegenerateMeal() {
       const body = params.recipeId ? { recipeId: params.recipeId, ...(params.from ? { from: params.from } : {}) } : undefined
       return api.put<Menu>(url, body)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -139,6 +218,9 @@ export function useRegenerateMeal() {
 export function useAddMealSlot() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; recipeId?: string }) =>
+      v.recipeId ? addSlotIn(m, v.day, v.meal, recipeLook(queryClient, v.recipeId)) : null),
     mutationFn: async (params: {
       menuId: string
       day: number
@@ -151,12 +233,7 @@ export function useAddMealSlot() {
       const body = params.recipeId ? { recipeId: params.recipeId, ...(params.from ? { from: params.from } : {}) } : {}
       return api.post<Menu>(url, body)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -168,16 +245,13 @@ export function useAddMealSlot() {
 export function useDeleteMealSlot() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string }) => removeSlotIn(m, v.day, v.meal)),
     mutationFn: async (params: { menuId: string; day: number; meal: string }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
       return api.delete<Menu>(url)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -191,6 +265,9 @@ export function useDeleteMealSlot() {
 export function useMoveMealSlot() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { fromDay: number; fromMeal: string; toDay: number; toMeal: string }) =>
+      moveSlotIn(m, { day: v.fromDay, meal: v.fromMeal }, { day: v.toDay, meal: v.toMeal })),
     mutationFn: async (params: {
       menuId: string
       fromDay: number
@@ -205,12 +282,7 @@ export function useMoveMealSlot() {
         toMeal: params.toMeal,
       })
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -222,6 +294,8 @@ export function useMoveMealSlot() {
 export function useUpdateSlotServings() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; servings: number | null }) => patchSlotIn(m, v.day, v.meal, { servings: v.servings })),
     mutationFn: async (params: {
       menuId: string
       day: number
@@ -231,12 +305,7 @@ export function useUpdateSlotServings() {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
       return api.patch<Menu>(url, { servings: params.servings })
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -244,16 +313,13 @@ export function useUpdateSlotServings() {
 export function useSetSlotEaten() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; eaten: boolean }) => patchSlotIn(m, v.day, v.meal, { eaten: v.eaten })),
     mutationFn: async (params: { menuId: string; day: number; meal: string; eaten: boolean }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
       return api.patch<Menu>(url, { eaten: params.eaten })
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -265,6 +331,7 @@ export function useSetSlotEaten() {
 export function useSetSlotPinnedType() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: {
       menuId: string
       day: number
@@ -274,12 +341,7 @@ export function useSetSlotPinnedType() {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
       return api.patch<Menu>(url, { pinnedType: params.pinnedType })
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -291,32 +353,24 @@ export function useSetSlotPinnedType() {
 export function useBanRecipe() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: { menuId: string; recipeId: string }) => {
       return api.post<Menu>(`/menu/${params.menuId}/ban`, {
         recipeId: params.recipeId,
       })
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
 export function useUnbanRecipe() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: { menuId: string; recipeId: string }) => {
       return api.delete<Menu>(`/menu/${params.menuId}/ban/${params.recipeId}`)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -328,6 +382,7 @@ export function useUnbanRecipe() {
 export function useMarkLeftover() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: {
       menuId: string
       sourceDay: number
@@ -342,12 +397,7 @@ export function useMarkLeftover() {
         targetMeal: params.targetMeal,
       })
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -360,30 +410,22 @@ export function useMarkLeftover() {
 export function useSkipDay() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: { menuId: string; day: number }) => {
       return api.post<Menu>(`/menu/${params.menuId}/day/${params.day}/skip`)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
 export function useUnskipDay() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: { menuId: string; day: number }) => {
       return api.delete<Menu>(`/menu/${params.menuId}/day/${params.day}/skip`)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -391,6 +433,8 @@ export function useLockMeal() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; locked: boolean }) => lockIn(m, v.day, v.meal, v.locked)),
     mutationFn: async (params: { menuId: string; day: number; meal: string; locked: boolean }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/lock`
       const body = { locked: params.locked }
@@ -420,12 +464,7 @@ export function useLockMeal() {
 
       return api.put<Menu>(url, body)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -435,26 +474,36 @@ export function useLockMeal() {
  *   { kind: 'recipe'; recipeId: string; course?: Course; pinnedType?: string }
  *   { kind: 'note'; text: string }
  */
+type AddDishPayload =
+  | { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null; variant?: 'planned' | 'freezer' | 'fridge' }
+  | { kind: 'note'; text: string }
+
 export function useAddDish() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; payload: AddDishPayload }) => {
+      if (v.payload.kind === "note") return addDishIn(m, v.day, v.meal, { kind: "note", text: v.payload.text })
+      const look = recipeLook(queryClient, v.payload.recipeId)
+      const variant = v.payload.variant === "freezer" || v.payload.variant === "fridge" ? v.payload.variant : undefined
+      return addDishIn(m, v.day, v.meal, {
+        kind: "recipe",
+        recipeId: look.id,
+        recipeName: look.name ?? undefined,
+        imageUrl: look.imageUrl ?? null,
+        ...(variant ? { variant } : {}),
+      })
+    }),
     mutationFn: async (params: {
       menuId: string
       day: number
       meal: string
-      payload:
-        | { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null; variant?: 'planned' | 'freezer' | 'fridge' }
-        | { kind: 'note'; text: string }
+      payload: AddDishPayload
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish`
       return api.post<Menu>(url, params.payload)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -466,16 +515,12 @@ export function useAddDish() {
 export function useSetTaper() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: { menuId: string; day: number; meal: string; on: boolean; count?: number }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/taper`
       return params.on ? api.post<Menu>(url, { count: params.count ?? 1 }) : api.delete<Menu>(url)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -485,6 +530,8 @@ export function useSetTaper() {
 export function useRemoveDish() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; position: number }) => removeDishIn(m, v.day, v.meal, v.position)),
     mutationFn: async (params: {
       menuId: string
       day: number
@@ -494,12 +541,7 @@ export function useRemoveDish() {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}`
       return api.delete<Menu>(url)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -510,6 +552,9 @@ export function useRemoveDish() {
 export function usePatchDish() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
+    ...optimistic(queryClient, (m, v: { day: number; meal: string; position: number; patch: { text?: string; newPosition?: number; variant?: 'planned' | 'freezer' | 'cooked' } }) =>
+      patchDishIn(m, v.day, v.meal, v.position, v.patch)),
     mutationFn: async (params: {
       menuId: string
       day: number
@@ -520,12 +565,7 @@ export function usePatchDish() {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}`
       return api.patch<Menu>(url, params.patch)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -536,6 +576,7 @@ export function usePatchDish() {
 export function useRegenerateDish() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: {
       menuId: string
       day: number
@@ -545,12 +586,7 @@ export function useRegenerateDish() {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}/regenerate`
       return api.post<Menu>(url)
     },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: (data) => settleMenu(queryClient, data),
   })
 }
 
@@ -561,13 +597,11 @@ export function useRegenerateDish() {
 export function useAddRandomDish() {
   const queryClient = useQueryClient()
   return useMutation({
+    ...MENU_CHANGE,
     mutationFn: async (params: { menuId: string; day: number; meal: string }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/random`
       return api.post<Menu>(url)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["menu"] })
-      queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
+    onSuccess: () => settleMenu(queryClient, null),
   })
 }

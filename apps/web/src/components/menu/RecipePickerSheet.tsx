@@ -2,9 +2,11 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { Search, X, Plus } from "lucide-react"
+import { Search, X, Plus, Shuffle } from "lucide-react"
 import { useRecipes } from "@/hooks/useRecipes"
-import type { Recipe } from "@ona/shared"
+import { ApiError } from "@/lib/api"
+import { NO_RECIPE_OF_TYPE } from "@/lib/mealSheet"
+import { DISH_TYPES, type Recipe } from "@ona/shared"
 
 interface RecipePickerSheetProps {
   open: boolean
@@ -20,6 +22,13 @@ interface RecipePickerSheetProps {
    * text in the slot instead of the current dish (a note, not one more dish).
    */
   onUseText?: (text: string) => void
+  /**
+   * PRO-1175: «Que elija Mimoia», fixed at the bottom — Mimoia puts a recipe
+   * that fits the meal, of the type chip chosen if there is one. Resolves when
+   * it's saved (the parent closes the sheet); a rejection is said here and the
+   * sheet stays open (no recipe of that type fits, 409 NO_RECIPE_OF_TYPE).
+   */
+  onPickAuto?: (dishType: string | null) => Promise<unknown>
 }
 
 /**
@@ -36,6 +45,11 @@ interface RecipePickerSheetProps {
  * phone the keyboard pushes the field up instead of covering it.
  * The catalogue is only asked for while the sheet is open (2026-11-10: every
  * slot's closed picker asked for it when /menu loaded, ~4 s of server work).
+ *
+ * PRO-1175: type chips on top (`DISH_TYPES`, «Legumbres», «Cremas y sopas»…)
+ * only filter the list (`GET /recipes?fitsMe=1&dishType=…`); with
+ * `onPickAuto`, «Que elija Mimoia» sits at the bottom and uses the chip.
+ * «Cambiar al azar» and «Tipo de comida» left the meal sheet for these.
  */
 export function RecipePickerSheet({
   open,
@@ -44,8 +58,11 @@ export function RecipePickerSheet({
   subtitle,
   onPick,
   onUseText,
+  onPickAuto,
 }: RecipePickerSheetProps) {
   const [query, setQuery] = useState("")
+  const [dishType, setDishType] = useState<string | null>(null)
+  const [auto, setAuto] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
   const inputRef = useRef<HTMLInputElement>(null)
 
   // The API searches the whole catalogue, minus what breaks the user's
@@ -54,7 +71,7 @@ export function RecipePickerSheet({
   // recipe found by /recipes but not here — 382nd of 382).
   const search = useDeferredValue(query.trim())
   const { data: recipes = [], isLoading, isPlaceholderData } = useRecipes(
-    { perPage: 100, fitsMe: true, search: search || undefined },
+    { perPage: 100, fitsMe: true, search: search || undefined, dishType: dishType ?? undefined },
     { keepPrevious: true, enabled: open },
   )
   const viewport = useVisibleViewport(open)
@@ -64,6 +81,8 @@ export function RecipePickerSheet({
   useEffect(() => {
     if (open) {
       setQuery("")
+      setDishType(null)
+      setAuto({ busy: false, error: null })
       // Focus the search input on open.
       setTimeout(() => inputRef.current?.focus(), 50)
     }
@@ -77,6 +96,18 @@ export function RecipePickerSheet({
   }, [recipes, query])
 
   if (!open) return null
+
+  async function pickAuto() {
+    if (!onPickAuto || auto.busy) return
+    setAuto({ busy: true, error: null })
+    try {
+      await onPickAuto(dishType)
+      setAuto({ busy: false, error: null })
+    } catch (err) {
+      const said = err instanceof ApiError && err.code === NO_RECIPE_OF_TYPE ? err.message : "No se ha podido elegir. Prueba otra vez."
+      setAuto({ busy: false, error: said })
+    }
+  }
 
   return (
     <div
@@ -114,7 +145,35 @@ export function RecipePickerSheet({
           </button>
         </div>
 
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5" data-testid="picker-results">
+        <div
+          role="group"
+          aria-label="Tipo de plato"
+          data-testid="picker-type-chips"
+          className="mt-3 flex shrink-0 gap-1.5 overflow-x-auto px-5 pb-1 [scrollbar-width:none]"
+        >
+          {DISH_TYPES.map((t) => {
+            const on = dishType === t.key
+            return (
+              <button
+                key={t.key}
+                type="button"
+                aria-pressed={on}
+                disabled={auto.busy}
+                onClick={() => {
+                  setDishType(on ? null : t.key)
+                  setAuto((a) => ({ ...a, error: null }))
+                }}
+                className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors ${
+                  on ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]" : "border-[#DDD6C5] bg-[#FFFEFA] text-[#1A1612] hover:border-[#1A1612]"
+                }`}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5" data-testid="picker-results">
           {(isLoading || (searching && filtered.length === 0)) && (
             <div className="py-8 text-center text-[12px] italic text-[#7A7066]">
               {isLoading ? "Cargando catálogo…" : "Buscando…"}
@@ -125,7 +184,9 @@ export function RecipePickerSheet({
               <p className="text-[12px] italic text-[#7A7066]">
                 {query.trim()
                   ? `Sin resultados para “${query.trim()}”.`
-                  : "Sin recetas en el catálogo todavía."}
+                  : dishType
+                    ? "No hay recetas de este tipo que encajen con tu dieta."
+                    : "Sin recetas en el catálogo todavía."}
               </p>
               <Link
                 href={
@@ -157,6 +218,7 @@ export function RecipePickerSheet({
               <li key={r.id}>
                 <button
                   type="button"
+                  disabled={auto.busy}
                   onClick={() => onPick({ id: r.id, name: r.name, imageUrl: r.imageUrl ?? null })}
                   className="flex min-h-[44px] w-full items-center justify-between gap-3 py-2.5 text-left hover:bg-[#F2EDE0]"
                 >
@@ -177,6 +239,30 @@ export function RecipePickerSheet({
           className="shrink-0 border-t border-[#E8E2D3] px-5 pt-3 pb-[calc(12px+var(--safe-bottom))] lg:pb-4"
           data-testid="picker-search"
         >
+          {onPickAuto && (
+            <div className="mb-2.5">
+              <button
+                type="button"
+                onClick={pickAuto}
+                disabled={auto.busy}
+                aria-describedby="picker-auto-hint"
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-[#1A1612] px-4 text-[14px] font-medium text-[#1A1612] transition-colors hover:bg-[#F2EDE0] disabled:opacity-50"
+              >
+                <Shuffle size={15} />
+                {auto.busy ? "Eligiendo…" : "Que elija Mimoia"}
+              </button>
+              <p id="picker-auto-hint" className="mt-1 text-center text-[11px] text-[#7A7066]">
+                {dishType
+                  ? `Una de «${DISH_TYPES.find((t) => t.key === dishType)?.label ?? dishType}» que encaje con tu semana`
+                  : "Una receta que encaje con tu semana"}
+              </p>
+              {auto.error && (
+                <p role="alert" className="mt-1 text-center text-[12px] text-[#A8452A]">
+                  {auto.error}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3">
             <Search size={14} className="text-[#7A7066]" />
             <input

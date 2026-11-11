@@ -10,7 +10,7 @@
  * No React, no `@/` aliases: the API's vitest suite imports this file by a
  * relative path (`apps/api/src/tests/menuOptimistic.test.ts`).
  */
-import { moveSlotInWeek, type DayMenu, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { moveSlotInWeek, swapLocks, withLock, type DayMenu, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 
 export interface OptimisticMenu {
   id: string
@@ -69,11 +69,13 @@ export function addDishIn<M extends OptimisticMenu>(menu: M, day: number, meal: 
 
 /** `DELETE …/dish/:position`. */
 export function removeDishIn<M extends OptimisticMenu>(menu: M, day: number, meal: string, position: number): M {
-  return withDays(menu, (days) => {
+  const out = withDays(menu, (days) => {
     const slot = days[day]?.[meal]
     if (!slot || position < 0 || position >= (slot.dishes ?? []).length) return
     days[day] = { ...days[day], [meal]: { ...slot, dishes: slot.dishes.filter((_, i) => i !== position) } }
   })
+  // The last dish out takes the lock with it (PRO-1175), as the route does.
+  return out.days[day]?.[meal]?.dishes?.length === 0 && menu.days[day]?.[meal]?.dishes?.length ? { ...out, locked: withLock(menu.locked, day, meal, false) } : out
 }
 
 /** `PATCH …/dish/:position`: a reorder (`newPosition`) or the note's text / the táper variant. */
@@ -103,11 +105,13 @@ export function patchDishIn<M extends OptimisticMenu>(
 
 /** «Quitar <comida>» (`DELETE …/meal/:meal`). */
 export function removeSlotIn<M extends OptimisticMenu>(menu: M, day: number, meal: string): M {
-  return withDays(menu, (days) => {
-    if (!days[day]?.[meal]) return
+  if (!menu.days?.[day]?.[meal]) return menu
+  const out = withDays(menu, (days) => {
     const { [meal]: _gone, ...rest } = days[day]
     days[day] = rest
   })
+  // Its lock goes with it (PRO-1175).
+  return { ...out, locked: withLock(menu.locked, day, meal, false) }
 }
 
 /** «Añadir comida» with a chosen recipe (`POST …/meal/:meal { recipeId }`). Without one the matcher picks: not guessed. */
@@ -133,7 +137,8 @@ export function moveSlotIn<M extends OptimisticMenu>(
 ): M {
   if (!menu.days?.[from.day]?.[from.meal]) return menu
   const days = moveSlotInWeek(menu.days, from, to)
-  return { ...menu, days, skippedDays: (menu.skippedDays ?? []).filter((d) => d !== to.day) }
+  // A locked meal moves with its lock (PRO-1175).
+  return { ...menu, days, locked: swapLocks(menu.locked, from, to), skippedDays: (menu.skippedDays ?? []).filter((d) => d !== to.day) }
 }
 
 /**

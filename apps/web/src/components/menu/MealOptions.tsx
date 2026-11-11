@@ -2,19 +2,20 @@
 
 /**
  * Everything you can do to one meal slot of the menu, behind a single "···"
- * button (2026-10-08 redesign). Before, each meal card showed 3–6 chips
- * (Elegir, Cambiar, Tipo, Vetar, Añadir plato, Fijar, Quitar, Comensales,
- * Cocinada…); now they live in one sheet, with the same rules:
+ * button (2026-10-08 redesign). PRO-1175 (2026-11-11, E-72): the first level
+ * keeps five or six things and the rest goes to «Más opciones»; which ones
+ * show is `mealSheetOptions` (`lib/mealSheet.ts`, tested from the API suite):
  *
- *   - Single-recipe slot: Ver receta, Elegir otra receta, Cambiar al azar,
- *     Añadir plato, Fijar, Vetar, Comensales, Marcar como
- *     cocinada, Quitar comida.
- *   - Leftover ("sobras"): no Elegir / Cambiar / Tipo / Vetar (tied to its
- *     source slot).
+ *   - First level: Ver receta, Cambiar plato (the picker, with type chips and
+ *     «Que elija Mimoia»), Añadir plato, Marcar como cocinada (today and past
+ *     days only), «No la pongas más esta semana» (vetar), Más opciones and,
+ *     apart, Quitar comida. A leftover or a táper can't be changed or vetoed.
+ *   - Más opciones: Comensales, «Ya está hecho / táper…» (its own sheet) and
+ *     «Que no cambie si rehago la semana» (the lock).
  *   - Multi-dish or note slot: the dish list (drag to reorder, "Cambiar" per
- *     dish, quitar, edit notes) + Añadir plato, Fijar, Comensales, Quitar.
- *   - Empty slot: Añadir plato, Fijar, Comensales, Quitar comida.
- *   - Locked ("Fijada"): every change is disabled except Desfijar.
+ *     dish, quitar, edit notes) above the same options (PRO-1176 reworks it).
+ *   - The lock never greys anything out (D-182): it only keeps the meal when
+ *     the week is redone, and choosing a dish by hand sets it.
  *
  * `useMealOptions()` owns which sheet is open so callers can open one
  * directly: the empty-slot card's main button opens this same sheet
@@ -27,6 +28,7 @@ import { menuRecipeHref } from "@/lib/menuReturn"
 import {
   Ban,
   BookOpen,
+  CalendarDays,
   ChefHat,
   GripVertical,
   Lock,
@@ -35,7 +37,6 @@ import {
   Plus,
   Replace,
   RotateCcw,
-  Shuffle,
   History,
   Trash2,
   Unlock,
@@ -59,7 +60,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { mealSheetOptions, type MealWhen } from "@/lib/mealSheet"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { useSetSlotEaten } from "@/hooks/useMenu"
@@ -76,7 +78,8 @@ export type DishPayload =
 
 /** Mutations for one (day, meal) slot. Built once per slot by the page. */
 export interface SlotHandlers {
-  regenerate: () => void
+  /** «Que elija Mimoia» in the picker (PRO-1175), with the type chip if one is chosen. Rejects when nothing fits. */
+  regenerate: (dishType?: string | null) => Promise<unknown>
   pickRecipe: (recipeId: string) => void
   toggleLock: () => void
   remove: () => void
@@ -94,6 +97,8 @@ export interface SlotHandlers {
   setCooked: (position: number, on: boolean) => void
   /** PRO-223: mark / unmark this meal as the táper of the dinner before. */
   setTaper?: (on: boolean) => void
+  /** «Guardar en mi semana tipo» in «Más opciones»: wired by the week type's phase 5 (PRO-1186); hidden until then. */
+  saveToWeekType?: () => void
 }
 
 export interface SlotContext {
@@ -103,7 +108,10 @@ export interface SlotContext {
   slot: MealSlot
   /** "jueves 8" — shown in the sheet's eyebrow. */
   dayLabel: string
+  /** «Que no cambie si rehago la semana»: kept when the week is redone. Never greys the sheet (PRO-1175). */
   isLocked: boolean
+  /** Past, today or a day still to come: «Marcar como cocinada» only today and before (PRO-1175). */
+  when?: MealWhen
   /** Household diner count used when the slot has no override. */
   defaultDiners: number
   /** Servings the batch cooks, táper included (`batchServings`, PRO-75). */
@@ -125,7 +133,7 @@ export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
   return menuRecipeHref(recipeId, slotServings(ctx))
 }
 
-type OpenSheet = null | "actions" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
+type OpenSheet = null | "actions" | "more" | "done" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -179,19 +187,17 @@ export function MealOptionsSheets({
   const dishes: Dish[] = ctx.slot.dishes ?? []
   const first = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
   const isSingleRecipe = dishes.length === 1 && dishes[0].kind === "recipe"
-  const isLeftover = first?.variant === "leftover"
-  // A táper (freezer PRO-82, fridge PRO-240) is a given dish: no Elegir / Cambiar / Tipo / Vetar.
-  const fromFreezer = isTaperDish(first)
-  const canReshape = isSingleRecipe && !isLeftover && !fromFreezer
-  // A dish already in the menu can be a freezer táper you have (Miguel, 2026-10-20), unless it's
-  // the batch of planned leftovers (a táper for tomorrow included) or already a fridge táper.
-  // «Son sobras de otro día» (Miguel, 2026-10-20): any dish already cooked — fridge, freezer or
-  // anywhere — unless it's the batch of planned leftovers (a táper for tomorrow included). On a táper
-  // of any kind, «No son sobras de otro día» brings it back to the list.
-  const canMarkCooked = isSingleRecipe && !isLeftover && (fromFreezer || !ctx.feedsLeftovers)
+  const opts = mealSheetOptions({
+    slot: ctx.slot,
+    when: ctx.when ?? "future",
+    canTaper: Boolean(handlers.setTaper && ctx.taperFrom),
+    feedsLeftovers: ctx.feedsLeftovers,
+    canSaveToWeekType: Boolean(handlers.saveToWeekType),
+  })
+  const has = (o: (typeof opts.first)[number]) => opts.first.includes(o)
   const label = mealLabel(ctx.meal)
+  const eyebrow = `${label} · ${ctx.dayLabel}`
   const locked = ctx.isLocked
-  const lockedHint = locked ? "Desfíjala para cambiarla" : undefined
   // PRO-1174: which sheet this is, for `menu_sheet_action`.
   const sheet = isSingleRecipe ? "comida" : dishes.length === 0 ? "vacio" : "comida_varios"
 
@@ -200,16 +206,16 @@ export function MealOptionsSheets({
       <MenuSheet
         open={open === "actions"}
         onClose={close}
-        eyebrow={`${label} · ${ctx.dayLabel}`}
+        eyebrow={eyebrow}
         title={first?.recipeName ?? (dishes.length > 0 ? label : "Sin plato todavía")}
         sheet={sheet}
       >
-        {/* PRO-259: why Mimo chose it — only menus from the planner carry it. */}
+        {/* PRO-259: why Mimo chose it — only menus from the planner carry it. A grey line, not a card (PRO-1175). */}
         {first?.why && (
-          <div data-testid="dish-why" className="mb-3 rounded-2xl bg-cream-deep px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Por qué te lo propongo</p>
-            <p className="mt-1 text-[15px] leading-snug text-ink">{first.why}</p>
-          </div>
+          <p data-testid="dish-why" className="-mt-1 mb-3 text-[13.5px] leading-snug text-ink-muted">
+            <span className="sr-only">Por qué te lo propongo: </span>
+            {first.why}
+          </p>
         )}
 
         {!isSingleRecipe && dishes.length > 0 && (
@@ -220,120 +226,156 @@ export function MealOptionsSheets({
           />
         )}
 
-        <div className="flex flex-col gap-0.5">
-          {first && (
+        <div className="flex flex-col gap-0.5" data-testid="meal-sheet-first">
+          {first && has("ver_receta") && (
             <SheetAction icon={BookOpen} label="Ver receta" action="ver_receta" href={slotRecipeHref(first.recipeId, ctx)} />
           )}
-          {canReshape && (
-            <>
-              <SheetAction
-                icon={Replace}
-                label="Elegir otra receta"
-                action="elegir_receta"
-                hint={lockedHint ?? "Busca en el catálogo"}
-                disabled={locked || ctx.isRegenerating}
-                onClick={() => setOpen("picker")}
-              />
-              <SheetAction
-                icon={Shuffle}
-                label="Cambiar al azar"
-                action="cambiar_azar"
-                hint={lockedHint ?? "Otra receta que encaje con tu semana"}
-                disabled={locked || ctx.isRegenerating}
-                onClick={() => {
-                  handlers.regenerate()
-                  close()
-                }}
-              />
-            </>
-          )}
-          {canMarkCooked && (
+          {has("cambiar_plato") && (
             <SheetAction
-              icon={History}
-              label={fromFreezer ? "No son sobras de otro día" : "Son sobras de otro día"}
-              action={fromFreezer ? "sobras_no" : "sobras_si"}
-              hint={lockedHint ?? (fromFreezer ? "Vuelve a sumar a la compra" : "Ya está hecho (nevera, congelador…): no suma a la compra")}
-              disabled={locked}
-              onClick={() => {
-                handlers.setCooked(0, !fromFreezer)
-                close()
-              }}
+              icon={Replace}
+              label="Cambiar plato"
+              action="elegir_receta"
+              hint="Busca, filtra por tipo o deja que elija Mimoia"
+              disabled={ctx.isRegenerating}
+              onClick={() => setOpen("picker")}
             />
           )}
           <SheetAction
             icon={Plus}
             label="Añadir plato"
             action="anadir_plato"
-            hint={lockedHint ?? "Otro plato o una nota en esta comida"}
-            disabled={locked}
+            hint="Otro plato o una nota en esta comida"
             onClick={() => setOpen("addDish")}
           />
-          <SheetAction
-            icon={locked ? Unlock : Lock}
-            label={locked ? "Desfijar" : "Fijar"}
-            action={locked ? "desfijar" : "fijar"}
-            hint={locked ? "Volverá a cambiar si regeneras la semana" : "Se queda aunque regeneres la semana"}
-            onClick={() => {
-              handlers.toggleLock()
-              close()
-            }}
-          />
-          {canReshape && first && (
+          {first && (has("cocinada") || has("desmarcar_cocinada")) && (
+            <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} onUnmarked={close} />
+          )}
+          {first && has("vetar") && (
             <SheetAction
               icon={Ban}
-              label="Vetar esta receta"
+              label="No la pongas más esta semana"
               action="vetar"
-              hint={lockedHint ?? "No volverá a salir esta semana"}
-              disabled={locked}
+              hint="Pondremos otra en su lugar"
               onClick={() => setOpen("confirmBan")}
             />
           )}
-          {first && <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} onUnmarked={close} />}
-          {/* PRO-223 · «El táper de mañana». */}
-          {handlers.setTaper && ctx.slot.taper ? (
-            <SheetAction
-              icon={Package}
-              label="Quitar táper"
-              action="taper_no"
-              hint="La comida queda vacía para poner otra cosa"
-              disabled={locked}
-              onClick={() => {
-                handlers.setTaper?.(false)
-                close()
-              }}
-            />
-          ) : handlers.setTaper && ctx.taperFrom ? (
-            <SheetAction
-              icon={Package}
-              label="Me lo llevo en táper"
-              action="taper_si"
-              hint={lockedHint ?? `Sobras de la cena del ${ctx.taperFrom.dayLabel}: se hace una ración más`}
-              disabled={locked}
-              onClick={() => {
-                handlers.setTaper?.(true)
-                close()
-              }}
-            />
-          ) : null}
+          <SheetAction
+            icon={MoreHorizontal}
+            label="Más opciones"
+            action="mas_opciones"
+            hint={moreHint(opts.more)}
+            onClick={() => setOpen("more")}
+          />
         </div>
-
-        <DinerStepper
-          value={ctx.slot.servings ?? null}
-          fallback={ctx.defaultDiners}
-          disabled={locked}
-          onChange={handlers.setServings}
-        />
 
         <div className="mt-1 border-t border-border-soft pt-1">
           <SheetAction
             icon={Trash2}
             label={`Quitar ${label.toLowerCase()}`}
             action="quitar_comida"
-            hint={lockedHint ?? "Solo de este día; tus preferencias no cambian"}
+            hint="Solo de este día; tus preferencias no cambian"
             destructive
-            disabled={locked}
             onClick={() => setOpen("confirmRemove")}
           />
+        </div>
+      </MenuSheet>
+
+      {/* «Más opciones»: comensales, ya está hecho / táper, que no cambie al rehacer la semana. */}
+      <MenuSheet open={open === "more"} onClose={close} eyebrow={eyebrow} title="Más opciones" sheet={sheet}>
+        <div className="flex flex-col gap-0.5" data-testid="meal-sheet-more">
+          <DinerStepper
+            value={ctx.slot.servings ?? null}
+            fallback={ctx.defaultDiners}
+            onChange={handlers.setServings}
+          />
+          {opts.more.includes("ya_hecho") && (
+            <SheetAction
+              icon={Package}
+              label="Ya está hecho / táper…"
+              action="ya_hecho"
+              hint="No suma a la compra"
+              onClick={() => setOpen("done")}
+            />
+          )}
+          {opts.more.includes("fijar") && (
+            <SheetAction
+              icon={locked ? Lock : Unlock}
+              label="Que no cambie si rehago la semana"
+              action={locked ? "desfijar" : "fijar"}
+              hint={locked ? "Sí: se queda aunque rehagas la semana · toca para quitarlo" : "Cambiará si rehaces la semana"}
+              pressed={locked}
+              testId="meal-keep"
+              onClick={() => {
+                handlers.toggleLock()
+                close()
+              }}
+            />
+          )}
+          {opts.more.includes("semana_tipo") && handlers.saveToWeekType && (
+            <SheetAction
+              icon={CalendarDays}
+              label="Guardar en mi semana tipo"
+              hint="Todas las semanas, este día y esta comida"
+              onClick={() => {
+                handlers.saveToWeekType?.()
+                close()
+              }}
+            />
+          )}
+        </div>
+      </MenuSheet>
+
+      {/* «Ya está hecho / táper…»: lo que no se compra. */}
+      <MenuSheet open={open === "done"} onClose={close} eyebrow={eyebrow} title="Ya está hecho / táper" sheet={sheet}>
+        <div className="flex flex-col gap-0.5">
+          {opts.done.includes("sobras_si") && (
+            <SheetAction
+              icon={History}
+              label="Lo tengo hecho (nevera, congelador…)"
+              action="sobras_si"
+              hint="No suma a la compra"
+              onClick={() => {
+                handlers.setCooked(0, true)
+                close()
+              }}
+            />
+          )}
+          {opts.done.includes("sobras_no") && (
+            <SheetAction
+              icon={History}
+              label="No lo tengo hecho"
+              action="sobras_no"
+              hint="Vuelve a sumar a la compra"
+              onClick={() => {
+                handlers.setCooked(0, false)
+                close()
+              }}
+            />
+          )}
+          {opts.done.includes("taper_si") && ctx.taperFrom && (
+            <SheetAction
+              icon={Package}
+              label="Sobras de la cena de ayer"
+              action="taper_si"
+              hint={`${ctx.taperFrom.recipeName}, cena del ${ctx.taperFrom.dayLabel}: se hace una ración más`}
+              onClick={() => {
+                handlers.setTaper?.(true)
+                close()
+              }}
+            />
+          )}
+          {opts.done.includes("taper_no") && (
+            <SheetAction
+              icon={Package}
+              label="Quitar táper"
+              action="taper_no"
+              hint="La comida queda vacía para poner otra cosa"
+              onClick={() => {
+                handlers.setTaper?.(false)
+                close()
+              }}
+            />
+          )}
         </div>
       </MenuSheet>
 
@@ -349,22 +391,21 @@ export function MealOptionsSheets({
           open={open === "confirmBan"}
           onClose={close}
           onConfirm={() => handlers.ban(first.recipeId)}
-          eyebrow={`${label} · ${ctx.dayLabel}`}
-          title={`¿Vetar «${first.recipeName ?? "esta receta"}» del resto de la semana?`}
+          eyebrow={eyebrow}
+          title={`¿No poner «${first.recipeName ?? "esta receta"}» más esta semana?`}
           message="Pondremos otra receta en su lugar y no volverá a salir esta semana."
-          confirmLabel="Vetar"
+          confirmLabel="No ponerla"
         />
       )}
       <ConfirmSheet
         open={open === "confirmRemove"}
         onClose={close}
         onConfirm={handlers.remove}
-        eyebrow={`${label} · ${ctx.dayLabel}`}
+        eyebrow={eyebrow}
         title={`¿Quitar ${label.toLowerCase()} de este día?`}
         message="Solo de este día; tus preferencias no cambian."
         confirmLabel="Quitar"
       />
-
 
       {typeof document !== "undefined" &&
         createPortal(
@@ -382,6 +423,12 @@ export function MealOptionsSheets({
                 handlers.replaceWithNote(text)
                 close()
               }}
+              // PRO-1175: the random swap lives here now; it counts as `cambiar_azar`, as it did.
+              onPickAuto={async (dishType) => {
+                trackSheetAction(sheet, "cambiar_azar")
+                await handlers.regenerate(dishType)
+                close()
+              }}
             />
             <AddDishSheet
               open={open === "addDish"}
@@ -396,6 +443,14 @@ export function MealOptionsSheets({
         )}
     </>
   )
+}
+
+/** The hint of «Más opciones»: what's inside, in a few words. */
+function moreHint(more: readonly string[]): string {
+  const parts = ["Comensales"]
+  if (more.includes("ya_hecho")) parts.push("ya está hecho")
+  if (more.includes("fijar")) parts.push("que no cambie")
+  return parts.join(", ")
 }
 
 /* ── "Marcar como cocinada" — records a cook event with the slot as context
@@ -567,16 +622,15 @@ function SortableDish({
   )
 }
 
-/* ── Per-slot diner override. `null` = no override (household default). */
+/* ── Per-slot diner override. `null` = no override (household default).
+ *    The number is in the text («Comensales: 4», PRO-1175). */
 function DinerStepper({
   value,
   fallback,
-  disabled,
   onChange,
 }: {
   value: number | null
   fallback: number
-  disabled: boolean
   onChange: (next: number | null) => void
 }) {
   const effective = value ?? fallback
@@ -584,14 +638,16 @@ function DinerStepper({
   const clamp = (n: number) => Math.max(1, Math.min(24, n))
   const track = useSheetTracker()
   return (
-    <div className="mt-1 flex min-h-[56px] items-center justify-between gap-3 rounded-2xl px-3">
+    <div className="flex min-h-[56px] items-center justify-between gap-3 rounded-2xl px-3">
       <div className="flex items-center gap-3.5 text-ink">
         <Users size={20} strokeWidth={1.7} />
         <div>
-          <p className="text-[15px] font-medium leading-tight">Comensales</p>
+          <p className="text-[15px] font-medium leading-tight" aria-live="polite" data-testid="diners-label">
+            Comensales: {effective}
+          </p>
           <p className="text-[12.5px] text-ink-soft">
             {hasOverride ? "Solo hoy" : "Los de tu casa"}
-            {hasOverride && !disabled && (
+            {hasOverride && (
               <>
                 {" · "}
                 <button
@@ -609,11 +665,11 @@ function DinerStepper({
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           aria-label="Menos comensales"
-          disabled={disabled || effective <= 1}
+          disabled={effective <= 1}
           onClick={() => {
             track("comensales_menos")
             onChange(clamp(effective - 1))
@@ -622,13 +678,10 @@ function DinerStepper({
         >
           <Minus size={16} />
         </button>
-        <span className="min-w-[2rem] text-center text-[16px] font-medium tabular-nums text-ink" aria-live="polite">
-          {effective}
-        </span>
         <button
           type="button"
           aria-label="Más comensales"
-          disabled={disabled || effective >= 24}
+          disabled={effective >= 24}
           onClick={() => {
             track("comensales_mas")
             onChange(clamp(effective + 1))
@@ -641,4 +694,3 @@ function DinerStepper({
     </div>
   )
 }
-

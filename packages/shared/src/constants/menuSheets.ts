@@ -18,11 +18,18 @@
  * Añadir una opción = añadirla aquí, en su hoja (y en specs/feature-usage.md).
  */
 
-/** Las opciones de la hoja de una comida: las comparten `comida`, `comida_varios` y `vacio`. */
+/**
+ * Las opciones de la hoja de una comida: las comparten `comida`, `comida_varios` y `vacio`.
+ * PRO-1175: «Cambiar plato» sigue contando como `elegir_receta` y «Que elija
+ * Mimoia» (dentro del buscador) como `cambiar_azar`, para no partir la serie.
+ * `mas_opciones` y `ya_hecho` abren sus subhojas.
+ */
 const MEAL_SHEET_ACTIONS = [
   'ver_receta',
   'elegir_receta',
   'cambiar_azar',
+  'mas_opciones',
+  'ya_hecho',
   'sobras_si',
   'sobras_no',
   'anadir_plato',

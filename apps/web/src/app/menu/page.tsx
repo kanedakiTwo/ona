@@ -30,6 +30,7 @@ import type { DayMenu, MealSlot } from "@ona/shared"
 import { menuShareText } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
 import { menuDiners } from "@/lib/menuDiners"
+import { mealWhen } from "@/lib/mealSheet"
 import {
   useMenu,
   useGenerateMenu,
@@ -384,9 +385,10 @@ export default function MenuPage() {
         const menuId = menu!.id
         const base = { menuId, day, meal }
         const handlers: SlotHandlers = {
-          regenerate: () => {
+          // «Que elija Mimoia» in the picker (PRO-1175), with its type chip.
+          regenerate: (dishType) => {
             haptic.medium()
-            regenerateMeal.mutate(base)
+            return regenerateMeal.mutateAsync({ ...base, dishType: dishType ?? null })
           },
           pickRecipe: (recipeId) => {
             haptic.medium()
@@ -448,6 +450,7 @@ export default function MenuPage() {
             slot,
             dayLabel: `${weekdayName(day)} ${dateOfDay(weekStart, day).getDate()}`,
             isLocked: isLockedAt(day, meal),
+            when: mealWhen(delta, day, todayIndex),
             defaultDiners,
             batchServings: batchServings((menu!.days ?? []) as DayMenu[], day, meal, defaultDiners),
             feedsLeftovers: feedsLeftovers((menu!.days ?? []) as DayMenu[], day, meal),
@@ -458,7 +461,7 @@ export default function MenuPage() {
       },
     // Mutation objects are stable per hook instance; `menu` drives the rest.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [menu, weekStart, defaultDiners, isLockedAt, regenerateMeal.isPending],
+    [menu, weekStart, delta, todayIndex, defaultDiners, isLockedAt, regenerateMeal.isPending],
   )
 
   const onMoveSlot = useCallback(

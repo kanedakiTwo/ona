@@ -24,7 +24,7 @@ export function TodayPlannedCard({
   defaultDiners: number
   onStart: () => void
 }) {
-  const planned = today && today.meal && !today.locked ? today.planned : []
+  const planned = today && today.meal ? today.planned : []
   const first = planned[0]
   const minutes = planned.reduce<number | null>((max, d) => (d.totalTime == null ? max : Math.max(max ?? 0, d.totalTime)), null)
 

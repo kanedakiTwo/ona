@@ -234,7 +234,7 @@ describe('menu skills', () => {
         { dinner: { dishes: [lent, { kind: 'recipe', recipeId: 'r-ens', recipeName: 'Ensalada verde' }] } }, // miércoles
         {},
         { dinner: { servings: 2, dishes: [{ ...lent, variant: 'leftover', leftoverOf: { day: 2, meal: 'dinner', dishPosition: 0 } }] } }, // viernes: sobras del miércoles
-        { lunch: { dishes: [lent] } },                                                   // sábado: fijada
+        { lunch: { dishes: [lent] } },                                                   // sábado: fijada (se cambia igual, PRO-1175)
         { dinner: { dishes: [lent] } },                                                  // domingo: sin alternativa
       ],
     }
@@ -244,6 +244,7 @@ describe('menu skills', () => {
         const f = fakeApi({
           'GET /menu/u1/*': WEEK,
           'POST /menu/m1/day/2/meal/dinner/dish/0/regenerate': { dish: { kind: 'recipe', recipeId: 'r-gar', recipeName: 'Garbanzos con espinacas' } },
+          'POST /menu/m1/day/5/meal/lunch/dish/0/regenerate': { dish: { kind: 'recipe', recipeId: 'r-alu', recipeName: 'Alubias blancas' } },
           'POST /menu/m1/day/6/meal/dinner/dish/0/regenerate': new AppApiError(409, 'No candidates'),
         })
         const r = await get('ban_recipe_this_week').handler({ recipeName: 'lentejas' }, ctx(f.api))
@@ -258,6 +259,7 @@ describe('menu skills', () => {
       expect(writes(f.calls)).toEqual([
         { method: 'POST', path: '/menu/m1/ban', body: { recipeId: 'r-lent' } },
         { method: 'POST', path: '/menu/m1/day/2/meal/dinner/dish/0/regenerate', body: undefined },
+        { method: 'POST', path: '/menu/m1/day/5/meal/lunch/dish/0/regenerate', body: undefined },
         { method: 'POST', path: '/menu/m1/day/6/meal/dinner/dish/0/regenerate', body: undefined },
         { method: 'DELETE', path: '/menu/m1/day/4/meal/dinner', body: undefined },
         { method: 'POST', path: '/menu/m1/day/4/leftover', body: { sourceDay: 2, sourceMeal: 'dinner', targetMeal: 'dinner' } },
@@ -272,11 +274,14 @@ describe('menu skills', () => {
       expect(r.summary).toContain('- Miércoles 14 de octubre, cena: "Garbanzos con espinacas"')
       expect(r.summary).toContain('- Viernes 16 de octubre, cena: sobras de "Garbanzos con espinacas"')
       expect(r.summary).toContain('Martes 13 de octubre, comida (es un taper del congelador)')
-      expect(r.summary).toContain('Sábado 17 de octubre, comida (esta fijada)')
+      // A locked meal is changed too (PRO-1175): the lock only keeps it when the week is redone.
+      expect(r.summary).toContain('- Sábado 17 de octubre, comida: "Alubias blancas"')
+      expect(r.summary).not.toContain('esta fijada')
       expect(r.summary).toContain('Domingo 18 de octubre, cena (no hay otra receta que encaje)')
       expect(r.summary).not.toContain('Lunes 12')
       expect((r.data as any).changes.map((c: any) => [c.date, c.meal, c.recipeName])).toEqual([
         ['2026-10-14', 'dinner', 'Garbanzos con espinacas'],
+        ['2026-10-17', 'lunch', 'Alubias blancas'],
         ['2026-10-16', 'dinner', 'Garbanzos con espinacas'],
       ])
     })

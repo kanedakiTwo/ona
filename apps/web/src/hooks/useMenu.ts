@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey 
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 import { dishKey, slotKey, type MenuFit, type WeekPlan } from "@ona/shared"
+import { NO_RECIPE_OF_TYPE, regenerateMealBody } from "@/lib/mealSheet"
 import {
   addDishIn,
   addSlotIn,
@@ -194,7 +195,9 @@ function optimistic<V>(
       changeEpoch++
       for (const [key, data] of ctx?.snapshot ?? []) queryClient.setQueryData(key, data)
       if (behind === 0) queryClient.invalidateQueries({ queryKey: ["menu"] })
-      if (typeof window !== "undefined") {
+      // «Que elija Mimoia» with a type nothing fits: the picker says why, and nothing was drawn.
+      const saidInPlace = err instanceof ApiError && err.code === NO_RECIPE_OF_TYPE && behind === 0
+      if (typeof window !== "undefined" && !saidInPlace) {
         window.dispatchEvent(new CustomEvent(MENU_CHANGE_FAILED_EVENT, { detail: { undone: 1 + behind } }))
       }
     },
@@ -237,14 +240,17 @@ export function useRegenerateMeal() {
 
   return useMutation({
     ...MENU_CHANGE,
+    // A recipe chosen by hand stays when the week is redone (PRO-1175): the server locks it.
     ...optimistic(queryClient, (m, v: { day: number; meal: string; recipeId?: string }) =>
-      v.recipeId ? pickRecipeIn(m, v.day, v.meal, recipeLook(queryClient, v.recipeId)) : null),
+      v.recipeId ? lockIn(pickRecipeIn(m, v.day, v.meal, recipeLook(queryClient, v.recipeId)), v.day, v.meal, true) : null),
     mutationFn: queued(async (params: {
       menuId: string
       day: number
       meal: string
       /** When provided, the server pins this recipe instead of running the matcher. */
       recipeId?: string
+      /** PRO-1175: «Que elija Mimoia» with a type chip of the picker (`DISH_TYPES` key). */
+      dishType?: string | null
       /** «Añadir al menú» on a recipe (PRO-1024: only for the usage event). */
       from?: "receta"
     }) => {
@@ -268,8 +274,7 @@ export function useRegenerateMeal() {
         return { offline: true } as unknown as Menu
       }
 
-      const body = params.recipeId ? { recipeId: params.recipeId, ...(params.from ? { from: params.from } : {}) } : undefined
-      return api.put<Menu>(url, body, changeOpts())
+      return api.put<Menu>(url, regenerateMealBody(params), changeOpts())
     }),
     onSuccess: (data) => settleMenu(queryClient, data),
   })
@@ -289,7 +294,7 @@ export function useAddMealSlot() {
   return useMutation({
     ...MENU_CHANGE,
     ...optimistic(queryClient, (m, v: { day: number; meal: string; recipeId?: string }) =>
-      v.recipeId ? addSlotIn(m, v.day, v.meal, recipeLook(queryClient, v.recipeId)) : null),
+      v.recipeId ? lockIn(addSlotIn(m, v.day, v.meal, recipeLook(queryClient, v.recipeId)), v.day, v.meal, true) : null),
     mutationFn: queued(async (params: {
       menuId: string
       day: number
@@ -542,10 +547,12 @@ export function useAddDish() {
   return useMutation({
     ...MENU_CHANGE,
     ...optimistic(queryClient, (m, v: { day: number; meal: string; payload: AddDishPayload }) => {
-      if (v.payload.kind === "note") return addDishIn(m, v.day, v.meal, { kind: "note", text: v.payload.text })
+      // A dish added by hand stays when the week is redone (PRO-1175): the server locks the meal.
+      const kept = lockIn(m, v.day, v.meal, true)
+      if (v.payload.kind === "note") return addDishIn(kept, v.day, v.meal, { kind: "note", text: v.payload.text })
       const look = recipeLook(queryClient, v.payload.recipeId)
       const variant = v.payload.variant === "freezer" || v.payload.variant === "fridge" ? v.payload.variant : undefined
-      return addDishIn(m, v.day, v.meal, {
+      return addDishIn(kept, v.day, v.meal, {
         kind: "recipe",
         recipeId: look.id,
         recipeName: look.name ?? undefined,
@@ -690,7 +697,7 @@ export function useReplaceWithNote() {
     ...MENU_CHANGE,
     ...optimistic(
       queryClient,
-      (m, v: { day: number; meal: string; text: string }) => replaceWithNoteIn(m, v.day, v.meal, v.text),
+      (m, v: { day: number; meal: string; text: string }) => lockIn(replaceWithNoteIn(m, v.day, v.meal, v.text), v.day, v.meal, true),
       (m, v) => ({ expect: slotKey(m.days[v.day]?.[v.meal]) }),
     ),
     mutationFn: queued(async (params: { menuId: string; day: number; meal: string; text: string }, expect) => {

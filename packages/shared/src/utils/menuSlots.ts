@@ -1,4 +1,4 @@
-import type { DayMenu, MealSlot } from '../types/menu.js'
+import type { DayMenu, LockedSlots, MealSlot } from '../types/menu.js'
 import type { Dish } from '../types/menuDish.js'
 
 /**
@@ -69,3 +69,29 @@ export function slotKey(slot: MealSlot | null | undefined): string {
 
 /** Error code of the 409 a route answers when the expectation doesn't hold. */
 export const MENU_CHANGED_CODE = 'MENU_CHANGED'
+
+/**
+ * PRO-1175 (D-182, «Fijar» con el bloqueo implícito): a meal is kept when the
+ * week is redone («Que no cambie si rehago la semana») when the household
+ * chose its dish by hand (a recipe from the picker, a written dish, a dish
+ * added) or asked for it. The lock never blocks a change to that meal: it only
+ * protects it from «Rehacer la semana», «Vaciar semana» and «Saltar día».
+ * Pure: a copy of `locked` with (day, meal) on or off.
+ */
+export function withLock(locked: LockedSlots | null | undefined, day: number, meal: string, on: boolean): LockedSlots {
+  const out: LockedSlots = { ...(locked ?? {}) }
+  const key = String(day)
+  const dayLocks = { ...(out[key] ?? {}) }
+  if (on) dayLocks[meal] = true
+  else delete dayLocks[meal]
+  if (Object.keys(dayLocks).length > 0) out[key] = dayLocks
+  else delete out[key]
+  return out
+}
+
+/** Pure: a slot moved (or swapped) by drag and drop takes its lock with it. */
+export function swapLocks(locked: LockedSlots | null | undefined, a: { day: number; meal: string }, b: { day: number; meal: string }): LockedSlots {
+  const isA = !!locked?.[String(a.day)]?.[a.meal]
+  const isB = !!locked?.[String(b.day)]?.[b.meal]
+  return withLock(withLock(locked, a.day, a.meal, isB), b.day, b.meal, isA)
+}

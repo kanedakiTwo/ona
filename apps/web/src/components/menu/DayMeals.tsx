@@ -84,9 +84,10 @@ function SlotChips({
           <Check size={11} strokeWidth={2.6} /> Comido
         </span>
       )}
+      {/* PRO-1175: a quiet lock, not «Fijada» — every dish chosen by hand has it now. */}
       {ctx.isLocked && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
-          <Lock size={11} strokeWidth={2.2} /> Fijada
+        <span data-testid="meal-kept" title="Se queda si rehaces la semana" className="inline-flex items-center rounded-full bg-cream-deep px-1.5 py-1 text-ink-mid">
+          <Lock size={11} strokeWidth={2.2} role="img" aria-label="Se queda si rehaces la semana" />
         </span>
       )}
       {fromFreezer && (
@@ -141,7 +142,7 @@ export function ExtraDishLines({
   const { others } = slotDishParts(ctx.slot)
   if (others.length === 0) return null
   const text = size === "lg" ? "text-[18px]" : size === "md" ? "text-[16px]" : "text-[15px]"
-  const canRemove = !readOnly && !ctx.isLocked
+  const canRemove = !readOnly
   return (
     <ul data-testid="extra-dishes" className={`flex flex-col ${className}`}>
       {others.map(({ dish, position }) => {
@@ -390,7 +391,7 @@ export function MealRow({
       />
       <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
-          {ctx.isLocked && <Lock size={11} strokeWidth={2.2} aria-label="Fijada" />}
+          {ctx.isLocked && <Lock size={11} strokeWidth={2.2} role="img" aria-label="Se queda si rehaces la semana" />}
           {eyebrow}
         </span>
         <span className={`font-serif-text text-[20px] font-[650] leading-[1.15] text-ink ${first ? "" : "italic"}`}>{title}</span>

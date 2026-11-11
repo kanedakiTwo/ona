@@ -104,7 +104,7 @@ interface Props {
   weekStart: string
   todayIndex: number
   skippedDays?: number[]
-  /** Lock state per slot — drives the "Fijado" chip + the menu's Bloquear/Desbloquear label. */
+  /** Lock state per slot — drives the small padlock (PRO-1175) + the menu's Bloquear/Desbloquear label. */
   lockedSlots?: LockedMap
   /** Household-derived diner count, used as the fallback when the slot has no override. */
   defaultDiners?: number
@@ -839,9 +839,8 @@ function FilledRow({
           </span>
         )}
         {isLocked && (
-          <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-[#C65D38] px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] backdrop-blur-sm">
-            <Lock size={9} strokeWidth={2} />
-            Fijado
+          <span title="Se queda si rehaces la semana" className="absolute left-1 top-1 inline-flex items-center rounded-full bg-[#FAF6EE]/95 p-1 text-[#1A1612] backdrop-blur-sm">
+            <Lock size={9} strokeWidth={2} role="img" aria-label="Se queda si rehaces la semana" />
           </span>
         )}
       </div>

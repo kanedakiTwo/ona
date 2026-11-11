@@ -11,11 +11,11 @@ import { db } from '../db/connection.js'
 import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt } from '@ona/shared'
+import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock } from '@ona/shared'
 import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
-import { loadWeekTypeForUser, poolOfDishType, weekTypeDishTypeAt } from '../services/weekType.js'
+import { loadWeekTypeForUser, poolOfChipType, poolOfDishType, weekTypeDishTypeAt } from '../services/weekType.js'
 import { planWeekType } from '../services/weekTypePlan.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
@@ -501,19 +501,15 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     }
 
     const days = menu.days as DayMenu[]
-    const locked = (menu.locked as LockedSlots) ?? {}
 
     if (dayIndex < 0 || dayIndex >= days.length) {
       res.status(400).json({ error: 'Invalid day index' })
       return
     }
 
-    // Check if slot is locked
-    if (locked[String(dayIndex)]?.[meal]) {
-      res.status(400).json({ error: 'Meal slot is locked' })
-      return
-    }
-
+    // A locked meal can be changed (PRO-1175): the lock only keeps it when
+    // the week is redone. A dish chosen by hand (a recipe or a written dish)
+    // locks it (`withLock`); one Mimoia draws leaves the lock as it was.
     const slot = days[dayIndex]?.[meal]
     if (!slot) {
       res.status(404).json({ error: 'Slot not found' })
@@ -531,7 +527,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       days[dayIndex][meal] = { servings: slot.servings ?? null, dishes: newDishes }
       const [updated] = await db
         .update(menus)
-        .set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) })
+        .set({ days, locked: withLock(menu.locked as LockedSlots, dayIndex, meal, true), skippedDays: unskipDay(menu.skippedDays, dayIndex) })
         .where(eq(menus.id, menuId))
         .returning()
       await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
@@ -584,7 +580,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       days[dayIndex][meal] = { ...slot, dishes: newDishes }
       const [updated] = await db
         .update(menus)
-        .set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) })
+        .set({ days, locked: withLock(menu.locked as LockedSlots, dayIndex, meal, true), skippedDays: unskipDay(menu.skippedDays, dayIndex) })
         .where(eq(menus.id, menuId))
         .returning()
       await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
@@ -625,10 +621,25 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     // Note dishes stay in place unchanged. «Semana tipo» (D-182): a dish the
     // week type asks a type for gets another recipe of that type; one it
     // fixed (a concrete recipe) gets any other.
+    // PRO-1175: «Que elija Mimoia» with a type chip of the picker sends
+    // `dishType`: the first recipe dish gets a recipe of that type, only
+    // (none that fits → 409, nothing written).
+    const chipType = isDishType(req.body?.dishType) ? (req.body.dishType as string) : null
+    const firstRecipeAt = slot.dishes.findIndex((d) => d.kind === 'recipe')
     const newDishes = [...slot.dishes]
     for (let i = 0; i < slot.dishes.length; i++) {
       const dish = slot.dishes[i]
       if (dish.kind !== 'recipe') continue
+      if (chipType && i === firstRecipeAt) {
+        const picked = findForCourse(poolOfChipType(recipesWithIngredients, chipType, dish.recipeId), null, matcherOptions)
+        if (!picked) {
+          const label = dishTypeInfo(chipType)?.label ?? chipType
+          res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con esta comida.`, code: 'NO_RECIPE_OF_TYPE' })
+          return
+        }
+        newDishes[i] = { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null }
+        continue
+      }
       const type = await weekTypeDishTypeAt(menu.userId, menu.weekStart, dayIndex, meal, i)
       const currentCourse = type ? null : dish.course ?? null
       const picked = findForCourse(poolOfDishType(recipesWithIngredients, type), currentCourse, matcherOptions)
@@ -799,7 +810,9 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       course: chosenCourse as any,
     }
     days[dayIndex][meal] = { dishes: [initialDish] }
-    const [updated] = await db.update(menus).set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) }).where(eq(menus.id, menuId)).returning()
+    // A recipe chosen by hand stays when the week is redone (PRO-1175).
+    const lockedNow = manualRecipeId ? withLock(menu.locked as LockedSlots, dayIndex, meal, true) : menu.locked
+    const [updated] = await db.update(menus).set({ days, locked: lockedNow, skippedDays: unskipDay(menu.skippedDays, dayIndex) }).where(eq(menus.id, menuId)).returning()
     await recordMenuEdits(req, menu, [{ action: 'add', day: dayIndex, meal, after: { id: chosenId, name: chosenName } }])
     res.status(201).json(await hydrateMenuImages(updated))
   } catch (err) {
@@ -836,16 +849,12 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
     }
 
     const days = menu.days as DayMenu[]
-    const locked = (menu.locked as LockedSlots) ?? {}
 
     if (dayIndex < 0 || dayIndex >= days.length) {
       res.status(400).json({ error: 'Invalid day index' })
       return
     }
-    if (locked[String(dayIndex)]?.[meal]) {
-      res.status(400).json({ error: 'Meal slot is locked' })
-      return
-    }
+    // A locked meal can be removed too (PRO-1175); its lock goes with it.
     if (!days[dayIndex]?.[meal]) {
       res.status(404).json({ error: 'Slot does not exist' })
       return
@@ -854,7 +863,11 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
 
     const removedSlot = days[dayIndex][meal]
     delete days[dayIndex][meal]
-    const [updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+    const [updated] = await db
+      .update(menus)
+      .set({ days, locked: withLock(menu.locked as LockedSlots, dayIndex, meal, false) })
+      .where(eq(menus.id, menuId))
+      .returning()
     await recordMenuEdits(req, menu, slotRemoved('remove', dayIndex, meal, removedSlot))
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
@@ -870,8 +883,9 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
 //   { fromDay, fromMeal, toDay, toMeal }
 //
 // If the target slot is empty the source is moved there (source becomes empty).
-// If the target slot is occupied the two slots swap. Locked slots on either
-// side reject the request with 400 (a locked slot means "don't move me").
+// If the target slot is occupied the two slots swap. A locked slot moves too
+// and takes its lock with it (PRO-1175: the lock only keeps a meal when the
+// week is redone).
 router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
   try {
     const menuId = String(req.params.menuId)
@@ -906,14 +920,9 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
     }
 
     const days = menu.days as DayMenu[]
-    const locked = (menu.locked as LockedSlots) ?? {}
 
     if (fromDay < 0 || fromDay >= days.length || toDay < 0 || toDay >= days.length) {
       res.status(400).json({ error: 'Invalid day index' })
-      return
-    }
-    if (locked[String(fromDay)]?.[fromMeal] || locked[String(toDay)]?.[toMeal]) {
-      res.status(400).json({ error: 'Cannot move a locked slot' })
       return
     }
     const sourceSlot = days[fromDay]?.[fromMeal]
@@ -935,7 +944,11 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
 
     const [updated] = await db
       .update(menus)
-      .set({ days: movedDays, skippedDays: unskipDay(menu.skippedDays, toDay) })
+      .set({
+        days: movedDays,
+        locked: swapLocks(menu.locked as LockedSlots, { day: fromDay, meal: fromMeal }, { day: toDay, meal: toMeal }),
+        skippedDays: unskipDay(menu.skippedDays, toDay),
+      })
       .where(eq(menus.id, menuId))
       .returning()
     await recordMenuEdits(req, menu, moved)
@@ -1267,7 +1280,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/taper', async (req: AuthRequest, 
       return
     }
     const before = (menu.days as DayMenu[])[day]?.[meal]
-    const r = applyTaper(menu.days as DayMenu[], day, meal, count, (menu.locked ?? {}) as LockedSlots)
+    // Asked for this meal: its lock doesn't stop it (PRO-1175); the generator's week-type tápers still skip locked meals.
+    const r = applyTaper(menu.days as DayMenu[], day, meal, count)
     if (!r.ok) {
       res.status(r.status).json({ error: r.error })
       return
@@ -1449,7 +1463,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     const next = addDish(slot.dishes, named)
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
-    await db.update(menus).set({ days: days as any, skippedDays: unskipDay(menu.skippedDays, day) }).where(eq(menus.id, menuId))
+    // A dish added by hand stays when the week is redone (PRO-1175).
+    await db
+      .update(menus)
+      .set({ days: days as any, locked: withLock(menu.locked as LockedSlots, day, meal, true), skippedDays: unskipDay(menu.skippedDays, day) })
+      .where(eq(menus.id, menuId))
     const added = dishRecipe(next[next.length - 1])
     if (added) {
       const freezer = parsed.data.kind === 'recipe' && (parsed.data.variant === 'freezer' || parsed.data.variant === 'fridge' || parsed.data.variant === 'cooked')
@@ -1481,7 +1499,9 @@ router.delete('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Au
     const removed = dishRecipe(slot.dishes[position])
     const next = removeDishAt(slot.dishes, position)
     days[day][meal] = { ...slot, dishes: next }
-    await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
+    // The last dish out: nothing left to keep, so the lock goes too (PRO-1175).
+    const lockedNow = next.length === 0 ? withLock(menu.locked as LockedSlots, day, meal, false) : menu.locked
+    await db.update(menus).set({ days: days as any, locked: lockedNow }).where(eq(menus.id, menuId))
     if (removed) await recordMenuEdits(req, menu, [{ action: 'remove', day, meal, before: removed }])
     res.json({ dishes: next })
   } catch (err: any) {
@@ -1808,6 +1828,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     }]
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
+    // Drawn by Mimoia: the lock stays as it was (PRO-1175).
     await db.update(menus).set({ days: days as any, skippedDays: unskipDay(menu.skippedDays, day) }).where(eq(menus.id, menuId))
     await recordMenuEdits(req, menu, [{ action: 'add', day, meal, after: { id: picked.id, name: picked.name } }])
     refreshPrepAlerts(menuId)

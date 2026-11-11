@@ -141,14 +141,16 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
   await expect(page.getByRole('button', { name: /^(tipo|vetar)$/i })).toHaveCount(0)
   await hero.getByRole('button', { name: /más opciones/i }).click()
   const mealSheet = page.getByRole('dialog')
-  await expect(mealSheet.getByRole('button', { name: /^vetar esta receta$/i })).toBeVisible()
-  await expect(mealSheet.getByRole('button', { name: /^elegir otra receta$/i })).toBeVisible()
-  await expect(mealSheet.getByRole('button', { name: /más comensales/i })).toBeVisible()
+  await expect(mealSheet.getByRole('button', { name: /^no la pongas más esta semana$/i })).toBeVisible()
+  await expect(mealSheet.getByRole('button', { name: /^cambiar plato$/i })).toBeVisible()
 
-  // A sheet action is wired: "Fijar" locks the slot and the hero says so.
-  await mealSheet.getByRole('button', { name: /^fijar$/i }).click()
+  // A sheet action is wired (PRO-1175: in «Más opciones»): «Que no cambie si
+  // rehago la semana» locks the slot and the hero shows the lock.
+  await mealSheet.getByRole('button', { name: /^más opciones$/i }).click()
+  await expect(page.getByRole('dialog').getByRole('button', { name: /más comensales/i })).toBeVisible()
+  await page.getByRole('dialog').getByRole('button', { name: /^que no cambie si rehago la semana$/i }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(hero.getByText('Fijada')).toBeVisible({ timeout: 10_000 })
+  await expect(hero.getByTestId('meal-kept')).toBeVisible({ timeout: 10_000 })
 
   // The week's "···" holds the week actions.
   await page.getByRole('button', { name: /opciones de la semana/i }).click()
@@ -668,9 +670,10 @@ test('a dish already in the menu can be marked «son sobras de otro día» and b
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
 
-  await hero.getByRole('button', { name: /más opciones/i }).click()
+  // PRO-1175: «Más opciones» → «Ya está hecho / táper…» → «Lo tengo hecho».
+  await openDoneSheet(page, hero)
   let patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/dish\/0$/.test(r.url()))
-  await page.getByRole('dialog').getByRole('button', { name: /^son sobras de otro día/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^lo tengo hecho/i }).click()
   let res = await patched
   expect(res.ok(), `cooked: ${res.status()}`).toBeTruthy()
   expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ variant: 'cooked' })
@@ -678,10 +681,17 @@ test('a dish already in the menu can be marked «son sobras de otro día» and b
   // Already cooked: nothing to start cooking.
   await expect(hero.getByRole('link', { name: /empezar a cocinar/i })).toHaveCount(0)
 
-  await hero.getByRole('button', { name: /más opciones/i }).click()
+  await openDoneSheet(page, hero)
   patched = page.waitForResponse((r) => r.request().method() === 'PATCH' && /\/dish\/0$/.test(r.url()))
-  await page.getByRole('dialog').getByRole('button', { name: /^no son sobras de otro día/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^no lo tengo hecho/i }).click()
   res = await patched
   expect(res.ok(), `planned: ${res.status()}`).toBeTruthy()
   await expect(hero.getByText('Sobras de otro día · no suma a la compra')).toHaveCount(0, { timeout: 10_000 })
 })
+
+/** The meal sheet → «Más opciones» → «Ya está hecho / táper…» (PRO-1175). */
+async function openDoneSheet(page: Page, hero: Locator) {
+  await hero.getByRole('button', { name: /más opciones/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^más opciones$/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^ya está hecho/i }).click()
+}

@@ -61,7 +61,7 @@ test('tapping an empty meal opens its «···» sheet', async ({ page }) => {
   const sheet = page.getByRole('dialog', { name: 'Sin plato todavía' })
   await expect(sheet).toBeVisible()
   await expect(sheet.getByRole('button', { name: /^añadir plato/i })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /^fijar/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^más opciones/i })).toBeVisible()
   await expect(sheet.getByRole('button', { name: /^quitar comida/i })).toBeVisible()
 })
 

@@ -91,7 +91,7 @@ Para decidir qué opciones de las hojas «···» del menú se quedan a la vist
 
 | `sheet` | Dónde | `action` |
 |---|---|---|
-| `comida` | hoja de una comida con un plato (`MealOptions`, día y escritorio) | `ver_receta`, `elegir_receta`, `cambiar_azar`, `sobras_si` / `sobras_no`, `anadir_plato`, `fijar` / `desfijar`, `vetar`, `cocinada` / `desmarcar_cocinada`, `taper_si` / `taper_no`, `comensales_menos` / `comensales_mas` / `comensales_quitar`, `quitar_comida` |
+| `comida` | hoja de una comida con un plato (`MealOptions`, día y escritorio) | `ver_receta`, `elegir_receta` («Cambiar plato»), `cambiar_azar` («Que elija Mimoia», dentro del buscador, PRO-1175), `mas_opciones`, `ya_hecho` («Ya está hecho / táper…»), `sobras_si` / `sobras_no`, `anadir_plato`, `fijar` / `desfijar`, `vetar`, `cocinada` / `desmarcar_cocinada`, `taper_si` / `taper_no`, `comensales_menos` / `comensales_mas` / `comensales_quitar`, `quitar_comida` |
 | `comida_varios` | la misma hoja con varios platos o con una nota | las de `comida` y `ordenar_platos` (arrastrar) |
 | `plato` | cada plato de esa lista | `ver_receta` (la miniatura), `cambiar_azar` («Cambiar»), `quitar_plato`, `editar_nota` |
 | `vacio` | la hoja de una comida sin plato | las de `comida` (se ven `anadir_plato`, `fijar`, comensales y `quitar_comida`) |

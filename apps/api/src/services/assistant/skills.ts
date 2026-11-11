@@ -793,9 +793,7 @@ async function pickWhatIHaveRecipe(
   if ((menu?.bannedRecipeIds as string[] | undefined)?.includes(recipe.id)) {
     return { data: null, summary: `"${recipe.name}" esta vetada esta semana; no la he puesto.`, uiHint: 'text' }
   }
-  if ((menu?.locked as Record<string, Record<string, boolean>> | undefined)?.[String(t.dayIndex)]?.[meal]) {
-    return { data: null, summary: `La ${slotLabel} esta fijada; no la he cambiado. Si quieres, desfijala primero.`, uiHint: 'text' }
-  }
+  // A locked meal changes too when asked (PRO-1175): the lock only keeps it when the week is redone.
   const dish = { kind: 'recipe' as const, recipeId: recipe.id, recipeName: recipe.name }
   let saved: { days?: unknown } | undefined
   if (menu) {

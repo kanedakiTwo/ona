@@ -174,7 +174,7 @@ test.describe('desktop', () => {
     const hero = page.getByTestId('menu-hero')
     await expect(hero).toBeVisible({ timeout: 20_000 })
     await hero.getByRole('button', { name: /más opciones de comida/i }).click()
-    await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
     const picker = page.getByTestId('recipe-picker')
     await picker.getByPlaceholder('Buscar receta…').fill(target.name)
     // The list row: its name, then «Mimoia» / «tuya» (a name with «(» or «+» must not break a RegExp).
@@ -325,7 +325,7 @@ test.describe('desktop', () => {
       await expect(hero).toBeVisible({ timeout: 20_000 })
       await page.waitForTimeout(800)
       await hero.getByRole('button', { name: /más opciones de comida/i }).click()
-      await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+      await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
       const picker = page.getByTestId('recipe-picker')
       await picker.getByPlaceholder('Buscar receta…').fill('Cenamos fuera esta vez')
       await picker.getByRole('button', { name: /como plato/ }).click()
@@ -391,7 +391,7 @@ test.describe('phone 390×844', () => {
     const hero = page.getByTestId('menu-hero')
     await expect(hero).toBeVisible({ timeout: 20_000 })
     await hero.getByRole('button', { name: /más opciones de comida/i }).click()
-    await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
     const sheet = (await page.getByTestId('recipe-picker').boundingBox())!
     const field = (await page.getByTestId('recipe-picker').getByPlaceholder('Buscar receta…').boundingBox())!
     expect(field.y + field.height).toBeLessThanOrEqual(844)
@@ -410,7 +410,7 @@ test.describe('desktop picker', () => {
     const hero = page.getByTestId('menu-hero')
     await expect(hero).toBeVisible({ timeout: 20_000 })
     await hero.getByRole('button', { name: /más opciones de comida/i }).click()
-    await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
     await expectStillSearchField(page, 'a', uniqueName(recipes))
   })
 })

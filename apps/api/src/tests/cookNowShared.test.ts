@@ -39,13 +39,13 @@ describe('displaceTargets', () => {
     {}, {}, {},
   ]
   it('from tomorrow to Sunday, saying what each would replace', () => {
-    const t = displaceTargets(days, 0, 'lunch', { '3': { lunch: true } }, [2])
+    const t = displaceTargets(days, 0, 'lunch', [2])
     expect(t.map((x) => x.day)).toEqual([1, 2, 3, 4, 5, 6])
     expect(t[0]).toMatchObject({ replaces: 'Merluza', disabled: false })
     expect(t[1]).toMatchObject({ replaces: null, disabled: true }) // skipped day
-    expect(t[2]).toMatchObject({ disabled: true }) // locked
+    expect(t[2]).toMatchObject({ disabled: false })
   })
-  it('Sunday has nowhere to go', () => expect(displaceTargets(days, 6, 'lunch', {}, [])).toEqual([]))
+  it('Sunday has nowhere to go', () => expect(displaceTargets(days, 6, 'lunch', [])).toEqual([]))
 })
 
 describe('cookNowHitLine', () => {

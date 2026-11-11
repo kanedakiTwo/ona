@@ -421,7 +421,7 @@ function SideMeal({
       />
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
-          {props.ctx.isLocked && <Lock size={11} strokeWidth={2.2} aria-label="Fijada" />}
+          {props.ctx.isLocked && <Lock size={11} strokeWidth={2.2} role="img" aria-label="Se queda si rehaces la semana" />}
           {eyebrow}
         </span>
         <span className={`font-serif-text font-[650] leading-[1.1] text-ink ${big ? "text-[26px]" : "text-[18px]"}`}>
@@ -682,7 +682,7 @@ function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
       {empty ? (
         <button
           type="button"
-          disabled={readOnly || props.ctx.isLocked}
+          disabled={readOnly}
           onClick={() => ctl.setOpen("addDish")}
           {...stopKeys}
           aria-label={`${meal} del ${dayName}: ${readOnly ? "sin plato" : "añadir un plato"}`}
@@ -719,8 +719,8 @@ function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
         </button>
       )}
       {props.ctx.isLocked && (
-        <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-paper/95 px-1.5 py-0.5 text-[11px] font-medium text-ink">
-          <Lock size={10} strokeWidth={2.2} /> Fijada
+        <span title="Se queda si rehaces la semana" className="absolute left-1.5 top-1.5 inline-flex items-center rounded-full bg-paper/95 p-1 text-ink">
+          <Lock size={10} strokeWidth={2.2} role="img" aria-label="Se queda si rehaces la semana" />
         </span>
       )}
       {!readOnly && (

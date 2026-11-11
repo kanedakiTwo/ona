@@ -399,6 +399,16 @@ export function weekTypeDishTypeIn(days: WeekTypeDays, weekStart: string, day: n
   return o?.kind === 'type' ? o.type : null
 }
 
+/**
+ * Pure (PRO-1175): «Que elija Mimoia» with a type chip of the picker — only
+ * the recipes of that type, never the one already there (choosing the same
+ * dish again looked like nothing happened). Empty = nothing of that type: the
+ * route answers 409 NO_RECIPE_OF_TYPE instead of falling back to any recipe.
+ */
+export function poolOfChipType<R extends { id: string; dishTypes?: string[] | null }>(pool: R[], type: string, currentRecipeId?: string | null): R[] {
+  return pool.filter((r) => r.id !== currentRecipeId && r.dishTypes?.includes(type))
+}
+
 /** Pure: the recipes of that type, or all of them when there's no type or none of it. */
 export function poolOfDishType<R extends { dishTypes?: string[] | null }>(pool: R[], type: string | null): R[] {
   if (!type) return pool

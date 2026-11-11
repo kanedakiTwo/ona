@@ -1,9 +1,10 @@
 /**
- * «Semana tipo» (D-182), phase 1:
- * - saving the profile never wipes the household's week type (its plantilla
- *   card writes only the slots changed there);
+ * «Semana tipo» (D-182):
+ * - saving the profile never changes the household's week type;
+ * - «Tu semana tipo» (phase 2), end to end: a type, «cada 2», turns,
+ *   together, remove and «no hay», and the next generated week follows it;
  * - a generated week follows its slots two weeks running, and the menu shows it.
- * Design: docs/superpowers/specs/2026-11-11-semana-tipo-design.md §9.
+ * Design: docs/superpowers/specs/2026-11-11-semana-tipo-design.md §4, §9.
  */
 
 import { test, expect, type Page } from '@playwright/test'
@@ -28,50 +29,68 @@ function monday(offsetWeeks: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-test('saving the profile keeps the week type and writes only the slot changed in the card', async ({ page }) => {
+test('saving the profile never changes the week type', async ({ page }) => {
   test.setTimeout(60_000)
   const { headers } = await auth(page)
-  // Friday dinner: pizza (as Mimo or, in phase 2, the grid will set it).
-  const put = await page.request.put(`${API_URL}/households/me/week-type/4/dinner`, { headers, data: { options: [{ kind: 'type', type: 'pizza' }] } })
-  expect(put.ok()).toBe(true)
+  expect((await page.request.put(`${API_URL}/households/me/week-type/4/dinner`, { headers, data: { options: [{ kind: 'type', type: 'pizza' }] } })).ok()).toBe(true)
+  const before = await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()
+  await page.goto('/profile')
+  await page.getByRole('button', { name: /guardar cambios/i }).click()
+  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  expect(await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).toEqual(before)
+})
 
-  // The card shows the week type once it is read: wait for it before touching it.
+test('«Tu semana tipo», end to end: a type, «cada 2», turns, together, remove and «no hay»', async ({ page }) => {
+  test.setTimeout(120_000)
+  const { headers, userId } = await auth(page)
+  const weekType = async () => (await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).days
   const loaded = page.waitForResponse((r) => r.url().includes('/households/me/week-type') && r.request().method() === 'GET')
   await page.goto('/profile')
+  await page.getByRole('link', { name: /Tu semana tipo/ }).click()
   await loaded
-  // One more diner at Monday's lunch in «Plantilla semanal».
-  const more = page.getByRole('button', { name: 'Más comensales en almuerzo lunes' })
-  await expect(more).toBeVisible({ timeout: 15_000 })
-  const cell = more.locator('xpath=..')
-  const before = Number(await cell.locator('span').textContent())
-  await more.click()
-  await page.getByRole('button', { name: /guardar cambios/i }).click()
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('heading', { name: /Tu semana tipo/ })).toBeVisible()
 
-  const wt = await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()
-  expect(wt.days[4].dinner.options).toEqual([{ kind: 'type', type: 'pizza' }])
-  expect(wt.days[0].lunch.diners).toBe(before + 1)
-  // The rest of the week as it was: lunch and dinner, no breakfast.
-  expect(wt.days[2].breakfast).toEqual({ off: true })
-  expect(wt.days[2].dinner.options).toBeUndefined()
+  // Friday dinner → Pizza.
+  await page.getByTestId('wt-cell-4-dinner').click()
+  const panel = page.getByTestId('wt-panel')
+  await panel.getByRole('button', { name: 'Añadir' }).click()
+  await page.getByTestId('wt-picker').getByRole('button', { name: 'Pizza', exact: true }).click()
+  await expect(panel.getByRole('button', { name: 'Quitar Pizza' })).toBeVisible()
+  await expect.poll(async () => (await weekType())[4].dinner.options).toEqual([{ kind: 'type', type: 'pizza' }])
 
-  // Saving again without touching the card changes nothing.
-  const reloaded = page.waitForResponse((r) => r.url().includes('/households/me/week-type') && r.request().method() === 'GET')
-  await page.reload()
-  await reloaded
-  await expect(page.getByRole('button', { name: 'Más comensales en almuerzo lunes' })).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: /guardar cambios/i }).click()
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
-  expect(await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).toEqual(wt)
+  // «Cada 2»: one week pizza, the next anything.
+  await panel.getByRole('button', { name: 'Cada 2' }).click()
+  await expect.poll(async () => (await weekType())[4].dinner.options).toEqual([{ kind: 'type', type: 'pizza' }, { kind: 'any' }])
+  await expect(page.getByTestId('wt-preview')).toContainText('Cualquier receta')
 
-  // «Platos fijos»: Friday's pizza is a line with «Quitar», and «Quitar» leaves that dinner free.
-  const fixed = page.getByRole('group', { name: 'Platos fijos' })
-  await expect(fixed).toContainText('Viernes · cena: Pizza')
-  await fixed.getByRole('button', { name: 'Quitar Pizza del viernes' }).click()
-  await expect(fixed).toHaveCount(0)
-  const after = await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()
-  expect(after.days[4].dinner.options).toBeUndefined()
-  expect(after.days[0].lunch.diners).toBe(before + 1)
+  // A second option: by turns, then together.
+  await panel.getByRole('button', { name: 'Añadir' }).click()
+  await page.getByTestId('wt-picker').getByRole('button', { name: 'Ceviche', exact: true }).click()
+  await expect.poll(async () => (await weekType())[4].dinner.options).toEqual([{ kind: 'type', type: 'pizza' }, { kind: 'type', type: 'ceviche' }])
+  await panel.getByRole('button', { name: 'Juntos' }).click()
+  await expect.poll(async () => (await weekType())[4].dinner.together).toBe(true)
+
+  // Remove the ceviche: back to pizza alone, every week.
+  await panel.getByRole('button', { name: 'Quitar Ceviche' }).click()
+  await expect.poll(async () => (await weekType())[4].dinner).toMatchObject({ options: [{ kind: 'type', type: 'pizza' }] })
+  expect((await weekType())[4].dinner.together).toBeUndefined()
+
+  // Sunday: no dinner.
+  await page.keyboard.press('Escape')
+  await page.getByTestId('wt-cell-6-dinner').click()
+  await page.getByTestId('wt-panel').getByRole('button', { name: 'No hay cena este día' }).click()
+  await expect.poll(async () => (await weekType())[6].dinner.off).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('wt-cell-6-dinner')).toHaveAttribute('aria-label', 'Domingo, cena: no hay')
+  await expect(page.getByTestId('wt-cell-4-dinner')).toHaveAttribute('aria-label', 'Viernes, cena: Pizza')
+
+  // The next week follows it.
+  const gen = await page.request.post(`${API_URL}/menu/generate`, { headers, data: { userId, weekStart: monday(1) } })
+  expect(gen.ok()).toBe(true)
+  const menu = await gen.json()
+  const friday = menu.days[4].dinner.dishes[0]
+  expect(friday.kind === 'recipe' ? friday.recipeName : friday.text).toMatch(/pizza/i)
+  expect(menu.days[6].dinner).toBeUndefined()
 })
 
 test('a generated week follows the week type two weeks running', async ({ page }) => {

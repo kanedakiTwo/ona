@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { reachable, API_URL } from './smokeEnv.js'
 import { db } from '../db/connection.js'
-import { chatMessages, profileChanges, profileFacts, profileRefinements, profileRefinerRuns, users } from '../db/schema.js'
+import { chatMessages, householdWeekTypes, profileFacts, profileRefinements, profileRefinerRuns, users } from '../db/schema.js'
 import {
   defaultRealtimeDeps,
   defaultRefinerDeps,
@@ -72,10 +72,12 @@ describe.skipIf(!reachable)('la ficha al momento y cada semana (PRO-320)', () =>
     expect(sent).toHaveLength(1)
     expect(sent[0].messages[0].content).toMatch(/Pasada al momento/)
     expect(sent[0].messages[0].content).toContain('Los viernes cenamos pizza casera')
-    const [pizza] = await db.select().from(profileFacts).where(and(eq(profileFacts.householdId, householdId), eq(profileFacts.type, 'fixed_dish')))
-    expect(pizza).toMatchObject({ origin: 'ai_realtime', status: 'active', value: { dish: 'pizza casera', days: ['viernes'], meal: 'dinner' } })
-    const [added] = await db.select().from(profileChanges).where(and(eq(profileChanges.factId, pizza.id), eq(profileChanges.action, 'fact_added')))
-    expect(added.origin).toBe('ai_realtime')
+    // «Semana tipo» (D-182): a dish with its day and meal goes to the household's week type, not to a fact.
+    expect(await db.select().from(profileFacts).where(and(eq(profileFacts.householdId, householdId), eq(profileFacts.type, 'fixed_dish')))).toHaveLength(0)
+    const [weekType] = await db.select().from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId))
+    const friday = (weekType.slots as any[])[4].dinner
+    expect(friday.options).toHaveLength(1)
+    expect(friday.options[0].kind === 'recipe' ? friday.options[0].name : friday.options[0].label ?? friday.options[0].type).toMatch(/pizza/i)
     const [rt] = await db.select().from(profileRefinerRuns).where(and(eq(profileRefinerRuns.day, day), eq(profileRefinerRuns.kind, 'realtime')))
     const [rtRow] = await db.select().from(profileRefinements).where(and(eq(profileRefinements.runId, rt.id), eq(profileRefinements.householdId, householdId)))
     expect(rtRow).toMatchObject({ status: 'applied', applied: 1, billedUserId: userId })

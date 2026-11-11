@@ -944,6 +944,7 @@ export default function MenuPage() {
               }}
               slotProps={slotPropsFor(selectedDay)}
               readOnly={isPastWeek}
+              isToday={selectedDay === todayIndex}
             />
             {!isPastWeek && (
               <div className="mt-5">

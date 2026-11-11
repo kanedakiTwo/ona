@@ -94,9 +94,15 @@ Household-shared named recipe collections — "Favoritos de Sara", "Para diabét
 
 ## [Cook from Pantry](./cook-from-pantry.md)
 
+<<<<<<< 7532516f86636df5dad6255684fc6a45c34398de
 "Lo que puedes cocinar con lo que tienes" — PR 12. Ranks every catalogue recipe by what fraction of its required ingredients the household has at home (PR 11 pantry). Pure scorer `scoreRecipeAgainstPantry(ings, pantry)` exported + unit-tested (6 cases): coverage = matched / required, optional ingredients excluded from both sides, ties broken by matchedCount then totalRequired. REST: `GET /recipes/match-pantry?limit=N` (auth-only, default 3, max 20). No screen calls it since 2026-11-11 (PRO-1107): the «Con lo que tienes» card left `/menu` for the «Cocinar» tab, on the «Cocinar ahora» search ([Cook now](./cook-now.md)).
 
 **Source**: `apps/api/src/services/pantryMatcher.ts`, `apps/api/src/routes/recipes.ts` (handler before `/recipes/:id`), `apps/api/src/tests/pantryMatcher.test.ts`
+=======
+"Lo que puedes cocinar con lo que tienes" — PR 12. Ranks every catalogue recipe by what fraction of its required ingredients the household has at home (PR 11 pantry). Pure scorer `scoreRecipeAgainstPantry(ings, pantry)` exported + unit-tested (6 cases): coverage = matched / required, optional ingredients excluded from both sides, ties broken by matchedCount then totalRequired. REST: `GET /recipes/match-pantry?limit=N` (auth-only, default 3, max 20). Frontend: `<PantryMatchCard />` ink-on-cream card on `/menu` below the day's meals with up to 3 recipes + thumbnail + `<matched>/<total>` + coverage percentage. Hides itself when the pantry is empty or no recipe matches. **Retired (PRO-1108, 2026-11-11):** card, route and scorer gone; «Con lo que tienes» moves to «Cocinar».
+
+**Source**: none left (successor: `apps/api/src/services/cookNow/`, `apps/web/src/app/cocinar/page.tsx`)
+>>>>>>> ae5c98d17aad64d803a1b844f3fec0bb2444e4da
 
 ---
 

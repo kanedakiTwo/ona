@@ -13,6 +13,7 @@ export type ClientUsageEvent =
   | "content_shared"
   | "week_printed"
   | "handsfree_started"
+  | "menu_sheet_action"
 export type UsageScreen =
   | "menu"
   | "cocinar"

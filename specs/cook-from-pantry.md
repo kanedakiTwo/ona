@@ -1,6 +1,10 @@
 # Cook from Pantry
 
+<<<<<<< 7532516f86636df5dad6255684fc6a45c34398de
 **Status:** PR 12 shipped. **The card left `/menu` on 2026-11-11 (PRO-1107):** «Con lo que tienes» now lives in the «Cocinar» tab and is built on the «Cocinar ahora» search ([Cook now](./cook-now.md)); `GET /recipes/match-pantry` stays until the plan's task 18 retires it, with no screen calling it.
+=======
+**Status:** retired (PRO-1108, 2026-11-11). The card on `/menu`, `GET /recipes/match-pantry` and `services/pantryMatcher.ts` are gone; «Con lo que tienes» moves to the «Cocinar» tab, on the «Cocinar ahora» search (`services/cookNow/*`, plan `docs/superpowers/plans/2026-11-03-cocinar-ahora.md`). What follows is what it did, for history.
+>>>>>>> ae5c98d17aad64d803a1b844f3fec0bb2444e4da
 
 "Lo que puedes cocinar con lo que tienes" — given the household pantry (PR 11), rank every catalogue recipe by how much of it the household already has on hand. Until 2026-11-11 the top 3 surfaced as a small card on `/menu`.
 
@@ -53,6 +57,10 @@ type PantryMatchHit = {
 
 ## Source
 
+<<<<<<< 7532516f86636df5dad6255684fc6a45c34398de
 - `apps/api/src/services/pantryMatcher.ts` — `scoreRecipeAgainstPantry` (pure), `findPantryMatches` (DB)
 - `apps/api/src/routes/recipes.ts` — `GET /recipes/match-pantry` handler
 - `apps/api/src/tests/pantryMatcher.test.ts` — 6 cases
+=======
+Retired in PRO-1108: no code left. Its successor lives in `apps/api/src/services/cookNow/` and `apps/web/src/app/cocinar/page.tsx`.
+>>>>>>> ae5c98d17aad64d803a1b844f3fec0bb2444e4da

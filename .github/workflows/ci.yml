@@ -64,13 +64,18 @@ jobs:
           }
 
       # tsc errors become annotations through setup-node's tsc problem matcher
-      # (file, line and message, readable from the API without a token).
+      # (file, line and message, readable from the API without a token); sed
+      # puts the package folder in front so the file is found in the repo.
       - name: Type-check API
-        run: pnpm --filter @ona/api exec tsc --noEmit --pretty false
+        run: |
+          set -o pipefail
+          pnpm --filter @ona/api exec tsc --noEmit --pretty false | sed -E 's#^([^ (]+\.tsx?)\(#apps/api/\1(#'
 
       - name: Type-check Web
         # apps/web has no `lint` script yet; tsc is the gate.
-        run: pnpm --filter @ona/web exec tsc --noEmit --pretty false
+        run: |
+          set -o pipefail
+          pnpm --filter @ona/web exec tsc --noEmit --pretty false | sed -E 's#^([^ (]+\.tsx?)\(#apps/web/\1(#'
 
       - name: API unit tests
         # github-actions: each failing test is also an annotation (file, line

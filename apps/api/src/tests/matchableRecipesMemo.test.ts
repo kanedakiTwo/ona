@@ -39,14 +39,29 @@ describe('derivedRecipeReads', () => {
   it('reuses the kept value while the recipe does not change', () => {
     const a = derivedRecipeReads('r1', null, steps, names, audit, {})
     const b = derivedRecipeReads('r1', null, [...steps], [...names], { ...audit }, {})
-    expect(b).toBe(a)
+    expect(b.stepMentions).toBe(a.stepMentions)
+    expect(b.audit).toBe(a.audit)
+  })
+
+  it('households with and without «proteína en cada plato» keep their own audit (they used to throw each other\'s out)', () => {
+    const plain = derivedRecipeReads('r1', null, steps, names, audit, {})
+    const strict = derivedRecipeReads('r1', null, steps, names, audit, { strictProteinMinimum: true })
+    const plainAgain = derivedRecipeReads('r1', null, steps, names, audit, {})
+    const strictAgain = derivedRecipeReads('r1', null, steps, names, audit, { strictProteinMinimum: true })
+    expect(plainAgain.audit).toBe(plain.audit)
+    expect(strictAgain.audit).toBe(strict.audit)
+    expect(strict.audit).toEqual(catalogAuditIssuesFor(null, audit, { strictProteinMinimum: true }))
+    // The step mentions don't depend on the household: one for both.
+    expect(strict.stepMentions).toBe(plain.stepMentions)
   })
 
   it('reads an edited recipe again', () => {
     derivedRecipeReads('r1', null, steps, names, audit, {})
     const fixed = derivedRecipeReads('r1', null, steps, [...names, 'chorizo', 'morcilla'], audit, {})
     expect(fixed.stepMentions.map((m) => m.term)).not.toContain('chorizo')
-    const stricter = derivedRecipeReads('r1', null, steps, [...names, 'chorizo', 'morcilla'], audit, { strictProteinMinimum: true })
-    expect(stricter).not.toBe(fixed)
+    const longer = { ...audit, stepCount: 3 }
+    const reaudited = derivedRecipeReads('r1', null, steps, [...names, 'chorizo', 'morcilla'], longer, {})
+    expect(reaudited.audit).toEqual(catalogAuditIssuesFor(null, longer, {}))
+    expect(reaudited.stepMentions).toBe(fixed.stepMentions)
   })
 })

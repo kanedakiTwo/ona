@@ -21,8 +21,14 @@ import { loadDishDislikeOverrides } from './dishDislikes.js'
  * mostrarse»). The key is the inputs themselves, so an edited recipe is read
  * again; one entry per recipe id.
  */
-const derivedMemo = new Map<string, { key: string; stepMentions: RecipeWithIngredients['stepMentions']; audit: ReturnType<typeof catalogAuditIssuesFor> }>()
+const mentionsMemo = new Map<string, { key: string; value: RecipeWithIngredients['stepMentions'] }>()
+const auditMemo = new Map<string, { key: string; value: ReturnType<typeof catalogAuditIssuesFor> }>()
 
+/**
+ * Two memos (2026-11-10): the step mentions per recipe id (they don't depend
+ * on the household), the audit per `id|strictProteinMinimum` — so households
+ * with and without «proteína en cada plato» don't throw each other's out.
+ */
 export function derivedRecipeReads(
   id: string,
   authorId: string | null,
@@ -31,21 +37,29 @@ export function derivedRecipeReads(
   audit: Parameters<typeof catalogAuditIssuesFor>[1],
   auditOptions: Parameters<typeof catalogAuditIssuesFor>[2],
 ) {
-  const key = JSON.stringify([authorId, steps, ingredientNames, audit, auditOptions])
-  const hit = derivedMemo.get(id)
-  if (hit && hit.key === key) return hit
-  const out = {
-    key,
-    stepMentions: unlistedDietMentions(steps, ingredientNames).map(({ term, category }) => ({ term, category })),
-    audit: catalogAuditIssuesFor(authorId, audit, auditOptions),
+  const mentionsKey = JSON.stringify([steps, ingredientNames])
+  let mentions = mentionsMemo.get(id)
+  if (!mentions || mentions.key !== mentionsKey) {
+    mentions = {
+      key: mentionsKey,
+      value: unlistedDietMentions(steps, ingredientNames).map(({ term, category }) => ({ term, category })),
+    }
+    mentionsMemo.set(id, mentions)
   }
-  derivedMemo.set(id, out)
-  return out
+  const auditId = `${id}|${auditOptions?.strictProteinMinimum ? 1 : 0}`
+  const auditKey = JSON.stringify([authorId, audit, auditOptions ?? {}])
+  let checked = auditMemo.get(auditId)
+  if (!checked || checked.key !== auditKey) {
+    checked = { key: auditKey, value: catalogAuditIssuesFor(authorId, audit, auditOptions) }
+    auditMemo.set(auditId, checked)
+  }
+  return { stepMentions: mentions.value, audit: checked.value }
 }
 
 /** Tests only. */
 export function _clearDerivedRecipeMemo(): void {
-  derivedMemo.clear()
+  mentionsMemo.clear()
+  auditMemo.clear()
 }
 
 /** `authorId`: null for the catalogue, the household member's id for their own recipes (PRO-1141 looks there first). */

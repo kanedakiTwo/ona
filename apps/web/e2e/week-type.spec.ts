@@ -35,7 +35,10 @@ test('saving the profile keeps the week type and writes only the slot changed in
   const put = await page.request.put(`${API_URL}/households/me/week-type/4/dinner`, { headers, data: { options: [{ kind: 'type', type: 'pizza' }] } })
   expect(put.ok()).toBe(true)
 
+  // The card shows the week type once it is read: wait for it before touching it.
+  const loaded = page.waitForResponse((r) => r.url().includes('/households/me/week-type') && r.request().method() === 'GET')
   await page.goto('/profile')
+  await loaded
   // One more diner at Monday's lunch in «Plantilla semanal».
   const more = page.getByRole('button', { name: 'Más comensales en almuerzo lunes' })
   await expect(more).toBeVisible({ timeout: 15_000 })
@@ -53,7 +56,9 @@ test('saving the profile keeps the week type and writes only the slot changed in
   expect(wt.days[2].dinner.options).toBeUndefined()
 
   // Saving again without touching the card changes nothing.
+  const reloaded = page.waitForResponse((r) => r.url().includes('/households/me/week-type') && r.request().method() === 'GET')
   await page.reload()
+  await reloaded
   await expect(page.getByRole('button', { name: 'Más comensales en almuerzo lunes' })).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: /guardar cambios/i }).click()
   await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })

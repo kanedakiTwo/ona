@@ -28,7 +28,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  // CI: `github` turns each failure into an annotation (file, line and
+  // message) that Mimoia HQ's estado_ci reads from the API without a token.
+  reporter: process.env.CI ? [['list'], ['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: WEB_URL,
     // The app's weeks are Madrid weeks (firstMenuWeeks, the API). A UTC

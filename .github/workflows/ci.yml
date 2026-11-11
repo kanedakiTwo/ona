@@ -54,17 +54,28 @@ jobs:
       - name: Schema drift check (schema.ts vs committed migrations)
         # `drizzle-kit generate` must report "No schema changes"; the script
         # removes anything it generated and fails otherwise. No DB needed.
-        run: bash apps/api/scripts/check-schema-drift.sh
+        # On failure, its last lines also go out as an annotation (::error::),
+        # which the API returns without a token (Mimoia HQ's estado_ci reads it).
+        run: |
+          set -o pipefail
+          bash apps/api/scripts/check-schema-drift.sh 2>&1 | tee /tmp/drift.log || {
+            echo "::error title=Schema drift::$(tail -5 /tmp/drift.log | tr '\n' ' ')"
+            exit 1
+          }
 
+      # tsc errors become annotations through setup-node's tsc problem matcher
+      # (file, line and message, readable from the API without a token).
       - name: Type-check API
-        run: pnpm --filter @ona/api lint
+        run: pnpm --filter @ona/api exec tsc --noEmit --pretty false
 
       - name: Type-check Web
         # apps/web has no `lint` script yet; tsc is the gate.
-        run: pnpm --filter @ona/web exec tsc --noEmit
+        run: pnpm --filter @ona/web exec tsc --noEmit --pretty false
 
       - name: API unit tests
-        run: pnpm --filter @ona/api test
+        # github-actions: each failing test is also an annotation (file, line
+        # and message), so Mimoia HQ's estado_ci reads it without a token.
+        run: pnpm --filter @ona/api exec vitest run --reporter=default --reporter=github-actions
         env:
           # usdaClient.smoke.ts reads USDA_FDC_API_KEY (same name as env.ts);
           # without the repo secret those tests skip.
@@ -192,7 +203,7 @@ jobs:
         run: |
           pnpm --filter @ona/api exec vitest run .smoke.ts \
             --no-file-parallelism \
-            --reporter=default --reporter=json --outputFile.json=/tmp/smoke-report.json
+            --reporter=default --reporter=github-actions --reporter=json --outputFile.json=/tmp/smoke-report.json
 
       - name: Assert no smoke test was skipped unexpectedly
         # Allowed: smokes gated on external API keys this job doesn't get.

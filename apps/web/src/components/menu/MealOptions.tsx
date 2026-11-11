@@ -7,7 +7,7 @@
  * Cocinada…); now they live in one sheet, with the same rules:
  *
  *   - Single-recipe slot: Ver receta, Elegir otra receta, Cambiar al azar,
- *     Añadir plato, Tipo de comida, Fijar, Vetar, Comensales, Marcar como
+ *     Añadir plato, Fijar, Vetar, Comensales, Marcar como
  *     cocinada, Quitar comida.
  *   - Leftover ("sobras"): no Elegir / Cambiar / Tipo / Vetar (tied to its
  *     source slot).

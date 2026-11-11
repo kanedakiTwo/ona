@@ -59,7 +59,7 @@ export function useGenerateMenu() {
 
   return useMutation({
     /** `empty: true` skips the matcher and creates a row with all 7 days
-     *  scaffolded per the user's mealTemplate but every slot empty
+     *  scaffolded per the household's semana tipo but every slot empty
      *  (`dishes: []`). Powers "Vaciar semana" + "Empezar de cero". */
     // PRO-377: `onlyFavorites` («Rehacer la semana con mis favoritas»); the
     // answer says how many dishes are not favourites (`favoritesShort`).

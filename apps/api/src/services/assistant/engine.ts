@@ -3,6 +3,8 @@ import { env } from '../../config/env.js'
 import { clockNote, loadUserContext } from './contextLoader.js'
 import { buildSystemParts, type AssistantMode, type ChatSurface } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
+import { MORE_TOOLS_NAME, TOOL_GROUPS, moreToolsSummary, selectToolGroups, validGroups, type ToolGroupId } from './toolGroups.js'
+import type { PageKind } from './pageContext.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
 import { recordSkillUsage } from '../usageEvents.js'
@@ -58,6 +60,8 @@ export interface ChatOptions {
    * end of a reply (family, other household, leftovers) are WhatsApp-only.
    */
   surface?: ChatSurface
+  /** PRO-392: the page the web companion writes from (its tools go in). */
+  page?: PageKind
 }
 
 /**
@@ -89,7 +93,15 @@ export async function chat(
   // WhatsApp sign-up: ask for a few favourite dishes only when «Afina tu menú»
   // got no «Me apetece» / «Me encanta» (2026-11-03). On a failed read, don't ask.
   const askFavorites = opts.onboarding === true && !(await hasLikedRecipes(userId, db).catch(() => true))
-  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, askFavorites, surface: opts.surface })
+  // PRO-392: only the tools (and the «Sobre Mimoia» block) this turn needs.
+  const selection = selectToolGroups({ message, history, page: opts.page, mode, onboarding: opts.onboarding === true })
+  const { instructions, context } = buildSystemParts(userContext, mode, {
+    onboarding: opts.onboarding === true,
+    askFavorites,
+    surface: opts.surface,
+    tools: selection.tools,
+    about: selection.about,
+  })
   const system = [
     { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
     { type: 'text' as const, text: context },
@@ -98,13 +110,11 @@ export async function chat(
   // 3. History (cache breakpoint at its end) + the new message with the clock.
   const messages = buildTurnMessages(history, message, opts.images ?? [], new Date())
 
-  // 4. Tools for this channel, the last one marked as a cache breakpoint.
-  const baseTools = getToolDefinitions({ mode, onboarding: opts.onboarding === true })
-  const tools = baseTools.map((t, i) =>
-    i === baseTools.length - 1
-      ? { ...t, cache_control: { type: 'ephemeral' as const } }
-      : t,
-  )
+  // 4. This turn's tools, the last one marked as a cache breakpoint.
+  const onboarding = opts.onboarding === true
+  const tools = withLastToolCached(getToolDefinitions({ mode, onboarding, only: selection.tools }))
+  const moreTools = (groups: ToolGroupId[]) =>
+    getToolDefinitions({ mode, onboarding, only: new Set(groups.flatMap((g) => TOOL_GROUPS[g].tools)) })
 
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
   // PRO-313: none of the reply offers on Telegram (their texts and budgets are WhatsApp's).
@@ -128,6 +138,7 @@ export async function chat(
     skills,
     ctx: { userId, db, channel: mode, surface: opts.surface },
     onToolStart: opts.onToolStart,
+    moreTools,
   })
 
   // 6. After the first resolved week, once, an invite line at the end of
@@ -254,6 +265,14 @@ export function buildTurnMessages(
   return messages
 }
 
+/** Tool definitions with a cache breakpoint on the last one (and on no other). */
+export function withLastToolCached<T extends object>(tools: readonly T[]): T[] {
+  return tools.map((t, i) => {
+    const { cache_control: _drop, ...rest } = t as T & { cache_control?: unknown }
+    return (i === tools.length - 1 ? { ...rest, cache_control: { type: 'ephemeral' as const } } : rest) as T
+  })
+}
+
 /** Copy of `messages` with a cache breakpoint on the last block, so later rounds of the same turn reuse the prefix. */
 export function withLastMessageCached(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
   if (messages.length === 0) return messages
@@ -289,6 +308,12 @@ export async function runToolLoop(params: {
   /** Model and effort for this turn (default `ASSISTANT_MODEL` / `ASSISTANT_EFFORT`); `scripts/compareMimoModels.ts` runs the same turn on several. */
   model?: string
   effort?: string
+  /**
+   * PRO-392: tool definitions of the groups `more_tools` asks for. With it the
+   * engine answers `more_tools` itself and the next round carries those tools
+   * too; without it (scripts with every tool), the skill's own handler runs.
+   */
+  moreTools?: (groups: ToolGroupId[]) => { name: string }[]
 }): Promise<AssistantResponse & { usage: TokenUsage }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
   const model = params.model ?? ASSISTANT_MODEL
@@ -299,6 +324,7 @@ export async function runToolLoop(params: {
   let retriedTruncation = false
   let retriedClaim = false
   const flags: string[] = []
+  let tools = params.tools
 
   for (let round = 0; ; round += 1) {
     const response = await params.client.messages.create(
@@ -309,7 +335,7 @@ export async function runToolLoop(params: {
         fallbacks: 'default',
         system: params.system,
         messages: withLastMessageCached(messages),
-        tools: params.tools,
+        tools,
         ...(round >= maxRounds ? { tool_choice: { type: 'none' } } : {}),
       },
       { headers: { 'anthropic-beta': FALLBACK_BETA } },
@@ -388,7 +414,14 @@ export async function runToolLoop(params: {
       const skill = params.skills.find((s) => s.name === toolUse.name)
       let result: SkillResult
       let isError = false
-      if (!skill) {
+      if (toolUse.name === MORE_TOOLS_NAME && params.moreTools) {
+        const groups = validGroups((toolUse.input as { groups?: unknown })?.groups)
+        const have = new Set((tools as { name?: string }[]).map((t) => t.name))
+        const added = params.moreTools(groups).filter((t) => !have.has(t.name))
+        if (added.length > 0) tools = withLastToolCached([...(tools as object[]), ...added])
+        result = { data: null, summary: moreToolsSummary(groups), uiHint: 'text' }
+        isError = groups.length === 0
+      } else if (!skill) {
         result = { data: null, summary: `Herramienta desconocida: ${toolUse.name}`, uiHint: 'text' }
         isError = true
       } else {

@@ -69,6 +69,7 @@ import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
 import { schoolDinnerPool } from '../schoolMenu.js'
 import { weekHolidaySummary } from '../menuHolidays.js'
 import { isHealthMemoryKey } from '@ona/shared'
+import { moreToolsSkill } from './toolGroups.js'
 
 /**
  * Text that came from a web page, a photo or another person (an imported
@@ -3205,15 +3206,29 @@ export const skills: SkillDefinition[] = [
  */
 const HIDDEN_ON_WHATSAPP = new Set(['set_timer', 'cooking_step'])
 
-export function toolsFor(opts: { mode?: string; onboarding?: boolean } = {}): SkillDefinition[] {
-  return skills.filter((skill) => {
+export interface ToolsForOptions {
+  mode?: string
+  onboarding?: boolean
+  /**
+   * PRO-392: this turn's tools (`selectToolGroups` in toolGroups.ts). Without
+   * it, every tool of the channel (scripts, the battery's «before» run), and
+   * no `more_tools`.
+   */
+  only?: ReadonlySet<string>
+}
+
+export function toolsFor(opts: ToolsForOptions = {}): SkillDefinition[] {
+  // PRO-392: `more_tools` (loads another group) exists only with a selection.
+  const pool = opts.only ? [...skills, moreToolsSkill] : skills
+  return pool.filter((skill) => {
+    if (opts.only && !opts.only.has(skill.name)) return false
     if (skill.name === 'complete_onboarding') return opts.onboarding === true
     if (opts.mode === 'whatsapp' && HIDDEN_ON_WHATSAPP.has(skill.name)) return false
     return true
   })
 }
 
-export function getToolDefinitions(opts: { mode?: string; onboarding?: boolean } = {}): Array<{
+export function getToolDefinitions(opts: ToolsForOptions = {}): Array<{
   name: string
   description: string
   input_schema: Record<string, any>

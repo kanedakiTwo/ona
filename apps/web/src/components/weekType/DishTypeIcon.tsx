@@ -42,12 +42,12 @@ const PATHS: Record<string, ReactNode> = {
   ),
   carne: (
     <>
-      <path d="M5 8c2-4 9-5 13-2s3 9-2 11-10 2-12-1 0-5 1-8z" /><circle cx="14" cy="10.5" r="2" />
+      <path d="M5 8c2-4 9-5 13-2s3 9-2 11-10 2-12-1 0-5 1-8z" /><path d="M8 13c2-.5 4.5-2 6-4.5M10.5 15.5c2-.8 4-2.3 5.5-4.5" />
     </>
   ),
   huevos: (
     <>
-      <path d="M7 5c3-2 7 0 9 2s5 3 4 7-5 6-9 5-8-2-8-6 1-6 4-8z" /><circle cx="12" cy="12" r="3" />
+      <path d="M9 4c2.5 0 4.5 4 4.5 7.5S11.5 18 9 18s-4.5-3-4.5-6.5S6.5 4 9 4z" /><path d="M14.4 8.6c.5-.4 1-.6 1.6-.6 2.5 0 4.5 3.8 4.5 7S18.5 21 16 21c-1.6 0-2.9-.9-3.6-2.3" />
     </>
   ),
   plancha: (
@@ -62,7 +62,7 @@ const PATHS: Record<string, ReactNode> = {
   ),
   arroz: (
     <>
-      <ellipse cx="12" cy="13" rx="8" ry="5" /><path d="M4 13H2M22 13h-2" /><circle cx="9" cy="12" r="0.8" /><circle cx="13" cy="14.5" r="0.8" /><circle cx="15.5" cy="11.5" r="0.8" />
+      <path d="M4 11h16v2a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" /><path d="M4 12H2.5a1 1 0 0 0 0 2H4.4M20 12h1.5a1 1 0 0 1 0 2h-1.9" /><path d="M7 8.5l1 1M11 8l1 1.2M15 8.5l1 1M9 6l.8 1M13.5 6l.8 1" />
     </>
   ),
   pizza: (
@@ -147,7 +147,7 @@ const PATHS: Record<string, ReactNode> = {
   ),
   sushi: (
     <>
-      <circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.5" /><path d="M12 10.5v3" />
+      <path d="M4.5 15c0-1.6 2.5-2.5 7.5-2.5s7.5.9 7.5 2.5v2a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 4.5 17z" /><path d="M3.5 12.5c1.2-2.6 4.6-4 8.5-4s7.3 1.4 8.5 4c-3 .9-14 .9-17 0z" /><path d="M9 9.2l1.5 3M13.5 9l1.5 3.2" />
     </>
   ),
   chile: (

@@ -10,6 +10,8 @@ import {
   fullWeekTypeDays,
   plantillaEdits,
   plantillaFromWeekType,
+  slotWithoutOptions,
+  weekTypeDishLines,
   weekTypeOptionsFor,
   weeksBetween,
   type DayMenu,
@@ -19,8 +21,9 @@ import {
 } from '@ona/shared'
 import { buildRandomMenu, defaultTemplate, extractMealDiners, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { applyWeekPlan } from '../services/weekPlan.js'
-import { dishTypeForName, legacyWeekType, optionForDishName, parseWeekTypeDays, poolOfDishType, recipesForDishName, weekTypeDishTypeIn } from '../services/weekType.js'
-import { applyWeekTypeTapers, markWeekTypeConflicts, missingDishTypes, planWeekType, presetRecipeIds } from '../services/weekTypePlan.js'
+import { dishTypeForName, legacyWeekType, optionForDishName, parseWeekTypeDays, pickPlantillaOwner, poolOfDishType, recipesForDishName, weekTypeDishTypeIn } from '../services/weekType.js'
+import { applyWeekTypeTapers, markWeekTypeConflicts, missingDishTypes, planWeekType, presetRecipeIds, writtenDishBreaks } from '../services/weekTypePlan.js'
+import { compileRestrictions } from '../services/dietaryRestrictions.js'
 import { dishTypesOf } from '../services/dishTypes.js'
 import { seedRecipes } from '../seed/recipes.js'
 import type { RecipeWithCourse } from '../services/matchableRecipes.js'
@@ -261,7 +264,10 @@ describe('«Cambiar al azar», regenerating and swap_meal respect the slot', () 
 })
 
 describe('the migration from the old pieces (§7)', () => {
-  const fact = (type: string, value: unknown, origin = 'user') => ({ type, value, origin })
+  const fact = (type: string, value: unknown) => ({ type, value })
+  const LASANA_VERDURAS = recipe('lv', 'Lasaña de verduras', ['pasta'])
+  const LASANA_CARNE = recipe('lc', 'Lasaña de carne', ['pasta'])
+  const recipes = [...POOL, LASANA_VERDURAS, LASANA_CARNE]
   const template = {
     mealTemplate: { lunes: { almuerzo: 2, cena: 2 }, martes: { almuerzo: 2, cena: 2 }, miercoles: { almuerzo: 2, cena: 2 }, jueves: { almuerzo: 2, cena: 2 }, viernes: { almuerzo: 2, cena: 2 }, sabado: { almuerzo: 4, cena: 2 }, domingo: { almuerzo: 2, cena: 2 } },
     mealDishCounts: { lunch: 2 },
@@ -271,38 +277,41 @@ describe('the migration from the old pieces (§7)', () => {
   const facts = [
     fact('fixed_dish', { dish: 'pizza', days: ['viernes'], meal: 'dinner' }),
     fact('fixed_dish', { dish: 'ceviche', days: ['jueves'], meal: 'dinner' }),
-    fact('fixed_dish', { dish: 'carpaccio', days: ['jueves'], meal: 'dinner' }),
-    fact('fixed_dish', { dish: 'legumbres', days: ['domingo'], meal: 'lunch' }),
+    fact('fixed_dish', { dish: 'lasaña de verduras', days: ['jueves'], meal: 'dinner' }),
+    fact('fixed_dish', { dish: 'lasaña', days: ['miercoles'], meal: 'lunch' }),
     fact('fixed_dish', { dish: 'sopa de la abuela', days: ['miercoles'], meal: 'dinner' }),
     fact('fixed_dish', { dish: 'pizza' }), // no day nor meal: stays a taste in the ficha
-    fact('skipped_meal', { days: ['sabado'], meal: 'dinner' }),
-    fact('skipped_meal', { days: ['domingo'], meal: 'dinner' }, 'ai_nightly'), // deduced: never turns a meal off
+    fact('skipped_meal', { days: ['sabado'], meal: 'dinner' }), // phase 3: not migrated
   ]
-  const migrated = legacyWeekType({ template, facts, recipes: POOL, restrictions: [], since: W1 })
+  const migrated = legacyWeekType({ template, facts, recipes, since: W1 })
 
-  it('plantilla, comidas fijas, táper, fixed_dish (recipe, type or name; two by turns) and skipped_meal', () => {
+  it('plantilla, comidas fijas, táper and fixed_dish (a type; the one recipe of that name; else written; two by turns)', () => {
     expect(migrated[5].lunch).toEqual({ diners: 4, dishes: 2 })
-    expect(migrated[0].breakfast).toEqual({ options: [{ kind: 'fixed', label: 'Yogur', items: [{ name: 'yogur', quantity: 1, unit: 'u' }] }], since: W1 })
+    expect(migrated[0].breakfast).toEqual({ options: [{ kind: 'fixed', label: 'Yogur', items: [{ name: 'yogur', quantity: 1, unit: 'u' }] }], since: W1, offWhenFree: true })
     expect(migrated[1].breakfast).toEqual({ off: true })
     expect(migrated[1].lunch).toEqual({ diners: 2, dishes: 2, options: [{ kind: 'taper' }], since: W1 })
-    expect(migrated[FRIDAY].dinner!.options).toEqual([{ kind: 'recipe', recipeId: 'pizza', name: 'Pizza margarita' }])
-    expect(migrated[3].dinner!.options).toEqual([{ kind: 'recipe', recipeId: 'ceviche', name: 'Ceviche' }, { kind: 'recipe', recipeId: 'carpaccio', name: 'Carpaccio de ternera' }])
+    expect(migrated[FRIDAY].dinner!.options).toEqual([{ kind: 'type', type: 'pizza' }])
+    expect(migrated[3].dinner!.options).toEqual([{ kind: 'type', type: 'ceviche' }, { kind: 'recipe', recipeId: 'lv', name: 'Lasaña de verduras' }])
     expect(migrated[3].dinner!.together).toBeUndefined()
-    expect(migrated[6].lunch!.options).toEqual([{ kind: 'type', type: 'legumbres' }])
+    expect(migrated[2].lunch!.options).toEqual([{ kind: 'fixed', label: 'Lasaña', items: [] }])
     expect(migrated[2].dinner!.options).toEqual([{ kind: 'fixed', label: 'Sopa de la abuela', items: [] }])
-    expect(migrated[5].dinner).toEqual({ off: true })
-    expect(migrated[6].dinner).toEqual({ diners: 2 })
+  })
+
+  it('«skipped_meal» is not migrated in phase 1: the dinner stays', () => {
+    expect(migrated[5].dinner).toEqual({ diners: 2 })
   })
 
   it('is the same every time it runs (the boot only creates what is missing)', () => {
-    expect(legacyWeekType({ template, facts, recipes: POOL, restrictions: [], since: W1 })).toEqual(migrated)
+    expect(legacyWeekType({ template, facts, recipes, since: W1 })).toEqual(migrated)
     expect(parseWeekTypeDays(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated)
   })
 
-  it('a fixed dish whose every recipe breaks an allergy keeps the recipe (the menu says why); a safe one is preferred', () => {
-    const gf = recipe('pizza-sg', 'Pizza sin gluten', ['pizza'])
-    expect(optionForDishName('pizza', [PIZZA, gf], ['sin gluten'])).toEqual({ kind: 'recipe', recipeId: 'pizza-sg', name: 'Pizza sin gluten' })
-    expect(optionForDishName('pizza', [PIZZA], ['sin gluten'])).toEqual({ kind: 'recipe', recipeId: 'pizza', name: 'Pizza margarita' })
+  it('«pizza los viernes» is the type, not always the same pizza; one recipe of a name is that recipe; two or none, the name written', () => {
+    expect(optionForDishName('pizza', [PIZZA])).toEqual({ kind: 'type', type: 'pizza' })
+    expect(optionForDishName('Pizzas', [PIZZA])).toEqual({ kind: 'type', type: 'pizza' })
+    expect(optionForDishName('pizza margarita', [PIZZA])).toEqual({ kind: 'recipe', recipeId: 'pizza', name: 'Pizza margarita' })
+    expect(optionForDishName('lasaña', recipes)).toEqual({ kind: 'fixed', label: 'Lasaña', items: [] })
+    expect(optionForDishName('sándwich mixto', [])).toEqual({ kind: 'fixed', label: 'Sándwich mixto', items: [] })
     expect(recipesForDishName('pizza', [PIZZA, recipe('own', 'Pizza de casa', [], { authorId: 'u1' })]).household.map((r) => r.id)).toEqual(['own'])
   })
 
@@ -312,6 +321,102 @@ describe('the migration from the old pieces (§7)', () => {
     expect(dishTypeForName('legumbre')).toBe('legumbres')
     expect(dishTypeForName('tortillas')).toBe('huevos')
     expect(dishTypeForName('sopa de la abuela')).toBeNull()
+  })
+
+  it('a household of several members takes the plantilla of whoever generated its last menu; else the first that isn’t the default; else the owner’s', () => {
+    const members = [
+      { userId: 'owner', template: [] },
+      { userId: 'ana', template: { mealTemplate: { lunes: { cena: 2 } } } },
+      { userId: 'luis', template: { taperDays: ['martes'] } },
+    ]
+    expect(pickPlantillaOwner({ lastMenuUserId: 'luis', ownerId: 'owner', members })).toBe('luis')
+    expect(pickPlantillaOwner({ lastMenuUserId: null, ownerId: 'owner', members })).toBe('ana')
+    expect(pickPlantillaOwner({ lastMenuUserId: 'gone', ownerId: 'owner', members })).toBe('ana')
+    expect(pickPlantillaOwner({ lastMenuUserId: null, ownerId: 'owner', members: [{ userId: 'owner', template: [] }, { userId: 'x', template: { preferences: {} } }] })).toBe('owner')
+  })
+})
+
+describe('the same menu with comidas fijas, a táper and a plato fijo (§7)', () => {
+  // Plantilla: lunch and dinner every day, no breakfast; fixed breakfast on
+  // Monday; táper on Tuesday; «pizza el viernes por la noche» in the ficha.
+  const blob = {
+    mealTemplate: Object.fromEntries(['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].map((d) => [d, { almuerzo: 2, cena: 2 }])),
+    fixedMeals: [{ meal: 'breakfast', days: ['lunes'], label: 'Yogur con cereales', items: [{ name: 'yogur', quantity: 1, unit: 'u' }] }],
+    taperDays: ['martes'],
+  }
+  const days = legacyWeekType({ template: blob, facts: [{ type: 'fixed_dish', value: { dish: 'pizza', days: ['viernes'], meal: 'dinner' } }], recipes: POOL, since: W1 })
+
+  it('gives the week the old pieces gave: the fixed breakfast only on Monday, the táper of Monday’s dinner, a pizza on Friday, the rest drawn', () => {
+    for (let i = 0; i < 5; i++) {
+      vi.spyOn(Math, 'random').mockImplementation(seeded(40 + i))
+      const out = generate(days, W1).days
+      expect(out[0].breakfast!.dishes).toEqual([{ kind: 'note', text: 'Fijo: Yogur con cereales', fixed: { items: [{ name: 'yogur', quantity: 1, unit: 'u' }] } }])
+      for (let d = 1; d < 7; d++) expect(out[d].breakfast).toBeUndefined()
+      expect(out[1].lunch).toMatchObject({ taper: 1, servings: 1 })
+      expect(out[1].lunch!.dishes[0]).toMatchObject({ variant: 'leftover', leftoverOf: { day: 0, meal: 'dinner' } })
+      expect(ids(out[FRIDAY].dinner)).toEqual(['pizza'])
+      for (let d = 0; d < 7; d++) {
+        expect(out[d].snack).toBeUndefined()
+        expect(out[d].dinner!.servings).toBe(2)
+        if (d !== 1) expect(out[d].lunch!.dishes[0].kind).toBe('recipe')
+      }
+    }
+  })
+})
+
+describe('removing a comida fija never brings a new meal', () => {
+  it('a slot only a comida fija turned on is «no hay» again when it goes (the profile card and Mimo)', () => {
+    const blob = { fixedMeals: [{ meal: 'breakfast', days: ['lunes'], label: 'Yogur', items: [{ name: 'yogur', quantity: 1, unit: 'u' }] }] }
+    const days = legacyWeekType({ template: blob, facts: [], since: W1 })
+    const view = plantillaFromWeekType(days, 2)
+    const edits = plantillaEdits(days, view, { ...view, fixedMeals: [] }, W2)
+    expect(edits).toEqual([{ day: 0, meal: 'breakfast', slot: { off: true } }])
+    // Added on a «no hay» slot from the card, then removed: the same.
+    const plain = fullWeekTypeDays()
+    const v0 = plantillaFromWeekType(plain, 2)
+    const add = plantillaEdits(plain, v0, { ...v0, fixedMeals: blob.fixedMeals as any }, W1)
+    expect(add[0].slot).toMatchObject({ offWhenFree: true })
+    const withIt = structuredClone(plain)
+    withIt[0].breakfast = add[0].slot
+    const v1 = plantillaFromWeekType(withIt, 2)
+    expect(plantillaEdits(withIt, v1, { ...v1, fixedMeals: [] }, W2)[0].slot).toEqual({ off: true })
+  })
+})
+
+describe('a dish written with no recipe goes through the allergy and diet check (as PRO-1141)', () => {
+  it('«jamón con melón» isn’t written in a vegetarian household: the slot is drawn and says why', () => {
+    const days = weekType([[FRIDAY, 'dinner', { options: [{ kind: 'fixed', label: 'Jamón con melón', items: [] }], since: W1 }]])
+    const out = generate(days, W1, { restrictions: ['vegetariano'] })
+    expect(out.days[FRIDAY].dinner!.dishes[0]).toMatchObject({ kind: 'recipe', replaced: { recipeName: 'Jamón con melón', reason: 'restrictions' } })
+    expect(ids(generate(days, W1).days[FRIDAY].dinner)).toEqual(['note:Jamón con melón'])
+  })
+
+  it('a dish type with no recipe that fits isn’t written when its name breaks the diet (Pasta in a celiac household): drawn free', () => {
+    const days = weekType([[FRIDAY, 'dinner', { options: [{ kind: 'type', type: 'pasta' }], since: W1 }]])
+    expect(writtenDishBreaks('Pasta', compileRestrictions(['sin gluten']))).toBe(true)
+    expect(ids(generate(days, W1, { pool: FILLER }).days[FRIDAY].dinner)).toEqual(['note:Pasta'])
+    const out = generate(days, W1, { pool: FILLER, restrictions: ['sin gluten'] })
+    expect(out.days[FRIDAY].dinner!.dishes[0].kind).toBe('recipe')
+    expect(missingDishTypes(out.warnings)).toEqual(['pasta'])
+  })
+})
+
+describe('Perfil → «Platos fijos» lines with «Quitar» (until phase 2)', () => {
+  it('lists the slots the card doesn’t show and takes their options away', () => {
+    const days = weekType([
+      [FRIDAY, 'dinner', { options: [{ kind: 'type', type: 'pizza' }, { kind: 'any' }], since: W1 }],
+      [6, 'dinner', { options: [{ kind: 'fixed', label: 'Sándwich mixto', items: [] }], since: W1 }],
+      [0, 'breakfast', { options: [{ kind: 'fixed', label: 'Yogur', items: [{ name: 'yogur', quantity: 1, unit: 'u' }] }], since: W1, offWhenFree: true }],
+      [1, 'lunch', { options: [{ kind: 'taper' }], since: W1 }],
+    ])
+    expect(weekTypeDishLines(days)).toEqual([
+      { day: FRIDAY, meal: 'dinner', label: 'Pizza / Cualquier receta' },
+      { day: 6, meal: 'dinner', label: 'Sándwich mixto' },
+    ])
+    expect(slotWithoutOptions(days[FRIDAY].dinner!)).toEqual({})
+    expect(slotWithoutOptions(days[0].breakfast!)).toEqual({ off: true })
+    // The card's «Comidas fijas» shows only what carries its things.
+    expect(plantillaFromWeekType(days, 2).fixedMeals.map((f) => f.label)).toEqual(['Yogur'])
   })
 })
 

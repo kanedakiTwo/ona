@@ -8,15 +8,14 @@
  *   same slot → the last one wins).
  * - **Migration, once and repeatable** (`applyWeekTypeMigration`, on boot):
  *   every household without a row gets one built from the old places
- *   (`legacyWeekType`): the owner's plantilla (meals, diners, dishes), their
- *   «comidas fijas» (PRO-218) and «días de táper» (PRO-223), the ficha's
- *   `fixed_dish` with day and meal (PRO-1141: a recipe the PRO-1141 search
- *   finds, else a dish type with that name, else something fixed with no
- *   recipe; two in the same slot go by turns) and the `skipped_meal` the
- *   household said («no hay»). A household created later reads the same
- *   derivation until its first write.
+ *   (`legacyWeekType`): the plantilla of whoever generated its last menu
+ *   (meals, diners, dishes, «comidas fijas» PRO-218, «días de táper» PRO-223)
+ *   and the ficha's `fixed_dish` with day and meal (a dish type with that
+ *   name, else the one recipe the PRO-1141 search finds, else its name; two
+ *   in a slot go by turns), which are then archived in the ficha. New
+ *   households get their row when they are created (`householdStore.ts`).
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import {
   DISH_TYPES,
   MEALS,
@@ -35,8 +34,7 @@ import {
   type WeekTypeSlot,
 } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { householdWeekTypes, households, profileFacts, users, userSettings } from '../db/schema.js'
-import { compileRestrictions, violatesRestrictions, mergeRestrictions } from './dietaryRestrictions.js'
+import { householdMembers, householdWeekTypes, households, menus, profileChanges, profileFacts, users, userSettings } from '../db/schema.js'
 import { extractMealDiners, extractMealDishCounts, normalizeMealTemplate, defaultTemplate } from './legacyPlantilla.js'
 import type { RecipeWithCourse } from './matchableRecipes.js'
 import { nameHasTerm, normalize } from './nutrition/allergens.js'
@@ -83,43 +81,34 @@ const capitalise = (s: string) => {
 }
 
 /**
- * Pure: a ficha's `fixed_dish` as an option of the week type. A recipe the
- * search finds (the first that fits every allergy and diet; if none does,
- * the first, and the menu will say why it isn't there), else a dish type
- * with that name, else something fixed with no recipe (its name, nothing on
- * the list).
+ * Pure: a dish name («pizza», «sándwich mixto») as an option of the week
+ * type. A dish type when the name is one (every week a pizza that fits, not
+ * always the same); else a concrete recipe when the PRO-1141 search finds
+ * exactly one; else the name written, with no recipe and nothing on the list.
  */
-export function optionForDishName(dish: string, recipes: readonly RecipeWithCourse[], restrictions: readonly string[]): WeekTypeOption {
-  const { household, catalogue } = recipesForDishName(dish, recipes)
-  const matches = [...household, ...catalogue]
-  if (matches.length) {
-    const rules = compileRestrictions([...restrictions])
-    const pick = matches.find((r) => !violatesRestrictions(r, rules)) ?? matches[0]
-    return { kind: 'recipe', recipeId: pick.id, name: pick.name }
-  }
+export function optionForDishName(dish: string, recipes: readonly RecipeWithCourse[]): WeekTypeOption {
   const type = dishTypeForName(dish)
   if (type) return { kind: 'type', type }
+  const { household, catalogue } = recipesForDishName(dish, recipes)
+  const matches = [...household, ...catalogue]
+  if (matches.length === 1) return { kind: 'recipe', recipeId: matches[0].id, name: matches[0].name }
   return { kind: 'fixed', label: capitalise(dish).slice(0, 60), items: [] }
 }
 
 export interface LegacyFact {
   type: string
   value: unknown
-  origin: string
 }
 
-/** The household said it (not something Mimo deduced): only those turn a slot off. */
-const SAID = new Set(['user', 'onboarding'])
-
 /**
- * Pure: the week type that gives the menu the old pieces gave (§7).
- * `recipes` and `restrictions` are only read for `fixed_dish`.
+ * Pure: the week type that gives the menu the old pieces gave (§7). Only
+ * `fixed_dish` facts are read (`skipped_meal` waits for Mimo, phase 3);
+ * `recipes` only for them.
  */
 export function legacyWeekType(input: {
   template: unknown
   facts: readonly LegacyFact[]
   recipes?: readonly RecipeWithCourse[]
-  restrictions?: readonly string[]
   since: string
 }): WeekTypeDays {
   const raw = input.template
@@ -147,7 +136,8 @@ export function legacyWeekType(input: {
     for (const day of f.days) {
       const d = (['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const).indexOf(day)
       if (d < 0) continue
-      days[d][f.meal] = { ...on(d, f.meal), options: [{ kind: 'fixed', label: f.label, items: f.items.map((i) => ({ ...i })) }], since: input.since }
+      const wasOff = !!days[d][f.meal]?.off
+      days[d][f.meal] = { ...on(d, f.meal), options: [{ kind: 'fixed', label: f.label, items: f.items.map((i) => ({ ...i })) }], since: input.since, ...(wasOff ? { offWhenFree: true } : {}) }
     }
   }
 
@@ -167,7 +157,7 @@ export function legacyWeekType(input: {
   }
   for (const [key, names] of named) {
     const [d, meal] = key.split(':') as [string, Meal]
-    const options = names.slice(0, 4).map((n) => optionForDishName(n, input.recipes ?? [], input.restrictions ?? []))
+    const options = names.slice(0, 4).map((n) => optionForDishName(n, input.recipes ?? []))
     days[Number(d)][meal] = { ...days[Number(d)][meal], options, since: input.since }
   }
 
@@ -177,18 +167,6 @@ export function legacyWeekType(input: {
     days[d].lunch = { ...on(d, 'lunch'), options: [{ kind: 'taper' }], since: input.since }
   }
 
-  // «No hay» (skipped_meal), only when the household said it and nothing is asked of that slot.
-  for (const f of input.facts) {
-    if (f.type !== 'skipped_meal' || !SAID.has(f.origin)) continue
-    const v = f.value as { days?: unknown; meal?: unknown }
-    if (!Array.isArray(v?.days) || !(MEALS as readonly string[]).includes(String(v.meal))) continue
-    for (const day of v.days) {
-      const d = (['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as readonly string[]).indexOf(String(day))
-      const meal = v.meal as Meal
-      if (d < 0 || days[d][meal]?.options?.length) continue
-      days[d][meal] = { off: true }
-    }
-  }
   return fullWeekTypeDays(days)
 }
 
@@ -207,34 +185,54 @@ export function parseWeekTypeDays(raw: unknown): WeekTypeDays | null {
 }
 
 export interface WeekTypeContext {
-  /** Already loaded by the caller (the generator): saves loading them again for `fixed_dish`. */
-  recipes?: readonly RecipeWithCourse[]
-  restrictions?: readonly string[]
   now?: Date
 }
 
-/** The old pieces of a household (or of a user without one), as a week type. Nothing is written. */
-export async function deriveLegacyWeekType(householdId: string | null, userId: string | null, db: Db = defaultDb, ctx: WeekTypeContext = {}): Promise<WeekTypeDays> {
-  let ownerId = userId
-  if (householdId) {
-    const [h] = await db.select({ ownerId: households.ownerId }).from(households).where(eq(households.id, householdId)).limit(1)
-    ownerId = h?.ownerId ?? userId
-  }
-  const [settings] = ownerId ? await db.select({ template: userSettings.template }).from(userSettings).where(eq(userSettings.userId, ownerId)).limit(1) : []
-  const facts: LegacyFact[] = householdId
-    ? await db
-      .select({ type: profileFacts.type, value: profileFacts.value, origin: profileFacts.origin })
-      .from(profileFacts)
-      .where(and(eq(profileFacts.householdId, householdId), eq(profileFacts.status, 'active'), inArray(profileFacts.type, ['fixed_dish', 'skipped_meal'])))
-    : []
-  let recipes = ctx.recipes
-  let restrictions = ctx.restrictions
-  if (ownerId && facts.some((f) => f.type === 'fixed_dish') && (!recipes || !restrictions)) {
-    const loaded = await recipeContextFor(ownerId, db)
-    recipes ??= loaded.recipes
-    restrictions ??= loaded.restrictions
-  }
-  return legacyWeekType({ template: settings?.template, facts, recipes, restrictions, since: currentWeekStart(ctx.now) })
+/** Pure: a plantilla blob that says something (meals, dishes, fixed meals or tápers), not the default. */
+export function isOwnPlantilla(template: unknown): boolean {
+  if (normalizeMealTemplate(template)) return true
+  if (Object.keys(extractMealDishCounts(template)).length) return true
+  return fixedMealsFromTemplate(template).length > 0 || taperDaysOf(template).length > 0
+}
+
+/**
+ * Pure (§7, households of several members): whose plantilla becomes the
+ * household's week type — the one who generated its last menu; without a
+ * menu, the first member (oldest first) whose plantilla isn't the default;
+ * else the owner.
+ */
+export function pickPlantillaOwner(input: {
+  lastMenuUserId: string | null
+  ownerId: string
+  members: ReadonlyArray<{ userId: string; template: unknown }>
+}): string {
+  if (input.lastMenuUserId && input.members.some((m) => m.userId === input.lastMenuUserId)) return input.lastMenuUserId
+  return input.members.find((m) => isOwnPlantilla(m.template))?.userId ?? input.ownerId
+}
+
+/**
+ * What a household's old pieces give as a week type (only the boot migration
+ * reads them), and the `fixed_dish` facts with day and meal it takes over.
+ */
+export async function deriveLegacyWeekType(householdId: string, db: Db = defaultDb, ctx: WeekTypeContext = {}): Promise<{ days: WeekTypeDays; factIds: string[] }> {
+  const [h] = await db.select({ ownerId: households.ownerId }).from(households).where(eq(households.id, householdId)).limit(1)
+  const members = await db
+    .select({ userId: householdMembers.userId, template: userSettings.template })
+    .from(householdMembers)
+    .leftJoin(userSettings, eq(userSettings.userId, householdMembers.userId))
+    .where(eq(householdMembers.householdId, householdId))
+    .orderBy(asc(householdMembers.joinedAt))
+  const [last] = await db.select({ userId: menus.userId }).from(menus).where(eq(menus.householdId, householdId)).orderBy(desc(menus.createdAt)).limit(1)
+  const who = pickPlantillaOwner({ lastMenuUserId: last?.userId ?? null, ownerId: h?.ownerId ?? '', members })
+  const template = members.find((m) => m.userId === who)?.template
+    ?? (await db.select({ template: userSettings.template }).from(userSettings).where(eq(userSettings.userId, who)).limit(1))[0]?.template
+  const facts = (await db
+    .select({ id: profileFacts.id, type: profileFacts.type, value: profileFacts.value })
+    .from(profileFacts)
+    .where(and(eq(profileFacts.householdId, householdId), eq(profileFacts.status, 'active'), eq(profileFacts.type, 'fixed_dish'))))
+    .filter((f: { value: unknown }) => fixedDishOf(f.value))
+  const recipes = facts.length && who ? await loadRecipesFor(who, db) : []
+  return { days: legacyWeekType({ template, facts, recipes, since: currentWeekStart(ctx.now) }), factIds: facts.map((f: { id: string }) => f.id) }
 }
 
 /** Monday (Madrid) of the current week: a slot saved now takes its first option this week. */
@@ -242,63 +240,49 @@ export function currentWeekStart(now: Date = new Date()): string {
   return firstMenuWeeks(now).weeks[0]
 }
 
-/** What a dish name is searched in: the user's recipes and every member's allergies and diets. */
-async function recipeContextFor(userId: string, db: Db): Promise<{ recipes: RecipeWithCourse[]; restrictions: string[] }> {
+/** The recipes a dish name is searched in: those the user may be served. */
+async function loadRecipesFor(userId: string, db: Db): Promise<RecipeWithCourse[]> {
   const { loadMatchableRecipes } = await import('./matchableRecipes.js')
-  const { withHouseholdRestrictions } = await import('./householdAllergies.js')
-  const { getMemoryForUser } = await import('./userMemoryStore.js')
-  const recipes = await loadMatchableRecipes(userId, db)
-  const [owner] = await db.select({ restrictions: users.restrictions }).from(users).where(eq(users.id, userId)).limit(1)
-  const memory = await getMemoryForUser(userId).catch(() => null)
-  const own = mergeRestrictions(owner?.restrictions, memory)
-  const restrictions = await withHouseholdRestrictions(own, userId, db).catch(() => own)
-  return { recipes, restrictions }
+  return loadMatchableRecipes(userId, db)
 }
 
 /**
- * «Pizza los viernes por la noche» (a `fixed_dish` with day and meal, said to
- * Mimo or found by the nightly refiner): those slots of the week type take
- * that dish (a recipe, a type or its name) from this week on, instead of a
- * fact of the ficha. `onlyIfFree` (what Mimo deduced): a slot that already
- * asks for something is left as it is. Returns what was written.
+ * «Pizza los viernes por la noche» said to Mimo (a `fixed_dish` with day and
+ * meal): those slots of the week type take that dish (a type, the one recipe
+ * of that name, or its name written) from this week on, instead of a fact of
+ * the ficha. Returns what was written.
  */
 export async function setWeekTypeDish(
   householdId: string,
   fixed: { dish: string; days: readonly number[]; meal: Meal },
-  opts: { userId: string; onlyIfFree?: boolean; db?: Db; now?: Date },
+  opts: { userId: string; db?: Db; now?: Date },
 ): Promise<{ option: WeekTypeOption; changes: SlotChange[] }> {
   const db = opts.db ?? defaultDb
-  const days = await loadWeekType(householdId, opts.userId, db)
-  const { recipes, restrictions } = await recipeContextFor(opts.userId, db)
-  const option = optionForDishName(fixed.dish, recipes, restrictions)
+  const days = await loadWeekType(householdId, db)
+  const option = optionForDishName(fixed.dish, await loadRecipesFor(opts.userId, db))
   const since = currentWeekStart(opts.now)
   const changes: SlotChange[] = []
   for (const d of fixed.days) {
     if (d < 0 || d > 6) continue
-    const prev = days[d]?.[fixed.meal] ?? {}
-    if (opts.onlyIfFree && (prev.options?.length || prev.off)) continue
-    const { off: _off, together: _together, ...rest } = prev
+    const { off: _off, together: _together, offWhenFree: _f, ...rest } = days[d]?.[fixed.meal] ?? {}
     changes.push({ day: d, meal: fixed.meal, slot: { ...rest, options: [option], since } })
   }
   if (changes.length) await saveWeekTypeSlots(householdId, changes, db)
   return { option, changes }
 }
 
-/** The household's week type: its row, else what the old pieces say (until the first write). */
-export async function loadWeekType(householdId: string | null, userId: string | null, db: Db = defaultDb, ctx: WeekTypeContext = {}): Promise<WeekTypeDays> {
-  if (householdId) {
-    const [row] = await db.select({ slots: householdWeekTypes.slots }).from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId)).limit(1)
-    const parsed = row ? parseWeekTypeDays(row.slots) : null
-    if (parsed) return fullWeekTypeDays(parsed)
-  }
-  return deriveLegacyWeekType(householdId, userId, db, ctx)
+/** The household's week type; one without a row yet plans lunch and dinner every day. */
+export async function loadWeekType(householdId: string | null, db: Db = defaultDb): Promise<WeekTypeDays> {
+  if (!householdId) return fullWeekTypeDays()
+  const [row] = await db.select({ slots: householdWeekTypes.slots }).from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId)).limit(1)
+  return fullWeekTypeDays(row ? parseWeekTypeDays(row.slots) : null)
 }
 
 /** The week type the menu of `userId` follows: their primary household's. */
-export async function loadWeekTypeForUser(userId: string, db: Db = defaultDb, ctx: WeekTypeContext = {}): Promise<{ householdId: string | null; days: WeekTypeDays }> {
+export async function loadWeekTypeForUser(userId: string, db: Db = defaultDb): Promise<{ householdId: string | null; days: WeekTypeDays }> {
   const [u] = await db.select({ householdId: users.primaryHouseholdId }).from(users).where(eq(users.id, userId)).limit(1)
   const householdId = u?.householdId ?? null
-  return { householdId, days: await loadWeekType(householdId, userId, db, ctx) }
+  return { householdId, days: await loadWeekType(householdId, db) }
 }
 
 export interface SlotChange {
@@ -309,7 +293,7 @@ export interface SlotChange {
 
 /**
  * Write some slots of a household's week type, the rest as they are (a row
- * that doesn't exist yet starts from the old pieces). Returns the whole week.
+ * that doesn't exist yet starts from lunch and dinner). Returns the whole week.
  */
 export async function saveWeekTypeSlots(
   householdId: string,
@@ -317,11 +301,7 @@ export async function saveWeekTypeSlots(
   db: Db = defaultDb,
   ctx: WeekTypeContext & { track?: { userId: string; channel?: UsageChannel | null } } = {},
 ): Promise<WeekTypeDays> {
-  const [exists] = await db.select({ id: householdWeekTypes.id }).from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId)).limit(1)
-  if (!exists) {
-    const seed = await deriveLegacyWeekType(householdId, null, db, ctx)
-    await db.insert(householdWeekTypes).values({ householdId, slots: seed }).onConflictDoNothing({ target: householdWeekTypes.householdId })
-  }
+  await db.insert(householdWeekTypes).values({ householdId, slots: fullWeekTypeDays() }).onConflictDoNothing({ target: householdWeekTypes.householdId })
   return db.transaction(async (tx) => {
     const [row] = await tx.select({ slots: householdWeekTypes.slots }).from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId)).for('update')
     const days = fullWeekTypeDays(parseWeekTypeDays(row?.slots))
@@ -345,16 +325,29 @@ export async function saveWeekTypeSlots(
  */
 export async function applyWeekTypeMigration(db: Db = defaultDb, now: Date = new Date()): Promise<number> {
   const missing = await db
-    .select({ id: households.id, ownerId: households.ownerId })
+    .select({ id: households.id })
     .from(households)
     .leftJoin(householdWeekTypes, eq(householdWeekTypes.householdId, households.id))
     .where(isNull(householdWeekTypes.id))
   let created = 0
   for (const h of missing) {
     try {
-      const slots = await deriveLegacyWeekType(h.id, h.ownerId, db, { now })
-      const inserted = await db.insert(householdWeekTypes).values({ householdId: h.id, slots }).onConflictDoNothing({ target: householdWeekTypes.householdId }).returning({ id: householdWeekTypes.id })
-      created += inserted.length
+      const { days, factIds } = await deriveLegacyWeekType(h.id, db, { now })
+      await db.transaction(async (tx) => {
+        const inserted = await tx.insert(householdWeekTypes).values({ householdId: h.id, slots: days }).onConflictDoNothing({ target: householdWeekTypes.householdId }).returning({ id: householdWeekTypes.id })
+        if (!inserted.length) return
+        created++
+        // A fixed dish with day and meal now lives in the week type: archived in the ficha, never in two places.
+        for (const id of factIds) {
+          const [f] = await tx.update(profileFacts).set({ status: 'retired', updatedAt: now }).where(and(eq(profileFacts.id, id), eq(profileFacts.status, 'active'))).returning()
+          if (!f) continue
+          await tx.insert(profileChanges).values({
+            householdId: h.id, factId: f.id, action: 'fact_retired', factType: f.type,
+            before: { value: f.value, confidence: f.confidence, origin: f.origin }, after: null,
+            reason: 'Pasa a la semana tipo del hogar', origin: f.origin, actorUserId: null,
+          })
+        }
+      })
     } catch (err) {
       console.error(`[week-type] household ${h.id} not migrated:`, (err as Error)?.message ?? err)
     }

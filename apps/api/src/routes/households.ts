@@ -130,7 +130,7 @@ router.get('/households/me/week-type', async (req: AuthRequest, res) => {
       res.status(404).json({ error: 'No household' })
       return
     }
-    res.json({ days: await loadWeekType(householdId, req.userId!) })
+    res.json({ days: await loadWeekType(householdId) })
   } catch (err) {
     console.error('GET /households/me/week-type error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -184,7 +184,7 @@ router.put('/households/me/week-type/:day/:meal', async (req: AuthRequest, res) 
     }
     if (!slot.options?.length) delete slot.options
     if ((slot.options?.length ?? 0) < 2) delete slot.together
-    const before = (await loadWeekType(householdId, req.userId!))[day]?.[meal]
+    const before = (await loadWeekType(householdId))[day]?.[meal]
     if (!slot.since) {
       const sameOptions = stableSlotJson({ options: before?.options, together: before?.together }) === stableSlotJson({ options: slot.options, together: slot.together })
       if (sameOptions && before?.since) slot.since = before.since

@@ -7,10 +7,10 @@
  *   API_URL=http://localhost:8717 DATABASE_URL=… pnpm --filter @ona/api exec vitest run src/tests/weekTypeRoute.smoke.ts
  */
 import { describe, expect, it } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { API_URL, reachable } from './smokeEnv.js'
 import { db } from '../db/connection.js'
-import { householdWeekTypes, users } from '../db/schema.js'
+import { householdWeekTypes, profileChanges, profileFacts, users } from '../db/schema.js'
 import { applyWeekTypeMigration } from '../services/weekType.js'
 
 async function call(method: string, path: string, payload?: unknown, headers: Record<string, string> = {}) {
@@ -89,14 +89,28 @@ describe.skipIf(!reachable)('semana tipo smoke', () => {
     expect((await call('GET', '/households/me/week-type', undefined, auth)).body.days).toEqual(before)
   }, 60_000)
 
-  it('the migration creates what is missing once; a second run changes nothing', async () => {
+  it('a new household gets its week type at once; the migration creates what is missing once and archives the fixed dishes it takes', async () => {
     const { userId } = await freshUser('st_mig')
     const [u] = await db.select({ householdId: users.primaryHouseholdId }).from(users).where(eq(users.id, userId)).limit(1)
     const householdId = u.householdId!
-    expect(await db.select().from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId))).toHaveLength(0)
+    // Created with the household (lunch and dinner every day).
+    const [created] = await db.select().from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId))
+    expect((created.slots as any[])[0]).toMatchObject({ lunch: {}, dinner: {}, breakfast: { off: true } })
+
+    // A household from before: no row, and a «pizza el viernes por la noche» in its ficha.
+    await db.delete(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId))
+    const [fact] = await db.insert(profileFacts).values({
+      householdId, type: 'fixed_dish', value: { dish: 'pizza', days: ['viernes'], meal: 'dinner' }, origin: 'user', confidence: 1,
+      evidence: [{ signal: 'chat', date: '2026-11-01', summary: 'Pizza los viernes' }],
+    }).returning()
     await applyWeekTypeMigration(db)
     const [row] = await db.select().from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId))
-    expect(row.slots).toHaveLength(7)
+    expect((row.slots as any[])[4].dinner.options).toEqual([{ kind: 'type', type: 'pizza' }])
+    const [archived] = await db.select().from(profileFacts).where(eq(profileFacts.id, fact.id))
+    expect(archived.status).toBe('retired')
+    const [change] = await db.select().from(profileChanges).where(and(eq(profileChanges.factId, fact.id), eq(profileChanges.action, 'fact_retired')))
+    expect(change.reason).toMatch(/semana tipo/)
+
     expect(await applyWeekTypeMigration(db)).toBe(0)
     const [again] = await db.select().from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId))
     expect(again.slots).toEqual(row.slots)

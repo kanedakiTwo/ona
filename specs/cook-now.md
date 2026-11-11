@@ -4,7 +4,9 @@ A «Cocinar» tab that, with four questions (time, people, whether something can
 
 It ships in five phases on one branch, published together at the end (PRO-1105 to PRO-1109). **Phase 1 (PRO-1105) is in:** what each ingredient of a recipe is for. **Phase 2 (PRO-1106) is in:** the search, its four routes, Mimo's line and the usage events. **Phase 3 (PRO-1107) is in:** the «Cocinar» tab, with the pantry moved into it.
 
-TODO(spec): the cook mode's menu context, retiring `/recipes/match-pantry` and the end-to-end test land with phases 4–5 (plan tasks 17–20); this spec is rewritten then.
+`/recipes/match-pantry` is retired (PRO-1108, [Cook from Pantry](./cook-from-pantry.md)).
+
+TODO(spec): the cook mode's menu context and the end-to-end test land with phases 4–5 (plan tasks 17–20); this spec is rewritten then.
 
 ## User Capabilities
 
@@ -26,7 +28,7 @@ TODO(spec): the cook mode's menu context, retiring `/recipes/match-pantry` and t
 - **Five tabs** in the bottom bar and the desktop sidebar: Menú, **Cocinar** (`/cocinar`, chef's hat), Compra, Recetas, Perfil. The page is protected like every app page and its visit counts as `screen_viewed` `cocinar` ([Metrics](./metrics.md)).
 - **`/cocinar`**, top to bottom («¿Qué cocinamos?»):
   - **What the menu had for the meal of now** (`TodayPlannedCard`, from `GET /cook-now/today`), unless the meal is locked or there is none: the first dish's photo, «Hoy toca *X*» (or «Hoy tocaban *X e Y*»), the longest total time and «Empezar a cocinar», straight into cook mode for that slot (`cookHref` with `menu`, `day`, `meal`) with the meal's people count, else the household's. Below, always, «¿Otra cosa? Cocinar ahora» (just «Cocinar ahora» with nothing planned), which opens the four questions.
-  - **«Con lo que tienes · Puedes cocinar esto»** (`PantryMatchCard`): up to 3 recipes from `POST /cook-now/proposal` with the default answers and `requirePantryUse` (`pantryMatchBody`), each row with thumbnail, name, `cookNowHitLine` and time, linking to the recipe. Hidden while loading, with nothing to show or with `fallback` (they all miss something essential). It left `/menu` (the old `/recipes/match-pantry` card) with this phase.
+  - **«Con lo que tienes · Puedes cocinar esto»** (`PantryMatchCard`): up to 3 recipes from `POST /cook-now/proposal` with the default answers and `requirePantryUse` (`pantryMatchBody`), each row with thumbnail, name, `cookNowHitLine` and time, linking to the recipe. Hidden while loading, with nothing to show or with `fallback` (they all miss something essential). It left `/menu` (the old `/recipes/match-pantry` card, retired in PRO-1108) with this phase.
   - **«Tu despensa»** (`#despensa`): the whole pantry register, as it was in Perfil ([Pantry](./pantry.md)). `/profile/pantry` redirects to `/cocinar#despensa` and Perfil's «Despensa» links there.
 - **The four questions** (`CookNowFlow`), one per screen with «Atrás» on top (on the first, it closes the flow) and the answers kept when going back; the chosen option has `aria-pressed`:
   1. «¿Cuánto tiempo tienes?» — «15 min», «30 min», «45 min», «1 h o más»; one tap moves on.

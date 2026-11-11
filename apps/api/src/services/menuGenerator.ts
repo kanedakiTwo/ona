@@ -33,7 +33,8 @@ import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
-import { applyWeekTypeTapers, dishTypeNote, markWeekTypeConflicts, missingDishTypes, planWeekType, presetRecipeIds, presetSlots, slotKey, weekTypeFromTemplate, type DishSpec } from './weekTypePlan.js'
+import { compileRestrictions } from './dietaryRestrictions.js'
+import { applyWeekTypeTapers, writtenDishBreaks, dishTypeNote, markWeekTypeConflicts, missingDishTypes, planWeekType, presetRecipeIds, presetSlots, slotKey, weekTypeFromTemplate, type DishSpec } from './weekTypePlan.js'
 import { loadWeekTypeForUser } from './weekType.js'
 import { recordCatalogWish } from './catalogWishes.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
@@ -162,6 +163,7 @@ export function buildRandomMenu(
   // first, for the whole week, so a free slot earlier in the week never takes
   // the only ceviche Thursday asked for. Free positions stay for the draw.
   const prefilled = new Map<string, (Dish | undefined)[]>()
+  let rules: ReturnType<typeof compileRestrictions> | null = null
   for (const [key, specs] of Object.entries(slotSpecs ?? {})) {
     const [d, meal] = key.split(':')
     const dayIndex = Number(d)
@@ -187,8 +189,11 @@ export function buildRandomMenu(
         return { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null } as RecipeDish
       }
       warnings.push(`dish_type_missing_${spec.type}_${meal}_d${dayIndex}`)
-      // A dish (Pizza, Ceviche…) is written by its name; a broad type (Carne, Indio…) is drawn free.
-      return dishTypeInfo(spec.type)?.kind === 'broad' ? undefined : dishTypeNote(spec.type)
+      // A dish (Pizza, Ceviche…) is written by its name — unless the name
+      // itself breaks an allergy or diet; a broad type (Carne, Indio…) is drawn free.
+      const note = dishTypeNote(spec.type)
+      if (dishTypeInfo(spec.type)?.kind === 'broad' || (note.kind === 'note' && writtenDishBreaks(note.text, (rules ??= compileRestrictions(restrictions))))) return undefined
+      return note
     }))
   }
 
@@ -501,7 +506,7 @@ export async function generateMenu(
   // is a plain on/off plantilla with no options.
   const weekType = customTemplate
     ? { householdId: null as string | null, days: weekTypeFromTemplate(customTemplate) }
-    : await loadWeekTypeForUser(userId, db, { recipes: allRecipes, restrictions })
+    : await loadWeekTypeForUser(userId, db)
   const householdId = weekType.householdId ?? (await getPrimaryHouseholdId(userId, db).catch(() => null))
 
   // 5d. Menú del cole (PRO-224): the dinner of a school day avoids the

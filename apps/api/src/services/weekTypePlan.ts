@@ -44,6 +44,11 @@ export interface WeekTypeWeekPlan {
   warnings: string[]
 }
 
+/** Pure: a dish written with no recipe breaks an allergy or diet (its name read as an ingredient, as PRO-1141). */
+export function writtenDishBreaks(name: string, rules: ReturnType<typeof compileRestrictions>): boolean {
+  return violatesRestrictions({ name, ingredients: [{ ingredientName: name }] }, rules)
+}
+
 export const slotKey = (dayIndex: number, meal: string) => `${dayIndex}:${meal}`
 
 /** Pure: on/off, diners and dish counts of a plain plantilla (`customTemplate`) as a week type with no options. */
@@ -74,6 +79,17 @@ export function planWeekType(
   const specOf = (o: WeekTypeOption, dayIndex: number, meal: Meal): DishSpec => {
     if (o.kind === 'type') return isDishType(o.type) ? { kind: 'type', type: o.type } : { kind: 'free' }
     if (o.kind === 'fixed') {
+      // Written with nothing (PRO-1141): the name goes through the allergy
+      // and diet check as an ingredient («jamón con melón» isn't written in a
+      // vegetarian household); if it breaks one, the slot is drawn free and says so.
+      if (!o.items.length) {
+        rules ??= compileRestrictions([...opts.restrictions])
+        if (writtenDishBreaks(o.label, rules)) {
+          conflicts.push({ dayIndex, meal, dish: o.label })
+          warnings.push(`week_type_recipe_restricted_${meal}_d${dayIndex}`)
+          return { kind: 'free' }
+        }
+      }
       // With what it carries: «Fijo: <name>» and its things go to the list
       // (PRO-218). With nothing: just its name, nothing on the list (PRO-1141).
       return {

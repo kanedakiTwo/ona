@@ -736,6 +736,13 @@
       "when": 1794010476321,
       "tag": "0109_recipe_bases",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1794382894126,
+      "tag": "0110_semana_tipo",
+      "breakpoints": true
     }
   ]
 }

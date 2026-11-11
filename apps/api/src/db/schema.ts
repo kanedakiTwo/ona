@@ -301,6 +301,12 @@ export const recipes = pgTable('recipes', {
   seasonFit: jsonb('season_fit'),
 
   equipment: text('equipment').array().default([]),
+  /**
+   * «Semana tipo» (D-182): the dish types of the recipe (`DISH_TYPES` keys:
+   * pizza, legumbres, pescado…), set by `dishTypesOf` on save and import and
+   * filled on boot for rows still null (`dishTypes.ts`).
+   */
+  dishTypes: text('dish_types').array(),
   /** Auto-aggregated from ingredients on save */
   allergens: text('allergens').array().default([]),
 
@@ -724,6 +730,17 @@ export const cookOfDay = pgTable('cook_of_day', {
   assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('uq_cook_of_day').on(t.householdId, t.day)])
+
+// «Semana tipo» (D-182): what the household usually eats each day, one row
+// per household. `slots` is `WeekTypeDays` (@ona/shared types/weekType.ts):
+// 7 days × meal → slot. Written one slot at a time (PUT
+// /households/me/week-type/:day/:meal), read by the menu generator.
+export const householdWeekTypes = pgTable('household_week_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }).unique(),
+  slots: jsonb('slots').notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 // ─── 18. household_invites ──────────────────────────────────
 // One-time tokens the owner generates and shares manually (mirrors the

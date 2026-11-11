@@ -1152,6 +1152,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
           advancePrep: source.advancePrep ?? [],
           nutritionPerServing: source.nutritionPerServing,
           nutritionIncomplete: source.nutritionIncomplete ?? false,
+          dishTypes: source.dishTypes ?? null,
           tags: source.tags ?? [],
           internalTags: baseInternalTags,
           sourceUrl: source.sourceUrl,

@@ -14,6 +14,12 @@
  * semana» (PRO-383, D-158), which replaced the «Familia en el mismo hogar»
  * card of step 1.
  *
+ * «Semana tipo» fase 4 (D-182 §4): «¿Algo más? Cuéntanos tu caso» gives
+ * examples of habits («pasta los miércoles»…) and, when the AI read some into
+ * the household's week type, «Así lo he entendido» comes before the first
+ * menu: one row per slot, «Está bien» (on to the menu) or «Corregir» (the
+ * slots go back as they were and the text opens again).
+ *
  * The questions ("D · Luz y foto", PRO-37): one question per
  * screen with a compact header (eyebrow + Fraunces h1 with a terracotta
  * italic accent), answers as paper cards or chips, and an ink pill pinned to
@@ -73,6 +79,16 @@ interface OnboardingData {
   weekdayCooking: WeekdayCookingChoice | null
   cookingNote: string
 }
+
+/** D-182 fase 4: what `POST /user/:id/onboarding` says it put in the week type. */
+interface WeekTypeUnderstood {
+  rows: Array<{ icon: string; what: string; when: string }>
+  /** The slots as they were, for «Corregir» (`PUT /households/me/week-type/:day/:meal`). */
+  undo: Array<{ day: number; meal: string; slot: Record<string, unknown> }>
+}
+
+/** The step with «¿Algo más? Cuéntanos tu caso». */
+const NOTE_STEP = 4
 
 /** PRO-138: «Entre semana, ¿cómo te gusta cocinar?» — the weekend is «sin prisa». */
 const WEEKDAY_COOKING_OPTIONS: Array<{ value: WeekdayCookingChoice; label: string; desc: string }> = [
@@ -197,6 +213,9 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [preparingMenu, setPreparingMenu] = useState(false)
   const [error, setError] = useState("")
+  // D-182 fase 4: «Así lo he entendido», with the saved sign-up waiting for «Está bien».
+  const [understood, setUnderstood] = useState<{ view: WeekTypeUnderstood; result: any } | null>(null)
+  const [correcting, setCorrecting] = useState(false)
 
   const [data, setData] = useState<OnboardingData>(() => ({
     adults: draft?.adults ?? (known.adults && known.adults >= 1 ? known.adults : 2),
@@ -368,33 +387,72 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
         freezesMeatFish: data.freezesMeatFish ?? undefined,
         shopper: asksShopper(data.adults) ? (data.shopper ?? undefined) : undefined,
       }
-      const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
-
-      // Land on a real first menu built from these answers, not an empty
-      // week. If generation fails, /menu still offers "Generar mi menú".
-      // Friday to Sunday (Madrid) the week is nearly over: build the next
-      // one too and open it (PRO-65). One after the other, so the second
-      // week's variety sees the first. The first menu starts today: the
-      // days already gone are not generated (PRO-244, `fromDate`).
-      // With a menu already made by Mimo (PRO-1042), that one stays: /menu.
-      const { weeks, open, today } = known.hasMenu ? { weeks: [], open: "", today: "" } : firstMenuWeeks()
-      if (weeks.length) setPreparingMenu(true)
-      for (const weekStart of weeks) {
-        await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today }).catch(() => undefined)
+      const { weekTypeUnderstood, ...result } = await api.post<any>(`/user/${user.id}/onboarding`, payload)
+      // D-182 fase 4: what «tu caso» put in the week type, before the menu is made with it.
+      if (weekTypeUnderstood?.rows?.length) {
+        setUnderstood({ view: weekTypeUnderstood, result })
+        setIsSubmitting(false)
+        return
       }
-
-      // Only now mark the user as onboarded (auth context + localStorage).
-      // Doing it before the generate let the onboarding page's own
-      // "already onboarded" redirect reach /menu first; /menu then found no
-      // week (404) and auto-created an empty one on top of the real menu.
-      updateUser(result)
-      markOnboardedInCache(queryClient, user.id)
-      router.push(weeks.length > 1 ? `/menu?week=${open}` : "/menu")
+      await finishOnboarding(result)
     } catch (err: any) {
       setError(err.message || "Error al guardar")
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  /** The first menu, then /menu (after the sign-up is saved, and «Así lo he entendido» if it showed). */
+  async function finishOnboarding(result: any) {
+    if (!user) return
+    // Land on a real first menu built from these answers, not an empty
+    // week. If generation fails, /menu still offers "Generar mi menú".
+    // Friday to Sunday (Madrid) the week is nearly over: build the next
+    // one too and open it (PRO-65). One after the other, so the second
+    // week's variety sees the first. The first menu starts today: the
+    // days already gone are not generated (PRO-244, `fromDate`).
+    // With a menu already made by Mimo (PRO-1042), that one stays: /menu.
+    const { weeks, open, today } = known.hasMenu ? { weeks: [], open: "", today: "" } : firstMenuWeeks()
+    if (weeks.length) setPreparingMenu(true)
+    for (const weekStart of weeks) {
+      await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today }).catch(() => undefined)
+    }
+
+    // Only now mark the user as onboarded (auth context + localStorage).
+    // Doing it before the generate let the onboarding page's own
+    // "already onboarded" redirect reach /menu first; /menu then found no
+    // week (404) and auto-created an empty one on top of the real menu.
+    updateUser(result)
+    markOnboardedInCache(queryClient, user.id)
+    router.push(weeks.length > 1 ? `/menu?week=${open}` : "/menu")
+  }
+
+  /** «Está bien»: on to the first menu, with the week type as understood. */
+  async function acceptUnderstood() {
+    if (!understood) return
+    setIsSubmitting(true)
+    setError("")
+    try {
+      await finishOnboarding(understood.result)
+    } catch (err: any) {
+      setError(err.message || "Error al preparar el menú")
+      setIsSubmitting(false)
+    }
+  }
+
+  /** «Corregir»: the week type as it was, and back to the text (sending it again reads it again). */
+  async function correctUnderstood() {
+    if (!understood) return
+    setCorrecting(true)
+    setError("")
+    try {
+      for (const u of understood.view.undo) await api.put(`/households/me/week-type/${u.day}/${u.meal}`, u.slot)
+    } catch {
+      // The text is what matters: they can still fix the week in Perfil.
+    }
+    setCorrecting(false)
+    setUnderstood(null)
+    setStep(NOTE_STEP)
   }
 
   const canAdvance = () => {
@@ -470,6 +528,54 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
                 }}
               />
             )}
+          </div>
+        </OnboardingShell>
+      </div>
+    )
+  }
+
+  if (understood) {
+    return (
+      <div className="min-h-[100dvh] bg-cream lg:py-8">
+        <OnboardingShell photo={PHOTO}>
+          <div data-testid="onboarding-understood" className="flex min-h-[100dvh] flex-col px-4 pt-[calc(var(--safe-top)+12px)] lg:min-h-[calc(100dvh-4rem)] lg:px-0 lg:pt-0">
+            <div className="flex-1 pb-8 pt-6 lg:pt-10">
+              {error && (
+                <div role="alert" className="mb-4 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">
+                  {error}
+                </div>
+              )}
+              <OnboardingHeader eyebrow="Tu semana tipo">
+                Así lo he <Accent>entendido</Accent>
+              </OnboardingHeader>
+              <Lead>Con esto hago tu menú cada semana. Lo demás lo elijo yo, y lo cambias cuando quieras en Perfil.</Lead>
+              <ul className="mt-6 space-y-3">
+                {understood.view.rows.map((row, i) => (
+                  <li key={i} data-testid="understood-row" className="flex items-center gap-3 rounded-[20px] border border-border-soft bg-paper p-4">
+                    <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cream-deep text-[20px] text-ink-muted">
+                      {row.icon}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-serif-text text-[17px] font-[650] leading-tight text-ink">{row.what}</span>
+                      <span className="mt-0.5 block text-[13px] leading-snug text-ink-muted">{row.when}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">
+              <button type="button" onClick={() => void acceptUnderstood()} disabled={isSubmitting || correcting} className={pill}>
+                {preparingMenu ? "Preparando tu menú..." : "Está bien"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void correctUnderstood()}
+                disabled={isSubmitting || correcting}
+                className="mt-1 flex h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-ink-muted transition-colors hover:text-ink disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              >
+                {correcting ? "Volviendo…" : "Corregir"}
+              </button>
+            </div>
           </div>
         </OnboardingShell>
       </div>
@@ -697,7 +803,7 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
                   onChange={(e) => setData({ ...data, cookingNote: e.target.value })}
                   maxLength={500}
                   rows={3}
-                  placeholder="P. ej. «los lunes ceno tarde», «a mediodía como fuera», «teletrabajo y puedo dejar algo al fuego»"
+                  placeholder="P. ej. «pasta los miércoles», «pescado una semana sí y otra no», «el domingo por la noche, sándwich mixto»"
                   className="mt-2 w-full rounded-2xl border border-border bg-paper px-4 py-3 text-[15px] leading-snug text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none"
                 />
               </section>

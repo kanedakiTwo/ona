@@ -29,6 +29,7 @@ import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles 
 import type { DayMenu, MealSlot } from "@ona/shared"
 import { menuShareText } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
+import { menuDiners } from "@/lib/menuDiners"
 import {
   useMenu,
   useGenerateMenu,
@@ -48,6 +49,7 @@ import {
   useRegenerateDish,
   useAddRandomDish,
   useSetTaper,
+  useReplaceWithNote,
 } from "@/hooks/useMenu"
 import { useQueryLoad } from "@/components/profile/SubLoadError"
 import { useUser } from "@/hooks/useUser"
@@ -60,12 +62,12 @@ import { trackUsage } from "@/lib/usageEvents"
 import { absentMeals, batchServings, dateOfDay, dayHeading, feedsLeftovers, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
-import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
 import { BannedRecipesPanel } from "@/components/menu/BannedRecipesPanel"
 import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
+import { ChangeFailedNotice } from "@/components/menu/ChangeFailedNotice"
 import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
 import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
@@ -206,14 +208,15 @@ export default function MenuPage() {
   const regenerateDish = useRegenerateDish()
   const addRandomDish = useAddRandomDish()
   const setTaper = useSetTaper()
+  const replaceWithNote = useReplaceWithNote()
 
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
   const tasteStatus = useTasteStatus()
-  const householdDiners =
-    ((profile?.adults as number | undefined) ?? user?.adults ?? 0) +
-    ((profile?.kidsCount as number | undefined) ?? user?.kidsCount ?? 0)
-  const defaultDiners = Math.max(1, householdDiners || 2)
+  const defaultDiners = menuDiners({
+    adults: (profile?.adults as number | undefined) ?? user?.adults,
+    kidsCount: (profile?.kidsCount as number | undefined) ?? user?.kidsCount,
+  })
 
   // Initial day from `?day=0…6` (0 = lunes), written with replaceState like
   // `?week=`: «Volver» from a recipe lands on the week and the day you were
@@ -430,15 +433,10 @@ export default function MenuPage() {
             haptic.medium()
             setTaper.mutate({ ...base, on })
           },
+          // One request since 2026-11-10 (`PUT …/meal/:meal { note }`).
           replaceWithNote: (text) => {
             haptic.medium()
-            deleteMealSlot.mutate(base, {
-              onSuccess: () =>
-                addDish.mutate(
-                  { ...base, payload: { kind: "note", text } },
-                  { onSuccess: () => { if (slot.servings != null) updateSlotServings.mutate({ ...base, servings: slot.servings }) } },
-                ),
-            })
+            replaceWithNote.mutate({ ...base, text })
           },
         }
         return {
@@ -697,10 +695,6 @@ export default function MenuPage() {
           }}
         />
       )}
-      {/* Cook from pantry: renders only when the household has matches. */}
-      <div className="lg:-mx-5">
-        <PantryMatchCard />
-      </div>
     </>
   )
 
@@ -802,6 +796,7 @@ export default function MenuPage() {
         )}
         {weekSheet}
         {firstSteps}
+        <ChangeFailedNotice />
         <TasteIntroScreen />
         <PriceSurveySheet />
       </div>
@@ -942,6 +937,7 @@ export default function MenuPage() {
               }}
               slotProps={slotPropsFor(selectedDay)}
               readOnly={isPastWeek}
+              isToday={selectedDay === todayIndex}
             />
             {!isPastWeek && (
               <div className="mt-5">
@@ -970,6 +966,7 @@ export default function MenuPage() {
 
       {weekSheet}
       {firstSteps}
+      <ChangeFailedNotice />
       <TasteIntroScreen />
       <PriceSurveySheet />
     </div>

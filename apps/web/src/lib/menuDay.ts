@@ -94,6 +94,31 @@ export function firstRecipeDish(slot: MealSlot | undefined | null): RecipeDish |
   return (dishes.find((d) => d.kind === "recipe") as RecipeDish | undefined) ?? null
 }
 
+/** A dish's name as the menu shows it (a recipe without its name: «Receta»). */
+export function dishName(d: Dish): string {
+  return d.kind === "recipe" ? d.recipeName?.trim() || "Receta" : d.text
+}
+
+/**
+ * Every dish of a meal (Miguel, 2026-11-10: «si hay más de un plato en una
+ * comida, no aparece… prefiero ver todo lo que hay»): the main one — the
+ * first recipe, else the first dish — shown big, and the others, in their
+ * order, as lines with their name. `position` is the dish's index in the slot
+ * (for «Quitar»).
+ */
+export function slotDishParts(slot: MealSlot | undefined | null): {
+  main: Dish | null
+  others: { dish: Dish; position: number }[]
+} {
+  const dishes: Dish[] = slot?.dishes ?? []
+  const mainAt = Math.max(0, dishes.findIndex((d) => d.kind === "recipe"))
+  const main = dishes[mainAt] ?? null
+  return {
+    main,
+    others: dishes.map((dish, position) => ({ dish, position })).filter((x) => x.position !== mainAt),
+  }
+}
+
 export interface DaySlot {
   meal: MealKey
   slot: MealSlot

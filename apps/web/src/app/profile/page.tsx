@@ -866,7 +866,7 @@ function ProfileHub() {
           status={principlesCount == null ? loading : principlesCount === 0 ? 'Ninguna todavía' : plural(principlesCount, 'principio', 'principios')}
         />
         <ProfileHubLink
-          href="/profile/pantry"
+          href="/cocinar#despensa"
           icon={Archive}
           title="Despensa"
           status={pantry.data == null ? loading : pantry.data.length === 0 ? 'Vacía' : plural(pantry.data.length, 'producto', 'productos')}

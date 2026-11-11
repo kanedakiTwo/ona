@@ -11,7 +11,7 @@ import { db } from '../db/connection.js'
 import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt } from '@ona/shared'
+import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt } from '@ona/shared'
 import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
@@ -49,6 +49,27 @@ import {
 import { z } from 'zod'
 
 const router = Router()
+
+/**
+ * A change by position may carry what it expects to find there (`expect`:
+ * `dishKey` / `slotKey` from `@ona/shared`; in the query for DELETE, in the
+ * body otherwise). The web sends its changes one after the other while they
+ * are already on screen; if one fails, the next one's «position 1» may be
+ * another dish (2026-11-10: «Quitar Pan» would have removed Romanescu). When
+ * it doesn't hold: 409 `MENU_CHANGED` and nothing is written. Without
+ * `expect` (Mimo, an older app) there is no check.
+ */
+function expectedOf(req: AuthRequest, field = 'expect'): string | null {
+  const q = req.query?.[field]
+  if (typeof q === 'string' && q !== '') return q
+  const b = (req.body as Record<string, unknown> | undefined)?.[field]
+  return typeof b === 'string' && b !== '' ? b : null
+}
+function expectationFails(res: import('express').Response, expected: string | null, actual: string): boolean {
+  if (expected == null || expected === actual) return false
+  res.status(409).json({ error: 'El menú ha cambiado mientras tanto: vuelve a intentarlo.', code: MENU_CHANGED_CODE })
+  return true
+}
 
 /**
  * PRO-220: a dish chosen or changed by hand (also late, «a las 13:00 la
@@ -499,6 +520,26 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       return
     }
 
+    // «Usar "<lo escrito>" como plato» (PRO-74): the meal's dishes become
+    // that text, keeping «Solo hoy». One write since 2026-11-10; the web used
+    // to chain DELETE meal + POST dish + PATCH servings, and a failure in the
+    // middle left the meal deleted on the server.
+    const noteText = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 120) : ''
+    if (noteText) {
+      if (expectationFails(res, expectedOf(req), slotKey(slot))) return
+      const newDishes: Dish[] = [{ kind: 'note', text: noteText }]
+      days[dayIndex][meal] = { servings: slot.servings ?? null, dishes: newDishes }
+      const [updated] = await db
+        .update(menus)
+        .set({ days, skippedDays: unskipDay(menu.skippedDays, dayIndex) })
+        .where(eq(menus.id, menuId))
+        .returning()
+      await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
+      refreshPrepAlerts(menuId)
+      res.json(await hydrateMenuImages(updated))
+      return
+    }
+
     // Manual override: if the body carries a `recipeId`, skip the matcher and
     // replace every recipe-dish in the slot with the given recipe. This is the
     // path used by the menu UI's "cambiar plato" picker and by the assistant's
@@ -809,6 +850,7 @@ router.delete('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res)
       res.status(404).json({ error: 'Slot does not exist' })
       return
     }
+    if (expectationFails(res, expectedOf(req), slotKey(days[dayIndex][meal]))) return
 
     const removedSlot = days[dayIndex][meal]
     delete days[dayIndex][meal]
@@ -880,6 +922,8 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
       return
     }
     const targetSlot = days[toDay]?.[toMeal]
+    if (expectationFails(res, expectedOf(req, 'expectFrom'), slotKey(sourceSlot))) return
+    if (expectationFails(res, expectedOf(req, 'expectTo'), slotKey(targetSlot))) return
 
     const moved = moveChanges(
       { day: fromDay, meal: fromMeal, slot: sourceSlot },
@@ -1433,6 +1477,7 @@ router.delete('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Au
     if (position < 0 || position >= slot.dishes.length) {
       res.status(400).json({ error: 'Position out of range' }); return
     }
+    if (expectationFails(res, expectedOf(req), dishKey(slot.dishes[position]))) return
     const removed = dishRecipe(slot.dishes[position])
     const next = removeDishAt(slot.dishes, position)
     days[day][meal] = { ...slot, dishes: next }
@@ -1450,6 +1495,8 @@ const patchDishSchema = z.object({
   course: courseSchema.optional(),
   // `cooked` = «Son sobras de otro día»; `freezer` kept for the sheet shipped before it.
   variant: z.enum(['planned', 'freezer', 'cooked']).optional(),
+  /** What the dish at `position` should be (`dishKey`); 409 MENU_CHANGED otherwise. */
+  expect: z.string().optional(),
 })
 
 // B.3: PATCH /menu/:menuId/day/:day/meal/:meal/dish/:position — patch or reorder a dish.
@@ -1473,6 +1520,7 @@ router.patch('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Aut
     if (position < 0 || position >= slot.dishes.length) {
       res.status(400).json({ error: 'Position out of range' }); return
     }
+    if (expectationFails(res, parsed.data.expect ?? null, dishKey(slot.dishes[position]))) return
     const body = parsed.data
     let next: Dish[]
     if (body.newPosition !== undefined) {
@@ -1522,6 +1570,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     if (position < 0 || position >= slot.dishes.length) {
       res.status(400).json({ error: 'Position out of range' }); return
     }
+    if (expectationFails(res, expectedOf(req), dishKey(slot.dishes[position]))) return
     const dish = slot.dishes[position]
     if (dish.kind === 'note') {
       res.status(400).json({ error: 'Cannot regenerate a note dish' }); return

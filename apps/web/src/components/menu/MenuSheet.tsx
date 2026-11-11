@@ -10,11 +10,24 @@
  * the viewport. Escape closes it, focus moves into the panel on open and
  * back to the trigger on close. Under prefers-reduced-motion it only fades.
  */
-import { useEffect, useId, useRef, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useId, useRef, type ReactNode } from "react"
 import Link from "next/link"
 import { createPortal } from "react-dom"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { X } from "lucide-react"
+import type { MenuSheetAction, MenuSheetName } from "@ona/shared"
+import { trackSheetAction } from "@/lib/usageEvents"
+
+/** PRO-1174: the sheet a `SheetAction` is in, for its `menu_sheet_action` event. */
+const SheetNameContext = createContext<MenuSheetName | null>(null)
+
+/** Counts an option of the sheet around it (`MenuSheet sheet=…`); outside one, nothing. */
+export function useSheetTracker(): (action: MenuSheetAction) => void {
+  const sheet = useContext(SheetNameContext)
+  return useCallback((action: MenuSheetAction) => {
+    if (sheet) trackSheetAction(sheet, action)
+  }, [sheet])
+}
 
 interface Props {
   open: boolean
@@ -25,9 +38,11 @@ interface Props {
   children: ReactNode
   /** Stacking layer; cook mode (z-[100]) needs a higher one. */
   layerClassName?: string
+  /** PRO-1174: which menu sheet this is; its `SheetAction`s with an `action` count each tap. */
+  sheet?: MenuSheetName
 }
 
-export function MenuSheet({ open, onClose, eyebrow, title, children, layerClassName = "z-[70]" }: Props) {
+export function MenuSheet({ open, onClose, eyebrow, title, children, layerClassName = "z-[70]", sheet }: Props) {
   const reduce = useReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
@@ -99,7 +114,7 @@ export function MenuSheet({ open, onClose, eyebrow, title, children, layerClassN
                 <X size={20} />
               </button>
             </div>
-            {children}
+            <SheetNameContext.Provider value={sheet ?? null}>{children}</SheetNameContext.Provider>
           </motion.div>
         </div>
       )}
@@ -119,6 +134,7 @@ export function SheetAction({
   destructive,
   external,
   testId,
+  action,
 }: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
   label: string
@@ -130,7 +146,14 @@ export function SheetAction({
   /** `href` opens another app or site (wa.me) in a new tab. */
   external?: boolean
   testId?: string
+  /** PRO-1174: the option this is, counted as `menu_sheet_action` with the sheet around it. */
+  action?: MenuSheetAction
 }) {
+  const track = useSheetTracker()
+  const handleClick = () => {
+    if (action) track(action)
+    onClick?.()
+  }
   const cls = `flex min-h-[52px] w-full items-center gap-3.5 rounded-2xl px-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-ink ${
     disabled
       ? "cursor-not-allowed opacity-40"
@@ -161,20 +184,20 @@ export function SheetAction({
   if (href && !disabled && external) {
     // Another app (wa.me): a plain link in a new tab, and `onClick` still runs (to count it).
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" onClick={onClick} draggable={false} className={cls} data-testid={testId} {...a11y}>
+      <a href={href} target="_blank" rel="noopener noreferrer" onClick={handleClick} draggable={false} className={cls} data-testid={testId} {...a11y}>
         {body}
       </a>
     )
   }
   if (href && !disabled) {
     return (
-      <Link href={href} draggable={false} className={cls} data-testid={testId} {...a11y}>
+      <Link href={href} onClick={handleClick} draggable={false} className={cls} data-testid={testId} {...a11y}>
         {body}
       </Link>
     )
   }
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={cls} data-testid={testId} {...a11y}>
+    <button type="button" onClick={handleClick} disabled={disabled} className={cls} data-testid={testId} {...a11y}>
       {body}
     </button>
   )

@@ -14,6 +14,7 @@ describe('web usage paths', () => {
     expect(screenOfPath('/recipes/0b1c')).toBe('receta')
     expect(screenOfPath('/recipes/new')).toBeNull()
     expect(screenOfPath('/recipes/0b1c/cook')).toBeNull()
+    expect(screenOfPath('/cocinar')).toBe('cocinar')
     expect(screenOfPath('/profile/pantry')).toBe('despensa')
     expect(screenOfPath('/profile/avisos')).toBe('avisos')
     expect(screenOfPath('/profile/casa')).toBe('casa')
@@ -22,7 +23,8 @@ describe('web usage paths', () => {
   })
 
   it('every screen and origin the web sends is one the API accepts', () => {
-    for (const p of ['/menu', '/shopping', '/compra', '/recipes', '/recipes/x', '/profile', '/profile/pantry', '/profile/avisos', '/profile/casa']) {
+    expect(USAGE_SCREENS).toContain('cocinar')
+    for (const p of ['/menu', '/cocinar', '/shopping', '/compra', '/recipes', '/recipes/x', '/profile', '/profile/pantry', '/profile/avisos', '/profile/casa']) {
       expect(USAGE_SCREENS).toContain(screenOfPath(p))
     }
     for (const prev of ['/menu?day=2', '/recipes', '/cookbooks/1', '/shopping', null, '/']) {

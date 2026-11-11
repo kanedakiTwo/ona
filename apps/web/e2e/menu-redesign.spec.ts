@@ -128,9 +128,9 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
 
-  // The hero is today's featured meal and its CTA opens cook mode for it.
+  // The hero is today's featured meal and its CTA opens cook mode for it, with its menu slot (PRO-1108).
   const cook = hero.getByRole('link', { name: /empezar a cocinar/i })
-  await expect(cook).toHaveAttribute('href', new RegExp(`^/recipes/${expectedId}/cook\\?servings=\\d+$`))
+  await expect(cook).toHaveAttribute('href', new RegExp(`^/recipes/${expectedId}/cook\\?servings=\\d+&menu=${menu.id}&day=${todayIdx}&meal=\\w+$`))
   // …above the fold, clear of the tab bar.
   const viewport = page.viewportSize()!
   const box = (await cook.boundingBox())!
@@ -162,7 +162,7 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
 
   // Bottom tab bar: visible text labels, active tab marked.
   const nav = page.getByRole('navigation', { name: 'Navegación principal' })
-  for (const label of ['Menú', 'Compra', 'Recetas', 'Perfil']) {
+  for (const label of ['Menú', 'Cocinar', 'Compra', 'Recetas', 'Perfil']) {
     await expect(nav.getByText(label, { exact: true })).toBeVisible()
   }
   // Mimo is the floating button, not a tab (D-023).
@@ -271,7 +271,7 @@ test.describe('desktop', () => {
     await page.mouse.up()
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'lunch', toDay: 1, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'lunch', toDay: 1, toMeal: 'lunch' })
 
     await expect(source).toContainText(tue!, { timeout: 10_000 })
     await expect(target).toContainText(mon!)
@@ -325,11 +325,10 @@ test.describe('desktop', () => {
       .click()
     await expect(page.getByRole('heading', { level: 1 })).toContainText(new RegExp(WEEKDAYS[other], 'i'))
 
-    // Right under the day's meals, before the next day's preview.
+    // Right under the day's meals; the next day's preview that followed is gone (2026-11-10).
     const addMeal = page.getByRole('button', { name: /^añadir comida$/i })
-    const box = (await addMeal.boundingBox())!
-    const preview = (await page.getByTestId('next-day-preview').boundingBox())!
-    expect(box.y + box.height).toBeLessThanOrEqual(preview.y)
+    await expect(addMeal).toBeVisible()
+    await expect(page.getByTestId('next-day-preview')).toHaveCount(0)
 
     await addMeal.click()
     const sheet = page.getByRole('dialog', { name: `Añadir comida al ${WEEKDAYS[other]}` })
@@ -355,7 +354,7 @@ test.describe('desktop', () => {
     const column = page.locator(`[data-day-column="${other}"]`)
     const noLunch = column.locator(`[data-week-cell="${other}-lunch"] [data-absent-meal="lunch"]`)
     await expect(noLunch).toHaveText('no hay', { timeout: 20_000 })
-    await expect(noLunch).toHaveAttribute('aria-label', `Comida: no hay. Ver el ${WEEKDAYS[other]}`)
+    await expect(noLunch).toHaveAttribute('aria-label', `Comida: no hay. Añadir comida al ${WEEKDAYS[other]}`)
     if (dinnerName) {
       await expect(
         column
@@ -364,7 +363,8 @@ test.describe('desktop', () => {
       ).toBeVisible()
     }
 
-    await column.locator('[data-absent-meal="lunch"]').click()
+    // The day label shows the day (the «no hay» cell opens its sheet instead, menu-week-no-hay.spec.ts).
+    await column.locator('button[aria-pressed]').click()
     await expect(page.getByRole('heading', { level: 1 })).toContainText(new RegExp(WEEKDAYS[other], 'i'))
     const absent = page.locator('[data-testid="absent-meal"][data-meal="lunch"]')
     await expect(absent).toContainText(`El ${WEEKDAYS[other]} no hay comida`)
@@ -398,7 +398,7 @@ test.describe('desktop', () => {
     await dragTo(page, source, target)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other, fromMeal: 'dinner', toDay: other, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: other, fromMeal: 'dinner', toDay: other, toMeal: 'lunch' })
     await expect(weekDish(page, other, 'lunch').getByRole('button', { name: /^Comida: / })).toBeVisible({ timeout: 10_000 })
     await expect(target).toHaveCount(0)
   })
@@ -419,13 +419,13 @@ test.describe('desktop', () => {
     await dragTo(page, source, target)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: from, fromMeal: 'lunch', toDay: other, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: from, fromMeal: 'lunch', toDay: other, toMeal: 'lunch' })
     await expect(page.locator(`[data-day-column="${from}"] [data-absent-meal="lunch"]`)).toBeVisible({ timeout: 10_000 })
   })
 
   // Miguel, 2026-10-19: «también debería poder arrastrarse del plato
   // principal (comida) al secundario (cena) y viceversa» — the hero row
-  // (and the next day's preview) took no part in drag and drop.
+  // took no part in drag and drop.
   test('in the hero row, the lunch dragged onto the dinner swaps them', async ({ page }) => {
     test.setTimeout(90_000)
     const { menu, headers, weekStart } = await userWithMenu(page)
@@ -448,27 +448,8 @@ test.describe('desktop', () => {
     })
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other, fromMeal: 'lunch', toDay: other, toMeal: 'dinner' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: other, fromMeal: 'lunch', toDay: other, toMeal: 'dinner' })
     await expect(page.getByTestId('menu-hero')).toContainText(dinnerName, { timeout: 10_000 })
-  })
-
-  test('a dish dragged from the next day\'s preview onto «El … no hay comida» moves there', async ({ page }) => {
-    test.setTimeout(90_000)
-    const other = today() === 0 ? 1 : 0
-    await weekWithoutLunchOn(page, other)
-
-    await page.goto('/menu')
-    await page.locator(`[data-day-column="${other}"] [data-absent-meal="lunch"]`).click({ timeout: 20_000 })
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(new RegExp(WEEKDAYS[other], 'i'))
-    const target = page.locator('[data-testid="absent-meal"][data-meal="lunch"]')
-    await expect(target).toBeVisible()
-
-    const moved = moveSlotResponse(page)
-    await dragTo(page, page.getByTestId('next-day-preview').locator(`[data-dnd-slot="${other + 1}-lunch"]`), target, { inWeek: false })
-    const res = await moved
-    expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other + 1, fromMeal: 'lunch', toDay: other, toMeal: 'lunch' })
-    await expect(target).toHaveCount(0, { timeout: 10_000 })
   })
 
   // Miguel, 2026-10-20: «la comida y la cena siempre deberían ir en los
@@ -531,7 +512,7 @@ test.describe('desktop', () => {
     await dragTo(page, lunch, dinner)
     let res = await moved
     expect(res.ok(), `lunch → dinner: ${res.status()}`).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
     await expect(column.getByRole('button', { name: new RegExp(`^Cena: ${lunchName}\\.`) })).toBeVisible({ timeout: 10_000 })
     // dnd-kit doesn't start a new drag a few ms after a drop (a person never
     // does that); give the drop time to settle.
@@ -541,7 +522,7 @@ test.describe('desktop', () => {
     await dragTo(page, dinner, lunch)
     res = await moved
     expect(res.ok(), `dinner → lunch: ${res.status()}`).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'dinner', toDay: 0, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'dinner', toDay: 0, toMeal: 'lunch' })
     await expect(column.getByRole('button', { name: new RegExp(`^Comida: ${lunchName}\\.`) })).toBeVisible({ timeout: 10_000 })
   })
 
@@ -572,7 +553,7 @@ test.describe('desktop', () => {
     await dragTo(page, note, target)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'dinner', toDay: 1, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'dinner', toDay: 1, toMeal: 'lunch' })
     await expect(page.locator('[data-day-column="1"]')).toContainText('Cenamos fuera', { timeout: 10_000 })
   })
 
@@ -589,7 +570,7 @@ test.describe('desktop', () => {
     await dragTo(page, recipe, note)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 1, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 1, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
     await expect(page.locator('[data-day-column="1"]')).toContainText('Cenamos fuera', { timeout: 10_000 })
   })
 
@@ -692,7 +673,7 @@ test('a dish already in the menu can be marked «son sobras de otro día» and b
   await page.getByRole('dialog').getByRole('button', { name: /^son sobras de otro día/i }).click()
   let res = await patched
   expect(res.ok(), `cooked: ${res.status()}`).toBeTruthy()
-  expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ variant: 'cooked' })
+  expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ variant: 'cooked' })
   await expect(hero.getByText('Sobras de otro día · no suma a la compra')).toBeVisible({ timeout: 10_000 })
   // Already cooked: nothing to start cooking.
   await expect(hero.getByRole('link', { name: /empezar a cocinar/i })).toHaveCount(0)

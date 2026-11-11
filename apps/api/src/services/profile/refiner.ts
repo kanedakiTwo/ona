@@ -53,7 +53,6 @@ import { db as defaultDb } from '../../db/connection.js'
 import {
   householdPersons,
   householdProfiles,
-  households,
   profileChanges,
   profileFacts,
   profileQuestions,
@@ -368,6 +367,8 @@ export type DiscardReason =
   | 'duplicate_question'
   | 'over_limit'
   | 'paused'
+  /** «Semana tipo» (D-182): a fixed dish with day and meal (phase 3 lets Mimo propose it). */
+  | 'week_type'
 
 /** What a rule threw away: reason and type, never the content. */
 export interface Discarded {
@@ -523,6 +524,14 @@ export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: R
     // What the household forgot in «Tu ficha» comes back only as a question (PRO-317).
     if (ctx.forgotten?.some((f) => f.type === factType && f.subjectUserId === subject!.userId && f.subjectPersonId === subject!.personId && sameFactValue(f.value, value))) {
       pushQuestion(subject, `Me ha parecido ver otra vez algo que olvidaste: «${factSentence(factType, value, 'casa') ?? factType}». ¿Lo apunto?`, factType, reason, op)
+      continue
+    }
+
+    // «Semana tipo» (D-182): a fixed dish with its day and meal belongs to the
+    // household's week type, which only the household changes until Mimo
+    // learns to propose it (phase 3); the refiner doesn't write it anywhere.
+    if (factType === 'fixed_dish' && fixedDishOf(value)) {
+      discarded.push({ reason: 'week_type', op, type })
       continue
     }
 
@@ -717,12 +726,8 @@ export async function applyRefinerPlan(householdId: string, plan: RefinerPlan, o
   const model = opts.model ?? REFINER_MODEL
   const origin = opts.origin ?? 'ai_nightly'
   if (!plan.ops.length) return 0
-  // «Semana tipo» (D-182): a dish with its day and meal goes into the
-  // household's week type, only on slots that ask for nothing yet.
-  const toWeekType = plan.ops.filter((op) => op.kind === 'add' && op.type === 'fixed_dish' && fixedDishOf(op.value))
   await db.transaction(async (tx) => {
     for (const op of plan.ops) {
-      if (toWeekType.includes(op)) continue
       if (op.kind === 'add') {
         const [row] = await tx.insert(profileFacts).values({
           householdId, ...subjectCols(op.subject), type: op.type, value: op.value as any, origin,
@@ -768,17 +773,6 @@ export async function applyRefinerPlan(householdId: string, plan: RefinerPlan, o
       }
     }
   })
-  if (toWeekType.length) {
-    const { setWeekTypeDish } = await import('../weekType.js')
-    const [h] = await db.select({ ownerId: households.ownerId }).from(households).where(eq(households.id, householdId)).limit(1)
-    for (const op of toWeekType) {
-      const fixed = op.kind === 'add' ? fixedDishOf(op.value) : null
-      if (!h || !fixed) continue
-      await setWeekTypeDish(householdId, fixed, { userId: h.ownerId, onlyIfFree: true, db, now }).catch((err) => {
-        console.warn('[profile-refiner] week type dish not saved:', (err as Error)?.message ?? err)
-      })
-    }
-  }
   return plan.ops.length
 }
 

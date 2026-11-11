@@ -68,19 +68,19 @@ describe.skipIf(!reachable)('la ficha al momento y cada semana (PRO-320)', () =>
       },
     }
     const out = await refineHouseholdNow(householdId, 'onboarding', now, realtime)
-    expect(out).toMatchObject({ status: 'applied', applied: 1 })
+    // «Semana tipo» (D-182): a fixed dish with day and meal is the household's to set (phase 3 lets Mimo propose it).
+    expect(out).toMatchObject({ status: 'applied', applied: 0 })
+    expect((out as any).discarded).toEqual([{ reason: 'week_type', op: 'add', type: 'fixed_dish' }])
     expect(sent).toHaveLength(1)
     expect(sent[0].messages[0].content).toMatch(/Pasada al momento/)
     expect(sent[0].messages[0].content).toContain('Los viernes cenamos pizza casera')
-    // «Semana tipo» (D-182): a dish with its day and meal goes to the household's week type, not to a fact.
+    // Neither a fact nor the week type.
     expect(await db.select().from(profileFacts).where(and(eq(profileFacts.householdId, householdId), eq(profileFacts.type, 'fixed_dish')))).toHaveLength(0)
     const [weekType] = await db.select().from(householdWeekTypes).where(eq(householdWeekTypes.householdId, householdId))
-    const friday = (weekType.slots as any[])[4].dinner
-    expect(friday.options).toHaveLength(1)
-    expect(friday.options[0].kind === 'recipe' ? friday.options[0].name : friday.options[0].label ?? friday.options[0].type).toMatch(/pizza/i)
+    expect((weekType.slots as any[])[4].dinner.options).toBeUndefined()
     const [rt] = await db.select().from(profileRefinerRuns).where(and(eq(profileRefinerRuns.day, day), eq(profileRefinerRuns.kind, 'realtime')))
     const [rtRow] = await db.select().from(profileRefinements).where(and(eq(profileRefinements.runId, rt.id), eq(profileRefinements.householdId, householdId)))
-    expect(rtRow).toMatchObject({ status: 'applied', applied: 1, billedUserId: userId })
+    expect(rtRow).toMatchObject({ status: 'applied', applied: 0, billedUserId: userId })
     // A second round right after: no second call within the cooldown.
     expect(await refineHouseholdNow(householdId, 'afina', new Date(now.getTime() + 60_000), realtime)).toEqual({ status: 'skipped', reason: 'cooldown' })
     expect(sent).toHaveLength(1)

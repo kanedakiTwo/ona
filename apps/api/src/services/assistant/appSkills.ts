@@ -13,6 +13,7 @@ import {
   inviteHouseholdShareText,
   isAlertKind,
   isReligiousDiet,
+  householdToDiners,
   plantillaEdits,
   plantillaFromWeekType,
   prettyName,
@@ -1416,7 +1417,9 @@ const updateWeeklyTemplate: SkillDefinition = {
     const days: number[] = Array.isArray(p.days) && p.days.length ? p.days.filter((d: number) => d >= 0 && d <= 6) : [0, 1, 2, 3, 4, 5, 6]
     // «Semana tipo» (D-182): the household's usual week, only the slots that change.
     const weekType = await api(ctx)<{ days: WeekTypeDays }>('GET', '/households/me/week-type')
-    const before = plantillaFromWeekType(weekType.days, 2)
+    // A slot without its own diners is for the whole household (not a fixed 2).
+    const me = await api(ctx)<{ adults?: number; kidsCount?: number }>('GET', `/user/${ctx.userId}`).catch(() => null)
+    const before = plantillaFromWeekType(weekType.days, householdToDiners(me?.adults ?? 2, me?.kidsCount ?? 0))
     const after = { ...before, ...applyTemplateChange(before, { days, meal: p.meal, diners: p.diners, dishes: p.dishes }) } as PlantillaView
     for (const e of plantillaEdits(weekType.days, before, after, madridWeekStart())) {
       await api(ctx)('PUT', `/households/me/week-type/${e.day}/${e.meal}`, e.slot)

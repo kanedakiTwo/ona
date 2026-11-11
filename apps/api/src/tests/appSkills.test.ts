@@ -666,6 +666,15 @@ describe('recipes, profile, household', () => {
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/households/me/week-type/5/dinner', body: { off: true, options: [{ kind: 'type', type: 'pizza' }] } }])
   })
 
+  it('update_weekly_template counts the household’s real diners: «somos dos» in a house of 4 writes those slots', async () => {
+    const f = fakeApi({ 'GET /households/me/week-type': { days: fullWeekTypeDays() }, 'GET /user/u1': { adults: 4, kidsCount: 0 } })
+    await get('update_weekly_template').handler({ days: [0, 1], meal: 'dinner', diners: 2 }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'PUT', path: '/households/me/week-type/0/dinner', body: { diners: 2 } },
+      { method: 'PUT', path: '/households/me/week-type/1/dinner', body: { diners: 2 } },
+    ])
+  })
+
   it('invite_to_household returns the written message with the link, counted as sent by Mimo (PRO-260)', async () => {
     const f = fakeApi({ 'POST /households/me/invites': { token: 'abc123' } })
     const r = await get('invite_to_household').handler({}, ctx(f.api))

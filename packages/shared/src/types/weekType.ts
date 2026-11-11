@@ -278,3 +278,62 @@ export function slotWithoutOptions(slot: WeekTypeSlot): WeekTypeSlot {
   const { options: _o, together: _t, since: _s, offWhenFree, ...rest } = slot
   return offWhenFree ? { ...rest, off: true } : rest
 }
+
+// ─── «Tu semana tipo» (phase 2): the slot as its panel shows it ──────────
+
+/** How the panel reads a slot: its real options («cada 2» is one option every 2 weeks). */
+export interface WeekTypeSlotView {
+  off: boolean
+  options: WeekTypeOption[]
+  together: boolean
+  /** 1 = every week; 2–4 = «Cada N semanas» (one option followed by «Cualquier receta» fillers). */
+  every: number
+}
+
+/** Pure: the slot as the panel shows it. `[Pizza, Cualquier, Cualquier]` by turns is «Pizza, cada 3». */
+export function weekTypeSlotView(slot: WeekTypeSlot): WeekTypeSlotView {
+  const options = slot.options ?? []
+  const together = !!slot.together && options.length > 1
+  const everyN = !together && options.length >= 2 && options[0].kind !== 'any' && options.slice(1).every((o) => o.kind === 'any')
+  return { off: !!slot.off, options: everyN ? [options[0]] : options, together, every: everyN ? options.length : 1 }
+}
+
+/**
+ * Pure: the slot to save after the panel's change. «Cada N» is stored as
+ * its turn; changing the options or how they go starts the turns this week.
+ */
+export function weekTypeSlotFromView(prev: WeekTypeSlot, view: WeekTypeSlotView, weekStart: string): WeekTypeSlot {
+  const { options: _o, together: _t, since: _s, off: _off, offWhenFree: _f, ...rest } = prev
+  const every = Math.min(WEEK_TYPE_MAX_OPTIONS, Math.max(1, Math.round(view.every)))
+  const options: WeekTypeOption[] =
+    !view.together && view.options.length === 1 && every > 1
+      ? [view.options[0], ...Array.from({ length: every - 1 }, () => ({ kind: 'any' }) as WeekTypeOption)]
+      : view.options.slice(0, WEEK_TYPE_MAX_OPTIONS)
+  const together = view.together && options.length > 1
+  const next: WeekTypeSlot = { ...rest }
+  if (view.off) next.off = true
+  if (options.length) {
+    next.options = options
+    if (together) next.together = true
+    const same = stableSlotJson({ options: prev.options, together: prev.together }) === stableSlotJson({ options, together: together || undefined })
+    next.since = same && prev.since ? prev.since : weekStart
+  }
+  return next
+}
+
+/** Monday `weeks` weeks after `weekStart` (YYYY-MM-DD). */
+export function addWeeksTo(weekStart: string, weeks: number): string {
+  const d = new Date(`${weekStart.slice(0, 10)}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 7 * weeks)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Pure («Así lo pondría Mimo»): what the slot asks for each of the next weeks, from `weekStart`. */
+export function weekTypePreview(slot: WeekTypeSlot, weekStart: string, weeks = 4): Array<{ weekStart: string; label: string }> {
+  return Array.from({ length: weeks }, (_, i) => {
+    const w = addWeeksTo(weekStart, i)
+    if (slot.off) return { weekStart: w, label: 'No hay' }
+    const options = weekTypeOptionsFor(slot, w)
+    return { weekStart: w, label: options.length ? options.map(weekTypeOptionLabel).join(' + ') : 'Cualquier receta' }
+  })
+}

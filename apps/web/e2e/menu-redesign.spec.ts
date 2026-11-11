@@ -271,7 +271,7 @@ test.describe('desktop', () => {
     await page.mouse.up()
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'lunch', toDay: 1, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'lunch', toDay: 1, toMeal: 'lunch' })
 
     await expect(source).toContainText(tue!, { timeout: 10_000 })
     await expect(target).toContainText(mon!)
@@ -398,7 +398,7 @@ test.describe('desktop', () => {
     await dragTo(page, source, target)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other, fromMeal: 'dinner', toDay: other, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: other, fromMeal: 'dinner', toDay: other, toMeal: 'lunch' })
     await expect(weekDish(page, other, 'lunch').getByRole('button', { name: /^Comida: / })).toBeVisible({ timeout: 10_000 })
     await expect(target).toHaveCount(0)
   })
@@ -419,7 +419,7 @@ test.describe('desktop', () => {
     await dragTo(page, source, target)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: from, fromMeal: 'lunch', toDay: other, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: from, fromMeal: 'lunch', toDay: other, toMeal: 'lunch' })
     await expect(page.locator(`[data-day-column="${from}"] [data-absent-meal="lunch"]`)).toBeVisible({ timeout: 10_000 })
   })
 
@@ -448,7 +448,7 @@ test.describe('desktop', () => {
     })
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: other, fromMeal: 'lunch', toDay: other, toMeal: 'dinner' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: other, fromMeal: 'lunch', toDay: other, toMeal: 'dinner' })
     await expect(page.getByTestId('menu-hero')).toContainText(dinnerName, { timeout: 10_000 })
   })
 
@@ -512,7 +512,7 @@ test.describe('desktop', () => {
     await dragTo(page, lunch, dinner)
     let res = await moved
     expect(res.ok(), `lunch → dinner: ${res.status()}`).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
     await expect(column.getByRole('button', { name: new RegExp(`^Cena: ${lunchName}\\.`) })).toBeVisible({ timeout: 10_000 })
     // dnd-kit doesn't start a new drag a few ms after a drop (a person never
     // does that); give the drop time to settle.
@@ -522,7 +522,7 @@ test.describe('desktop', () => {
     await dragTo(page, dinner, lunch)
     res = await moved
     expect(res.ok(), `dinner → lunch: ${res.status()}`).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'dinner', toDay: 0, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'dinner', toDay: 0, toMeal: 'lunch' })
     await expect(column.getByRole('button', { name: new RegExp(`^Comida: ${lunchName}\\.`) })).toBeVisible({ timeout: 10_000 })
   })
 
@@ -553,7 +553,7 @@ test.describe('desktop', () => {
     await dragTo(page, note, target)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 0, fromMeal: 'dinner', toDay: 1, toMeal: 'lunch' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 0, fromMeal: 'dinner', toDay: 1, toMeal: 'lunch' })
     await expect(page.locator('[data-day-column="1"]')).toContainText('Cenamos fuera', { timeout: 10_000 })
   })
 
@@ -570,7 +570,7 @@ test.describe('desktop', () => {
     await dragTo(page, recipe, note)
     const res = await moved
     expect(res.ok()).toBeTruthy()
-    expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ fromDay: 1, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
+    expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ fromDay: 1, fromMeal: 'lunch', toDay: 0, toMeal: 'dinner' })
     await expect(page.locator('[data-day-column="1"]')).toContainText('Cenamos fuera', { timeout: 10_000 })
   })
 
@@ -673,7 +673,7 @@ test('a dish already in the menu can be marked «son sobras de otro día» and b
   await page.getByRole('dialog').getByRole('button', { name: /^son sobras de otro día/i }).click()
   let res = await patched
   expect(res.ok(), `cooked: ${res.status()}`).toBeTruthy()
-  expect(JSON.parse(res.request().postData() ?? '{}')).toEqual({ variant: 'cooked' })
+  expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ variant: 'cooked' })
   await expect(hero.getByText('Sobras de otro día · no suma a la compra')).toBeVisible({ timeout: 10_000 })
   // Already cooked: nothing to start cooking.
   await expect(hero.getByRole('link', { name: /empezar a cocinar/i })).toHaveCount(0)

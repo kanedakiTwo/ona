@@ -38,10 +38,10 @@ import {
   DISH_TYPES,
   MEALS,
   WEEK_TYPE_MAX_OPTIONS,
-  dishTypeInfo,
   householdToDiners,
   stableSlotJson,
   validateMemoryFactValue,
+  weekTypeOptionLabel,
   weekTypeSlotAt,
   weekTypeSlotError,
   weekTypeSlotSchema,
@@ -58,7 +58,19 @@ import { recordAnthropicCost } from './costLedger.js'
 import { mergeMemoryFacts, type MemoryFactInput } from './assistant/skills.js'
 import { CLAUDE_MODEL, withThinkingRoom } from '../config/models.js'
 import type { RecipeWithCourse } from './matchableRecipes.js'
-import { currentWeekStart, editWeekTypeAsPlantilla, loadRecipesFor, loadWeekTypeForUser, optionForDishName, saveWeekTypeSlots, type SlotChange } from './weekType.js'
+import {
+  MEAL_LABELS,
+  currentWeekStart,
+  daysLabel,
+  editWeekTypeAsPlantilla,
+  loadRecipesFor,
+  loadWeekTypeForUser,
+  nextWeekTypeSlot,
+  optionForDishName,
+  saveWeekTypeSlots,
+  type SlotChange,
+  type WeekTypeSlotRequest,
+} from './weekType.js'
 
 /** Same model as Mimo (ASSISTANT_MODEL in assistant/engine.ts). */
 export const ONBOARDING_ANALYSIS_MODEL = CLAUDE_MODEL
@@ -343,27 +355,10 @@ export function parseWeekTypeHabits(raw: unknown): WeekTypeHabit[] {
 }
 
 /**
- * Pure: the slot after a habit. «No hay» keeps the rest of the slot;
- * options replace the ones there and start their turns `since` this week
- * («cada 2» = the dish, then «Cualquier receta»). Options on a meal that was
- * «no hay» turn it on until they go (`offWhenFree`, as a comida fija).
- */
-export function habitSlot(prev: WeekTypeSlot, habit: WeekTypeHabit, options: WeekTypeOption[], since: string): WeekTypeSlot {
-  if (habit.off) {
-    const { diners: _d, offWhenFree: _o, ...rest } = prev
-    return { ...rest, off: true }
-  }
-  const { off, offWhenFree, together: _t, since: _s, options: _o, ...rest } = prev
-  const turns: WeekTypeOption[] = habit.every > 1 ? [options[0], ...Array.from({ length: habit.every - 1 }, (): WeekTypeOption => ({ kind: 'any' }))] : options
-  const slot: WeekTypeSlot = { ...rest, options: turns, since }
-  if (habit.together && turns.length > 1) slot.together = true
-  if (off || offWhenFree) slot.offWhenFree = true
-  return slot
-}
-
-/**
  * Pure: the slots the habits write, each one whole (a later habit on the same
- * slot wins). A slot that can't be (the schema, the táper rules) is left out.
+ * slot wins), through the same conversion as Mimo's `set_week_type_slot`
+ * (`nextWeekTypeSlot`); options start their turns `since` this week. A slot
+ * that can't be (the schema, the táper rules) is left out.
  */
 export function weekTypeHabitChanges(
   days: WeekTypeDays,
@@ -373,11 +368,14 @@ export function weekTypeHabitChanges(
 ): SlotChange[] {
   const changes = new Map<string, SlotChange>()
   for (const h of habits) {
-    const options = h.dishes.map(optionFor)
+    const request: WeekTypeSlotRequest = h.off
+      ? { off: true }
+      : { options: h.dishes.map(optionFor), together: h.together, every: h.every > 1 ? h.every : undefined }
     for (const d of h.days) {
       const key = `${d}:${h.meal}`
-      const prev = changes.get(key)?.slot ?? weekTypeSlotAt(days, d, h.meal)
-      const slot = habitSlot(prev, h, options, since)
+      const next = nextWeekTypeSlot(changes.get(key)?.slot ?? weekTypeSlotAt(days, d, h.meal), request)
+      if ('error' in next) continue
+      const slot: WeekTypeSlot = next.options?.length && !h.off ? { ...next, since } : next
       if (!weekTypeSlotSchema.safeParse(slot).success || weekTypeSlotError(d, h.meal, slot)) continue
       changes.set(key, { day: d, meal: h.meal, slot })
     }
@@ -385,7 +383,11 @@ export function weekTypeHabitChanges(
   return [...changes.values()]
 }
 
-/** One row of «Así lo he entendido»: icon, what, and «día · comida · frecuencia». */
+/**
+ * One row of «Así lo he entendido». `icon` is the key of the profile's stroke
+ * icons (`DishTypeIcon`): a `DISH_TYPES` key, a wildcard (`any`, `taper`,
+ * `fixed`, `recipe`), `off` («no hay») or `diners`.
+ */
 export interface UnderstoodRow {
   icon: string
   what: string
@@ -398,49 +400,24 @@ export interface UnderstoodWeekType {
   undo: SlotChange[]
 }
 
-const DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
-const MEAL_NAMES: Record<Meal, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
-
-/** Pure: «Viernes», «Sábado y domingo», «De lunes a viernes», «Todos los días». */
-export function habitDaysLabel(days: readonly number[]): string {
-  const sorted = [...new Set(days)].sort((a, b) => a - b)
-  if (sorted.length === 7) return 'Todos los días'
-  if (sorted.join() === '0,1,2,3,4') return 'De lunes a viernes'
-  const names = sorted.map((d) => DAY_NAMES[d])
-  const text = names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
-  return text ? text[0].toLocaleUpperCase('es') + text.slice(1) : text
-}
-
-function optionIcon(o: WeekTypeOption): string {
-  if (o.kind === 'type') return dishTypeInfo(o.type)?.icon ?? '🍽️'
-  if (o.kind === 'taper') return '🥡'
-  if (o.kind === 'any') return '✨'
-  return '🍽️'
-}
-
-function optionName(o: WeekTypeOption): string {
-  if (o.kind === 'type') return dishTypeInfo(o.type)?.label ?? o.type
-  if (o.kind === 'recipe') return o.name
-  if (o.kind === 'fixed') return o.label
-  if (o.kind === 'taper') return 'Táper de la cena'
-  return 'Cualquier receta'
-}
+const capitalise = (s: string) => (s ? s[0].toLocaleUpperCase('es') + s.slice(1) : s)
 
 /** Pure: a slot as one row's icon, what and how often. */
 function describeSlot(slot: WeekTypeSlot, prev: WeekTypeSlot): { icon: string; what: string; freq: string } {
-  if (slot.off) return { icon: '✕', what: 'No hay', freq: '' }
+  if (slot.off) return { icon: 'off', what: 'No hay', freq: '' }
   const options = slot.options ?? []
   const real = options.filter((o) => o.kind !== 'any')
   const forN = slot.diners && slot.diners !== prev.diners ? `, para ${slot.diners}` : ''
   if (real.length === 0) {
     return slot.diners && slot.diners !== prev.diners
-      ? { icon: '👥', what: slot.diners === 1 ? 'Para 1 persona' : `Para ${slot.diners} personas`, freq: '' }
-      : { icon: '✨', what: 'Cualquier receta', freq: '' }
+      ? { icon: 'diners', what: slot.diners === 1 ? 'Para 1 persona' : `Para ${slot.diners} personas`, freq: '' }
+      : { icon: 'any', what: 'Cualquier receta', freq: '' }
   }
-  const names = real.map(optionName)
-  if (slot.together) return { icon: optionIcon(real[0]), what: names.join(' + ') + forN, freq: 'en la misma comida' }
-  if (real.length === 1) return { icon: optionIcon(real[0]), what: names[0] + forN, freq: options.length === 1 ? 'cada semana' : `cada ${options.length} semanas` }
-  return { icon: optionIcon(real[0]), what: names.join(' / ') + forN, freq: 'por turnos, una cada semana' }
+  const icon = real[0].kind === 'type' ? real[0].type : real[0].kind
+  const names = real.map(weekTypeOptionLabel)
+  if (slot.together) return { icon, what: names.join(' + ') + forN, freq: 'en la misma comida' }
+  if (real.length === 1) return { icon, what: names[0] + forN, freq: options.length === 1 ? 'cada semana' : `cada ${options.length} semanas` }
+  return { icon, what: names.join(' / ') + forN, freq: 'por turnos, una cada semana' }
 }
 
 /**
@@ -465,7 +442,7 @@ export function understoodWeekType(before: WeekTypeDays, after: WeekTypeDays): U
   }
   const rows = [...groups.values()]
     .sort((a, b) => a.days[0] - b.days[0] || MEALS.indexOf(a.meal) - MEALS.indexOf(b.meal))
-    .map((g) => ({ icon: g.icon, what: g.what, when: [habitDaysLabel(g.days), MEAL_NAMES[g.meal], g.freq].filter(Boolean).join(' · ') }))
+    .map((g) => ({ icon: g.icon, what: g.what, when: [capitalise(daysLabel(g.days)), MEAL_LABELS[g.meal], g.freq].filter(Boolean).join(' · ') }))
   return { rows, undo }
 }
 

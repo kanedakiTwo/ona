@@ -19,6 +19,8 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import {
   DISH_TYPES,
   MEALS,
+  WEEK_TYPE_MAX_OPTIONS,
+  slotWithoutOptions,
   firstMenuWeeks,
   fixedMealsFromTemplate,
   fullWeekTypeDays,
@@ -402,4 +404,84 @@ export function poolOfDishType<R extends { dishTypes?: string[] | null }>(pool: 
   if (!type) return pool
   const typed = pool.filter((r) => r.dishTypes?.includes(type))
   return typed.length ? typed : pool
+}
+
+// ─── A habit said in words → a slot (Mimo's tools and the sign-up) ─────────
+// One conversion for both (D-183): `set_week_type_slot` and the sign-up's
+// «¿Algo más? Cuéntanos tu caso» (onboardingMemoryAnalysis.ts).
+
+export const DAY_LABELS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+export const MEAL_LABELS: Record<Meal, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
+
+export const joinY = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`)
+
+/** Pure: «viernes», «sábado y domingo», «de lunes a viernes», «todos los días». */
+export function daysLabel(days: readonly number[]): string {
+  const sorted = [...new Set(days)].sort((a, b) => a - b)
+  if (sorted.length === 7) return 'todos los días'
+  if (sorted.join() === '0,1,2,3,4') return 'de lunes a viernes'
+  return joinY(sorted.map((d) => DAY_LABELS[d]))
+}
+
+/** What the model asks for one slot (already resolved into options). */
+export interface WeekTypeSlotRequest {
+  options?: WeekTypeOption[]
+  together?: boolean
+  /** «Cada N semanas» (2–4): the one option, then N−1 «cualquier receta». */
+  every?: number
+  /** true = «no hay»; false = that meal is planned again. */
+  off?: boolean
+  diners?: number
+}
+
+/**
+ * Pure: the slot after the request, or why it can't be. Options replace the
+ * ones there (their turns start again this week: the route puts `since`);
+ * only «cualquier receta» leaves it free. «No hay» keeps the options for when
+ * it comes back. Options on a «no hay» meal turn it on until they go
+ * (`offWhenFree`, as a comida fija).
+ */
+export function nextWeekTypeSlot(prev: WeekTypeSlot, req: WeekTypeSlotRequest): WeekTypeSlot | { error: string } {
+  const { since: _since, ...base } = prev
+  let next: WeekTypeSlot = { ...base }
+  if (req.off === true) {
+    next.off = true
+    delete next.diners
+    delete next.offWhenFree
+    return next
+  }
+  if (req.off === false) {
+    delete next.off
+    delete next.offWhenFree
+  }
+  if (req.options) {
+    let options = req.options
+    const every = req.every ?? 1
+    if (every > 1) {
+      const real = options.filter((o) => o.kind !== 'any')
+      if (real.length !== 1) return { error: '«Cada N semanas» va con una sola opción.' }
+      if (every > WEEK_TYPE_MAX_OPTIONS) return { error: `Como mucho, cada ${WEEK_TYPE_MAX_OPTIONS} semanas.` }
+      options = [real[0], ...Array.from({ length: every - 1 }, (): WeekTypeOption => ({ kind: 'any' }))]
+    }
+    if (options.length > WEEK_TYPE_MAX_OPTIONS) return { error: `Como mucho ${WEEK_TYPE_MAX_OPTIONS} opciones en una comida.` }
+    if (options.every((o) => o.kind === 'any')) {
+      next = slotWithoutOptions(next)
+    } else {
+      if (next.off) {
+        delete next.off
+        next.offWhenFree = true
+      }
+      next.options = options
+      if (req.together && every === 1 && options.length > 1) next.together = true
+      else delete next.together
+    }
+  }
+  if (req.diners !== undefined) {
+    next.diners = req.diners
+    if (next.off) {
+      delete next.off
+      delete next.offWhenFree
+    }
+  }
+  return next
 }

@@ -16,7 +16,8 @@ vi.mock('../services/matchableRecipes.js', () => ({
 }))
 
 import { fullWeekTypeDays, type WeekTypeDays } from '@ona/shared'
-import { weekTypeSkills, describeWeekTypeSlot, nextWeekTypeSlot, dayIndexOf, mealOf, daysLabel } from '../services/assistant/weekTypeSkills.js'
+import { weekTypeSkills, describeWeekTypeSlot, dayIndexOf, mealOf } from '../services/assistant/weekTypeSkills.js'
+import { daysLabel, nextWeekTypeSlot } from '../services/weekType.js'
 import { fichaSkills } from '../services/assistant/fichaSkills.js'
 import { skills, toolsFor } from '../services/assistant/skills.js'
 import { buildSystemParts, WEEK_TYPE_RULE } from '../services/assistant/systemPrompt.js'

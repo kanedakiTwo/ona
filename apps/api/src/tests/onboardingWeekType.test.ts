@@ -11,7 +11,6 @@ import { fullWeekTypeDays, type WeekTypeDays } from '@ona/shared'
 import {
   analyzeOnboardingIntoMemory,
   ANALYSIS_SYSTEM_PROMPT,
-  habitDaysLabel,
   parseWeekTypeHabits,
   understoodWeekType,
   weekTypeHabitChanges,
@@ -74,7 +73,7 @@ describe('«Cuéntanos tu caso» → the semana tipo (D-182 fase 4)', () => {
     expect(store.saved).toEqual([{ day: 4, meal: 'dinner', slot: { options: [{ kind: 'type', type: 'pizza' }], since: MONDAY } }])
     expect(result.keys).toContain('week_type')
     expect(result.weekType).toEqual({
-      rows: [{ icon: '🍕', what: 'Pizza', when: 'Viernes · cena · cada semana' }],
+      rows: [{ icon: 'pizza', what: 'Pizza', when: 'Viernes · cena · cada semana' }],
       undo: [{ day: 4, meal: 'dinner', slot: {} }],
     })
   })
@@ -82,14 +81,14 @@ describe('«Cuéntanos tu caso» → the semana tipo (D-182 fase 4)', () => {
   it('«legumbres el sábado cada dos semanas» → Saturday lunch, legumbres then any recipe', async () => {
     const { result, store } = await analyse('legumbres el sábado cada dos semanas', [{ days: [5], meal: 'lunch', dishes: ['Legumbres'], every: 2 }])
     expect(store.days()[5].lunch).toEqual({ options: [{ kind: 'type', type: 'legumbres' }, { kind: 'any' }], since: MONDAY })
-    expect(result.weekType?.rows).toEqual([{ icon: '🫘', what: 'Legumbres', when: 'Sábado · comida · cada 2 semanas' }])
+    expect(result.weekType?.rows).toEqual([{ icon: 'legumbres', what: 'Legumbres', when: 'Sábado · comida · cada 2 semanas' }])
   })
 
   it('«la cena del sábado fuera» → no hay cena on Saturday', async () => {
     const { result, store } = await analyse('la cena del sábado fuera', [{ days: [5], meal: 'dinner', off: true }])
     expect(store.days()[5].dinner).toEqual({ off: true })
     expect(result.weekType).toEqual({
-      rows: [{ icon: '✕', what: 'No hay', when: 'Sábado · cena' }],
+      rows: [{ icon: 'off', what: 'No hay', when: 'Sábado · cena' }],
       undo: [{ day: 5, meal: 'dinner', slot: {} }],
     })
   })
@@ -106,10 +105,10 @@ describe('«Cuéntanos tu caso» → the semana tipo (D-182 fase 4)', () => {
     expect(store.days()[6].breakfast).toEqual({ options: [{ kind: 'type', type: 'tostadas' }], since: MONDAY, offWhenFree: true })
     expect(store.days()[0].lunch?.together).toBe(true)
     expect(result.weekType?.rows).toEqual([
-      { icon: '🍝', what: 'Pasta + Ensaladas', when: 'De lunes a viernes · comida · en la misma comida' },
-      { icon: '🍋', what: 'Ceviche / Carpaccio y tartar', when: 'Jueves · cena · por turnos, una cada semana' },
-      { icon: '🍞', what: 'Tostadas', when: 'Domingo · desayuno · cada semana' },
-      { icon: '🍽️', what: 'Sándwich mixto', when: 'Domingo · cena · cada semana' },
+      { icon: 'pasta', what: 'Pasta + Ensaladas', when: 'De lunes a viernes · comida · en la misma comida' },
+      { icon: 'ceviche', what: 'Ceviche / Carpaccio y tartar', when: 'Jueves · cena · por turnos, una cada semana' },
+      { icon: 'tostadas', what: 'Tostadas', when: 'Domingo · desayuno · cada semana' },
+      { icon: 'fixed', what: 'Sándwich mixto', when: 'Domingo · cena · cada semana' },
     ])
     // «Corregir» puts every slot back as it was.
     expect(result.weekType?.undo).toHaveLength(8)
@@ -158,12 +157,6 @@ describe('the habits, pure', () => {
     const before = fullWeekTypeDays()
     const after = structuredClone(before)
     for (const d of [0, 1, 2, 3, 4]) after[d].lunch = { diners: 1 }
-    expect(understoodWeekType(before, after).rows).toEqual([{ icon: '👥', what: 'Para 1 persona', when: 'De lunes a viernes · comida' }])
-  })
-
-  it('days read in Spanish', () => {
-    expect(habitDaysLabel([5, 6])).toBe('Sábado y domingo')
-    expect(habitDaysLabel([0, 1, 2, 3, 4, 5, 6])).toBe('Todos los días')
-    expect(habitDaysLabel([2])).toBe('Miércoles')
+    expect(understoodWeekType(before, after).rows).toEqual([{ icon: 'diners', what: 'Para 1 persona', when: 'De lunes a viernes · comida' }])
   })
 })

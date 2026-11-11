@@ -17,7 +17,6 @@ import {
   defaultWeekTypeSlot,
   dishTypeInfo,
   isDishType,
-  slotWithoutOptions,
   stableSlotJson,
   weekTypeSlotAt,
   weekTypeSlotError,
@@ -29,14 +28,22 @@ import {
 } from '@ona/shared'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
-import { dishTypeForName, loadRecipesFor, optionForDishName } from '../weekType.js'
+import {
+  DAY_LABELS,
+  MEAL_LABELS,
+  daysLabel,
+  dishTypeForName,
+  joinY,
+  loadRecipesFor,
+  nextWeekTypeSlot,
+  optionForDishName,
+  type WeekTypeSlotRequest,
+} from '../weekType.js'
 
 const api = (ctx: SkillContext): AppApi =>
   ctx.api ?? appApiFor(ctx.userId, { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' })
 const text = (summary: string, data: unknown = null, uiHint: SkillResult['uiHint'] = 'text'): SkillResult => ({ data, summary, uiHint })
 
-const DAY_LABELS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
-const MEAL_LABELS: Record<Meal, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
 const MEAL_WORDS: Record<string, Meal> = {
   breakfast: 'breakfast', desayuno: 'breakfast',
   lunch: 'lunch', comida: 'lunch', almuerzo: 'lunch', mediodia: 'lunch',
@@ -57,16 +64,6 @@ export function dayIndexOf(d: unknown): number | null {
 export function mealOf(m: unknown): Meal | null {
   const s = fold(String(m ?? '')).replace(/^(el|la) /, '')
   return MEAL_WORDS[s] ?? null
-}
-
-const joinY = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`)
-
-/** Pure: «viernes», «sábado y domingo», «de lunes a viernes», «todos los días». */
-export function daysLabel(days: readonly number[]): string {
-  const sorted = [...new Set(days)].sort((a, b) => a - b)
-  if (sorted.length === 7) return 'todos los días'
-  if (sorted.join() === '0,1,2,3,4') return 'de lunes a viernes'
-  return joinY(sorted.map((d) => DAY_LABELS[d]))
 }
 
 /** Pure: an option as it reads mid-sentence («pizza», «Lentejas con chorizo», «táper de la cena»). */
@@ -95,69 +92,6 @@ export function describeWeekTypeSlot(slot: WeekTypeSlot): string {
   } else if (options.length === 2) s = `una semana ${labels[0]} y otra ${labels[1]}`
   else s = `por turnos, ${joinY(labels)}`
   return slot.diners ? `${s}, para ${slot.diners}` : s
-}
-
-/** What the model asks for one slot (already resolved into options). */
-export interface WeekTypeSlotRequest {
-  options?: WeekTypeOption[]
-  together?: boolean
-  /** «Cada N semanas» (2–4): the one option, then N−1 «cualquier receta». */
-  every?: number
-  /** true = «no hay»; false = that meal is planned again. */
-  off?: boolean
-  diners?: number
-}
-
-/**
- * Pure: the slot after the request, or why it can't be. Options replace the
- * ones there (their turns start again this week: the route puts `since`);
- * only «cualquier receta» leaves it free. «No hay» keeps the options for when
- * it comes back. Options on a «no hay» meal turn it on until they go
- * (`offWhenFree`, as a comida fija).
- */
-export function nextWeekTypeSlot(prev: WeekTypeSlot, req: WeekTypeSlotRequest): WeekTypeSlot | { error: string } {
-  const { since: _since, ...base } = prev
-  let next: WeekTypeSlot = { ...base }
-  if (req.off === true) {
-    next.off = true
-    delete next.diners
-    delete next.offWhenFree
-    return next
-  }
-  if (req.off === false) {
-    delete next.off
-    delete next.offWhenFree
-  }
-  if (req.options) {
-    let options = req.options
-    const every = req.every ?? 1
-    if (every > 1) {
-      const real = options.filter((o) => o.kind !== 'any')
-      if (real.length !== 1) return { error: '«Cada N semanas» va con una sola opción.' }
-      if (every > WEEK_TYPE_MAX_OPTIONS) return { error: `Como mucho, cada ${WEEK_TYPE_MAX_OPTIONS} semanas.` }
-      options = [real[0], ...Array.from({ length: every - 1 }, (): WeekTypeOption => ({ kind: 'any' }))]
-    }
-    if (options.length > WEEK_TYPE_MAX_OPTIONS) return { error: `Como mucho ${WEEK_TYPE_MAX_OPTIONS} opciones en una comida.` }
-    if (options.every((o) => o.kind === 'any')) {
-      next = slotWithoutOptions(next)
-    } else {
-      if (next.off) {
-        delete next.off
-        next.offWhenFree = true
-      }
-      next.options = options
-      if (req.together && every === 1 && options.length > 1) next.together = true
-      else delete next.together
-    }
-  }
-  if (req.diners !== undefined) {
-    next.diners = req.diners
-    if (next.off) {
-      delete next.off
-      delete next.offWhenFree
-    }
-  }
-  return next
 }
 
 const NO_HOUSEHOLD = 'No he cambiado nada: no encuentro su hogar. La semana tipo se cambia también en Perfil.'

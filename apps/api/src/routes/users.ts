@@ -9,7 +9,7 @@ import {
 } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { updateProfileSchema, onboardingSchema, onboardingDraftSchema, fixedMealsFromTemplate } from '@ona/shared'
+import { updateProfileSchema, onboardingSchema, onboardingDraftSchema } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
@@ -20,7 +20,6 @@ import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../service
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import { householdRestrictionsBefore, reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
-import { requestChannel, templateChanges, trackEvent } from '../services/usageEvents.js'
 import {
   getHealthConsent,
   grantHealthConsent,
@@ -423,6 +422,9 @@ router.get('/user/:id/settings', async (req: AuthRequest, res) => {
   }
 })
 
+/** The old plantilla's keys of `user_settings.template` (D-182: now in the week type). */
+const LEGACY_PLANTILLA_KEYS = ['mealTemplate', 'meal_template', 'mealDishCounts', 'fixedMeals', 'taperDays'] as const
+
 // PUT /user/:id/settings
 router.put('/user/:id/settings', async (req: AuthRequest, res) => {
   try {
@@ -434,16 +436,22 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     const template = (await hasHealthConsent(req.params.id))
       ? withoutUncoveredReligiousDiets(req.body.template, await healthConsentCoversReligion(req.params.id))
       : stripHealthFromTemplate(req.body.template)
-    // Comidas fijas (PRO-218): keep only well-formed ones.
-    if (template && typeof template === 'object' && !Array.isArray(template) && 'fixedMeals' in template) {
-      ;(template as { fixedMeals?: unknown }).fixedMeals = fixedMealsFromTemplate(template)
-    }
-
     const [existing] = await db
       .select({ id: userSettings.id, template: userSettings.template })
       .from(userSettings)
       .where(eq(userSettings.userId, req.params.id))
       .limit(1)
+    // «Semana tipo» (D-182): meals, diners, dishes, fixed meals and tápers
+    // live in the household's week type (PUT /households/me/week-type/…). The
+    // old keys are kept as they were stored (they only feed its migration),
+    // whatever this save sends, so saving the profile never changes the week.
+    if (template && typeof template === 'object' && !Array.isArray(template)) {
+      const stored = existing?.template && typeof existing.template === 'object' && !Array.isArray(existing.template) ? (existing.template as Record<string, unknown>) : {}
+      for (const key of LEGACY_PLANTILLA_KEYS) {
+        if (key in stored) (template as Record<string, unknown>)[key] = stored[key]
+        else delete (template as Record<string, unknown>)[key]
+      }
+    }
 
     let result
     if (existing) {
@@ -458,10 +466,6 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
         .values({ userId: req.params.id, template })
         .returning()
     }
-
-    // PRO-1024: one `template_changed` per part that changed (Perfil, or Mimo's update_weekly_template).
-    const channel = requestChannel(req)
-    for (const what of templateChanges(existing?.template, template)) trackEvent('template_changed', { userId: req.params.id, channel, props: { what } })
 
     res.json(result)
   } catch (err) {

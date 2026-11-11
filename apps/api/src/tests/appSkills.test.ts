@@ -16,7 +16,7 @@ import type { DayMenu, Dish } from '@ona/shared'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
 import { buildSystemParts } from '../services/assistant/systemPrompt.js'
-import { updateProfileSchema } from '@ona/shared'
+import { fullWeekTypeDays, updateProfileSchema } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from '../services/dietaryRestrictions.js'
 
 const get = (name: string) => {
@@ -657,10 +657,13 @@ describe('recipes, profile, household', () => {
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { priority: 'cheap' } }])
   })
 
-  it('update_weekly_template writes the merged settings blob', async () => {
-    const f = fakeApi({ 'GET /user/u1/settings': { template: { mealTemplate: { sabado: { cena: 2 } } } } })
+  it('update_weekly_template writes only the slots that change in the household\'s «semana tipo» (D-182)', async () => {
+    const days = fullWeekTypeDays()
+    days[5].dinner = { diners: 2, options: [{ kind: 'type', type: 'pizza' }] }
+    const f = fakeApi({ 'GET /households/me/week-type': { days } })
     await get('update_weekly_template').handler({ days: [5], meal: 'dinner', diners: 0 }, ctx(f.api))
-    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1/settings', body: { template: { mealTemplate: { sabado: { cena: 0 } } } } }])
+    // Saturday's dinner is off; its pizza stays for when it comes back; nothing else is written.
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/households/me/week-type/5/dinner', body: { off: true, options: [{ kind: 'type', type: 'pizza' }] } }])
   })
 
   it('invite_to_household returns the written message with the link, counted as sent by Mimo (PRO-260)', async () => {

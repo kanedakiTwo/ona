@@ -7,7 +7,8 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { DayMenu, MealSlot } from '@ona/shared'
-import { applyTaper, applyTemplateTapers, removeTaper, taperDaysOf, taperReminderLine, taperTomorrow } from '../services/taper.js'
+import { applyTaper, removeTaper, taperDaysOf, taperReminderLine, taperTomorrow } from '../services/taper.js'
+import { applyWeekTypeTapers } from '../services/weekTypePlan.js'
 import { sumDinersByRecipe, withLeftoverBatches } from '../services/shoppingList.js'
 import { batchServings, taperSourceOf } from '../../../web/src/lib/menuDay'
 import { setTaper } from '../services/assistant/taperSkills.js'
@@ -82,12 +83,15 @@ describe('marking Tuesday’s lunch as táper', () => {
     expect(removeTaper(week(), 1, 'lunch')).toMatchObject({ ok: false, status: 404 })
   })
 
-  it('the plantilla’s «días de táper» do it on generation (skipping Monday and skipped days)', () => {
+  it('the week type’s «Táper de la cena» does it on generation (not after a skipped day, nor on a meal out)', () => {
     expect(taperDaysOf({ taperDays: ['martes', 'lunes', 'jueves', 'otro'] })).toEqual([0, 1, 3])
-    const days = applyTemplateTapers(week(), { taperDays: ['martes', 'lunes'] })
+    const days = applyWeekTypeTapers(week(), [{ dayIndex: 1, meal: 'lunch' }])
     expect(days[1].lunch?.taper).toBe(1)
     expect(days[0].lunch?.dishes[0]).toMatchObject({ recipeId: 'ensalada' })
-    expect(applyTemplateTapers(week(), { taperDays: ['martes'] }, {}, [0])[1].lunch?.taper).toBeUndefined()
+    expect(applyWeekTypeTapers(week(), [{ dayIndex: 1, meal: 'lunch' }], { skippedDays: new Set([0]) })[1].lunch?.taper).toBeUndefined()
+    const out = Array.from({ length: 7 }, () => ({ lunch: true, dinner: true }))
+    out[1] = { lunch: false, dinner: true }
+    expect(applyWeekTypeTapers(week(), [{ dayIndex: 1, meal: 'lunch' }], { template: out })[1].lunch?.taper).toBeUndefined()
   })
 })
 

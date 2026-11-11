@@ -53,6 +53,7 @@ import { db as defaultDb } from '../../db/connection.js'
 import {
   householdPersons,
   householdProfiles,
+  households,
   profileChanges,
   profileFacts,
   profileQuestions,
@@ -65,6 +66,7 @@ import { recordCost, anthropicUnits } from '../costLedger.js'
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { spendCapStatus } from '../spendCap.js'
 import { factSentence } from './view.js'
+import { fixedDishOf } from './reader.js'
 import { sameFactValue } from './writer.js'
 import { mentionsHealth } from './healthText.js'
 import { collectHouseholdDaySignals, type HouseholdDaySignals, type SignalMember } from './signals.js'
@@ -715,8 +717,12 @@ export async function applyRefinerPlan(householdId: string, plan: RefinerPlan, o
   const model = opts.model ?? REFINER_MODEL
   const origin = opts.origin ?? 'ai_nightly'
   if (!plan.ops.length) return 0
+  // «Semana tipo» (D-182): a dish with its day and meal goes into the
+  // household's week type, only on slots that ask for nothing yet.
+  const toWeekType = plan.ops.filter((op) => op.kind === 'add' && op.type === 'fixed_dish' && fixedDishOf(op.value))
   await db.transaction(async (tx) => {
     for (const op of plan.ops) {
+      if (toWeekType.includes(op)) continue
       if (op.kind === 'add') {
         const [row] = await tx.insert(profileFacts).values({
           householdId, ...subjectCols(op.subject), type: op.type, value: op.value as any, origin,
@@ -762,6 +768,17 @@ export async function applyRefinerPlan(householdId: string, plan: RefinerPlan, o
       }
     }
   })
+  if (toWeekType.length) {
+    const { setWeekTypeDish } = await import('../weekType.js')
+    const [h] = await db.select({ ownerId: households.ownerId }).from(households).where(eq(households.id, householdId)).limit(1)
+    for (const op of toWeekType) {
+      const fixed = op.kind === 'add' ? fixedDishOf(op.value) : null
+      if (!h || !fixed) continue
+      await setWeekTypeDish(householdId, fixed, { userId: h.ownerId, onlyIfFree: true, db, now }).catch((err) => {
+        console.warn('[profile-refiner] week type dish not saved:', (err as Error)?.message ?? err)
+      })
+    }
+  }
   return plan.ops.length
 }
 

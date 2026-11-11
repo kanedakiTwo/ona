@@ -178,10 +178,20 @@ export const noteFichaFactSkill: SkillDefinition = {
         }
         personId = person.key.slice(2)
       }
-      const out = await api(ctx)<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null }>('POST', FICHA_FACTS_PATH, {
+      const out = await api(ctx)<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null; weekType?: boolean }>('POST', FICHA_FACTS_PATH, {
         type, value: p.value, about, personId, validUntil: p.valid_until ? endOfMadridDay(p.valid_until) : undefined,
       })
       const what = out.sentence ? `«${out.sentence}»` : 'el dato'
+      // «Semana tipo» (D-182): a dish with its day and meal goes there, not to the ficha.
+      if (out.weekType) {
+        return {
+          data: out,
+          summary: out.action === 'unchanged'
+            ? `Ya estaba así en su semana tipo: ${what}. No he cambiado nada.`
+            : `Apuntado en la semana tipo del hogar: ${what}. Sale así en los menús que se generen desde ahora.`,
+          uiHint: 'confirmation',
+        }
+      }
       return {
         data: out,
         summary: out.action === 'unchanged'

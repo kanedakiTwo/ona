@@ -24,12 +24,11 @@ export function reorderDish(dishes: Dish[], from: number, to: number): Dish[] {
 
 /**
  * Patch a single dish. Fields that don't apply to the dish's kind are silently
- * ignored (e.g. `text` on a recipe dish, `pinnedType` on a note dish). This
+ * ignored (e.g. `text` on a recipe dish, `course` on a note dish). This
  * lets the route handler accept a uniform body shape without dispatching on kind.
  */
 export interface DishPatch {
   text?: string
-  pinnedType?: string | null
   course?: Course | null
   /** «Son sobras de otro día» (`cooked`) on a dish already in the menu (2026-10-20); never on a leftover. */
   variant?: 'planned' | 'freezer' | 'cooked'
@@ -44,7 +43,6 @@ export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish
     current.kind === 'recipe'
       ? {
           ...current,
-          ...(patch.pinnedType !== undefined && { pinnedType: patch.pinnedType }),
           ...(patch.course !== undefined && { course: patch.course }),
           ...(patch.variant !== undefined && current.variant !== 'leftover' && { variant: patch.variant }),
         }

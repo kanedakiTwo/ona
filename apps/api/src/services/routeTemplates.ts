@@ -117,6 +117,8 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/households/me/invites/:x/shared',
   '/households/me/leave',
   '/households/me/members/:x/remove',
+  '/households/me/week-type',
+  '/households/me/week-type/:x/:x',
   '/ingredients',
   '/ingredients/:x',
   '/ingredients/:x/estimate-nutrition',

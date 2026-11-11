@@ -67,6 +67,11 @@ vi.mock('../services/menuFit.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/menuFit.js')>()),
   evaluateAndSaveMenuFit: vi.fn(async () => null),
 }))
+// «Semana tipo» (D-182): no slot asks for a dish type in these weeks.
+vi.mock('../services/weekType.js', () => ({
+  weekTypeDishTypeAt: vi.fn(async () => null),
+  poolOfDishType: (pool: unknown[]) => pool,
+}))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
   scopeWhere: vi.fn(() => ({ /* drizzle SQL stub — proxy db ignores it */ })),

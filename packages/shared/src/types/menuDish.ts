@@ -22,8 +22,6 @@ export interface RecipeDish {
   recipeName?: string
   /** Hydrated from `recipes.course` on read; nullable for versatile recipes. */
   course?: Course | null
-  /** Per-dish meal-type pin (cremas, legumbres…). Moved from slot in the multi-dish migration. */
-  pinnedType?: string | null
   /**
    * `planned` (default) | `leftover` (cloned from a previous slot's recipe-dish)
    * | `freezer` (a táper from the freezer, PRO-82: linked to its recipe, never
@@ -58,9 +56,9 @@ export interface RecipeDish {
    */
   restrictionConflict?: boolean
   /**
-   * PRO-1141: a «plato fijo» of the household's ficha («pizza el viernes por
-   * la noche»), put there by the generator. «Generar» puts it back and
-   * «Cambiar al azar» doesn't touch it; choosing another recipe by hand does.
+   * A concrete recipe of the household's «semana tipo» (D-182; before, a
+   * «plato fijo» of the ficha, PRO-1141), put there by the generator.
+   * «Generar» puts it back; «Cambiar al azar» picks another one.
    */
   fixedDish?: boolean
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
@@ -80,11 +78,11 @@ export interface NoteDish {
    * slot's diners. Absent on ordinary notes, which add nothing to the list.
    */
   fixed?: { items: Array<{ name: string; quantity: number; unit: 'u' | 'g' | 'ml' }> }
-  /** PRO-1141: a ficha's «plato fijo» with no recipe that matches it: its name, nothing on the list. */
+  /** A dish of the «semana tipo» with no recipe that fits (a type like «Pizza»): its name, nothing on the list. */
   fixedDish?: boolean
 }
 
-/** Pure (PRO-1141): the dish is a ficha's «plato fijo» (not a táper copied from it). */
+/** Pure (PRO-1141, D-182): the dish was put by the «semana tipo» as a fixed one (not a táper copied from it). */
 export function isFixedDish(d: Dish | null | undefined): boolean {
   return !!d && d.fixedDish === true && !(d.kind === 'recipe' && d.leftoverOf)
 }

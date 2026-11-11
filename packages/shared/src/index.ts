@@ -192,7 +192,6 @@ export type {
   Difficulty,
   Aisle,
   SourceType,
-  MealTypeTag,
 } from './constants/enums.js'
 
 // Zod schemas
@@ -240,9 +239,35 @@ export {
   DIFFICULTIES,
   AISLES,
   SOURCE_TYPES,
-  MEAL_TYPE_TAGS,
-  MEAL_TYPE_TAG_LABELS,
 } from './constants/enums.js'
+export {
+  DISH_TYPES,
+  DISH_TYPE_KEYS,
+  DISH_TYPE_FAMILIES,
+  DISH_TYPE_FAMILY_LABELS,
+  isDishType,
+  dishTypeInfo,
+} from './constants/dishTypes.js'
+export type { DishType, DishTypeFamily, DishTypeInfo } from './constants/dishTypes.js'
+export {
+  WEEK_TYPE_MAX_OPTIONS,
+  weekTypeOptionSchema,
+  weekTypeSlotSchema,
+  defaultWeekTypeSlot,
+  weekTypeSlotAt,
+  fullWeekTypeDays,
+  taperAllowedAt,
+  weekTypeSlotError,
+  weeksBetween,
+  weekTypeOptionsFor,
+  weekTypeOptionLabel,
+  stableSlotJson,
+  PLANTILLA_DAYS,
+  PLANTILLA_MEALS,
+  plantillaFromWeekType,
+  plantillaEdits,
+} from './types/weekType.js'
+export type { WeekTypeOption, WeekTypeSlot, WeekTypeDays, PlantillaView } from './types/weekType.js'
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
 export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from './constants/aiDisclosure.js'

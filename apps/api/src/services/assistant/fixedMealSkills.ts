@@ -1,7 +1,8 @@
 /**
  * Comidas fijas from chat (PRO-218, D-051): «todos los días desayuno yogur con
- * cereales y dos galletas» is said once. Same data as Perfil → Plantilla
- * semanal → Comidas fijas.
+ * cereales y dos galletas» is said once. Since D-182 they are slots of the
+ * household's «semana tipo» («Algo fijo sin receta»), the same data as
+ * Perfil → Plantilla semanal → Comidas fijas.
  */
 import {
   COOKING_WEEKDAYS,
@@ -14,7 +15,22 @@ import {
   type FixedMealType,
 } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
-import { getFixedMeals, saveFixedMeal } from '../fixedMealsStore.js'
+import { editWeekTypeAsPlantilla, loadWeekTypeForUser } from '../weekType.js'
+import { plantillaFromWeekType } from '@ona/shared'
+import { channelOfMode } from '../usageEvents.js'
+
+async function getFixedMeals(userId: string, db: SkillContext['db']): Promise<FixedMeal[]> {
+  const { days } = await loadWeekTypeForUser(userId, db)
+  return plantillaFromWeekType(days, 1).fixedMeals
+}
+
+/** Set (or remove with `null`) one meal's fixed meal in the week type. False when there's no household. */
+async function saveFixedMeal(ctx: SkillContext, meal: FixedMealType, next: FixedMeal | null): Promise<boolean> {
+  const out = await editWeekTypeAsPlantilla(ctx.userId, (view) => ({ ...view, fixedMeals: [...view.fixedMeals.filter((f) => f.meal !== meal), ...(next ? [next] : [])] }), { db: ctx.db, channel: channelOfMode(ctx.channel) })
+  return out !== null
+}
+
+const NO_HOUSEHOLD = 'No he cambiado nada: no encuentro tu hogar. Prueba desde Perfil.'
 
 function describe(f: FixedMeal): string {
   const days = f.days.length === 7 ? 'todos los días' : f.days.join(', ')
@@ -68,7 +84,7 @@ const setFixedMealSkill: SkillDefinition = {
       return { data: null, summary: 'No he cambiado nada: dime qué comida (desayuno, comida, merienda o cena).', uiHint: 'text' }
     }
     if (params.remove) {
-      await saveFixedMeal(ctx.userId, params.meal, null, ctx.db)
+      if (!(await saveFixedMeal(ctx, params.meal, null))) return { data: null, summary: NO_HOUSEHOLD, uiHint: 'text' }
       return { data: { removed: params.meal }, summary: `Quitado el ${FIXED_MEAL_LABELS[params.meal].toLowerCase()} fijo. Volverá a planificarse al generar el menú.`, uiHint: 'text' }
     }
     const parsed = fixedMealSchema.safeParse({
@@ -80,7 +96,7 @@ const setFixedMealSkill: SkillDefinition = {
     if (!parsed.success) {
       return { data: null, summary: 'No he cambiado nada: necesito un nombre corto y al menos una cosa con su cantidad por persona (u, g o ml).', uiHint: 'text' }
     }
-    await saveFixedMeal(ctx.userId, params.meal, parsed.data, ctx.db)
+    if (!(await saveFixedMeal(ctx, params.meal, parsed.data))) return { data: null, summary: NO_HOUSEHOLD, uiHint: 'text' }
     return {
       data: { fixedMeal: parsed.data },
       summary: `Guardado. ${describe(parsed.data)}. Se aplica al generar el menú: esa comida sale como «Fijo: ${parsed.data.label}» y lo suyo va a la lista de la compra.`,

@@ -8,19 +8,20 @@ import { withHouseholdRestrictions } from '../services/householdAllergies.js'
 import { keepLockedSlots, loadPreviousWeek, menuHasDishes, unskipDay } from '../services/menuWeek.js'
 import { eq, and, asc, desc, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { menus, menuEdits, users, userSettings } from '../db/schema.js'
+import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, MEAL_TYPE_TAGS, courseSchema } from '@ona/shared'
-import type { DayMenu, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
+import { fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt } from '@ona/shared'
+import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
-import { defaultTemplate, extractMealDishCounts, normalizeMealTemplate } from '../services/menuGenerator.js'
+import { loadWeekTypeForUser, poolOfDishType, weekTypeDishTypeAt } from '../services/weekType.js'
+import { planWeekType } from '../services/weekTypePlan.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
-import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, dishCountFor, moveSlotInWeek, isLeftoverSource } from '../services/menuDishes.js'
+import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, moveSlotInWeek, isLeftoverSource } from '../services/menuDishes.js'
 import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
 import { generateAndSaveMenu } from '../services/menuGenerate.js'
@@ -72,7 +73,6 @@ function refreshPrepAlerts(menuId: string): void {
  * lenient behavior to avoid breaking clients that already rely on it.
  */
 const MEAL_VALUES = new Set<string>(MEALS)
-const MEAL_TYPE_TAG_VALUES = new Set<string>(MEAL_TYPE_TAGS)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 function isValidUuid(s: unknown): s is string {
   return typeof s === 'string' && UUID_RE.test(s)
@@ -213,12 +213,8 @@ router.post('/menu/generate', authMiddleware, validate(generateMenuSchema), asyn
         })
         return
       }
-      const [settings] = await db
-        .select()
-        .from(userSettings)
-        .where(eq(userSettings.userId, userId))
-        .limit(1)
-      const tpl = normalizeMealTemplate(customTemplate ?? settings?.template) ?? defaultTemplate()
+      // The household's «semana tipo» (D-182): its meals, «no hay» left out.
+      const tpl: DayTemplate[] = customTemplate ?? planWeekType((await loadWeekTypeForUser(userId)).days, weekStart, { recipes: [], restrictions: [] }).template
       const days = tpl.map((dayTpl, i) => {
         const day: Record<string, { dishes: [] }> = {}
         // A «sin cocinar» day stays without slots (PRO-115): emptying or
@@ -508,11 +504,6 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     // path used by the menu UI's "cambiar plato" picker and by the assistant's
     // swap_meal skill when the user names a specific recipe.
     const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
-    // PRO-1141: «Cambiar al azar» never replaces a ficha's «plato fijo»; choosing a recipe by hand does.
-    if (!manualRecipeId && slot.dishes.some(isFixedDish)) {
-      res.status(409).json({ error: 'Es un plato fijo de vuestra ficha: elige otra receta a mano si queréis cambiarlo.' })
-      return
-    }
     if (manualRecipeId) {
       const [chosen] = await db
         .select({ id: recipes.id, name: recipes.name, course: recipes.course })
@@ -590,13 +581,16 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     const { pool: recipesWithIngredients, options: matcherOptions } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds)
 
     // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
-    // Note dishes stay in place unchanged.
+    // Note dishes stay in place unchanged. «Semana tipo» (D-182): a dish the
+    // week type asks a type for gets another recipe of that type; one it
+    // fixed (a concrete recipe) gets any other.
     const newDishes = [...slot.dishes]
     for (let i = 0; i < slot.dishes.length; i++) {
       const dish = slot.dishes[i]
       if (dish.kind !== 'recipe') continue
-      const currentCourse = dish.course ?? null
-      const picked = findForCourse(recipesWithIngredients, currentCourse, matcherOptions)
+      const type = await weekTypeDishTypeAt(menu.userId, menu.weekStart, dayIndex, meal, i)
+      const currentCourse = type ? null : dish.course ?? null
+      const picked = findForCourse(poolOfDishType(recipesWithIngredients, type), currentCourse, matcherOptions)
       if (!picked) continue  // keep the old recipe if no candidate
       newDishes[i] = {
         kind: 'recipe',
@@ -912,8 +906,7 @@ router.post('/menu/:menuId/move-slot', async (req: AuthRequest, res) => {
 //
 // Supports `{ servings: number | null }` (per-day diner-count override).
 // Null clears the override and the slot reverts to the user's household
-// default for shopping-list aggregation. `pinnedType` moved to dish-level
-// (use PATCH /dish/:position instead).
+// default for shopping-list aggregation.
 router.patch('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) => {
   try {
     const menuId = String(req.params.menuId)
@@ -1375,7 +1368,6 @@ const addDishSchema = z.union([
     kind: z.literal('recipe'),
     recipeId: z.string().uuid(),
     course: courseSchema.optional(),
-    pinnedType: z.string().nullable().optional(),
     /** PRO-82: «Del congelador» — never adds to the shopping list. PRO-276: `cooked`, «lo tengo hecho», from Mimo. */
     variant: z.enum(['planned', 'freezer', 'fridge', 'cooked']).optional(),
   }),
@@ -1454,7 +1446,6 @@ router.delete('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Au
 
 const patchDishSchema = z.object({
   text: z.string().max(120).optional(),
-  pinnedType: z.string().nullable().optional(),
   newPosition: z.number().int().nonnegative().optional(),
   course: courseSchema.optional(),
   // `cooked` = «Son sobras de otro día»; `freezer` kept for the sheet shipped before it.
@@ -1502,7 +1493,7 @@ router.patch('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Aut
           res.status(409).json({ error: 'This dish feeds planned leftovers' }); return
         }
       }
-      next = patchDish(slot.dishes, position, { text: body.text, pinnedType: body.pinnedType, course: body.course, variant: body.variant })
+      next = patchDish(slot.dishes, position, { text: body.text, course: body.course, variant: body.variant })
     }
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))
@@ -1534,9 +1525,6 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const dish = slot.dishes[position]
     if (dish.kind === 'note') {
       res.status(400).json({ error: 'Cannot regenerate a note dish' }); return
-    }
-    if (isFixedDish(dish)) {
-      res.status(409).json({ error: 'Es un plato fijo de vuestra ficha: elige otra receta a mano si queréis cambiarlo.' }); return
     }
 
     // Build matcher options — same pattern as PUT /meal/:meal above.
@@ -1600,7 +1588,9 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       timeBudget: timeBudgetRegen,
     }
 
-    const picked = findForCourse(recipesWithIngredientsRegen, dish.course ?? null, matcherOptionsRegen)
+    // «Semana tipo» (D-182): another recipe of the type the week type asks for there.
+    const typeRegen = await weekTypeDishTypeAt(menu.userId, menu.weekStart, day, meal, position)
+    const picked = findForCourse(poolOfDishType(recipesWithIngredientsRegen, typeRegen), typeRegen ? null : dish.course ?? null, matcherOptionsRegen)
     if (!picked) {
       res.status(409).json({ error: 'No candidates for this course right now' }); return
     }
@@ -1693,23 +1683,19 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       timeBudget: timeBudgetR,
     }
 
-    // Decide which course to look for, based on the user's plantilla
-    // (`mealDishCounts[meal]`) and what's already in the slot. The user wants
+    // Decide which course to look for, based on the week type's dishes for
+    // that slot and what's already in the slot. The user wants
     // a sensible *next* dish, not just "any main / null".
     //
     // Rules:
-    //   - Read expectedCourses = coursesFor(dishCountFor(meal, mdc)).
+    //   - Read expectedCourses = coursesFor(slot's dishes).
     //   - Subtract courses already present in the slot.
     //   - Pick the first missing expected course.
     //   - If all expected are present, fall back to `null` (any main/null) as
     //     a graceful "extra dish" — the user's intent is to grow the slot.
-    const [settingsRow] = await db
-      .select({ template: userSettings.template })
-      .from(userSettings)
-      .where(eq(userSettings.userId, menu.userId))
-      .limit(1)
-    const mdc = extractMealDishCounts(settingsRow?.template ?? {})
-    const expectedCourses = coursesFor(dishCountFor(meal as Meal, mdc))
+    // The dishes of that slot in the household's «semana tipo» (D-182).
+    const wtSlot = weekTypeSlotAt((await loadWeekTypeForUser(menu.userId)).days, day, meal as Meal)
+    const expectedCourses = coursesFor(wtSlot.dishes ?? 1)
     const presentCourses = new Set<string | null>(
       slot.dishes
         .filter((d): d is RecipeDish => d.kind === 'recipe')

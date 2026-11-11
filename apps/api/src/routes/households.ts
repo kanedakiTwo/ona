@@ -8,6 +8,8 @@
  *   POST   /households/me/invites/:inviteId/revoke   — owner revokes a pending invite
  *   POST   /households/me/invites/:inviteId/shared   — owner tapped «Enviar por WhatsApp» / «Copiar» (PRO-260)
  *   GET    /households/me/allergies                    — who has told us their allergies and diet (PRO-271)
+ *   GET    /households/me/week-type                    — the household's «semana tipo» (D-182)
+ *   PUT    /households/me/week-type/:day/:meal { slot } — change that one slot (the rest as they are)
  *   GET    /households/me/family-offer                — show the invitation offer in the sign-up / list? (PRO-261)
  *   POST   /households/me/family-offer { moment }     — the offer was shown: never again (PRO-261)
  *   POST   /households/me/members/:userId/remove     — owner kicks a member
@@ -21,6 +23,14 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { assignCookToday, dbCookTodayDeps } from '../services/cookToday.js'
 import { isHouseholdInviteSource } from '@ona/shared'
 import { loadHouseholdAllergiesStatus } from '../services/householdAllergies.js'
+import { and, eq, inArray } from 'drizzle-orm'
+import { MEALS, stableSlotJson, weekTypeSlotError, weekTypeSlotSchema, type Meal, type WeekTypeSlot } from '@ona/shared'
+import { db } from '../db/connection.js'
+import { householdMembers, recipes } from '../db/schema.js'
+import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
+import { currentWeekStart, loadWeekType, saveWeekTypeSlots } from '../services/weekType.js'
+import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
+import { requestChannel } from '../services/usageEvents.js'
 import { familyOfferDue, familyOfferEligible, loadFamilyOfferInput, stampFamilyOffer } from '../services/familyInviteOffers.js'
 import {
   loadHouseholdForUser,
@@ -107,6 +117,82 @@ router.get('/households/me/allergies', async (req: AuthRequest, res) => {
     res.json(await loadHouseholdAllergiesStatus(req.userId!))
   } catch (err) {
     console.error('GET /households/me/allergies error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// «Semana tipo» (D-182): what the household usually eats each day. One per
+// household; the menu of every week comes from it.
+router.get('/households/me/week-type', async (req: AuthRequest, res) => {
+  try {
+    const householdId = await getPrimaryHouseholdId(req.userId!)
+    if (!householdId) {
+      res.status(404).json({ error: 'No household' })
+      return
+    }
+    res.json({ days: await loadWeekType(householdId, req.userId!) })
+  } catch (err) {
+    console.error('GET /households/me/week-type error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// One slot, whole: `{ off?, options?, together?, diners?, dishes?, since? }`.
+// The other slots are never touched; two people on the same slot → the last
+// one wins. Changing its options starts the turns again this week.
+router.put('/households/me/week-type/:day/:meal', async (req: AuthRequest, res) => {
+  const day = Number(req.params.day)
+  const meal = String(req.params.meal) as Meal
+  if (!Number.isInteger(day) || day < 0 || day > 6 || !(MEALS as readonly string[]).includes(meal)) {
+    res.status(400).json({ error: 'Día (0-6) o comida no válidos.' })
+    return
+  }
+  const parsed = weekTypeSlotSchema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Hueco no válido.', issues: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) })
+    return
+  }
+  const slot = parsed.data as WeekTypeSlot
+  const invalid = weekTypeSlotError(day, meal, slot)
+  if (invalid) {
+    res.status(400).json({ error: invalid })
+    return
+  }
+  try {
+    const householdId = await getPrimaryHouseholdId(req.userId!)
+    if (!householdId) {
+      res.status(404).json({ error: 'No household' })
+      return
+    }
+    const [me] = await db.select({ role: householdMembers.role }).from(householdMembers)
+      .where(and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, req.userId!))).limit(1)
+    if (me?.role === 'child') {
+      res.status(403).json({ error: 'La semana tipo la cambian los adultos de la casa.' })
+      return
+    }
+    // A concrete recipe must be one this household can see; its name comes from the recipe.
+    const recipeIds = (slot.options ?? []).flatMap((o) => (o.kind === 'recipe' ? [o.recipeId] : []))
+    if (recipeIds.length) {
+      const found = await db.select({ id: recipes.id, name: recipes.name }).from(recipes)
+        .where(and(inArray(recipes.id, recipeIds), visibleRecipeWhere(await visibleAuthorIds(req.userId!))))
+      const names = new Map(found.map((r) => [r.id, r.name]))
+      if (recipeIds.some((id) => !names.has(id))) {
+        res.status(404).json({ error: 'Esa receta no está en vuestro catálogo.' })
+        return
+      }
+      slot.options = slot.options!.map((o) => (o.kind === 'recipe' ? { ...o, name: names.get(o.recipeId)! } : o))
+    }
+    if (!slot.options?.length) delete slot.options
+    if ((slot.options?.length ?? 0) < 2) delete slot.together
+    const before = (await loadWeekType(householdId, req.userId!))[day]?.[meal]
+    if (!slot.since) {
+      const sameOptions = stableSlotJson({ options: before?.options, together: before?.together }) === stableSlotJson({ options: slot.options, together: slot.together })
+      if (sameOptions && before?.since) slot.since = before.since
+      else if (slot.options?.length) slot.since = currentWeekStart()
+    }
+    res.json({ days: await saveWeekTypeSlots(householdId, [{ day, meal, slot }], db, { track: { userId: req.userId!, channel: requestChannel(req) } }) })
+  } catch (err) {
+    console.error('PUT /households/me/week-type error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

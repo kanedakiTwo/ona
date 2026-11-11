@@ -1,4 +1,6 @@
 import crypto from 'crypto'
+import { refreshRecipeDishTypes } from '../dishTypes.js'
+import { poolOfDishType, weekTypeDishTypeAt } from '../weekType.js'
 import { and, eq, desc, ilike, or, inArray, isNull } from 'drizzle-orm'
 import {
   menus,
@@ -12,7 +14,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isFixedDish, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
 import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
 import { describeWeekPlan } from '../weekPlan.js'
@@ -1406,17 +1408,6 @@ const swapMeal: SkillDefinition = {
       }
     }
 
-    // A ficha's «plato fijo» (PRO-1141) is never swapped at random: only for a named recipe.
-    const fixedHere = days[dayIndex]?.[meal]?.dishes.find(isFixedDish)
-    if (fixedHere) {
-      const name = fixedHere.kind === 'recipe' ? fixedHere.recipeName ?? 'el plato fijo' : fixedHere.text
-      return {
-        data: null,
-        summary: `No he cambiado nada: "${name}" es un plato fijo de la ficha del hogar para la ${slotLabel}. Si quiere otro, pregúntale cuál y vuelve a llamar con recipeName.`,
-        uiHint: 'text',
-      }
-    }
-
     // Collect used recipe IDs (excluding the one being replaced)
     const usedRecipeIds = new Set<string>()
     for (let d = 0; d < days.length; d++) {
@@ -1449,7 +1440,8 @@ const swapMeal: SkillDefinition = {
     const allRecipes = await schoolDinnerPool(await loadMatchableRecipes(userId, db), menu, dayIndex, meal, db)
     const season = detectSeason()
 
-    const newRecipe = findRecipeForSlot(allRecipes, {
+    // «Semana tipo» (D-182): another recipe of the type it asks for there.
+    const newRecipe = findRecipeForSlot(poolOfDishType(allRecipes, await weekTypeDishTypeAt(userId, menu.weekStart, dayIndex, meal, 0, db)), {
       meal: meal as Meal,
       season,
       usedRecipeIds,
@@ -2729,6 +2721,8 @@ const editRecipe: SkillDefinition = {
     }
 
     await db.update(recipes).set(updates).where(eq(recipes.id, target.id))
+    // «Semana tipo» (D-182): a new name may mean other dish types.
+    if (updates.name !== undefined) await refreshRecipeDishTypes(db, target.id)
 
     return {
       data: { recipeId: target.id, changed: changedFields },
@@ -2920,6 +2914,7 @@ const addRecipeToMine: SkillDefinition = {
           storage: full.storage,
           nutritionPerServing: full.nutritionPerServing,
           tags: full.tags ?? [],
+          dishTypes: full.dishTypes ?? null,
           internalTags: baseInternalTags,
           sourceUrl: full.sourceUrl,
           sourceType: 'manual',

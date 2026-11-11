@@ -9,6 +9,7 @@ import { isRetiredRecipe } from './recipeCatalogOrder.js'
 import { loadFichaMenuConstraints } from './profile/reader.js'
 import { unlistedDietMentions } from './stepDietMentions.js'
 import { loadDishDislikeOverrides } from './dishDislikes.js'
+import { dishTypesOf } from './dishTypes.js'
 
 /** `authorId`: null for the catalogue, the household member's id for their own recipes (PRO-1141 looks there first). */
 export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null; authorId?: string | null }
@@ -143,6 +144,9 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     // Dish type / main protein (`tipo:`, `proteina:`) and kcal per serving,
     // for the week rules and the planner (PRO-254/255).
     internalTags: r.internalTags ?? [],
+    // «Semana tipo» (D-182): saved on save/import and on boot; a row not yet
+    // filled gets them computed here.
+    dishTypes: r.dishTypes ?? dishTypesOf({ name: r.name, tags: r.tags, ingredients: ingredientsByRecipe.get(r.id) ?? [] }),
     nutritionPerServing: r.nutritionPerServing ?? null,
     servings: r.servings ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],

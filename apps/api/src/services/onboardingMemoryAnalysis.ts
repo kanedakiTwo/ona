@@ -296,30 +296,26 @@ export interface AnalysisDeps {
   create?: CreateFn
   readMemory?: (userId: string) => Promise<UserMemory>
   writeMemory?: (userId: string, facts: Array<{ key: string; value: unknown; confidence: number }>) => Promise<unknown>
-  /** PRO-242: the user's `user_settings.template` blob (null = none). */
-  readTemplate?: (userId: string) => Promise<unknown>
-  writeTemplate?: (userId: string, template: Record<string, unknown>) => Promise<unknown>
+  /** PRO-242: who doesn't eat at home, into the household's week type (D-182). True when something changed. */
+  writeTemplateChanges?: (userId: string, changes: TemplateChange[], householdDiners: number) => Promise<boolean>
 }
 
-async function readTemplateFromDb(userId: string): Promise<unknown> {
-  const [{ db }, { userSettings }, { eq }] = await Promise.all([
-    import('../db/connection.js'),
-    import('../db/schema.js'),
-    import('drizzle-orm'),
-  ])
-  const [row] = await db.select({ template: userSettings.template }).from(userSettings).where(eq(userSettings.userId, userId)).limit(1)
-  return row?.template ?? null
+/**
+ * «Semana tipo» (D-182): who doesn't eat at home lowers the diners of those
+ * slots of the household's week type, as seen through the plantilla.
+ */
+export function awayEdit(changes: TemplateChange[], householdDiners: number) {
+  return <V extends { mealTemplate: Record<string, Record<string, number>> }>(view: V): V => {
+    const next = applyTemplateChanges({ mealTemplate: view.mealTemplate }, changes, householdDiners)
+    return next ? { ...view, mealTemplate: next.mealTemplate as V['mealTemplate'] } : view
+  }
 }
 
-async function writeTemplateToDb(userId: string, template: Record<string, unknown>): Promise<void> {
-  const [{ db }, { userSettings }, { eq }] = await Promise.all([
-    import('../db/connection.js'),
-    import('../db/schema.js'),
-    import('drizzle-orm'),
-  ])
-  const [existing] = await db.select({ id: userSettings.id }).from(userSettings).where(eq(userSettings.userId, userId)).limit(1)
-  if (existing) await db.update(userSettings).set({ template }).where(eq(userSettings.userId, userId))
-  else await db.insert(userSettings).values({ userId, template })
+/** Only the slots that change are written. False when nothing changed (or there's no household). */
+async function writeChangesToWeekType(userId: string, changes: TemplateChange[], householdDiners: number): Promise<boolean> {
+  const { editWeekTypeAsPlantilla } = await import('./weekType.js')
+  const out = await editWeekTypeAsPlantilla(userId, awayEdit(changes, householdDiners), { defaultDiners: householdDiners })
+  return !!out?.changes.length
 }
 
 /** Returns the keys written (empty when there was nothing to write or the call failed). */
@@ -365,13 +361,8 @@ export async function analyzeOnboardingIntoMemory(
   const changes = parseTemplateChanges(input?.template_changes)
   if (changes.length > 0) {
     try {
-      const readTemplate = deps.readTemplate ?? readTemplateFromDb
-      const writeTemplate = deps.writeTemplate ?? writeTemplateToDb
-      const template = applyTemplateChanges(await readTemplate(userId), changes, householdToDiners(answers.adults, answers.kidsCount))
-      if (template) {
-        await writeTemplate(userId, template)
-        written.push('weekly_template')
-      }
+      const write = deps.writeTemplateChanges ?? writeChangesToWeekType
+      if (await write(userId, changes, householdToDiners(answers.adults, answers.kidsCount))) written.push('weekly_template')
     } catch (err) {
       console.warn('[onboarding-analysis] template not saved:', (err as Error)?.message ?? err)
     }

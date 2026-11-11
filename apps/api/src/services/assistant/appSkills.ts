@@ -13,9 +13,13 @@ import {
   inviteHouseholdShareText,
   isAlertKind,
   isReligiousDiet,
+  plantillaEdits,
+  plantillaFromWeekType,
   prettyName,
   whatsappShareHref,
   type AlertKind,
+  type PlantillaView,
+  type WeekTypeDays,
   type AlertsOverview,
   type ShoppingItem,
 } from '@ona/shared'
@@ -1410,9 +1414,13 @@ const updateWeeklyTemplate: SkillDefinition = {
     if (!MEALS.includes(p.meal)) return text('meal debe ser breakfast, lunch, snack o dinner.')
     if (p.diners === undefined && p.dishes === undefined) return text('Dime comensales (diners) o numero de platos (dishes).')
     const days: number[] = Array.isArray(p.days) && p.days.length ? p.days.filter((d: number) => d >= 0 && d <= 6) : [0, 1, 2, 3, 4, 5, 6]
-    const settings = await api(ctx)<{ template?: Record<string, any> } | null>('GET', `/user/${ctx.userId}/settings`).catch(() => null)
-    const template = applyTemplateChange(settings?.template, { days, meal: p.meal, diners: p.diners, dishes: p.dishes })
-    await api(ctx)('PUT', `/user/${ctx.userId}/settings`, { template })
+    // «Semana tipo» (D-182): the household's usual week, only the slots that change.
+    const weekType = await api(ctx)<{ days: WeekTypeDays }>('GET', '/households/me/week-type')
+    const before = plantillaFromWeekType(weekType.days, 2)
+    const after = { ...before, ...applyTemplateChange(before, { days, meal: p.meal, diners: p.diners, dishes: p.dishes }) } as PlantillaView
+    for (const e of plantillaEdits(weekType.days, before, after, madridWeekStart())) {
+      await api(ctx)('PUT', `/households/me/week-type/${e.day}/${e.meal}`, e.slot)
+    }
     const dayLabel = days.length === 7 ? 'todos los dias' : days.map((d) => DAY_NAMES[d]).join(', ')
     const parts = [
       p.diners !== undefined ? (p.diners === 0 ? `sin ${MEAL_ES[p.meal]} (${dayLabel})` : `${p.diners} comensales en la ${MEAL_ES[p.meal]} (${dayLabel})`) : null,

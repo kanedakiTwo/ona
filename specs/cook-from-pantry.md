@@ -1,19 +1,12 @@
 # Cook from Pantry
 
-**Status:** PR 12 shipped.
+**Status:** PR 12 shipped. **The card left `/menu` on 2026-11-11 (PRO-1107):** «Con lo que tienes» now lives in the «Cocinar» tab and is built on the «Cocinar ahora» search ([Cook now](./cook-now.md)); `GET /recipes/match-pantry` stays until the plan's task 18 retires it, with no screen calling it.
 
-"Lo que puedes cocinar con lo que tienes" — given the household pantry (PR 11), rank every catalogue recipe by how much of it the household already has on hand. The top 3 surface as a small card on `/menu`.
+"Lo que puedes cocinar con lo que tienes" — given the household pantry (PR 11), rank every catalogue recipe by how much of it the household already has on hand. Until 2026-11-11 the top 3 surfaced as a small card on `/menu`.
 
 ## User Capabilities
 
-- An authed user with a non-empty pantry sees a "Con lo que tienes · Puedes cocinar esto" card on `/menu` below the day's meals (since the 2026-10-08 redesign the first screen is today's food).
-- The card lists the top 3 recipes by pantry coverage, each as a row:
-  - thumbnail
-  - recipe name
-  - `<matched>/<total> ingredientes` + total time (when known)
-  - coverage percentage badge (right side)
-- Tap a row → goes to `/recipes/[id]`.
-- When the pantry is empty or no recipe matches at all, the card hides entirely (no empty state — the user doesn't need yet another "go fill your pantry" prompt).
+- Nothing on screen any more. Until 2026-11-11 an authed user with a non-empty pantry saw a "Con lo que tienes · Puedes cocinar esto" card on `/menu` (top 3 by coverage, `<matched>/<total> ingredientes`, a percentage, tap → `/recipes/[id]`). Since PRO-1107 the «Con lo que tienes» card is in the «Cocinar» tab and uses `POST /cook-now/proposal` ([Cook now](./cook-now.md)).
 
 ## Scoring
 
@@ -63,6 +56,3 @@ type PantryMatchHit = {
 - `apps/api/src/services/pantryMatcher.ts` — `scoreRecipeAgainstPantry` (pure), `findPantryMatches` (DB)
 - `apps/api/src/routes/recipes.ts` — `GET /recipes/match-pantry` handler
 - `apps/api/src/tests/pantryMatcher.test.ts` — 6 cases
-- `apps/web/src/hooks/usePantryMatch.ts`
-- `apps/web/src/components/menu/PantryMatchCard.tsx`
-- `apps/web/src/app/menu/page.tsx` — mounted below the day's meals

@@ -2,9 +2,9 @@
 
 A «Cocinar» tab that, with four questions (time, people, whether something can be bought, the pantry confirmed), proposes a recipe to cook right now and two alternatives. Design: [`docs/superpowers/specs/2026-11-03-cocinar-ahora-design.md`](../docs/superpowers/specs/2026-11-03-cocinar-ahora-design.md); plan: [`docs/superpowers/plans/2026-11-03-cocinar-ahora.md`](../docs/superpowers/plans/2026-11-03-cocinar-ahora.md).
 
-It ships in five phases on one branch, published together at the end (PRO-1105 to PRO-1109). **Phase 1 (PRO-1105) is in:** what each ingredient of a recipe is for. **Phase 2 (PRO-1106) is in:** the search, its four routes, Mimo's line and the usage events. Nothing of it is visible to households yet: no screen calls the routes until phase 3.
+It ships in five phases on one branch, published together at the end (PRO-1105 to PRO-1109). **Phase 1 (PRO-1105) is in:** what each ingredient of a recipe is for. **Phase 2 (PRO-1106) is in:** the search, its four routes, Mimo's line and the usage events. **Phase 3 (PRO-1107) is in:** the «Cocinar» tab, with the pantry moved into it.
 
-TODO(spec): the tab, the pantry move, the cook mode's menu context and the end-to-end test land with phases 3–5 (plan tasks 13–20); this spec is rewritten then.
+TODO(spec): the cook mode's menu context, retiring `/recipes/match-pantry` and the end-to-end test land with phases 4–5 (plan tasks 17–20); this spec is rewritten then.
 
 ## User Capabilities
 
@@ -20,6 +20,21 @@ TODO(spec): the tab, the pantry move, the cook mode's menu context and the end-t
   3. otherwise by weight: 15 % or more of the recipe's weighable grams (the basics salt, oil, water, pepper and flour left out of the total, `recipeGrams`) → essential; less, or a line that can't be weighed (cda, cdita, a unit without a weight) → secondary.
   A mark always wins over the rule (`roleOf`), except that an optional line is always secondary.
 - **Households' own recipes keep the rule**: they never reach the office (privacy, E-40). Both routes read and write only catalogue recipes: no author and not a household's copy (`CATALOGUE_RECIPE`). Account deletion removes own recipes before the author goes ([Privacy](./privacy.md)), so a null author is always the catalogue.
+
+### The «Cocinar» tab (phase 3)
+
+- **Five tabs** in the bottom bar and the desktop sidebar: Menú, **Cocinar** (`/cocinar`, chef's hat), Compra, Recetas, Perfil. The page is protected like every app page and its visit counts as `screen_viewed` `cocinar` ([Metrics](./metrics.md)).
+- **`/cocinar`**, top to bottom («¿Qué cocinamos?»):
+  - **What the menu had for the meal of now** (`TodayPlannedCard`, from `GET /cook-now/today`), unless the meal is locked or there is none: the first dish's photo, «Hoy toca *X*» (or «Hoy tocaban *X e Y*»), the longest total time and «Empezar a cocinar», straight into cook mode for that slot (`cookHref` with `menu`, `day`, `meal`) with the meal's people count, else the household's. Below, always, «¿Otra cosa? Cocinar ahora» (just «Cocinar ahora» with nothing planned), which opens the four questions.
+  - **«Con lo que tienes · Puedes cocinar esto»** (`PantryMatchCard`): up to 3 recipes from `POST /cook-now/proposal` with the default answers and `requirePantryUse` (`pantryMatchBody`), each row with thumbnail, name, `cookNowHitLine` and time, linking to the recipe. Hidden while loading, with nothing to show or with `fallback` (they all miss something essential). It left `/menu` (the old `/recipes/match-pantry` card) with this phase.
+  - **«Tu despensa»** (`#despensa`): the whole pantry register, as it was in Perfil ([Pantry](./pantry.md)). `/profile/pantry` redirects to `/cocinar#despensa` and Perfil's «Despensa» links there.
+- **The four questions** (`CookNowFlow`), one per screen with «Atrás» on top (on the first, it closes the flow) and the answers kept when going back; the chosen option has `aria-pressed`:
+  1. «¿Cuánto tiempo tienes?» — «15 min», «30 min», «45 min», «1 h o más»; one tap moves on.
+  2. «¿Para cuántos?» — `− N +` (1–20), starting at the meal's people count or the household's (a child is one person, `menuDiners`, as in the menu), and «Seguir».
+  3. «¿Puedes comprar algo?» — «Solo lo que hay» · «Sí, algo»; one tap moves on.
+  4. **The pantry to confirm** (`PantryConfirmStep`): «Confirma tu despensa» («¿Qué tienes en casa?» when empty, with the search open), grouped Nevera → Congelador → Despensa (folded). Each row: `−` / quantity / `+` (step 1 for u, cda and cdita; 50 for g and ml; the quantity can be typed) and «Quitar»; every change is saved at once and a row at 0 stays. «Añadir» searches the catalogue, then asks where it is (Nevera by default) and adds 1 u. «Proponme una receta» sends the answers (`proposalBody`).
+- **The proposal** (`ProposalView`): «Buscando…» while it loads. The preferred recipe big — photo, name, time («· unos minutos más» when it is `margin`), `cookNowHitLine` and Mimo's line when it arrives (no space kept for it) — with «Cocinar esta»; two alternatives below as rows, and tapping one makes it the preferred. Notices: both meals already eaten («Hoy ya habéis comido y cenado: la cocinas igual, pero no la apunto en el menú.»), a locked meal («Esa comida está bloqueada en tu menú: la cocinas igual, pero no la apunto.»), `fallback` («Con lo que hay justo no sale ninguna; a estas les falta una cosa»), nothing found («Con esto no encuentro nada»). «Cambiar respuestas» goes back to question 1.
+- **«Cocinar esta»**: when the meal of now had dishes planned, a sheet (`DisplaceSheet`) asks «¿Y el *X*?» / «¿Y las *X e Y*?»: «Pasarlo / Pasarlas a otro día» (the rest of the week, «Mañana», «El jueves»…, each «libre» or «en lugar de *…*»; skipped days and locked meals greyed out) or «Quitarlo / Quitarlas»; closing it counts as taking them out. Then `POST /cook-now/choose` (`chooseBody`: servings go as null when they equal the household's diners, so a meal with its own count keeps it) and cook mode for that slot. A locked meal, or none, goes to cook mode without touching the menu; if the menu answers `locked` or `no_meal`, the notice shows and cook mode opens without the slot.
 
 ### The search (phase 2)
 
@@ -47,6 +62,8 @@ TODO(spec): the tab, the pantry move, the cook mode's menu context and the end-t
 - [Recipes](./recipes.md) — the recipe and its ingredients; copies
 - [Catalog Import](./catalog-import.md) — Cocina's batch file
 - [Menus](./menus.md) — the recipe loader and matcher the search reuses; the slot the choice writes
+- [Pantry](./pantry.md) — the register shown in the tab
+- [Cook from Pantry](./cook-from-pantry.md) — the old «Con lo que tienes» on `/menu`
 - [Metrics](./metrics.md) — the other office token (`x-metrics-token`, read only)
 
 ## Source
@@ -58,6 +75,8 @@ TODO(spec): the tab, the pantry move, the cook mode's menu context and the end-t
 - [apps/api/src/services/cookNow/phrase.ts](../apps/api/src/services/cookNow/phrase.ts) — Mimo's line
 - [apps/api/src/routes/cookNow.ts](../apps/api/src/routes/cookNow.ts) — the four routes, mounted next to `cookLogRoutes`
 - [apps/api/src/services/matchableRecipes.ts](../apps/api/src/services/matchableRecipes.ts) — the loader brings each line's row id, optional, displayed unit, category, role and substitutes
+- [apps/web/src/app/cocinar/page.tsx](../apps/web/src/app/cocinar/page.tsx) — the tab; [components/cocinar/](../apps/web/src/components/cocinar/) — `TodayPlannedCard`, `PantryMatchCard`, `CookNowFlow`, `PantryConfirmStep`, `ProposalView`, `DisplaceSheet`; [hooks/useCookNow.ts](../apps/web/src/hooks/useCookNow.ts); [lib/cookNowPayload.ts](../apps/web/src/lib/cookNowPayload.ts), [lib/cookHref.ts](../apps/web/src/lib/cookHref.ts), [lib/menuDiners.ts](../apps/web/src/lib/menuDiners.ts); [components/pantry/PantryManager.tsx](../apps/web/src/components/pantry/PantryManager.tsx)
+- Tests (phase 3): `cookNowContract.test.ts` (the web's bodies against the schemas, `menuDiners`), `cookHref.test.ts`, `webUsagePaths.test.ts`, `routeAccess.test.ts`, `redesignDSubPerfil.test.ts`; e2e `pantry-locations.spec.ts`, `desktop-windows.spec.ts`, `cook-now-tab.spec.ts`
 - Tests (phase 2): `cookNowShared.test.ts`, `cookNowSearch.test.ts`, `cookNowPlace.test.ts`, `cookNowLoad.test.ts`, `cookNowPhrase.test.ts`, `usageEvents.test.ts`
 
 - [packages/shared/src/types/ingredientRole.ts](../packages/shared/src/types/ingredientRole.ts) — `INGREDIENT_ROLES`, `ingredientRoleMarkSchema`, `ingredientRolesUpdateSchema`

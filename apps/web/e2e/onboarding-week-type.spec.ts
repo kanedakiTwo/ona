@@ -31,21 +31,32 @@ test('«tu caso» → «Así lo he entendido» → Corregir → Está bien → m
   await registerFreshUser(page)
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
 
-  // The simulated AI: Friday dinner, pizza, written through the real route.
+  // The simulated AI: three slots written through the real route, as the analysis would.
   const notes: string[] = []
   await page.route(/\/user\/[0-9a-f-]{36}\/onboarding$/, async (route) => {
     if (route.request().method() !== 'POST') return route.fallback()
     notes.push(JSON.parse(route.request().postData() ?? '{}').cookingNote ?? '')
     const real = await route.fetch()
     const user = await real.json()
-    await page.request.put(`${API}/households/me/week-type/4/dinner`, { headers: { Authorization: `Bearer ${token}` }, data: PIZZA })
+    const put = (path: string, data: unknown) => page.request.put(`${API}/households/me/week-type/${path}`, { headers: { Authorization: `Bearer ${token}` }, data })
+    await put('4/dinner', PIZZA)
+    await put('5/lunch', { options: [{ kind: 'type', type: 'legumbres' }, { kind: 'any' }] })
+    await put('5/dinner', { off: true })
     await route.fulfill({
       response: real,
       json: {
         ...user,
         weekTypeUnderstood: {
-          rows: [{ icon: '🍕', what: 'Pizza', when: 'Viernes · cena · cada semana' }],
-          undo: [{ day: 4, meal: 'dinner', slot: {} }],
+          rows: [
+            { icon: 'pizza', what: 'Pizza', when: 'Viernes · cena · cada semana' },
+            { icon: 'legumbres', what: 'Legumbres', when: 'Sábado · comida · cada 2 semanas' },
+            { icon: 'off', what: 'No hay', when: 'Sábado · cena' },
+          ],
+          undo: [
+            { day: 4, meal: 'dinner', slot: {} },
+            { day: 5, meal: 'lunch', slot: {} },
+            { day: 5, meal: 'dinner', slot: {} },
+          ],
         },
       },
     })
@@ -76,10 +87,13 @@ test('«tu caso» → «Así lo he entendido» → Corregir → Está bien → m
   // «Así lo he entendido»: one row per slot.
   const understood = page.getByTestId('onboarding-understood')
   await expect(understood.getByRole('heading', { name: /así lo he entendido/i })).toBeVisible({ timeout: 20_000 })
-  const row = understood.getByTestId('understood-row')
-  await expect(row).toHaveCount(1)
-  await expect(row).toContainText('Pizza')
-  await expect(row).toContainText('Viernes · cena · cada semana')
+  const rows = understood.getByTestId('understood-row')
+  await expect(rows).toHaveCount(3)
+  await expect(rows.first()).toContainText('Pizza')
+  await expect(rows.first()).toContainText('Viernes · cena · cada semana')
+  // Stroke icons, as in Perfil → Tu semana tipo: no emoji.
+  await expect(rows.first().locator('svg')).toHaveCount(1)
+  expect(await understood.textContent()).not.toMatch(/\p{Extended_Pictographic}/u)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await shot(page, '2-entendido')
 

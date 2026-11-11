@@ -145,6 +145,16 @@ const PATHS: Record<string, ReactNode> = {
       <path d="M9 3h6l-1 5 3 3H7l3-3z" /><path d="M12 11v10" />
     </>
   ),
+  nohay: (
+    <>
+      <circle cx="12" cy="12" r="8.5" /><path d="M6 18L18 6" />
+    </>
+  ),
+  comensales: (
+    <>
+      <circle cx="9" cy="8" r="3" /><path d="M3.5 19.5c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5" /><path d="M15.5 5.3a3 3 0 0 1 0 5.4M17 14.3c2.2.6 3.5 2.6 3.5 5.2" />
+    </>
+  ),
   sushi: (
     <>
       <path d="M4.5 15c0-1.6 2.5-2.5 7.5-2.5s7.5.9 7.5 2.5v2a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 4.5 17z" /><path d="M3.5 12.5c1.2-2.6 4.6-4 8.5-4s7.3 1.4 8.5 4c-3 .9-14 .9-17 0z" /><path d="M9 9.2l1.5 3M13.5 9l1.5 3.2" />
@@ -198,7 +208,7 @@ const TYPE_ICON: Record<string, string> = {
   "dulce-finde": "dulce",
 }
 
-/** The icon of a dish type, or of a wildcard (`any`, `taper`, `fixed`, `recipe`). */
+/** The icon of a dish type, or of a wildcard (`any`, `taper`, `fixed`, `recipe`; `off` and `diners` for the sign-up's «Así lo he entendido»). */
 export function DishTypeIcon({ type, size = 24, className = "" }: { type: string; size?: number; className?: string }) {
   const name = TYPE_ICON[type] ?? WILDCARD_ICON[type] ?? "cualquiera"
   return (
@@ -219,7 +229,7 @@ export function DishTypeIcon({ type, size = 24, className = "" }: { type: string
   )
 }
 
-const WILDCARD_ICON: Record<string, string> = { any: "cualquiera", taper: "taper", fixed: "fijo", recipe: "receta" }
+const WILDCARD_ICON: Record<string, string> = { any: "cualquiera", taper: "taper", fixed: "fijo", recipe: "receta", off: "nohay", diners: "comensales" }
 
 /** The icon of a week type option. */
 export function iconOfOption(o: WeekTypeOption): string {

@@ -63,6 +63,7 @@ import { onboardingStepKey, trackUsage, type OnboardingStep } from "@/lib/usageE
 import { RESTRICTIONS_STEP, SHOPPER_INVITE_STEP, SHOPPER_STEP, onboardingOrder, resumeStep } from "@/lib/onboardingSteps"
 import { useFamilyOfferOnce, useFamilyOfferStatus } from "@/components/household/FamilyInviteOffer"
 import { FamilyInviteShare, familyInviteUrl } from "@/components/household/FamilyInviteShare"
+import { DishTypeIcon } from "@/components/weekType/DishTypeIcon"
 
 const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
 
@@ -82,6 +83,7 @@ interface OnboardingData {
 
 /** D-182 fase 4: what `POST /user/:id/onboarding` says it put in the week type. */
 interface WeekTypeUnderstood {
+  /** `icon`: a `DishTypeIcon` key (a dish type, `any`, `fixed`, `recipe`, `taper`, `off`, `diners`). */
   rows: Array<{ icon: string; what: string; when: string }>
   /** The slots as they were, for «Corregir» (`PUT /households/me/week-type/:day/:meal`). */
   undo: Array<{ day: number; meal: string; slot: Record<string, unknown> }>
@@ -552,8 +554,8 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
               <ul className="mt-6 space-y-3">
                 {understood.view.rows.map((row, i) => (
                   <li key={i} data-testid="understood-row" className="flex items-center gap-3 rounded-[20px] border border-border-soft bg-paper p-4">
-                    <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cream-deep text-[20px] text-ink-muted">
-                      {row.icon}
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cream-deep text-ink">
+                      <DishTypeIcon type={row.icon} size={24} />
                     </span>
                     <span className="min-w-0">
                       <span className="block font-serif-text text-[17px] font-[650] leading-tight text-ink">{row.what}</span>

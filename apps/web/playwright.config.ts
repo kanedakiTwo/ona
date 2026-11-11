@@ -1,4 +1,5 @@
-import { defineConfig, devices } from '@playwright/test'
+import fs from 'node:fs'
+import { defineConfig, devices, webkit } from '@playwright/test'
 
 /**
  * Playwright config for the Mimoia web E2E suite.
@@ -11,10 +12,24 @@ import { defineConfig, devices } from '@playwright/test'
  * rule in `CLAUDE.md` ("test at 390x844 before declaring UI work done"). We
  * use Pixel 7 (Chromium) rather than iPhone 14 because the iPhone preset
  * pins to WebKit and the CI workflow only installs Chromium to keep the
- * cache small. Add desktop / WebKit projects later if those become useful.
+ * cache small. The iPhone sign-up (register-iphone.spec.ts) also runs in a
+ * WebKit project wherever WebKit is installed (PRO-354).
  */
 
 const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3001'
+
+/**
+ * PRO-354: the sign-up also runs on an iPhone (WebKit) when WebKit is
+ * installed (`playwright install webkit`). Without it the project is left
+ * out, so a Chromium-only machine or CI job still runs the suite.
+ */
+function webkitInstalled(): boolean {
+  try {
+    return fs.existsSync(webkit.executablePath())
+  } catch {
+    return false
+  }
+}
 
 export default defineConfig({
   testDir: './e2e',
@@ -55,5 +70,14 @@ export default defineConfig({
         },
       },
     },
+    ...(webkitInstalled()
+      ? [
+          {
+            name: 'mobile-webkit',
+            testMatch: /register-iphone\.spec\.ts$/,
+            use: { ...devices['iPhone 14'], viewport: { width: 390, height: 844 } },
+          },
+        ]
+      : []),
   ],
 })

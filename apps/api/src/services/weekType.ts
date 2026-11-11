@@ -29,6 +29,14 @@ import {
   weekTypeOptionsFor,
   weekTypeSlotAt,
   weekTypeSlotSchema,
+  fixedNoteText,
+  isFixedDish,
+  isTaperDish,
+  type Course,
+  type Dish,
+  type FromWeekType,
+  type MealSlot,
+  type RecipeDish,
   type PlantillaView,
   type Meal,
   type WeekTypeDays,
@@ -494,4 +502,83 @@ export function nextWeekTypeSlot(prev: WeekTypeSlot, req: WeekTypeSlotRequest): 
     }
   }
   return next
+}
+
+// ─── «Guardar en mi semana tipo», from the menu (phase 5, PRO-1186) ────────
+
+/** Pure: the chip a dish drawn for the week type's `type` carries — that type, or that none of it fitted. */
+export function fromWeekTypeOf(type: string | null, recipe: { dishTypes?: string[] | null }): { fromWeekType?: FromWeekType } {
+  if (!type) return {}
+  return { fromWeekType: recipe.dishTypes?.includes(type) ? { type } : { type, missing: true } }
+}
+
+/** Pure: the week type's slot after «Guardar en mi semana tipo» — that one option every week, from `since`; diners and dishes kept. */
+export function weekTypeSlotSaving(prev: WeekTypeSlot, option: WeekTypeOption, since: string): WeekTypeSlot {
+  const next = nextWeekTypeSlot(prev, { options: [option], off: false })
+  return 'error' in next ? prev : { ...next, since }
+}
+
+/**
+ * What «Guardar en mi semana tipo» does to the meal of the week on screen
+ * (design §4): **mark** — the meal already is it (its recipe, a recipe of
+ * that type, that written dish) and gets the chip; **kept** — it isn't, but
+ * it is locked («que no cambie», or chosen by hand), eaten, or a táper /
+ * leftover, so this week stays as it is; **draw** a recipe of that type;
+ * **put** that recipe or that written dish.
+ */
+export type WeekTypeMealChange =
+  | { kind: 'mark'; dishes: Dish[] }
+  | { kind: 'kept' }
+  | { kind: 'draw'; type: string; at: number }
+  | { kind: 'put'; dishes: Dish[] }
+
+/** Pure: see `WeekTypeMealChange`. `dishTypes` are those of the meal's main recipe. */
+export function weekTypeMealChange(
+  slot: MealSlot,
+  option: WeekTypeOption,
+  ctx: { locked: boolean; dishTypes?: readonly string[] | null; recipe?: { id: string; name: string; course?: Course | null } | null },
+): WeekTypeMealChange {
+  const dishes = slot.dishes ?? []
+  const recipeAt = dishes.findIndex((d) => d.kind === 'recipe')
+  const at = recipeAt >= 0 ? recipeAt : dishes.findIndex((d) => d.kind === 'note')
+  const main = at >= 0 ? dishes[at] : null
+  const given = main?.kind === 'recipe' && (main.variant === 'leftover' || isTaperDish(main))
+  const withMain = (d: Dish): Dish[] => dishes.map((x, i) => (i === at ? d : x))
+  const strip = <D extends Dish>(d: D): D => {
+    const { fromWeekType: _w, fixedDish: _f, ...rest } = d as D & { fromWeekType?: unknown; fixedDish?: unknown }
+    return rest as D
+  }
+
+  if (main && !given) {
+    if (option.kind === 'type' && main.kind === 'recipe' && ctx.dishTypes?.includes(option.type)) {
+      return { kind: 'mark', dishes: withMain({ ...strip(main), fromWeekType: { type: option.type } }) }
+    }
+    if (option.kind === 'recipe' && main.kind === 'recipe' && main.recipeId === option.recipeId) {
+      return { kind: 'mark', dishes: withMain({ ...strip(main), fixedDish: true }) }
+    }
+    // The label is the note cut to the option's 60 characters (`weekTypeChoices`).
+    if (option.kind === 'fixed' && main.kind === 'note' && !main.fixed && normalize(main.text.trim().slice(0, 60)) === normalize(option.label)) {
+      return { kind: 'mark', dishes: withMain({ ...strip(main), fixedDish: true }) }
+    }
+  }
+  if (ctx.locked || slot.eaten || given) return { kind: 'kept' }
+  // A meal that is only a note (the week type's «Pizza» written, a «Fijo: …»): the recipe takes its place.
+  if (option.kind === 'type') return { kind: 'draw', type: option.type, at: at >= 0 ? at : dishes.length }
+  if (option.kind === 'recipe') {
+    const r = ctx.recipe ?? { id: option.recipeId, name: option.name, course: null }
+    const dish: RecipeDish = { kind: 'recipe', recipeId: r.id, recipeName: r.name, course: r.course ?? null, fixedDish: true }
+    return { kind: 'put', dishes: recipeAt >= 0 ? dishes.map((x, i) => (i === recipeAt ? dish : x)) : [dish, ...dishes.filter((d) => d.kind !== 'note' || !isFixedDish(d))] }
+  }
+  if (option.kind === 'fixed') {
+    // Something fixed is the whole meal (as the generator does, PRO-218).
+    return { kind: 'put', dishes: [option.items.length ? { kind: 'note', text: fixedNoteText(option), fixed: { items: option.items.map((i) => ({ ...i })) } } : { kind: 'note', text: option.label.trim(), fixedDish: true }] }
+  }
+  return { kind: 'kept' }
+}
+
+/** A child of the household can't change its week type (the route answers 403). */
+export async function isChildOfHousehold(householdId: string, userId: string, db: Db = defaultDb): Promise<boolean> {
+  const [me] = await db.select({ role: householdMembers.role }).from(householdMembers)
+    .where(and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, userId))).limit(1)
+  return me?.role === 'child'
 }

@@ -408,7 +408,7 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
   async function finishOnboarding(result: any) {
     if (!user) return
     // Land on a real first menu built from these answers, not an empty
-    // week. If generation fails, /menu still offers "Generar mi menú".
+    // week. If generation fails, /menu still offers "Llenar con mi semana tipo".
     // Friday to Sunday (Madrid) the week is nearly over: build the next
     // one too and open it (PRO-65). One after the other, so the second
     // week's variety sees the first. The first menu starts today: the

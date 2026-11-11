@@ -48,7 +48,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { Lock, Plus, RotateCcw } from "lucide-react"
-import type { DayMenu, MealSlot } from "@ona/shared"
+import { weekTypeChipOf, type DayMenu, type MealSlot } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import {
   absentMeals,
@@ -660,6 +660,7 @@ function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
   const allNames = [title, ...others.map((o) => dishName(o.dish))].join(", ")
   const meal = mealLabel(s.meal)
   const dayName = weekdayName(d)
+  const weekType = weekTypeChipOf(s.slot.dishes)
 
   // The sheets render as a sibling of the drag wrapper, never inside it:
   // React events bubble out of portals, so a keystroke in the recipe
@@ -703,6 +704,12 @@ function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
           <span className={`font-serif-text text-[14px] font-[650] leading-[1.2] [text-wrap:pretty] ${first ? "" : "italic"}`}>
             {title}
           </span>
+          {/* PRO-1186: the week type's chip, short (the hero row has the whole line). */}
+          {weekType && (
+            <span data-testid="week-cell-week-type" className={`text-[11px] leading-tight ${weekType.missing ? "font-medium text-terracotta-deep" : "text-ink-muted"}`}>
+              {weekType.missing ? "Sin receta de ese tipo" : weekType.label}
+            </span>
+          )}
           {others.length > 0 && (
             <span data-testid="week-cell-extra" className="flex flex-col gap-0.5 border-t border-dashed border-border pt-1">
               {others.map(({ dish, position }) => (

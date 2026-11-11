@@ -1,4 +1,18 @@
+import { dishTypeInfo } from '../constants/dishTypes.js'
 import type { Course } from './recipe.js'
+
+/**
+ * «Semana tipo» (D-182 §6, PRO-1186): the dish answers to a dish type the
+ * week type asks for in that meal (`type`, a `DISH_TYPES` key). `missing`:
+ * no recipe of that type fitted — a «plato» type is written by its name
+ * (a note), a broad one got any recipe. Set by the generator, «Que elija
+ * Mimoia» on that meal and «Guardar en mi semana tipo»; gone as soon as the
+ * dish is changed by hand. The day card shows it as a chip.
+ */
+export interface FromWeekType {
+  type: string
+  missing?: boolean
+}
 
 /**
  * Why a dish was replaced on its own: see `RecipeDish.replaced`. `diet` and
@@ -61,6 +75,10 @@ export interface RecipeDish {
    * «Generar» puts it back; «Cambiar al azar» picks another one.
    */
   fixedDish?: boolean
+  /** The week type's dish type this dish answers to (PRO-1186). */
+  fromWeekType?: FromWeekType | null
+  /** Hydrated from `recipes.dish_types` on every menu response («Guardar en mi semana tipo» offers them); NOT persisted. */
+  dishTypes?: string[] | null
   /** Hydrated from `recipes.image_url` on every menu response; NOT persisted in JSONB. */
   imageUrl?: string | null
   /** Hydrated alongside `imageUrl`. */
@@ -80,6 +98,8 @@ export interface NoteDish {
   fixed?: { items: Array<{ name: string; quantity: number; unit: 'u' | 'g' | 'ml' }> }
   /** A dish of the «semana tipo» with no recipe that fits (a type like «Pizza»): its name, nothing on the list. */
   fixedDish?: boolean
+  /** The week type's dish type this note stands for when no recipe of it fitted (PRO-1186). */
+  fromWeekType?: FromWeekType | null
 }
 
 /** Pure (PRO-1141, D-182): the dish was put by the «semana tipo» as a fixed one (not a táper copied from it). */
@@ -88,6 +108,30 @@ export function isFixedDish(d: Dish | null | undefined): boolean {
 }
 
 export type Dish = RecipeDish | NoteDish
+
+/**
+ * Pure (PRO-1186): the chip of a meal that comes from the week type —
+ * «Legumbres · semana tipo»; «Semana tipo» for a concrete recipe or a dish
+ * written there; and, when no recipe of the type fitted, a warning
+ * (`missing`). Null for a meal the week type left free, a táper copied from
+ * another meal, or a «Fijo: …» (its text already says so).
+ */
+export function weekTypeChipOf(dishes: readonly Dish[] | null | undefined): { label: string; missing: boolean; type: string | null } | null {
+  const list = (dishes ?? []).filter((d) => !(d.kind === 'recipe' && (d.leftoverOf || isTaperVariant(d.variant))))
+  const typed = list.find((d) => d.fromWeekType?.type)
+  if (typed?.fromWeekType) {
+    const label = dishTypeInfo(typed.fromWeekType.type)?.label ?? typed.fromWeekType.type
+    const type = typed.fromWeekType.type
+    if (!typed.fromWeekType.missing) return { label: `${label} · semana tipo`, missing: false, type }
+    return {
+      label: typed.kind === 'note' ? `Ninguna receta de «${label}» encaja: lo dejo escrito` : `Ninguna receta de «${label}» encaja: he puesto otra`,
+      missing: true,
+      type,
+    }
+  }
+  if (list.some((d) => isFixedDish(d) && !(d.kind === 'note' && d.fixed))) return { label: 'Semana tipo', missing: false, type: null }
+  return null
+}
 
 export function isRecipeDish(d: Dish): d is RecipeDish {
   return d.kind === 'recipe'

@@ -270,6 +270,26 @@ function Stepper({ label, value, min, max, hint, onChange }: { label: string; va
   )
 }
 
+/** The dish types by family, one chip each (the slot panel's «+ Añadir» and the menu's «Guardar en mi semana tipo»). */
+export function DishTypeChips({ onPick, disabled }: { onPick: (type: string) => void; disabled?: boolean }) {
+  return (
+    <>
+      {DISH_TYPE_FAMILIES.map((fam) => (
+        <div key={fam}>
+          <div className={EYEBROW}>{DISH_TYPE_FAMILY_LABELS[fam]}</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {DISH_TYPES.filter((t) => t.family === fam).map((t) => (
+              <button key={t.key} type="button" disabled={disabled} onClick={() => onPick(t.key)} className={`${CHIP} border-border bg-cream text-ink hover:border-ink disabled:opacity-50`}>
+                <DishTypeIcon type={t.key} size={16} /> {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
 /** «+ Añadir»: a concrete recipe (search), the dish types by family, and the wildcards. */
 function OptionPicker({ canTaper, onAdd, onCancel, title }: { canTaper: boolean; onAdd: (o: WeekTypeOption) => void; onCancel: () => void; title: string }) {
   const [recipeOpen, setRecipeOpen] = useState(false)
@@ -288,18 +308,7 @@ function OptionPicker({ canTaper, onAdd, onCancel, title }: { canTaper: boolean;
           <DishTypeIcon type="recipe" size={16} /> Buscar una receta
         </button>
       </div>
-      {DISH_TYPE_FAMILIES.map((fam) => (
-        <div key={fam}>
-          <div className={EYEBROW}>{DISH_TYPE_FAMILY_LABELS[fam]}</div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {DISH_TYPES.filter((t) => t.family === fam).map((t) => (
-              <button key={t.key} type="button" onClick={() => onAdd({ kind: "type", type: t.key })} className={`${CHIP} border-border bg-cream text-ink hover:border-ink`}>
-                <DishTypeIcon type={t.key} size={16} /> {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
+      <DishTypeChips onPick={(type) => onAdd({ kind: "type", type })} />
       <div>
         <div className={EYEBROW}>Comodines</div>
         <div className="mt-2 flex flex-wrap gap-1.5">

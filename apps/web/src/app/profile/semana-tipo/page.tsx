@@ -8,13 +8,13 @@
  */
 import { useState } from "react"
 import { Plus } from "lucide-react"
-import { MEALS, householdToDiners, weekTypeSlotAt, type Meal } from "@ona/shared"
+import { MEALS, householdToDiners, type Meal } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
 import { useIsDesktop } from "@/hooks/useMediaQuery"
 import { useSaveWeekTypeSlot, useWeekType } from "@/hooks/useWeekType"
 import { MenuSheet } from "@/components/menu/MenuSheet"
 import { Accent, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from "@/components/profile/SubPage"
-import { DAY_NAMES, MEAL_NAMES, WeekTypeGrid } from "@/components/weekType/WeekTypeGrid"
+import { DAY_NAMES, MEAL_NAMES, WeekTypeGrid, weekTypeMeals } from "@/components/weekType/WeekTypeGrid"
 import { SlotEditor } from "@/components/weekType/SlotEditor"
 
 /** Chronological order for the columns. */
@@ -29,8 +29,7 @@ export default function WeekTypePage() {
   const [extraMeals, setExtraMeals] = useState<Meal[]>([])
   const defaultDiners = householdToDiners(user?.adults ?? 2, user?.kidsCount ?? 0)
 
-  const used = (m: Meal) => !!days && DAY_NAMES.some((_, d) => !weekTypeSlotAt(days, d, m).off)
-  const meals = MEAL_ORDER.filter((m) => m === "lunch" || m === "dinner" || used(m) || extraMeals.includes(m))
+  const meals = weekTypeMeals(days, extraMeals)
   const hidden = MEAL_ORDER.filter((m) => !meals.includes(m) && (MEALS as readonly string[]).includes(m))
 
   const onSave = (day: number, meal: Meal, slot: Parameters<typeof save.mutate>[0]["slot"]) => save.mutate({ day, meal, slot })

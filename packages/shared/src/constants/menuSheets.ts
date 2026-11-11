@@ -44,6 +44,8 @@ const MEAL_SHEET_ACTIONS = [
   'comensales_mas',
   'comensales_quitar',
   'quitar_comida',
+  // PRO-1186: «Guardar en mi semana tipo» (opens its sheet; the save itself is a `template_changed`).
+  'semana_tipo',
 ] as const
 
 export const MENU_SHEET_ACTIONS = {

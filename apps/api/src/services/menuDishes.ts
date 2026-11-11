@@ -46,10 +46,10 @@ export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish
           ...(patch.course !== undefined && { course: patch.course }),
           ...(patch.variant !== undefined && current.variant !== 'leftover' && { variant: patch.variant }),
         }
-      : {
-          ...current,
-          ...(patch.text !== undefined && { text: patch.text }),
-        }
+      : patch.text !== undefined && patch.text !== current.text
+        ? // Written by hand now: no longer the week type's (PRO-1186's chip goes).
+          (({ fromWeekType: _w, fixedDish: _f, ...rest }) => ({ ...rest, text: patch.text! }))(current)
+        : current
   return [...dishes.slice(0, index), next, ...dishes.slice(index + 1)]
 }
 

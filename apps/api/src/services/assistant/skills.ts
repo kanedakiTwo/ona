@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { refreshRecipeDishTypes } from '../dishTypes.js'
-import { poolOfDishType, weekTypeDishTypeAt } from '../weekType.js'
+import { fromWeekTypeOf, poolOfDishType, weekTypeDishTypeAt } from '../weekType.js'
 import { and, eq, desc, ilike, or, inArray, isNull } from 'drizzle-orm'
 import {
   menus,
@@ -1440,7 +1440,8 @@ const swapMeal: SkillDefinition = {
     const season = detectSeason()
 
     // «Semana tipo» (D-182): another recipe of the type it asks for there.
-    const newRecipe = findRecipeForSlot(poolOfDishType(allRecipes, await weekTypeDishTypeAt(userId, menu.weekStart, dayIndex, meal, 0, db)), {
+    const wtType = await weekTypeDishTypeAt(userId, menu.weekStart, dayIndex, meal, 0, db)
+    const newRecipe = findRecipeForSlot(poolOfDishType(allRecipes, wtType), {
       meal: meal as Meal,
       season,
       usedRecipeIds,
@@ -1454,7 +1455,7 @@ const swapMeal: SkillDefinition = {
     }
 
     // Update the menu (the slot keeps its «Solo hoy», PRO-102)
-    days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: newRecipe.id, recipeName: newRecipe.name }])
+    days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: newRecipe.id, recipeName: newRecipe.name, ...fromWeekTypeOf(wtType, newRecipe) }])
 
     const [updated] = await db
       .update(menus)

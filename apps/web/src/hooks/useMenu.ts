@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query"
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
-import { dishKey, slotKey, type MenuFit, type WeekPlan } from "@ona/shared"
-import { NO_RECIPE_OF_TYPE, regenerateMealBody } from "@/lib/mealSheet"
+import { dishKey, slotKey, type MenuFit, type WeekPlan, type WeekTypeOption } from "@ona/shared"
+import { NO_RECIPE_OF_TYPE, regenerateMealBody, type WeekTypeApplied } from "@/lib/mealSheet"
 import {
   addDishIn,
   addSlotIn,
@@ -23,7 +23,6 @@ interface MealSlot {
   recipeName?: string
   /** Per-slot diner override (this week only); null/undefined = household default. */
   servings?: number | null
-  /** Pinned meal-type tag — matcher restricts Aleatorio/Añadir to recipes with this tag. */
   /** `'leftover'` = cloned from another slot (kind:'planned' is the default). */
   kind?: "planned" | "leftover" | null
   /** Source slot back-reference when kind === 'leftover'. */
@@ -570,6 +569,28 @@ export function useAddDish() {
       return api.post<Menu>(url, params.payload, changeOpts())
     }),
     onSuccess: (data) => settleMenu(queryClient, data),
+  })
+}
+
+/**
+ * PRO-1186 · «Guardar en mi semana tipo»: that day and meal of the household's
+ * week type take this option every week, and the meal on screen follows it
+ * unless it is locked, eaten or a táper. Only the server knows the dish it
+ * draws, so nothing is drawn before; the answer says what it did
+ * (`weekTypeApplied`). Re-reads «Tu semana tipo».
+ */
+export function useSaveMealToWeekType() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    ...MENU_CHANGE,
+    ...queueOnly(queryClient),
+    mutationFn: queued(async (params: { menuId: string; day: number; meal: string; option: WeekTypeOption }) =>
+      api.post<Menu & { weekTypeApplied: WeekTypeApplied }>(`/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/week-type`, { option: params.option }, changeOpts()),
+    ),
+    onSuccess: (data) => {
+      settleMenu(queryClient, data)
+      queryClient.invalidateQueries({ queryKey: ["week-type"] })
+    },
   })
 }
 

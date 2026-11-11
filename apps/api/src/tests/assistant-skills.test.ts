@@ -71,6 +71,7 @@ vi.mock('../services/menuFit.js', async (importOriginal) => ({
 vi.mock('../services/weekType.js', () => ({
   weekTypeDishTypeAt: vi.fn(async () => null),
   poolOfDishType: (pool: unknown[]) => pool,
+  fromWeekTypeOf: () => ({}),
 }))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),

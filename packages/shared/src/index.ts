@@ -24,8 +24,8 @@ export type {
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
 export { menuFitLevel } from './types/menu.js'
-export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/menuDish.js'
-export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish } from './types/menuDish.js'
+export type { Dish, RecipeDish, NoteDish, DishReplacedReason, FromWeekType } from './types/menuDish.js'
+export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish, weekTypeChipOf } from './types/menuDish.js'
 export { INGREDIENT_ROLES, ingredientRoleMarkSchema, ingredientRolesUpdateSchema } from './types/ingredientRole.js'
 export type { IngredientRole, IngredientRoleMark } from './types/ingredientRole.js'
 export {

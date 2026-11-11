@@ -20,7 +20,7 @@
  * buscador) ni «Tipo de comida» (los chips de tipo del buscador). Fijar ya no
  * deja gris nada: solo dice qué se queda al rehacer la semana.
  */
-import { isTaperDish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { dishTypeInfo, isTaperDish, type MealSlot, type RecipeDish, type WeekTypeOption } from "@ona/shared"
 
 /** Cuándo cae la comida respecto a hoy. */
 export type MealWhen = "past" | "today" | "future"
@@ -108,4 +108,62 @@ export function regenerateMealBody(p: { recipeId?: string; dishType?: string | n
   if (p.recipeId) return { recipeId: p.recipeId, ...(p.from ? { from: p.from } : {}) }
   if (p.dishType) return { dishType: p.dishType }
   return undefined
+}
+
+// ─── «Guardar en mi semana tipo» (semana tipo, fase 5, PRO-1186) ───────────
+
+/** One thing «Guardar en mi semana tipo» offers: what the meal is (its types, its recipe, its written dish). */
+export interface WeekTypeChoice {
+  option: WeekTypeOption
+  label: string
+  hint: string
+}
+
+/**
+ * Pure: what the meal on screen can be saved as — each dish type of its
+ * recipe (the one the week type already asked for first), «Siempre esta
+ * receta», or a written dish as it is. A táper or leftover offers none (it
+ * isn't what that meal usually is). «Otro tipo de plato» comes after these.
+ */
+export function weekTypeChoices(slot: MealSlot): WeekTypeChoice[] {
+  const dishes = slot.dishes ?? []
+  const recipe = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
+  if (recipe) {
+    if (recipe.variant === "leftover" || isTaperDish(recipe)) return []
+    const asked = recipe.fromWeekType && !recipe.fromWeekType.missing ? [recipe.fromWeekType.type] : []
+    const types = [...new Set([...asked, ...(recipe.dishTypes ?? [])])].filter((t) => dishTypeInfo(t))
+    return [
+      ...types.map((t) => ({ option: { kind: "type", type: t } as WeekTypeOption, label: dishTypeInfo(t)!.label, hint: "Cada semana, una receta de este tipo que encaje" })),
+      ...(recipe.recipeName
+        ? [{ option: { kind: "recipe", recipeId: recipe.recipeId, name: recipe.recipeName } as WeekTypeOption, label: "Siempre esta receta", hint: recipe.recipeName }]
+        : []),
+    ]
+  }
+  const note = dishes.find((d) => d.kind === "note" && !d.fixed)
+  if (note?.kind === "note" && note.text.trim()) {
+    // The week type's type written by its name (no recipe fitted): saving it keeps asking for that type.
+    const asked = note.fromWeekType && dishTypeInfo(note.fromWeekType.type)
+      ? [{ option: { kind: "type", type: note.fromWeekType.type } as WeekTypeOption, label: dishTypeInfo(note.fromWeekType.type)!.label, hint: "Cada semana, una receta de este tipo que encaje" }]
+      : []
+    return [...asked, { option: { kind: "fixed", label: note.text.trim().slice(0, 60), items: [] }, label: `Siempre «${note.text.trim()}»`, hint: "Escrito, sin receta" }]
+  }
+  return []
+}
+
+const WEEKDAYS_PLURAL = ["los lunes", "los martes", "los miércoles", "los jueves", "los viernes", "los sábados", "los domingos"]
+
+/** «los jueves», «los sábados». */
+export function everyWeekday(day: number): string {
+  return WEEKDAYS_PLURAL[day] ?? ""
+}
+
+/** What the server did with the meal on screen (`POST …/meal/:meal/week-type`). */
+export type WeekTypeApplied = "mark" | "changed" | "kept" | "missing"
+
+/** Pure: the line that says it was saved, and what happened to this week. */
+export function weekTypeSavedLine(p: { day: number; mealLabel: string; label: string; applied: WeekTypeApplied }): string {
+  const saved = `Guardado en tu semana tipo: ${everyWeekday(p.day)}, ${p.mealLabel.toLowerCase()}, «${p.label}».`
+  if (p.applied === "kept") return `${saved} Esta semana se queda como está.`
+  if (p.applied === "missing") return `${saved} Esta semana ninguna receta de ese tipo encaja aquí: se queda como está.`
+  return saved
 }

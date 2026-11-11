@@ -23,12 +23,12 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { assignCookToday, dbCookTodayDeps } from '../services/cookToday.js'
 import { isHouseholdInviteSource } from '@ona/shared'
 import { loadHouseholdAllergiesStatus } from '../services/householdAllergies.js'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, inArray } from 'drizzle-orm'
 import { MEALS, stableSlotJson, weekTypeSlotError, weekTypeSlotSchema, type Meal, type WeekTypeSlot } from '@ona/shared'
 import { db } from '../db/connection.js'
-import { householdMembers, recipes } from '../db/schema.js'
+import { recipes } from '../db/schema.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibility.js'
-import { currentWeekStart, loadWeekType, saveWeekTypeSlots } from '../services/weekType.js'
+import { currentWeekStart, isChildOfHousehold, loadWeekType, saveWeekTypeSlots } from '../services/weekType.js'
 import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
 import { requestChannel } from '../services/usageEvents.js'
 import { familyOfferDue, familyOfferEligible, loadFamilyOfferInput, stampFamilyOffer } from '../services/familyInviteOffers.js'
@@ -164,9 +164,7 @@ router.put('/households/me/week-type/:day/:meal', async (req: AuthRequest, res) 
       res.status(404).json({ error: 'No household' })
       return
     }
-    const [me] = await db.select({ role: householdMembers.role }).from(householdMembers)
-      .where(and(eq(householdMembers.householdId, householdId), eq(householdMembers.userId, req.userId!))).limit(1)
-    if (me?.role === 'child') {
+    if (await isChildOfHousehold(householdId, req.userId!)) {
       res.status(403).json({ error: 'La semana tipo la cambian los adultos de la casa.' })
       return
     }

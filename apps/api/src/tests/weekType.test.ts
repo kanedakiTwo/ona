@@ -213,11 +213,22 @@ describe('what wins (§5)', () => {
   })
 })
 
+describe('the chip of a dish drawn for a type (PRO-1186)', () => {
+  it('the pizza of Friday dinner says it answers to «Pizza»', () => {
+    const days = weekType([[FRIDAY, 'dinner', { options: [{ kind: 'type', type: 'pizza' }], since: W1 }]])
+    const dish = generate(days, W1).days[FRIDAY].dinner!.dishes[0]
+    expect(dish).toMatchObject({ kind: 'recipe', recipeId: 'pizza', fromWeekType: { type: 'pizza' } })
+    // A free slot carries nothing.
+    expect(generate(days, W1).days[0].lunch!.dishes[0].fromWeekType).toBeUndefined()
+  })
+})
+
 describe('a type with no recipe that fits', () => {
   it('a dish (Pizza) is written by its name, with a warning for Cocina', () => {
     const days = weekType([[FRIDAY, 'dinner', { options: [{ kind: 'type', type: 'pizza' }], since: W1 }]])
     const out = generate(days, W1, { pool: FILLER })
-    expect(out.days[FRIDAY].dinner!.dishes).toEqual([{ kind: 'note', text: 'Pizza', fixedDish: true }])
+    // PRO-1186: the note says it stands for the type with no recipe (the day card warns).
+    expect(out.days[FRIDAY].dinner!.dishes).toEqual([{ kind: 'note', text: 'Pizza', fixedDish: true, fromWeekType: { type: 'pizza', missing: true } }])
     expect(missingDishTypes(out.warnings)).toEqual(['pizza'])
   })
 
@@ -225,6 +236,7 @@ describe('a type with no recipe that fits', () => {
     const days = weekType([[FRIDAY, 'dinner', { options: [{ kind: 'type', type: 'carne' }], since: W1 }]])
     const out = generate(days, W1, { pool: FILLER })
     expect(out.days[FRIDAY].dinner!.dishes[0].kind).toBe('recipe')
+    expect(out.days[FRIDAY].dinner!.dishes[0].fromWeekType).toEqual({ type: 'carne', missing: true })
     expect(missingDishTypes(out.warnings)).toEqual(['carne'])
   })
 })

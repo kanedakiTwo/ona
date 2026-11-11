@@ -11,11 +11,11 @@ import { db } from '../db/connection.js'
 import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock } from '@ona/shared'
-import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish } from '@ona/shared'
+import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema } from '@ona/shared'
+import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish, WeekTypeOption } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
-import { loadWeekTypeForUser, poolOfChipType, poolOfDishType, weekTypeDishTypeAt } from '../services/weekType.js'
+import { currentWeekStart, fromWeekTypeOf, isChildOfHousehold, loadWeekTypeForUser, poolOfChipType, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt, weekTypeMealChange, weekTypeSlotSaving } from '../services/weekType.js'
 import { planWeekType } from '../services/weekTypePlan.js'
 import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
@@ -40,6 +40,7 @@ import {
 import { dayTimeBudget, detectSeason } from '@ona/shared'
 import { schoolDinnerPool } from '../services/schoolMenu.js'
 import { slotTimeBudget } from '../services/menuHolidays.js'
+import { requestChannel } from '../services/usageEvents.js'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
@@ -98,6 +99,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function isValidUuid(s: unknown): s is string {
   return typeof s === 'string' && UUID_RE.test(s)
 }
+/** The recipes the week already has, but the one slot that is being changed. */
+function usedRecipeIdsBut(days: DayMenu[], dayIndex: number, meal: string): Set<string> {
+  const used = new Set<string>()
+  days.forEach((day, d) => {
+    for (const [m, s] of Object.entries(day ?? {})) {
+      if (!s || (d === dayIndex && m === meal)) continue
+      for (const dish of s.dishes ?? []) if (dish.kind === 'recipe') used.add(dish.recipeId)
+    }
+  })
+  return used
+}
+
 function isValidMeal(meal: string): meal is Meal {
   return MEAL_VALUES.has(meal)
 }
@@ -142,6 +155,8 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
       // Postre" eyebrow on multi-dish slots, including legacy rows persisted
       // before course tagging existed.
       course: recipes.course,
+      // PRO-1186: «Guardar en mi semana tipo» offers the recipe's dish types.
+      dishTypes: recipes.dishTypes,
     })
     .from(recipes)
     .where(inArray(recipes.id, [...ids]))
@@ -150,7 +165,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   const recipeById = new Map(
     rows.map((r) => [
       r.id,
-      { name: r.name, imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime, course: r.course },
+      { name: r.name, imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime, course: r.course, dishTypes: r.dishTypes ?? null },
     ]),
   )
   const hydratedDays = days.map((day) => {
@@ -174,6 +189,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
             imageUrl: info?.imageUrl ?? null,
             prepTime: info?.prepTime ?? null,
             totalTime: info?.totalTime ?? null,
+            dishTypes: info?.dishTypes ?? null,
             // Persisted course (set when the dish was added) wins; otherwise
             // hydrate from the joined recipes.course so the UI eyebrow shows
             // the right label on legacy slots.
@@ -599,18 +615,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       return
     }
 
-    // Collect used recipe IDs (excluding the slot being replaced)
-    const usedRecipeIds = new Set<string>()
-    for (let d = 0; d < days.length; d++) {
-      for (const m of Object.keys(days[d])) {
-        const s = days[d][m]
-        if (!s) continue
-        if (d === dayIndex && m === meal) continue
-        for (const dish of s.dishes ?? []) {
-          if (dish.kind === 'recipe') usedRecipeIds.add(dish.recipeId)
-        }
-      }
-    }
+    const usedRecipeIds = usedRecipeIdsBut(days, dayIndex, meal)
 
     // Allergies and diet of the whole household, dislikes, equipment,
     // favourites, ratings and the catalogue (shared with PRO-364's review).
@@ -649,6 +654,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
         recipeId: picked.id,
         recipeName: picked.name,
         course: picked.course ?? null,
+        ...fromWeekTypeOf(type, picked),
       }
     }
 
@@ -665,6 +671,104 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     res.json(await hydrateMenuImages(updated))
   } catch (err) {
     console.error('Regenerate meal error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// POST /menu/:menuId/day/:day/meal/:meal/week-type { option } — «Guardar en
+// mi semana tipo» (PRO-1186, design §4): that day and meal of the household's
+// week type take this option every week, and the meal on screen follows it
+// now unless it is locked, eaten or a táper (`weekTypeMealChange`). Answers
+// the week with `weekTypeApplied`: `mark` (it already was it: now with its
+// chip), `changed`, `kept` or `missing` (no recipe of that type fits this
+// meal: it stays as it is).
+const weekTypeSaveSchema = z.object({ option: weekTypeOptionSchema })
+router.post('/menu/:menuId/day/:day/meal/:meal/week-type', async (req: AuthRequest, res) => {
+  try {
+    const menuId = String(req.params.menuId)
+    const dayIndex = Number(req.params.day)
+    const meal = String(req.params.meal)
+    const parsed = weekTypeSaveSchema.safeParse(req.body ?? {})
+    if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 6 || !isValidMeal(meal) || !parsed.success) {
+      res.status(400).json({ error: 'Día, comida u opción no válidos.' })
+      return
+    }
+    let option = parsed.data.option as WeekTypeOption
+    if (option.kind !== 'type' && option.kind !== 'recipe' && option.kind !== 'fixed') {
+      res.status(400).json({ error: 'Desde el menú se guarda un tipo de plato, una receta o un plato escrito.' })
+      return
+    }
+    const [menu] = await db.select().from(menus).where(eq(menus.id, menuId)).limit(1)
+    const days = (menu?.days ?? []) as DayMenu[]
+    const slot = days[dayIndex]?.[meal]
+    if (!menu || !slot) {
+      res.status(404).json({ error: 'Slot not found' })
+      return
+    }
+    const { householdId, days: weekType } = await loadWeekTypeForUser(menu.userId)
+    if (!householdId) {
+      res.status(404).json({ error: 'No household' })
+      return
+    }
+    if (await isChildOfHousehold(householdId, req.userId!)) {
+      res.status(403).json({ error: 'La semana tipo la cambian los adultos de la casa.' })
+      return
+    }
+
+    // The meal's main recipe (its dish types) and, for a concrete recipe, that one — if this household can see it.
+    const mainRecipeId = slot.dishes.find((d): d is RecipeDish => d.kind === 'recipe')?.recipeId
+    const ids = [...new Set([mainRecipeId, option.kind === 'recipe' ? option.recipeId : undefined].filter((x): x is string => !!x))]
+    const found = ids.length
+      ? await db.select({ id: recipes.id, name: recipes.name, course: recipes.course, dishTypes: recipes.dishTypes }).from(recipes)
+          .where(and(inArray(recipes.id, ids), visibleRecipeWhere(await visibleAuthorIds(req.userId!))))
+      : []
+    const byId = new Map(found.map((r) => [r.id, r]))
+    const chosen = option.kind === 'recipe' ? byId.get(option.recipeId) : undefined
+    if (option.kind === 'recipe') {
+      if (!chosen) {
+        res.status(404).json({ error: 'Esa receta no está en vuestro catálogo.' })
+        return
+      }
+      option = { ...option, name: chosen.name }
+    }
+
+    await saveWeekTypeSlots(
+      householdId,
+      [{ day: dayIndex, meal, slot: weekTypeSlotSaving(weekType[dayIndex]?.[meal] ?? {}, option, currentWeekStart()) }],
+      db,
+      { track: { userId: req.userId!, channel: requestChannel(req) } },
+    )
+
+    const locked = Boolean((menu.locked as LockedSlots | null)?.[String(dayIndex)]?.[meal])
+    const change = weekTypeMealChange(slot, option, {
+      locked,
+      dishTypes: mainRecipeId ? byId.get(mainRecipeId)?.dishTypes : null,
+      recipe: chosen ? { id: chosen.id, name: chosen.name, course: (chosen.course as RecipeDish['course']) ?? null } : null,
+    })
+    let applied: 'mark' | 'changed' | 'kept' | 'missing' = change.kind === 'mark' ? 'mark' : change.kind === 'kept' ? 'kept' : 'changed'
+    let newDishes: Dish[] | null = change.kind === 'mark' || change.kind === 'put' ? change.dishes : null
+    if (change.kind === 'draw') {
+      const pickCtx = await loadSlotPickContext(menu, req.userId!)
+      const current = slot.dishes[change.at]
+      const { pool, options } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIdsBut(days, dayIndex, meal))
+      const picked = findForCourse(poolOfChipType(pool, change.type, current?.kind === 'recipe' ? current.recipeId : null), null, options)
+      if (picked) {
+        const dish: RecipeDish = { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null, fromWeekType: { type: change.type } }
+        newDishes = change.at < slot.dishes.length ? slot.dishes.map((d, i) => (i === change.at ? dish : d)) : [...slot.dishes, dish]
+      } else applied = 'missing'
+    }
+    let updated = menu
+    if (newDishes) {
+      days[dayIndex][meal] = { ...slot, dishes: newDishes }
+      ;[updated] = await db.update(menus).set({ days }).where(eq(menus.id, menuId)).returning()
+      if (applied === 'changed') {
+        await recordMenuEdits(req, menu, slotDiff(dayIndex, meal, slot.dishes, newDishes))
+        refreshPrepAlerts(menuId)
+      }
+    }
+    res.json({ ...(await hydrateMenuImages(updated)), weekTypeApplied: applied })
+  } catch (err) {
+    console.error('POST /menu/:menuId/.../week-type error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -1669,6 +1773,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       recipeId: picked.id,
       recipeName: picked.name,
       course: picked.course ?? null,
+      ...fromWeekTypeOf(typeRegen, picked),
     }
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))

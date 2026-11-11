@@ -163,6 +163,8 @@ export function buildRandomMenu(
   // first, for the whole week, so a free slot earlier in the week never takes
   // the only ceviche Thursday asked for. Free positions stay for the draw.
   const prefilled = new Map<string, (Dish | undefined)[]>()
+  // A type with no recipe that fits, drawn free there: that dish says so (PRO-1186).
+  const missingType = new Map<string, Map<number, string>>()
   let rules: ReturnType<typeof compileRestrictions> | null = null
   for (const [key, specs] of Object.entries(slotSpecs ?? {})) {
     const [d, meal] = key.split(':')
@@ -171,7 +173,7 @@ export function buildRandomMenu(
     if (existingDays && lockedSlots[d]?.[meal] && existingDays[dayIndex]?.[meal]) continue
     const avoidGroup = meal === 'dinner' ? dinnerAvoidGroups?.[dayIndex] : undefined
     const slotPool = avoidGroup ? withoutFoodGroup(allRecipes, avoidGroup) : allRecipes
-    prefilled.set(key, specs.map((spec) => {
+    prefilled.set(key, specs.map((spec, position) => {
       if (spec.kind === 'preset') {
         if (spec.dish.kind === 'recipe') usedRecipeIds.add(spec.dish.recipeId)
         return { ...spec.dish } as Dish
@@ -186,14 +188,17 @@ export function buildRandomMenu(
       if (picked) {
         if (onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
         usedRecipeIds.add(picked.id)
-        return { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null } as RecipeDish
+        return { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null, fromWeekType: { type: spec.type } } as RecipeDish
       }
       warnings.push(`dish_type_missing_${spec.type}_${meal}_d${dayIndex}`)
       // A dish (Pizza, Ceviche…) is written by its name — unless the name
       // itself breaks an allergy or diet; a broad type (Carne, Indio…) is drawn free.
       const note = dishTypeNote(spec.type)
-      if (dishTypeInfo(spec.type)?.kind === 'broad' || (note.kind === 'note' && writtenDishBreaks(note.text, (rules ??= compileRestrictions(restrictions))))) return undefined
-      return note
+      if (dishTypeInfo(spec.type)?.kind === 'broad' || (note.kind === 'note' && writtenDishBreaks(note.text, (rules ??= compileRestrictions(restrictions))))) {
+        ;(missingType.get(key) ?? missingType.set(key, new Map()).get(key)!).set(position, spec.type)
+        return undefined
+      }
+      return { ...note, fromWeekType: { type: spec.type, missing: true } } as Dish
     }))
   }
 
@@ -297,11 +302,13 @@ export function buildRandomMenu(
           continue
         }
         usedRecipeIds.add(picked.id)
+        const missing = missingType.get(slotKey(dayIndex, meal))?.get(k)
         dishes.push({
           kind: 'recipe',
           recipeId: picked.id,
           recipeName: picked.name,
           course: (picked as RecipeWithCourse).course ?? null,
+          ...(missing ? { fromWeekType: { type: missing, missing: true } } : {}),
         } as RecipeDish)
       }
 

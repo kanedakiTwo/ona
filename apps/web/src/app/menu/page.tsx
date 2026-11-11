@@ -25,15 +25,17 @@ import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"
 import { useTasteStatus } from "@/hooks/useTaste"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles } from "lucide-react"
+import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2 } from "lucide-react"
 import type { DayMenu, MealSlot } from "@ona/shared"
-import { menuShareText } from "@ona/shared"
+import { menuShareText, weekTypeOptionLabel } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
 import { menuDiners } from "@/lib/menuDiners"
-import { mealWhen } from "@/lib/mealSheet"
+import { mealWhen, weekTypeSavedLine, type WeekTypeApplied } from "@/lib/mealSheet"
+import { mealLabel } from "@/lib/labels"
 import {
   useMenu,
   useGenerateMenu,
+  useSaveMealToWeekType,
   useRegenerateMeal,
   useLockMeal,
   useAddMealSlot,
@@ -68,7 +70,8 @@ import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
-import { ChangeFailedNotice } from "@/components/menu/ChangeFailedNotice"
+import { ChangeFailedNotice, showMenuNotice } from "@/components/menu/ChangeFailedNotice"
+import { WeekTypeSkeleton } from "@/components/menu/WeekTypeSkeleton"
 import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
 import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
@@ -194,6 +197,9 @@ export default function MenuPage() {
   ])
   const generateMenu = useGenerateMenu()
   const regenerateMeal = useRegenerateMeal()
+  const saveMealToWeekType = useSaveMealToWeekType()
+  // PRO-1186: a real generation (not the empty scaffold of a new week, nor «Vaciar») shows the week type's skeleton.
+  const generating = generateMenu.isPending && !generateMenu.variables?.empty && generateMenu.variables?.weekStart === weekStart
   const lockMeal = useLockMeal()
   const addMealSlot = useAddMealSlot()
   const deleteMealSlot = useDeleteMealSlot()
@@ -440,6 +446,21 @@ export default function MenuPage() {
             haptic.medium()
             replaceWithNote.mutate({ ...base, text })
           },
+          // PRO-1186: «Guardar en mi semana tipo» — every week, and this one if the meal isn't locked, eaten or a táper.
+          saveToWeekType: (option) => {
+            haptic.light()
+            saveMealToWeekType.mutate(
+              { ...base, option },
+              {
+                onSuccess: (res) =>
+                  showMenuNotice(weekTypeSavedLine({ day, mealLabel: mealLabel(meal), label: weekTypeOptionLabel(option), applied: (res as { weekTypeApplied: WeekTypeApplied }).weekTypeApplied })),
+                // A child of the household can't change it: say so instead of «prueba otra vez».
+                onError: (err) => {
+                  if (err instanceof ApiError && err.status === 403) showMenuNotice(err.message)
+                },
+              },
+            )
+          },
         }
         return {
           handlers,
@@ -605,6 +626,8 @@ export default function MenuPage() {
 
   /* ── States without a usable menu ─────────────────────────── */
   const loadFailed = (menuFailed && !menu) || menuLoad.failed
+  // PRO-1186: while a week is generated, its semana tipo in place of «La semana».
+  const skeleton = generating ? <WeekTypeSkeleton weekStart={weekStart} className="mx-4 mt-5 lg:mx-0" /> : null
   // While a week loads (first visit or week navigation) the header, strip
   // and week sheet stay mounted; only the content area waits.
   const statusCard = loadFailed ? (
@@ -624,12 +647,15 @@ export default function MenuPage() {
         {menuLoad.retrying ? "Cargando..." : "Reintentar"}
       </button>
     </div>
-  ) : menuLoading ? (
+  ) : menuLoading && !generating ? (
     <div className="mx-4 mt-10 text-center text-eyebrow" role="status">
       Cargando...
     </div>
   ) : !menu || blankWeek ? (
-    <div className="mx-4 mt-5 rounded-[22px] border border-dashed border-border bg-paper px-6 py-8 text-center">
+    <>
+    {skeleton}
+    {/* Hidden, not unmounted, while it generates: «Antes de generar» keeps its answers (the fridge question needs them). */}
+    <div hidden={generating} className="mx-4 mt-5 rounded-[22px] border border-dashed border-border bg-paper px-6 py-8 text-center">
       <p className="font-serif-text font-[650] text-xl text-ink">
         {isPastWeek ? (
           <>
@@ -644,7 +670,7 @@ export default function MenuPage() {
       <p className="mx-auto mt-2 max-w-xs text-[14px] text-ink-soft">
         {isPastWeek
           ? "Esta semana ya pasó. Vuelve a la actual para planificar."
-          : "Genera tu menú y la lista de la compra sale automática. O rellena tú los huecos."}
+          : "Mimo la llena con tu semana tipo y la lista de la compra sale sola. O rellena tú los huecos."}
       </p>
       {!isPastWeek && (
         <WeekPlanQuestions
@@ -665,8 +691,8 @@ export default function MenuPage() {
             disabled={generateMenu.isPending}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-forest disabled:opacity-50"
           >
-            <Sparkles size={15} />
-            {generateMenu.isPending ? "Generando..." : "Generar mi menú"}
+            {/* PRO-1186: configuring weighs more than asking the AI — no sparkles. */}
+            Llenar con mi semana tipo
           </button>
           {!menu && (
             <button
@@ -683,7 +709,10 @@ export default function MenuPage() {
       {/* «Menú de <mes>» (PRO-378): copy Cocina's week into this one. */}
       {!isPastWeek && !fridgeQuestion && <MonthMenuCard weekStart={weekStart} className="mx-auto mt-5 max-w-md" />}
     </div>
-  ) : null
+    </>
+  ) : (
+    skeleton
+  )
 
   const extras = (
     <>
@@ -737,7 +766,7 @@ export default function MenuPage() {
     )
     return (
       <div className="min-h-screen bg-cream">
-        {menu && !loadFailed ? (
+        {menu && !loadFailed && !generating ? (
           <MenuDesktop
             header={
               <>
@@ -847,7 +876,7 @@ export default function MenuPage() {
       {favoritesNotice}
       {statusCard}
 
-      {menu && !loadFailed && (
+      {menu && !loadFailed && !generating && (
         showWeekGrid ? (
           <div className="mt-4">
             <WeekGridView

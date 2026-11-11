@@ -22,7 +22,8 @@ import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
 import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, Replace, RotateCw, Shuffle, Snowflake, TriangleAlert, Utensils, X } from "lucide-react"
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
-import { isTaperDish, replacedDishLine, type MealSlot, type RecipeDish } from "@ona/shared"
+import { isTaperDish, replacedDishLine, weekTypeChipOf, type MealSlot, type RecipeDish } from "@ona/shared"
+import { DishTypeIcon } from "@/components/weekType/DishTypeIcon"
 import { cookHref } from "@/lib/cookHref"
 import { mealLabel } from "@/lib/labels"
 import { trackSheetAction } from "@/lib/usageEvents"
@@ -66,7 +67,9 @@ function SlotChips({
   const conflict = (ctx.slot.dishes ?? []).some((d) => d.kind === "recipe" && d.restrictionConflict)
   // PRO-345: Mimoia changed the dish because the recipe changed or was deleted.
   const replaced = first?.replaced ?? null
-  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && !replaced && ctx.slot.servings == null) return null
+  // PRO-1186: «Legumbres · semana tipo», or the warning when no recipe of that type fitted.
+  const weekType = weekTypeChipOf(ctx.slot.dishes)
+  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && !replaced && !weekType && ctx.slot.servings == null) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
       {conflict && (
@@ -77,6 +80,14 @@ function SlotChips({
       {replaced && (
         <span data-testid="dish-replaced" className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2 py-0.5 font-medium text-terracotta-deep">
           <RotateCw size={11} /> {replacedDishLine(replaced)}
+        </span>
+      )}
+      {weekType && (
+        <span
+          data-testid={weekType.missing ? "week-type-missing" : "week-type-chip"}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${weekType.missing ? "bg-warn-bg text-terracotta-deep" : "bg-cream-deep text-ink-mid"}`}
+        >
+          {weekType.missing ? <TriangleAlert size={11} strokeWidth={2.2} /> : <DishTypeIcon type={weekType.type ?? "recipe"} size={12} />} {weekType.label}
         </span>
       )}
       {eaten && (

@@ -5,14 +5,31 @@
  * slot with an icon per option. One option fills the cell; two split it in
  * two; three or four, in four. Free slots say «Cualquier receta», the ones
  * switched off «no hay». Tapping a cell selects it for the slot panel.
+ *
+ * Without `onSelect` it is only a picture: the menu's skeleton while a week
+ * is generated (PRO-1186), with what each slot takes that week (`weekStart`).
  */
-import { weekTypeOptionLabel, weekTypeSlotAt, weekTypeSlotView, type Meal, type WeekTypeDays } from "@ona/shared"
+import { MEALS, weekTypeOptionLabel, weekTypeOptionsFor, weekTypeSlotAt, weekTypeSlotView, type Meal, type WeekTypeDays, type WeekTypeSlotView } from "@ona/shared"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { DishTypeIcon, iconOfOption } from "./DishTypeIcon"
 
 export const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"]
 export const MEAL_NAMES: Record<Meal, string> = { breakfast: "desayuno", lunch: "comida", snack: "merienda", dinner: "cena" }
+
+/** The grid's meals, in order: lunch and dinner always; breakfast and snack when some day has them (or `extra`). */
+export function weekTypeMeals(days: WeekTypeDays | null | undefined, extra: readonly Meal[] = []): Meal[] {
+  const order: Meal[] = ["breakfast", "lunch", "snack", "dinner"]
+  const used = (m: Meal) => !!days && DAY_NAMES.some((_, d) => !weekTypeSlotAt(days, d, m).off)
+  return order.filter((m) => (MEALS as readonly string[]).includes(m) && (m === "lunch" || m === "dinner" || used(m) || extra.includes(m)))
+}
+
+/** Pure: the slot as a cell shows it — all of it, or only what it takes the week of `weekStart`. */
+function cellView(days: WeekTypeDays, d: number, meal: Meal, weekStart?: string): WeekTypeSlotView {
+  const slot = weekTypeSlotAt(days, d, meal)
+  if (!weekStart) return weekTypeSlotView(slot)
+  return { off: !!slot.off, options: weekTypeOptionsFor(slot, weekStart), together: !!slot.together, every: 1 }
+}
 
 /** Pure: what a cell says to a screen reader («Viernes, cena: Pizza, cada 2 semanas»). */
 export function cellLabel(days: WeekTypeDays, day: number, meal: Meal): string {
@@ -28,34 +45,45 @@ export function cellLabel(days: WeekTypeDays, day: number, meal: Meal): string {
 export function WeekTypeGrid({
   days,
   meals,
-  selected,
+  selected = null,
   onSelect,
+  weekStart,
 }: {
   days: WeekTypeDays
   meals: Meal[]
-  selected: { day: number; meal: Meal } | null
-  onSelect: (day: number, meal: Meal) => void
+  selected?: { day: number; meal: Meal } | null
+  /** Absent: a picture, nothing to tap (the menu's skeleton). */
+  onSelect?: (day: number, meal: Meal) => void
+  /** Show only what each slot takes that week (its turn), not all its options. */
+  weekStart?: string
 }) {
   // md+: like «La semana» of the menu — days in columns, meals in rows. Mobile: days in rows.
   const wide = useMediaQuery("(min-width: 768px)")
   const cell = (d: number, meal: Meal) => {
-    const view = weekTypeSlotView(weekTypeSlotAt(days, d, meal))
+    const view = cellView(days, d, meal, weekStart)
     const isSel = selected?.day === d && selected?.meal === meal
     const quiet = view.off || view.options.length === 0
+    const cls = `flex h-[88px] w-full min-w-0 items-center justify-center rounded-2xl p-1.5 text-left transition-colors md:h-[116px] md:p-1.5 ${
+      quiet ? "border border-dashed border-border bg-transparent" : "border border-border-soft bg-paper"
+    }`
     return (
       <div key={`${d}-${meal}`} role="gridcell" className="min-w-0">
-        <button
-          type="button"
-          onClick={() => onSelect(d, meal)}
-          aria-label={cellLabel(days, d, meal)}
-          aria-pressed={isSel}
-          data-testid={`wt-cell-${d}-${meal}`}
-          className={`flex h-[88px] w-full min-w-0 items-center justify-center rounded-2xl p-1.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink md:h-[116px] md:p-1.5 ${
-            quiet ? "border border-dashed border-border bg-transparent hover:bg-cream-deep" : "border border-border-soft bg-paper hover:border-ink"
-          } ${isSel ? "ring-2 ring-ink ring-offset-1 ring-offset-cream" : ""}`}
-        >
-          <CellContent view={view} />
-        </button>
+        {onSelect ? (
+          <button
+            type="button"
+            onClick={() => onSelect(d, meal)}
+            aria-label={cellLabel(days, d, meal)}
+            aria-pressed={isSel}
+            data-testid={`wt-cell-${d}-${meal}`}
+            className={`${cls} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${quiet ? "hover:bg-cream-deep" : "hover:border-ink"} ${isSel ? "ring-2 ring-ink ring-offset-1 ring-offset-cream" : ""}`}
+          >
+            <CellContent view={view} />
+          </button>
+        ) : (
+          <div data-testid={`wt-cell-${d}-${meal}`} className={`${cls} motion-safe:animate-pulse`}>
+            <CellContent view={view} />
+          </div>
+        )}
       </div>
     )
   }

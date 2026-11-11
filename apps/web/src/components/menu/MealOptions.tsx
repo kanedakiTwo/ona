@@ -10,8 +10,10 @@
  *     «Que elija Mimoia»), Añadir plato, Marcar como cocinada (today and past
  *     days only), «No la pongas más esta semana» (vetar), Más opciones and,
  *     apart, Quitar comida. A leftover or a táper can't be changed or vetoed.
- *   - Más opciones: Comensales, «Ya está hecho / táper…» (its own sheet) and
- *     «Que no cambie si rehago la semana» (the lock).
+ *   - Más opciones: Comensales, «Ya está hecho / táper…» (its own sheet),
+ *     «Que no cambie si rehago la semana» (the lock) and «Guardar en mi semana
+ *     tipo» (its own sheet: the meal's dish types, «Siempre esta receta» or
+ *     the written dish, and every other type; PRO-1186).
  *   - Multi-dish or note slot: the dish list (drag to reorder, "Cambiar" per
  *     dish, quitar, edit notes) above the same options (PRO-1176 reworks it).
  *   - The lock never greys anything out (D-182): it only keeps the meal when
@@ -21,7 +23,7 @@
  * directly: the empty-slot card's main button opens this same sheet
  * (Miguel, 2026-11-05: tapping an empty meal shows the "···" options).
  */
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import { menuRecipeHref } from "@/lib/menuReturn"
@@ -60,8 +62,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
-import { mealSheetOptions, type MealWhen } from "@/lib/mealSheet"
+import { type Dish, type MealSlot, type RecipeDish, type WeekTypeOption } from "@ona/shared"
+import { everyWeekday, mealSheetOptions, weekTypeChoices, type MealWhen } from "@/lib/mealSheet"
+import { DishTypeIcon, iconOfOption } from "@/components/weekType/DishTypeIcon"
+import { DishTypeChips } from "@/components/weekType/SlotEditor"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { useSetSlotEaten } from "@/hooks/useMenu"
@@ -97,8 +101,8 @@ export interface SlotHandlers {
   setCooked: (position: number, on: boolean) => void
   /** PRO-223: mark / unmark this meal as the táper of the dinner before. */
   setTaper?: (on: boolean) => void
-  /** «Guardar en mi semana tipo» in «Más opciones»: wired by the week type's phase 5 (PRO-1186); hidden until then. */
-  saveToWeekType?: () => void
+  /** «Guardar en mi semana tipo» in «Más opciones» (PRO-1186): that day and meal of the household's week type, and this week if it can. */
+  saveToWeekType?: (option: WeekTypeOption) => void
 }
 
 export interface SlotContext {
@@ -133,7 +137,7 @@ export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
   return menuRecipeHref(recipeId, slotServings(ctx))
 }
 
-type OpenSheet = null | "actions" | "more" | "done" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
+type OpenSheet = null | "actions" | "more" | "done" | "weekType" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -315,15 +319,29 @@ export function MealOptionsSheets({
             <SheetAction
               icon={CalendarDays}
               label="Guardar en mi semana tipo"
-              hint="Todas las semanas, este día y esta comida"
-              onClick={() => {
-                handlers.saveToWeekType?.()
-                close()
-              }}
+              action="semana_tipo"
+              hint={`Lo de esta comida, ${everyWeekday(ctx.day)}`}
+              onClick={() => setOpen("weekType")}
             />
           )}
         </div>
       </MenuSheet>
+
+      {/* «Guardar en mi semana tipo» (PRO-1186): what this meal is, or another type. */}
+      {handlers.saveToWeekType && (
+        <WeekTypeSaveSheet
+          open={open === "weekType"}
+          onClose={close}
+          eyebrow={eyebrow}
+          sheet={sheet}
+          intro={`${capitalise(everyWeekday(ctx.day))}, ${label.toLowerCase()}: todas las semanas.`}
+          slot={ctx.slot}
+          onSave={(option) => {
+            handlers.saveToWeekType?.(option)
+            close()
+          }}
+        />
+      )}
 
       {/* «Ya está hecho / táper…»: lo que no se compra. */}
       <MenuSheet open={open === "done"} onClose={close} eyebrow={eyebrow} title="Ya está hecho / táper" sheet={sheet}>
@@ -450,7 +468,63 @@ function moreHint(more: readonly string[]): string {
   const parts = ["Comensales"]
   if (more.includes("ya_hecho")) parts.push("ya está hecho")
   if (more.includes("fijar")) parts.push("que no cambie")
+  if (more.includes("semana_tipo")) parts.push("semana tipo")
   return parts.join(", ")
+}
+
+const capitalise = (s: string) => (s ? s[0].toLocaleUpperCase("es") + s.slice(1) : s)
+
+/* ── «Guardar en mi semana tipo» (PRO-1186): the meal's dish types, «Siempre
+ *    esta receta» or the written dish (`weekTypeChoices`), and «Otro tipo de
+ *    plato» with every type by family. */
+function WeekTypeSaveSheet({
+  open,
+  onClose,
+  eyebrow,
+  sheet,
+  intro,
+  slot,
+  onSave,
+}: {
+  open: boolean
+  onClose: () => void
+  eyebrow: string
+  sheet: React.ComponentProps<typeof MenuSheet>["sheet"]
+  intro: string
+  slot: MealSlot
+  onSave: (option: WeekTypeOption) => void
+}) {
+  const choices = useMemo(() => weekTypeChoices(slot).map((c) => ({ ...c, Icon: iconFor(iconOfOption(c.option)) })), [slot])
+  const [others, setOthers] = useState(false)
+  useEffect(() => {
+    if (!open) setOthers(false)
+  }, [open])
+  const showTypes = others || choices.length === 0
+  return (
+    <MenuSheet open={open} onClose={onClose} eyebrow={eyebrow} title="Guardar en mi semana tipo" sheet={sheet}>
+      <p className="-mt-1 mb-3 text-[13.5px] leading-snug text-ink-muted">{intro}</p>
+      <div className="flex flex-col gap-0.5" data-testid="week-type-choices">
+        {choices.map((c, i) => (
+          <SheetAction key={i} icon={c.Icon} label={c.label} hint={c.hint} onClick={() => onSave(c.option)} />
+        ))}
+        {choices.length > 0 && !others && (
+          <SheetAction icon={MoreHorizontal} label="Otro tipo de plato" hint="Legumbres, pescado, pizza…" onClick={() => setOthers(true)} />
+        )}
+      </div>
+      {showTypes && (
+        <div className="mt-3 space-y-4" data-testid="week-type-all-types">
+          <DishTypeChips onPick={(type) => onSave({ kind: "type", type })} />
+        </div>
+      )}
+    </MenuSheet>
+  )
+}
+
+/** A `DishTypeIcon` with the props `SheetAction` passes to its icon. */
+function iconFor(type: string) {
+  return function WeekTypeOptionIcon({ size, className }: { size?: number; className?: string }) {
+    return <DishTypeIcon type={type} size={size} className={className} />
+  }
 }
 
 /* ── "Marcar como cocinada" — records a cook event with the slot as context

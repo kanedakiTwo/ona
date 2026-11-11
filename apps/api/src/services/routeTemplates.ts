@@ -143,6 +143,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/menu/:x/day/:x/meal/:x/dish/random',
   '/menu/:x/day/:x/meal/:x/lock',
   '/menu/:x/day/:x/meal/:x/taper',
+  '/menu/:x/day/:x/meal/:x/week-type',
   '/menu/:x/day/:x/skip',
   '/menu/:x/edits',
   '/menu/:x/history',

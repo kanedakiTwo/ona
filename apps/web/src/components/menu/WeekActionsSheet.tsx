@@ -9,6 +9,7 @@
  * Past weeks are read-only: no Regenerar / Vaciar.
  */
 import { CalendarDays, ChevronLeft, ChevronRight, Heart, History, LayoutList, Printer, RefreshCw, Share2, Trash2 } from "lucide-react"
+import { trackSheetAction } from "@/lib/usageEvents"
 import { MenuSheet, SheetAction } from "./MenuSheet"
 
 interface Props {
@@ -42,12 +43,15 @@ export function WeekActionsSheet(p: Props) {
     p.onClose()
   }
   return (
-    <MenuSheet open={p.open} onClose={p.onClose} eyebrow={p.weekRange} title="Tu semana">
+    <MenuSheet open={p.open} onClose={p.onClose} eyebrow={p.weekRange} title="Tu semana" sheet="semana">
       {/* Week navigation */}
       <div className="mb-3 flex items-center gap-1 rounded-full border border-border bg-paper p-1">
         <button
           type="button"
-          onClick={p.onPrevWeek}
+          onClick={() => {
+            trackSheetAction("semana", "semana_anterior")
+            p.onPrevWeek()
+          }}
           aria-label="Semana anterior"
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-cream-deep focus-visible:outline-2 focus-visible:outline-ink"
         >
@@ -58,7 +62,10 @@ export function WeekActionsSheet(p: Props) {
         </span>
         <button
           type="button"
-          onClick={p.onNextWeek}
+          onClick={() => {
+            trackSheetAction("semana", "semana_siguiente")
+            p.onNextWeek()
+          }}
           aria-label="Semana siguiente"
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-cream-deep focus-visible:outline-2 focus-visible:outline-ink"
         >
@@ -68,12 +75,13 @@ export function WeekActionsSheet(p: Props) {
 
       <div className="flex flex-col gap-0.5">
         {!p.isCurrentWeek && (
-          <SheetAction icon={CalendarDays} label="Volver a esta semana" onClick={run(p.onThisWeek)} />
+          <SheetAction icon={CalendarDays} label="Volver a esta semana" action="volver_semana" onClick={run(p.onThisWeek)} />
         )}
         {!p.isPastWeek && (
           <SheetAction
             icon={RefreshCw}
             label={p.isGenerating ? "Generando…" : "Regenerar semana"}
+            action="regenerar"
             hint="Los platos fijados se quedan"
             disabled={p.isGenerating}
             onClick={run(p.onRegenerate)}
@@ -83,31 +91,34 @@ export function WeekActionsSheet(p: Props) {
           <SheetAction
             icon={Heart}
             label="Rehacer la semana con mis favoritas"
+            action="favoritas"
             hint="Solo tus recetas guardadas, sin descubrir nuevas"
             disabled={p.isGenerating}
             onClick={run(p.onRegenerateFavorites)}
           />
         )}
         {p.hasMenu && (
-          <SheetAction icon={Share2} label="Compartir" hint="Tu menú como texto, con un enlace" onClick={run(p.onShare)} />
+          <SheetAction icon={Share2} label="Compartir" action="compartir" hint="Tu menú como texto, con un enlace" onClick={run(p.onShare)} />
         )}
         {p.hasMenu && (
-          <SheetAction icon={Printer} label="Imprimir la semana" hint="En papel o en PDF, con la lista de la compra" href={p.printHref} />
+          <SheetAction icon={Printer} label="Imprimir la semana" action="imprimir" hint="En papel o en PDF, con la lista de la compra" href={p.printHref} />
         )}
         {p.showViewToggle && (
           <SheetAction
             icon={LayoutList}
             label={p.viewMode === "day" ? "Vista semana" : "Vista día"}
+            action={p.viewMode === "day" ? "vista_semana" : "vista_dia"}
             hint={p.viewMode === "day" ? "Los siete días de un vistazo; arrastra para mover platos" : "Un día con sus fotos"}
             onClick={run(p.onToggleView)}
           />
         )}
-        <SheetAction icon={History} label="Historial" hint="Menús de semanas anteriores" href="/menu/history" />
+        <SheetAction icon={History} label="Historial" action="historial" hint="Menús de semanas anteriores" href="/menu/history" />
         {!p.isPastWeek && p.hasMenu && (
           <div className="mt-1 border-t border-border-soft pt-1">
             <SheetAction
               icon={Trash2}
               label="Vaciar semana"
+              action="vaciar"
               hint="Borra los platos no fijados para rellenar a mano"
               destructive
               disabled={p.isGenerating}

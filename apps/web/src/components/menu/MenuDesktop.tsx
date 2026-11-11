@@ -63,6 +63,7 @@ import {
 import { RecipeCover } from "./RecipeCover"
 import { AbsentMealCard, DayFooter, EmptyMealCard, MealHero, SkippedDay, type SlotPropsFn } from "./DayMeals"
 import { MealOptionsButton, MealOptionsSheets, slotRecipeHref, useMealOptions } from "./MealOptions"
+import { trackSheetAction } from "@/lib/usageEvents"
 
 interface Props {
   header: ReactNode
@@ -611,7 +612,10 @@ function DayColumn({ d, day, meals, ...p }: Props & { d: number; day: DayMenu; m
                 {!p.readOnly && (
                   <button
                     type="button"
-                    onClick={() => p.onUnskipDay(d)}
+                    onClick={() => {
+                      trackSheetAction("dia", "reactivar_dia")
+                      p.onUnskipDay(d)
+                    }}
                     aria-label={`Reactivar el ${dayName}`}
                     className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-border bg-paper px-3 text-[12px] text-ink hover:border-ink focus-visible:outline-2 focus-visible:outline-ink"
                   >

@@ -10,7 +10,7 @@
  * No React, no `@/` aliases: the API's vitest suite imports this file by a
  * relative path (`apps/api/src/tests/menuOptimistic.test.ts`).
  */
-import type { DayMenu, Dish, MealSlot, RecipeDish } from "@ona/shared"
+import { moveSlotInWeek, type DayMenu, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 
 export interface OptimisticMenu {
   id: string
@@ -24,6 +24,7 @@ export interface RecipeLook {
   id: string
   name?: string | null
   imageUrl?: string | null
+  course?: "starter" | "main" | "dessert" | null
 }
 
 function withDays<M extends OptimisticMenu>(menu: M, edit: (days: DayMenu[]) => void, unskip?: number): M {
@@ -34,7 +35,7 @@ function withDays<M extends OptimisticMenu>(menu: M, edit: (days: DayMenu[]) => 
 }
 
 function recipeDish(r: RecipeLook): RecipeDish {
-  return { kind: "recipe", recipeId: r.id, recipeName: r.name ?? undefined, imageUrl: r.imageUrl ?? null }
+  return { kind: "recipe", recipeId: r.id, recipeName: r.name ?? undefined, imageUrl: r.imageUrl ?? null, course: r.course ?? null }
 }
 
 const isFixedNote = (d: Dish) => d.kind === "note" && Boolean((d as { fixedDish?: boolean }).fixedDish)
@@ -120,27 +121,33 @@ export function addSlotIn<M extends OptimisticMenu>(menu: M, day: number, meal: 
   )
 }
 
-/** Drag and drop (`POST /move-slot`): swap with a slot that has dishes, else move (the source slot goes away). */
+/**
+ * Drag and drop (`POST /move-slot`): the server's own `moveSlotInWeek`
+ * (`@ona/shared`): swap with a slot that has dishes, else move (the source
+ * slot goes away), and the leftovers of a moved slot follow it.
+ */
 export function moveSlotIn<M extends OptimisticMenu>(
   menu: M,
   from: { day: number; meal: string },
   to: { day: number; meal: string },
 ): M {
+  if (!menu.days?.[from.day]?.[from.meal]) return menu
+  const days = moveSlotInWeek(menu.days, from, to)
+  return { ...menu, days, skippedDays: (menu.skippedDays ?? []).filter((d) => d !== to.day) }
+}
+
+/**
+ * «Usar "<lo escrito>" como plato» (`PUT …/meal/:meal { note }`): the meal's
+ * dishes become that text; «Solo hoy» stays.
+ */
+export function replaceWithNoteIn<M extends OptimisticMenu>(menu: M, day: number, meal: string, text: string): M {
   return withDays(
     menu,
     (days) => {
-      const source = days[from.day]?.[from.meal]
-      if (!source) return
-      const target = days[to.day]?.[to.meal]
-      const swap = !!target && (target.dishes ?? []).length > 0
-      days[to.day] = { ...(days[to.day] ?? {}), [to.meal]: source }
-      if (swap) days[from.day] = { ...days[from.day], [from.meal]: target }
-      else if (from.day !== to.day || from.meal !== to.meal) {
-        const { [from.meal]: _gone, ...rest } = days[from.day]
-        days[from.day] = rest
-      }
+      const slot = days[day]?.[meal]
+      days[day] = { ...(days[day] ?? {}), [meal]: { servings: slot?.servings ?? null, dishes: [{ kind: "note", text }] } }
     },
-    to.day,
+    day,
   )
 }
 

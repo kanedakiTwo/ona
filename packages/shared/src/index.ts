@@ -728,3 +728,4 @@ export type {
 export { ISO_DAY_RE, isIsoDay, RECIPE_OF_THE_DAY_PHOTO_SIZES, RECIPE_OF_THE_DAY_PATH } from './types/recipeOfTheDay.js'
 export type { RecipeOfTheDayPhotoFormat, RecipeOfTheDayView } from './types/recipeOfTheDay.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'
+export { moveSlotInWeek, dishKey, slotKey, MENU_CHANGED_CODE } from './utils/menuSlots.js'

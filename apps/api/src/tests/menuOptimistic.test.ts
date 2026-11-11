@@ -20,6 +20,7 @@ import {
   pickRecipeIn,
   removeDishIn,
   removeSlotIn,
+  replaceWithNoteIn,
 } from '../../../web/src/lib/menuOptimistic'
 import { dishName, slotDishParts } from '../../../web/src/lib/menuDay'
 
@@ -36,9 +37,10 @@ function week() {
 describe('pickRecipeIn («Elegir otra receta»)', () => {
   it('swaps the recipe, keeps the note and «Solo hoy», and draws the new name at once', () => {
     const before = week()
-    const after = pickRecipeIn(before, 3, 'lunch', { id: 'r-lentejas', name: 'Lentejas', imageUrl: '/l.jpg' })
+    const after = pickRecipeIn(before, 3, 'lunch', { id: 'r-lentejas', name: 'Lentejas', imageUrl: '/l.jpg', course: 'main' })
+    // `course` too, as the route stores it (2026-11-10 review).
     expect(after.days[3].lunch.dishes).toEqual([
-      { kind: 'recipe', recipeId: 'r-lentejas', recipeName: 'Lentejas', imageUrl: '/l.jpg' },
+      { kind: 'recipe', recipeId: 'r-lentejas', recipeName: 'Lentejas', imageUrl: '/l.jpg', course: 'main' },
       romanescu,
     ])
     expect(after.days[3].lunch.servings).toBe(3)
@@ -73,7 +75,7 @@ describe('dish and slot changes', () => {
 
   it('removes and adds a meal, servings, eaten and lock', () => {
     expect(removeSlotIn(week(), 3, 'dinner').days[3].dinner).toBeUndefined()
-    expect(addSlotIn(week(), 4, 'lunch', { id: 'r-x', name: 'X' }).days[4].lunch.dishes).toEqual([{ kind: 'recipe', recipeId: 'r-x', recipeName: 'X', imageUrl: null }])
+    expect(addSlotIn(week(), 4, 'lunch', { id: 'r-x', name: 'X' }).days[4].lunch.dishes).toEqual([{ kind: 'recipe', recipeId: 'r-x', recipeName: 'X', imageUrl: null, course: null }])
     expect(patchSlotIn(week(), 3, 'lunch', { servings: null }).days[3].lunch.servings).toBeNull()
     expect(patchSlotIn(week(), 3, 'dinner', { eaten: true }).days[3].dinner.eaten).toBe(true)
     expect(lockIn(week(), 3, 'lunch', true).locked).toEqual({ '3': { lunch: true } })
@@ -87,6 +89,20 @@ describe('dish and slot changes', () => {
     ]) {
       expect(moveSlotIn(week(), from, to).days).toEqual(moveSlotInWeek(week().days, from, to))
     }
+  })
+
+  it('the leftovers of a moved meal follow it, as on the server (2026-11-10 review)', () => {
+    const m = week()
+    // Friday's lunch is Thursday dinner's leftover.
+    m.days[4].lunch = { dishes: [{ kind: 'recipe', recipeId: 'r-crema', recipeName: 'Crema de calabaza', variant: 'leftover', leftoverOf: { day: 3, meal: 'dinner' } }] }
+    const after = moveSlotIn(m, { day: 3, meal: 'dinner' }, { day: 2, meal: 'dinner' })
+    expect(after.days[4].lunch.dishes[0].leftoverOf).toEqual({ day: 2, meal: 'dinner' })
+    expect(after.days).toEqual(moveSlotInWeek(m.days, { day: 3, meal: 'dinner' }, { day: 2, meal: 'dinner' }))
+  })
+
+  it('«Usar "…" como plato»: the dishes become the note and «Solo hoy» stays', () => {
+    const after = replaceWithNoteIn(week(), 3, 'lunch', 'Cenamos fuera')
+    expect(after.days[3].lunch).toEqual({ servings: 3, dishes: [{ kind: 'note', text: 'Cenamos fuera' }] })
   })
 })
 

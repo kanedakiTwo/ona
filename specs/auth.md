@@ -55,7 +55,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 ## Roles and suspension
 
 - `users.role` is `'user' | 'admin'`. Default `'user'`. On every login the server reconciles role against the `ADMIN_EMAILS` env var (case-insensitive): matches are upgraded to admin, ex-admins removed from the env are downgraded.
-- `users.suspended_at` is set by the admin via `/admin/users` (see [User Management](./user-management.md)). Login rejects suspended users with `code: 'SUSPENDED'`. Existing JWTs of a suspended user are invalidated at the per-request `requireAuth` check.
+- `users.suspended_at` is set by the admin via `/admin/users` (see [User Management](./user-management.md)). Login rejects suspended users with `code: 'SUSPENDED'`. Existing JWTs of a suspended user are invalidated at the per-request `authMiddleware` check.
 - The auth context client-side carries `role` next to `userId` so the navbar can render the admin entry without an extra fetch. The server still re-checks role on every privileged request — the client value is decoration.
 
 ## Constraints
@@ -68,7 +68,7 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 - Login with invalid credentials returns 401 (no distinction between "user not found" and "wrong password")
 - Login with a suspended account returns 403 with `code: 'SUSPENDED'`
 - All in-product API routes require the JWT in `Authorization: Bearer <token>` header
-- `requireAdmin` middleware extends `requireAuth` for admin-only endpoints — see [Roles & Authorization](./roles.md)
+- `requireAdmin` middleware runs after `authMiddleware` on admin-only endpoints — see [Roles & Authorization](./roles.md)
 
 ## Public vs Protected Routes
 

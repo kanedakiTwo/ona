@@ -29,6 +29,7 @@ import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2, Sparkles 
 import type { DayMenu, MealSlot } from "@ona/shared"
 import { menuShareText } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
+import { menuDiners } from "@/lib/menuDiners"
 import {
   useMenu,
   useGenerateMenu,
@@ -61,7 +62,6 @@ import { trackUsage } from "@/lib/usageEvents"
 import { absentMeals, batchServings, dateOfDay, dayHeading, feedsLeftovers, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
-import { PantryMatchCard } from "@/components/menu/PantryMatchCard"
 import { BannedRecipesPanel } from "@/components/menu/BannedRecipesPanel"
 import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
@@ -212,10 +212,10 @@ export default function MenuPage() {
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
   const tasteStatus = useTasteStatus()
-  const householdDiners =
-    ((profile?.adults as number | undefined) ?? user?.adults ?? 0) +
-    ((profile?.kidsCount as number | undefined) ?? user?.kidsCount ?? 0)
-  const defaultDiners = Math.max(1, householdDiners || 2)
+  const defaultDiners = menuDiners({
+    adults: (profile?.adults as number | undefined) ?? user?.adults,
+    kidsCount: (profile?.kidsCount as number | undefined) ?? user?.kidsCount,
+  })
 
   // Initial day from `?day=0…6` (0 = lunes), written with replaceState like
   // `?week=`: «Volver» from a recipe lands on the week and the day you were
@@ -703,10 +703,6 @@ export default function MenuPage() {
           }}
         />
       )}
-      {/* Cook from pantry: renders only when the household has matches. */}
-      <div className="lg:-mx-5">
-        <PantryMatchCard />
-      </div>
     </>
   )
 
@@ -948,6 +944,7 @@ export default function MenuPage() {
               }}
               slotProps={slotPropsFor(selectedDay)}
               readOnly={isPastWeek}
+              isToday={selectedDay === todayIndex}
             />
             {!isPastWeek && (
               <div className="mt-5">

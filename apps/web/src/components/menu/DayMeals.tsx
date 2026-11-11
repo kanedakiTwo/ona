@@ -4,7 +4,8 @@
  * One day of the menu, "D · Luz y foto" (2026-10-08):
  *   - the featured meal (first one with a recipe) as a photo hero with an
  *     overlapping caption card: eyebrow "Comida · 28 min · 3 raciones",
- *     Fraunces title, ink pill "Empezar a cocinar" (→ cook mode) and "···";
+ *     Fraunces title, ink pill "Empezar a cocinar" (→ cook mode, with its menu slot) and "···";
+ *     today, a quiet «¿Otra cosa? Cocinar ahora» (→ /cocinar) under them;
  *   - the other meals as horizontal rows (photo, eyebrow, title) + "···";
  *   - empty slots as one quiet "Añadir plato" card + "···"; tapping the card
  *     opens the same sheet as "···" (Miguel, 2026-11-05);
@@ -22,6 +23,7 @@ import { motion, useReducedMotion } from "motion/react"
 import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, Replace, RotateCw, Shuffle, Snowflake, TriangleAlert, Utensils } from "lucide-react"
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
 import { isTaperDish, replacedDishLine, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { cookHref } from "@/lib/cookHref"
 import { mealLabel } from "@/lib/labels"
 import { trackSheetAction } from "@/lib/usageEvents"
 import { DAY_MEAL_ORDER, firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
@@ -43,10 +45,6 @@ const DAY_SHORT = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 export type SlotPropsFn = (meal: string, slot: MealSlot) => { ctx: SlotContext; handlers: SlotHandlers }
 
 const servingsOf = slotServings
-
-function cookHref(recipeId: string, servings: number) {
-  return `/recipes/${recipeId}/cook?servings=${servings}`
-}
 
 /** Small state chips under a title — only rendered when there is state to show. */
 function SlotChips({
@@ -132,10 +130,13 @@ export function MealHero({
   handlers,
   readOnly,
   layout = "bleed",
+  isToday = false,
 }: {
   ctx: SlotContext
   handlers: SlotHandlers
   readOnly: boolean
+  /** The day shown is today: a quiet «¿Otra cosa? Cocinar ahora» under the actions (specs/cook-now.md). */
+  isToday?: boolean
   /** `bleed` = mobile, photo edge to edge + caption card overlapping below.
    *  `card` = desktop, rounded 420 px photo with the caption card inside. */
   layout?: "bleed" | "card"
@@ -192,7 +193,7 @@ export function MealHero({
         </>
       ) : (
       <Link
-        href={cookHref(first.recipeId, servingsOf(ctx))}
+        href={cookHref(first.recipeId, servingsOf(ctx), { menuId: ctx.menuId, day: ctx.day, meal: ctx.meal })}
         className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full bg-ink px-[22px] text-[15px] font-semibold text-cream transition-colors hover:bg-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-none"
       >
         <Play size={15} fill="currentColor" strokeWidth={0} />
@@ -207,6 +208,15 @@ export function MealHero({
         />
       )}
     </div>
+  )
+  const cookNowLink = isToday && !readOnly && (
+    <Link
+      href="/cocinar"
+      data-testid="menu-cook-now"
+      className="self-start text-[13px] text-ink-soft underline decoration-1 underline-offset-4 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+    >
+      ¿Otra cosa? Cocinar ahora
+    </Link>
   )
 
   const motionProps = {
@@ -242,6 +252,7 @@ export function MealHero({
           <div className="min-w-0 flex-1">{captionText}</div>
         </div>
         {captionActions}
+        {cookNowLink}
         {sheets}
       </motion.article>
     )
@@ -276,6 +287,7 @@ export function MealHero({
       >
         {captionText}
         {captionActions}
+        {cookNowLink}
       </div>
       {sheets}
     </motion.article>
@@ -683,19 +695,22 @@ export function DayMeals({
   absent,
   slotProps,
   readOnly,
+  isToday = false,
 }: {
   featured: DaySlot | null
   rest: DaySlot[]
   absent?: AbsentMeals
   slotProps: SlotPropsFn
   readOnly: boolean
+  /** The day shown is today (the menu page knows it from its day strip). */
+  isToday?: boolean
 }) {
   return (
     <>
       {featured && (
         // data-first-steps: the dish the «Primeros pasos» guide lights up (PRO-07).
         <div data-first-steps="dish">
-          <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={readOnly} />
+          <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={readOnly} isToday={isToday} />
         </div>
       )}
       <div className={`flex flex-col gap-3.5 ${featured ? "mt-3.5" : "mt-4"}`}>

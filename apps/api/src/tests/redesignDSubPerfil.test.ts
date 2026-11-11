@@ -9,7 +9,9 @@ const FILES = [
   'apps/web/src/app/profile/casa',
   'apps/web/src/app/profile/memoria',
   'apps/web/src/app/profile/creencias',
-  'apps/web/src/app/profile/pantry',
+  // The pantry moved to «Cocinar» (specs/cook-now.md): the guard follows its code.
+  'apps/web/src/components/pantry',
+  'apps/web/src/app/cocinar',
   'apps/web/src/app/profile/staples',
   'apps/web/src/app/profile/cookbooks',
   'apps/web/src/components/profile/MemoryFactEditor.tsx',

@@ -201,7 +201,7 @@ export function MenuDesktop(p: Props) {
               <div data-first-steps="dish">
                 {featured ? (
                   <HeroSlot scope="hero" d={p.selectedDay} meal={featured.meal} slot={featured.slot} className="rounded-[24px]">
-                    <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={p.readOnly} layout="card" />
+                    <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={p.readOnly} layout="card" isToday={p.selectedDay === p.todayIndex} />
                   </HeroSlot>
                 ) : (
                   <div className="flex h-[420px] flex-col justify-center gap-3 rounded-[24px] border border-dashed border-border bg-paper/60 px-8">

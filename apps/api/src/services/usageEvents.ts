@@ -728,6 +728,7 @@ export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'quien_compra', 'inv
 export const ONBOARDING_STEP_ACTIONS = ['visto', 'hecho'] as const
 export const USAGE_SCREENS = [
   'menu',
+  'cocinar',
   'lista',
   'compra',
   'receta',

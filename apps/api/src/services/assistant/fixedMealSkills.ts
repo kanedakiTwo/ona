@@ -52,7 +52,7 @@ const getFixedMealsSkill: SkillDefinition = {
 const setFixedMealSkill: SkillDefinition = {
   name: 'set_fixed_meal',
   description:
-    'Marca una comida como fija («todos los días desayuno yogur con cereales y dos galletas»): esa comida de esos días no se genera, se ve como «Fijo: …» y sus cosas (cantidades POR PERSONA y por día) van solas a la lista de la compra. Con remove=true la quita. Se aplica al generar el menú (la semana ya hecha no cambia hasta que se regenere). Una por tipo de comida.',
+    'Marca una comida como fija («todos los días desayuno yogur con cereales y dos galletas»): esa comida de esos días no se genera, se ve como «Fijo: …» y sus cosas (cantidades POR PERSONA y por día) van solas a la lista de la compra. Con remove=true la quita. Se aplica al generar el menú (la semana ya hecha no cambia hasta que se regenere). Una por tipo de comida. Es lo mismo que set_week_type_slot con kind=fixed: para cualquier otra costumbre de un día y una comida (un plato, un tipo, turnos), usa set_week_type_slot.',
   parameters: {
     type: 'object',
     properties: {

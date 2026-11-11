@@ -2,15 +2,16 @@
 
 import type { ReactNode } from "react"
 import { Check } from "lucide-react"
-import { PLANS, PLAN_HOUSEHOLD, type BillingPeriod, type Plan, type PlanKey } from "@ona/shared"
+import { PAID_PLANS, PLANS, PLAN_HOUSEHOLD, type BillingPeriod, type Plan, type PlanKey } from "@ona/shared"
 
 /**
- * The two plans (specs/billing.md) with a monthly / yearly switch. Esencial
- * is the featured plan and goes first. Used by `/precios`, `/suscripcion`
- * and the founder reservation on the waitlist.
+ * The plans (specs/billing.md) with a monthly / yearly switch. Esencial is
+ * the featured plan. Used by `/precios`, `/suscripcion` and the founder
+ * reservation on the waitlist.
  *
- * - `selected` + `onSelect`: the cards are a radio group (pick a plan).
+ * - `selected` + `onSelect`: the cards are a radio group (pick a paid plan).
  * - `cta`: a button under each card instead (the pricing page).
+ * - `withFree`: Gratis first, with no price (PRO-385, `/precios` only).
  */
 export function PlanCards({
   period,
@@ -18,6 +19,7 @@ export function PlanCards({
   selected,
   onSelect,
   cta,
+  withFree = false,
   className = "",
   testIdPrefix = "plan",
 }: {
@@ -26,20 +28,22 @@ export function PlanCards({
   selected?: PlanKey
   onSelect?: (p: PlanKey) => void
   cta?: (plan: Plan) => ReactNode
+  withFree?: boolean
   className?: string
   testIdPrefix?: string
 }) {
   const selectable = !!onSelect
+  const plans: readonly Plan[] = withFree && !selectable ? PLANS : PAID_PLANS
   return (
     <div className={className}>
       <PeriodSwitch period={period} onChange={onPeriodChange} />
       <div
-        className="mt-5 grid gap-4 md:grid-cols-2"
+        className={`mt-5 grid gap-4 ${plans.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2"}`}
         role={selectable ? "radiogroup" : undefined}
         aria-label={selectable ? "Planes" : undefined}
       >
-        {PLANS.map((p) => {
-          const price = p.prices[period]
+        {plans.map((p) => {
+          const price = p.prices ? p.prices[period] : { label: "0 €", perMonth: undefined }
           const isSelected = selectable && selected === p.key
           const body = (
             <>
@@ -56,7 +60,7 @@ export function PlanCards({
                 {price.label}
               </span>
               <span className="mt-1.5 text-[12px] text-[#7A7066]">
-                {price.perMonth ? `Sale a ${price.perMonth} · ` : ""}
+                {p.prices ? (price.perMonth ? `Sale a ${price.perMonth} · ` : "") : "Sin tarjeta · "}
                 {PLAN_HOUSEHOLD}
               </span>
               <ul className="mt-4 space-y-2 text-[14px] text-[#1A1612]">
@@ -67,6 +71,7 @@ export function PlanCards({
                   </li>
                 ))}
               </ul>
+              {!p.prices && <p className="mt-3 text-[13px] leading-snug text-[#7A7066]">{p.leavesOut}</p>}
             </>
           )
           const frame = `flex flex-col rounded-2xl border p-5 text-left transition-colors ${
@@ -79,7 +84,7 @@ export function PlanCards({
               role="radio"
               aria-checked={isSelected}
               data-testid={`${testIdPrefix}-${p.key}`}
-              onClick={() => onSelect!(p.key)}
+              onClick={() => p.prices && onSelect!(p.key)}
               className={frame}
             >
               {body}

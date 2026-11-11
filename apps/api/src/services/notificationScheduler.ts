@@ -48,13 +48,14 @@ import { deliverAlertOverWhatsApp, runProactiveTick, whatsAppAlertState } from '
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
+import { runWeeklyAutoplanIfDue } from './weeklyAutoplan.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { runFeatureUsagePassIfDue } from './featureUsage.js'
 import { CHAT_RETENTION_DAYS, purgeOldChatMessagesIfDue } from './chatMessages.js'
 import { sendWaitlistInviteRemindersIfDue } from './waitlistInvites.js'
 import { WAITLIST_RETENTION_DATE, purgeWaitlistPersonalDataIfDue } from './waitlistRetention.js'
-import { isAccountPaused } from './accountAccess.js'
+import { isOnFreePlan } from './accountAccess.js'
 import { cooksOfWeek } from './cookToday.js'
 import { sendTrialEndingEmailsIfDue } from './trialEmails.js'
 import { sendFounderOffersIfDue } from './founderOffer.js'
@@ -688,8 +689,8 @@ async function tickOnce(): Promise<true> {
       // A failed check must not swallow a real alert: send it as before.
       console.warn('[notificationScheduler] prep alert check failed (sending anyway):', err)
     }
-    // PRO-135: a paused account gets no alerts (only the notice to choose a plan).
-    if (!stale && (await isAccountPaused(row.userId, now))) stale = 'cuenta en pausa'
+    // PRO-385 (D-158): the alerts aren't in the Gratis plan.
+    if (!stale && (await isOnFreePlan(row.userId, now))) stale = 'plan Gratis'
     if (stale) {
       await db
         .update(notificationSchedule)
@@ -745,6 +746,15 @@ async function tickOnce(): Promise<true> {
     console.error('[notificationScheduler] weekly planner failed:', err)
   }
 
+  // Piloto automático (PRO-381, D-158): from Thursday 18:00, next week done
+  // for every household that has had a menu and doesn't have that one yet.
+  try {
+    const a = await runWeeklyAutoplanIfDue(now)
+    if (a && (a.generated || a.failed)) console.log(`[autoplan] ${a.weekStart}: ${a.generated} semanas hechas, ${a.failed} fallidas, omitidos ${JSON.stringify(a.skipped)}`)
+  } catch (err) {
+    console.error('[notificationScheduler] weekly autoplan failed:', err)
+  }
+
   // PRO-1023: uso de cada función por hogar, desde los eventos de ayer
   // (una vez por día de Madrid, desde la 01:00; antes de la purga).
   try {
@@ -777,6 +787,18 @@ async function tickOnce(): Promise<true> {
     if (created) console.log(`[referrals] ${created} pending rewards`)
   } catch (err) {
     console.error('[notificationScheduler] referral rewards failed:', err)
+  }
+
+  // Newsletter (PRO-1123): the issue Miguel scheduled for Friday 9:00, once,
+  // only with the proof of the template he saved that week.
+  try {
+    // Imported here: the newsletter's own imports reach back to this module.
+    const { runScheduledNewsletterIfDue } = await import('./newsletterDrafts.js')
+    for (const r of await runScheduledNewsletterIfDue(now)) {
+      console.log(`[newsletter] scheduled ${r.issueId}: ${r.skipped ? `not sent (${r.skipped})` : `${r.sent} sent`}`)
+    }
+  } catch (err) {
+    console.error('[notificationScheduler] scheduled newsletter failed:', err)
   }
 
   // Waitlist (PRO-97): one reminder 3 days after the invitation, if they

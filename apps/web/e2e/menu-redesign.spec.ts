@@ -371,7 +371,11 @@ test.describe('desktop', () => {
     const added = page.waitForResponse(
       (r) => r.request().method() === 'POST' && r.url().endsWith(`/menu/${menu.id}/day/${other}/meal/lunch`),
     )
+    // Miguel, 2026-11-05: tapping it opens what to put there, not a dish nobody chose.
     await absent.getByRole('button', { name: `Añadir comida al ${WEEKDAYS[other]}` }).click()
+    const sheet = page.getByRole('dialog', { name: 'Sin plato todavía' })
+    await expect(sheet.getByRole('button', { name: /^elegir receta/i })).toBeVisible()
+    await sheet.getByRole('button', { name: /^una al azar/i }).click()
     expect((await added).ok()).toBeTruthy()
     await expect(absent).toHaveCount(0, { timeout: 10_000 })
   })

@@ -227,7 +227,7 @@ describe('processTelegramUpdate', () => {
     expect(h.chats).toEqual([])
   })
 
-  it('the € budget and the paused account stop the turn before Mimo', async () => {
+  it('the € budget and the Gratis plan stop the turn before Mimo', async () => {
     const over = harness({ overBudget: true })
     over.links.set('4242', { userId: 'u1', history: [], lastUpdateId: null })
     await processTelegramUpdate(inbound('hola', 104), over.deps)
@@ -237,7 +237,7 @@ describe('processTelegramUpdate', () => {
     const paused = harness({ paused: true })
     paused.links.set('4242', { userId: 'u1', history: [], lastUpdateId: null })
     await processTelegramUpdate(inbound('hola', 105), paused.deps)
-    expect(paused.texts()[0]).toMatch(/en pausa/)
+    expect(paused.texts()[0]).toMatch(/En el plan Gratis, Mimo descansa/)
     expect(paused.chats).toEqual([])
   })
 

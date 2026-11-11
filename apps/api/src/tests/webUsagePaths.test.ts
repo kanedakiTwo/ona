@@ -35,10 +35,10 @@ describe('web usage paths', () => {
     expect(recipeFromPath(null)).toBe('otro')
   })
 
-  it('numbers the six sign-up steps like the API lists them', () => {
-    const keys = [1, 2, 3, 4, 5, 6].map(onboardingStepKey)
-    expect(keys).toEqual(['hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'])
+  it('numbers the sign-up steps like the API lists them (7 and 8: PRO-383)', () => {
+    const keys = [1, 2, 3, 4, 5, 6, 7, 8].map(onboardingStepKey)
+    expect(keys).toEqual(['hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad', 'quien_compra', 'invitar'])
     for (const k of keys) expect(ONBOARDING_STEPS).toContain(k)
-    expect(onboardingStepKey(7)).toBeNull()
+    expect(onboardingStepKey(9)).toBeNull()
   })
 })

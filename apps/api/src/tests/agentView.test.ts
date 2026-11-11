@@ -83,7 +83,7 @@ function collectTemplates(): { api: string[]; web: string[] } {
 /** `?ref=` labels in the code: links, `openRef` props and the share footers. */
 function collectRefSources(): string[] {
   const out = new Set<string>()
-  const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*\)/g]
+  const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*(?:[\w.?]+,?\s*)?\)/g]
   // The product's own links only: tests and e2e use labels of their own.
   for (const dir of ['apps/web/src', 'apps/web/content', 'packages/shared/src', 'apps/api/src']) {
     walk(join(REPO, dir), (p, isDir) => {
@@ -178,7 +178,9 @@ describe('errorType', () => {
     // Never the rest of the message: a fixed word, or React's number.
     expect(stored('Failed to fetch de Ana García, calle Mayor 5')).toBe('other')
     expect(stored('Minified React error #31; visit https://react.dev/errors/31?args[]=Ana for the full message')).toBe('React #31')
-    for (const t of MESSAGE_ERROR_TYPES) expect(t).toMatch(/^[A-Za-z]{1,32}$/)
+    // PRO-1101: `saldo_api` is the one with an underscore (the type the office reads).
+    expect(stored('saldo_api: la API de Anthropic no tiene saldo (credit balance is too low)')).toBe('saldo_api')
+    for (const t of MESSAGE_ERROR_TYPES) expect(t).toMatch(/^[A-Za-z_]{1,32}$/)
   })
 
   it('PRO-306: the stored message keeps React’s error code, and only that number', () => {

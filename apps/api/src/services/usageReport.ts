@@ -13,6 +13,7 @@ import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
+import { GROWTH_DEFINITIONS, loadGrowthReport } from './growthReport.js'
 import { optInDeclinedSql } from './whatsapp/optInOffer.js'
 import {
   ONBOARDING_STEPS,
@@ -450,8 +451,33 @@ export function buildHouseholdSystems(active: Iterable<string>, last: readonly H
   return out
 }
 
-/** The PRO-120 events whose props are broken down in `breakdown` (`cards` is a number, summed apart). */
-export const BREAKDOWN_EVENTS = ['recipe_viewed', 'taste_tuning', 'push_opened', 'alerts_changed', 'feedback_left'] as const
+/** The PRO-120 events whose props are broken down in `breakdown` (`cards` is a number, summed apart), plus PRO-1024's. */
+export const BREAKDOWN_EVENTS = [
+  'recipe_viewed',
+  'taste_tuning',
+  'push_opened',
+  'alerts_changed',
+  'feedback_left',
+  // PRO-1024 (trucos §6.2).
+  'menu_generated',
+  'shopping_list_viewed',
+  'meal_adjusted',
+  'taper_set',
+  'leftover_dish_set',
+  'dish_added',
+  'template_changed',
+  'memory_set',
+  'recipe_rated',
+  'recipe_note_saved',
+  'favorite_toggled',
+  'recipe_photo_main',
+  'with_what_i_have_used',
+  'shopping_line_edited',
+  'staple_toggled',
+  'content_shared',
+  'week_printed',
+  'handsfree_started',
+] as const
 
 export const USAGE_DEFINITIONS = {
   activeHouseholds: 'Distinct households with at least one usage event that day / ISO week (Europe/Madrid), not counting app_opened_installed (opening the installed app is not using it). Events without a household (deleted accounts) are counted in events but not here.',
@@ -468,8 +494,9 @@ export const USAGE_DEFINITIONS = {
   screens: 'PRO-120: screen_viewed per ISO week; each row is one person and screen and Madrid day (capped on the server), so views = people-days. top = the screens with views, most viewed first.',
   householdsBySystem:
     'PRO-307: active households of the window (see activeHouseholds) by the system of the last browser they came in with: the most recent usage event with a device (screen_viewed, from the day this shipped, 2026-10-22; or app_opened_installed) — android, ios (iPhone; iPadOS Safari says it is a Mac and counts as desktop), desktop, unknown (no such event: WhatsApp only, or no web visit since). Only that word is stored, never the browser string. Counts only.',
-  breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp), how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
+  breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp) — and, since PRO-1024, the tricks\' events (menu_generated, shopping_list_viewed range, meal_adjusted, taper_set, leftover_dish_set, dish_added, template_changed, memory_set, recipe_rated, recipe_note_saved, favorite_toggled, recipe_photo_main, with_what_i_have_used, shopping_line_edited, staple_toggled, content_shared, week_printed, handsfree_started) — how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
   mimoSkills: 'PRO-1022: mimo_skill_used in the window, one row per Mimo tool (skill = the tool name) that returned data, most used first: total and by where the conversation was — web (chat in the app), whatsapp, telegram, voice. A tool that failed or found nothing (data null) leaves none. Counts only, never text.',
+  ...GROWTH_DEFINITIONS,
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
 
@@ -576,12 +603,14 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       ORDER BY e.household_id, e.created_at DESC
   `)
   const days = dayRange(fromDay, today)
-  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows] = await Promise.all([
+  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, growth] = await Promise.all([
     onboardingStepsQ,
     screensQ,
     breakdownQ,
     tasteCardsQ,
     mimoSkillsQ,
+    // PRO-379: the growth line, the trial today and time to the first menu. Counts only leave.
+    loadGrowthReport({ includeInternal: inc, now }, db),
   ])
   const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice] = await Promise.all([
     countsQ,
@@ -651,6 +680,9 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     mimoSkills: buildMimoSkills(
       (mimoSkillRows.rows as any[]).map((r) => ({ skill: String(r.skill), canal: r.canal ?? null, count: Number(r.count) })),
     ),
+    growth: growth.growth,
+    trial: growth.trial,
+    timeToFirstMenu: growth.timeToFirstMenu,
     referrals: buildReferralReport(invited, (inviteShared.rows as any[]).map((r) => ({ day: r.day, count: Number(r.count) }))),
     definitions: USAGE_DEFINITIONS,
     dataSince: sinceRaw ? new Date(sinceRaw).toISOString() : null,

@@ -1,10 +1,11 @@
 /**
- * PRO-136 (specs/billing.md, specs/email.md): the day-7 founder-price offer
- * (email + Mimo on WhatsApp inside the 24 h window, once, from launch day) and
- * the legal notice 15 days before the first charge (once, on the right day).
+ * PRO-136 (specs/billing.md, specs/email.md): the founder-price offer
+ * (email + Mimo on WhatsApp inside the 24 h window, once, from launch day),
+ * fired by the first resolved week or day 10 (PRO-384, D-158), and the legal
+ * notice 15 days before the first charge (once, on the right day).
  */
 import { describe, expect, it } from 'vitest'
-import { PLANS, euros, founderPriceAmounts } from '@ona/shared'
+import { PAID_PLANS, euros, founderPriceAmounts } from '@ona/shared'
 import type { EmailMessage, EmailResult } from '../services/email.js'
 import {
   founderOfferEmail,
@@ -28,10 +29,16 @@ const NEW = new Date('2027-01-10T14:00:00Z')
 /** 11:00 Madrid on day n of the trial. */
 const dayAt11 = (n: number) => new Date(new Date('2027-01-10T10:00:00Z').getTime() + n * 86_400_000)
 
-function memory<C, K extends keyof C>(candidates: C[], key: K) {
+function memory<C, K extends keyof C>(candidates: C[], key: K, resolved: Set<unknown> = new Set()) {
   const marked = new Set<unknown>()
+  const asked: Array<{ id: unknown; sinceDay: string }> = []
   return {
     marked,
+    asked,
+    async weekResolved(id: unknown, sinceDay: string) {
+      asked.push({ id, sinceDay })
+      return resolved.has(id)
+    },
     async listCandidates() {
       return candidates.filter((c) => !marked.has(c[key]))
     },
@@ -57,13 +64,13 @@ const sentMail = () => {
   }
 }
 
-describe('day-7 founder-price offer', () => {
+describe('founder-price offer', () => {
   const candidate: OfferCandidate = { householdId: 'h1', householdCreatedAt: NEW, ownerId: 'u1', ownerEmail: 'eva@example.com' }
 
   it('the text: D-056 promise, last day of the trial, nothing charged until the first charge', () => {
     const copy = { access: { trialLastDay: '2027-01-24' }, firstCharge: new Date('2027-02-02T11:00:00Z') }
     expect(founderOfferShort(copy)).toBe(
-      `Llevas una semana con Mimoia. Si ya sabes que te quedas, deja la tarjeta antes de que acabe tu prueba (dura hasta el 24 de enero) y te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito. No se cobra nada hasta el 2 de febrero de 2027 y puedes cancelar antes sin pagar nada.`,
+      `Si ya sabes que te quedas con Mimoia, deja la tarjeta antes de que acabe tu prueba (dura hasta el 24 de enero) y te quedas el precio de fundador para siempre (${founderPriceAmounts()}): no te sube mientras sigas suscrito. No se cobra nada hasta el 2 de febrero de 2027 y puedes cancelar antes sin pagar nada.`,
     )
     const m = founderOfferEmail({ ...copy, email: 'eva@example.com', publicUrl: 'https://mimoia.com' })
     expect(m.subject).toBe('Quédate el precio de fundador de Mimoia')
@@ -74,7 +81,7 @@ describe('day-7 founder-price offer', () => {
 
   it('the founder price carries its amounts, read from PLANS (PRO-204, Legal)', () => {
     const amounts = founderPriceAmounts()
-    for (const p of PLANS) {
+    for (const p of PAID_PLANS) {
       expect(amounts).toContain(`${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`)
     }
     expect(amounts).toBe('Esencial, 4,99 € al mes o 49,99 € al año; Plus, 8,99 € al mes o 59,99 € al año')
@@ -82,14 +89,46 @@ describe('day-7 founder-price offer', () => {
     expect(founderOfferShort(copy)).toContain(`para siempre (${amounts}): no te sube`)
   })
 
-  it('due from day 7, not on day 6, and not after the trial', () => {
-    expect(isFounderOfferDue(NEW, dayAt11(6))).toBeNull()
-    expect(isFounderOfferDue(NEW, dayAt11(7))).toMatchObject({ state: 'trial', trialDay: 7 })
-    expect(isFounderOfferDue(NEW, dayAt11(15))).toBeNull()
-    // A beta household: its trial starts on launch day, so day 7 is 22 December.
-    const beta = new Date('2026-10-01T10:00:00Z')
-    expect(isFounderOfferDue(beta, new Date('2026-12-21T10:00:00Z'))).toBeNull()
-    expect(isFounderOfferDue(beta, new Date('2026-12-22T10:00:00Z'))).not.toBeNull()
+  it('the trigger (PRO-384): the resolved week or day 10, whichever first; once; never with a plan', () => {
+    const due = (n: number, more: { weekResolved?: boolean; offeredAt?: Date | null; paid?: boolean } = {}) =>
+      isFounderOfferDue({ householdCreatedAt: NEW, now: dayAt11(n), weekResolved: false, ...more })
+    // Week resolved on day 4 → the offer on day 4.
+    expect(due(3)).toBeNull()
+    expect(due(4, { weekResolved: true })).toMatchObject({ state: 'trial', trialDay: 4 })
+    // Nothing until day 10 → the offer on day 10.
+    expect(due(9)).toBeNull()
+    expect(due(10)).toMatchObject({ state: 'trial', trialDay: 10 })
+    // Already shown → never again.
+    expect(due(4, { weekResolved: true, offeredAt: dayAt11(4) })).toBeNull()
+    expect(due(10, { offeredAt: dayAt11(4) })).toBeNull()
+    // With a plan → never.
+    expect(due(4, { weekResolved: true, paid: true })).toBeNull()
+    expect(due(10, { paid: true })).toBeNull()
+    // Not after the trial.
+    expect(due(15, { weekResolved: true })).toBeNull()
+    // A beta household: its trial starts on launch day, so day 10 is 25 December.
+    const beta = (iso: string, weekResolved = false) => isFounderOfferDue({ householdCreatedAt: new Date('2026-10-01T10:00:00Z'), now: new Date(iso), weekResolved })
+    expect(beta('2026-12-24T10:00:00Z')).toBeNull()
+    expect(beta('2026-12-25T10:00:00Z')).not.toBeNull()
+    expect(beta('2026-12-15T10:00:00Z', true)).not.toBeNull()
+    expect(beta('2026-12-14T10:00:00Z', true)).toBeNull()
+  })
+
+  it('a resolved week fires it before day 10; the database is asked from the trial first day, and not from day 10', async () => {
+    const repo = memory([candidate], 'householdId', new Set(['h1']))
+    const deps = { repo, sendEmail: sentMail().send, sendWhatsApp: async () => ({ status: 'ok' as const }), publicUrl: 'https://mimoia.com' }
+    expect((await sendFounderOffers(dayAt11(4), deps)).offered).toBe(1)
+    expect(repo.asked).toEqual([{ id: 'h1', sinceDay: '2027-01-10' }])
+    const late = memory([candidate], 'householdId')
+    expect((await sendFounderOffers(dayAt11(10), { ...deps, repo: late })).offered).toBe(1)
+    expect(late.asked).toEqual([])
+  })
+
+  it('on the «2 días» days it does not go on its own (that email carries it, PRO-384)', async () => {
+    const repo = memory([candidate], 'householdId')
+    const deps = { repo, sendEmail: sentMail().send, sendWhatsApp: async () => ({ status: 'ok' as const }), publicUrl: 'https://mimoia.com' }
+    expect((await sendFounderOffers(dayAt11(12), deps)).offered).toBe(0)
+    expect(repo.marked.size).toBe(0)
   })
 
   it('sent once, ONE message (WhatsApp when it gets through, no email; PRO-234), nothing before launch day', async () => {
@@ -105,9 +144,9 @@ describe('day-7 founder-price offer', () => {
       },
       publicUrl: 'https://mimoia.com',
     }
-    expect((await sendFounderOffers(dayAt11(6), deps)).offered).toBe(0)
-    expect((await sendFounderOffers(dayAt11(7), deps)).offered).toBe(1)
-    expect((await sendFounderOffers(dayAt11(8), deps)).offered).toBe(0)
+    expect((await sendFounderOffers(dayAt11(9), deps)).offered).toBe(0)
+    expect((await sendFounderOffers(dayAt11(10), deps)).offered).toBe(1)
+    expect((await sendFounderOffers(dayAt11(11), deps)).offered).toBe(0)
     expect(mail.sent).toHaveLength(0)
     expect(wa).toEqual([{ userId: 'u1', text: expect.stringContaining('precio de fundador para siempre') }])
     expect(wa[0].text).toContain('https://mimoia.com/profile/suscripcion')
@@ -120,7 +159,7 @@ describe('day-7 founder-price offer', () => {
   it('without WhatsApp (or its window closed) it goes by email instead (PRO-234)', async () => {
     const repo = memory([candidate], 'householdId')
     const mail = sentMail()
-    const r = await sendFounderOffers(dayAt11(7), {
+    const r = await sendFounderOffers(dayAt11(10), {
       repo,
       sendEmail: mail.send,
       sendWhatsApp: async () => ({ status: 'skipped', error: 'outside-24h-window' }),
@@ -133,7 +172,7 @@ describe('day-7 founder-price offer', () => {
 
   it('if no channel got it out (no email key, WhatsApp window closed), it stays pending', async () => {
     const repo = memory([candidate], 'householdId')
-    const r = await sendFounderOffers(dayAt11(7), {
+    const r = await sendFounderOffers(dayAt11(10), {
       repo,
       sendEmail: async () => ({ status: 'skipped', reason: 'not_configured' }),
       sendWhatsApp: async () => ({ status: 'skipped', error: 'outside-24h-window' }),
@@ -143,11 +182,15 @@ describe('day-7 founder-price offer', () => {
     expect(repo.marked.size).toBe(0)
   })
 
-  it('with a creator link (PRO-353): still day 7, with the 4-week last day and first charge', async () => {
-    expect(isFounderOfferDue(NEW, dayAt11(20), 28)).toMatchObject({ state: 'trial', trialDay: 20, trialLastDay: '2027-02-07' })
-    expect(isFounderOfferDue(NEW, dayAt11(20))).toBeNull()
+  it('with a creator link (PRO-353): still day 10, with the 4-week last day and first charge', async () => {
+    expect(isFounderOfferDue({ householdCreatedAt: NEW, now: dayAt11(20), trialDays: 28, weekResolved: false })).toMatchObject({
+      state: 'trial',
+      trialDay: 20,
+      trialLastDay: '2027-02-07',
+    })
+    expect(isFounderOfferDue({ householdCreatedAt: NEW, now: dayAt11(20), weekResolved: false })).toBeNull()
     const mail = sentMail()
-    const r = await sendFounderOffers(dayAt11(7), {
+    const r = await sendFounderOffers(dayAt11(10), {
       repo: memory([{ ...candidate, trialDays: 28 }], 'householdId'),
       sendEmail: mail.send,
       sendWhatsApp: async () => ({ status: 'skipped', error: 'outside-24h-window' }),

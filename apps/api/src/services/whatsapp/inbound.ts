@@ -10,11 +10,12 @@ import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantRepl
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
 import { captionVariants, type WeekView } from '../menuText.js'
-import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
+import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
 import {
   ASK_SOURCE_COPY,
   PHOTO_SOURCE_WINDOW_MS,
@@ -96,8 +97,9 @@ export interface InboundDeps {
   ) => Promise<AssistantResponse & { usage: TokenUsage }>
   checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number }>
   /**
-   * PRO-135: the account is paused (trial over, no plan; never before launch
-   * day). Its messages get only the notice to choose a plan. Absent → never paused.
+   * PRO-385: the household is on Gratis (trial over, no plan; never before
+   * launch day). No Mimo: its messages get, once a day, the notice to choose
+   * a plan. Absent → never on Gratis.
    */
   isPaused?: (userId: string) => Promise<boolean>
   recordUsage: (userId: string, usage: TokenUsage) => Promise<void>
@@ -467,9 +469,8 @@ export const COPY = {
   get startedFirst(): string {
     return this.started.replace('vuelvo a enviarte', 'te enviaré')
   },
-  /** PRO-135: trial over without a plan. The only thing a paused account hears from Mimo (Legal reviews it). */
-  paused: (url: string) =>
-    `Tu prueba de Mimoia ha terminado y tu cuenta está en pausa, así que ahora no puedo ayudarte por aquí. No se ha borrado nada: tu menú, tus recetas y tu lista siguen en la app.\n\nSi quieres que sigamos, elige un plan (o pídeselo a quien gestiona tu hogar):\n${url}`,
+  /** PRO-385 (D-158): the Gratis plan has no Mimo. What it hears, once a day, with the link to Suscripción (Legal reviews it). */
+  gratis: (url: string) => `${PLAN_GRATIS_MESSAGE}\n\nElige tu plan aquí:\n${url}`,
   budget: (euros: string) =>
     `Has alcanzado tu límite mensual del asistente (€${euros}). Se renueva el mes que viene.`,
   unsupported: 'Todavía no entiendo ese tipo de mensaje. Escríbeme, mándame una nota de voz o una foto de una receta.',
@@ -544,6 +545,8 @@ export function createAcker(send: (text: string) => Promise<void>, delayMs: numb
 export const STALE_MESSAGE_MS = 2 * 60 * 60 * 1000
 /** Unlinked numbers get the "conecta tu cuenta" hint at most once an hour. */
 const CONNECT_HINT_COOLDOWN_MS = 60 * 60 * 1000
+/** PRO-385: Mimo tells a Gratis household about the plans once a day, not on every message. */
+const GRATIS_NOTICE_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
 export async function processInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
   const { store, client } = deps
@@ -739,10 +742,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     await sendText(userId, 'system', COPY.notAllowed)
     return
   }
-  // PRO-135: a paused account gets only the notice to choose a plan, no Mimo.
+  // PRO-385 (D-158): on Gratis, no Mimo; the notice to choose a plan, at most once a day.
   if (deps.isPaused && (await deps.isPaused(userId))) {
-    await store.updateInbound(msg.wamid, { status: 'ignored', userId, errorMessage: 'account-paused' })
-    await sendText(userId, 'paused', COPY.paused(`${deps.webUrl.replace(/\/$/, '')}/profile/suscripcion`))
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId, errorMessage: 'plan-gratis' })
+    if (!(await store.hasRecentOutbound(msg.from, ['gratis'], new Date(now.getTime() - GRATIS_NOTICE_COOLDOWN_MS)))) {
+      await sendText(userId, 'gratis', COPY.gratis(`${deps.webUrl.replace(/\/$/, '')}/profile/suscripcion`))
+    }
     return
   }
 
@@ -901,7 +906,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       userId,
       errorMessage: String(err?.message ?? err).slice(0, 500),
     })
-    await outText('system', COPY.error)
+    // PRO-1101: Anthropic sin saldo → el texto propio de Mimo (y queda apuntado).
+    await outText('system', noteApiBalanceError(err) ? API_SALDO_REPLY : COPY.error)
   } finally {
     // Whatever path ended the turn, no "me pongo con ello" after this point.
     await acker.settle()

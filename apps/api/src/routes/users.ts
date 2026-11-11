@@ -20,6 +20,7 @@ import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../service
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import { householdRestrictionsBefore, reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
+import { requestChannel, templateChanges, trackEvent } from '../services/usageEvents.js'
 import {
   getHealthConsent,
   grantHealthConsent,
@@ -134,6 +135,9 @@ router.get('/user/:id', async (req: AuthRequest, res) => {
     res.json({
       ...rest,
       onboardingRequired: status?.onboardingRequired ?? !user.onboardingDone,
+      // PRO-1042: the sign-up still to do, offered apart when a menu is already there.
+      onboardingPending: status?.onboardingPending ?? !user.onboardingDone,
+      hasMenu: status?.hasMenu ?? false,
       onboardingDraft: status?.onboardingDraft ?? null,
       imageGenQuota: { used, limit: env.IMAGE_GEN_MONTHLY_LIMIT, monthKey },
     })
@@ -242,11 +246,11 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish, shopper } = req.body
     // Allergies / restrictions are health data: stored only with the
     // separate consent box ticked (RGPD art. 9, PRO-21) — see saveOnboarding.
     const updated = await saveOnboarding(req.params.id, {
-      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish,
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish, shopper, via: 'web',
     })
 
     if (!updated) {
@@ -436,7 +440,7 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     }
 
     const [existing] = await db
-      .select({ id: userSettings.id })
+      .select({ id: userSettings.id, template: userSettings.template })
       .from(userSettings)
       .where(eq(userSettings.userId, req.params.id))
       .limit(1)
@@ -454,6 +458,10 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
         .values({ userId: req.params.id, template })
         .returning()
     }
+
+    // PRO-1024: one `template_changed` per part that changed (Perfil, or Mimo's update_weekly_template).
+    const channel = requestChannel(req)
+    for (const what of templateChanges(existing?.template, template)) trackEvent('template_changed', { userId: req.params.id, channel, props: { what } })
 
     res.json(result)
   } catch (err) {

@@ -1,5 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
-import type { Course } from '@ona/shared'
+import { isBaseRecipe, type Course } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { recipes, recipeIngredients, recipeSteps, ingredients } from '../db/schema.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
@@ -8,8 +8,10 @@ import { catalogAuditIssuesFor } from './catalogRecipeAudit.js'
 import { isRetiredRecipe } from './recipeCatalogOrder.js'
 import { loadFichaMenuConstraints } from './profile/reader.js'
 import { unlistedDietMentions } from './stepDietMentions.js'
+import { loadDishDislikeOverrides } from './dishDislikes.js'
 
-export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
+/** `authorId`: null for the catalogue, the household member's id for their own recipes (PRO-1141 looks there first). */
+export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null; authorId?: string | null }
 
 /**
  * Every recipe the user may be served, shaped for the matcher: the weekly
@@ -24,11 +26,13 @@ export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
  * never other users' private recipes (specs/recipes.md).
  * Allergens: the recipe's union plus each ingredient's catalogue tags, so
  * the restriction check doesn't depend on a stale recipe-level union.
- * Retired catalogue recipes (PRO-140) are never picked or suggested.
+ * Retired catalogue recipes (PRO-140) are never picked or suggested, nor are
+ * bases (PRO-373: sofrito, verduras asadas… are cooked for the dishes that
+ * use them, never served as a dish).
  */
 export async function loadMatchableRecipes(userId: string, db: any = defaultDb): Promise<RecipeWithCourse[]> {
   const allRecipes = (await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))).filter(
-    (r: any) => !isRetiredRecipe(r),
+    (r: any) => !isRetiredRecipe(r) && !isBaseRecipe(r),
   )
 
   const recipeIds = allRecipes.map((r: any) => r.id)
@@ -54,6 +58,12 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       density: ingredients.density,
       edibleFraction: ingredients.edibleFraction,
       aisle: ingredients.aisle,
+      rowId: recipeIngredients.id,
+      optional: recipeIngredients.optional,
+      displayUnit: recipeIngredients.displayUnit,
+      category: ingredients.category,
+      role: recipeIngredients.role,
+      substituteIngredientIds: recipeIngredients.substituteIngredientIds,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
@@ -72,6 +82,11 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     stepsByRecipe.set(s.recipeId, list)
   }
   const stepTexts = (recipeId: string) => [...(stepsByRecipe.get(recipeId) ?? [])].sort((a, b) => a.index - b.index).map((s) => s.text)
+
+  // PRO-1142: a dislike that names the dish keeps it out unless the household
+  // said «Me apetece» (or «Me encanta», or 5 stars) after it. A read error
+  // keeps every dislike.
+  const dislikesOverridden = await loadDishDislikeOverrides(userId, allRecipes, db).catch(() => new Map<string, string[]>())
 
   const auditLinesByRecipe = new Map<string, Array<{ name: string; quantity: number; unit: string; unitWeight: number | null; density: number | null; edibleFraction: number | null; note: string | null }>>()
   const ingredientsByRecipe = new Map<string, RecipeWithIngredients['ingredients']>()
@@ -93,6 +108,13 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       edibleFraction: row.edibleFraction ?? null,
       note: row.note ?? null,
       aisle: row.aisle ?? null,
+      // «Cocinar ahora» (specs/cook-now.md).
+      rowId: row.rowId,
+      optional: row.optional ?? false,
+      displayUnit: row.displayUnit ?? null,
+      category: row.category ?? null,
+      role: row.role === 'essential' || row.role === 'secondary' ? row.role : null,
+      substituteIngredientIds: row.substituteIngredientIds ?? [],
     })
     ingredientsByRecipe.set(row.recipeId, list)
   }
@@ -100,6 +122,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
   return allRecipes.map((r: any) => ({
     id: r.id,
     name: r.name,
+    authorId: r.authorId ?? null,
     meals: r.meals ?? [],
     seasons: r.seasons ?? [],
     // Three-state fit maps (migration 0024); legacy rows have null and the
@@ -130,6 +153,7 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     stepMentions: unlistedDietMentions(stepTexts(r.id), (ingredientsByRecipe.get(r.id) ?? []).map((i) => i.ingredientName)).map(
       ({ term, category }) => ({ term, category }),
     ),
+    dislikesOverridden: dislikesOverridden.get(r.id) ?? [],
     // PRO-73: catalogue recipes with no steps, too few ingredients or
     // quantities out of range are skipped by the matcher. Computed here, on
     // read; nothing is written. Users' own recipes are never audited.

@@ -60,13 +60,17 @@ async function loadKB() {
 /** Plans and prices as `/precios` shows them (packages/shared plans.ts, specs/billing.md). */
 export function pricingBlock(): string {
   const plans = PLANS.map((p) => {
+    if (!p.prices) {
+      // PRO-385 (D-158): Gratis, what a household has after the trial without a plan.
+      return `- ${p.name}: 0 €, sin tarjeta; es lo que queda al acabar la prueba sin elegir plan, o al acabarse un plan cancelado. ${p.tagline} Lo principal: ${p.highlights.join('; ')}. ${p.leavesOut}`
+    }
     const m = p.prices.mensual.label
     const a = p.prices.anual
     return `- ${p.name}${p.featured ? ' (el que recomendamos)' : ''}: ${m} o ${a.label} (sale a ${a.perMonth}), ${PLAN_HOUSEHOLD}. ${p.tagline} Lo principal: ${p.highlights.join('; ')}.`
   }).join('\n')
   const v = (x: FeatureValue) => (x === true ? 'si' : x === false ? 'no' : x)
   const table = PLAN_FEATURE_GROUPS.flatMap((g) => g.features)
-    .map((f) => `- ${f.label}: Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
+    .map((f) => `- ${f.label}: Gratis ${v(f.gratis)}; Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
     .join('\n')
   const payNow = isBillingConfigured()
     ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos; con el enlace de una creadora, 4 semanas: el ${CREATOR_BETA_FIRST_CHARGE_LABEL}); si cancela antes no paga nada.`
@@ -129,7 +133,8 @@ export const WHATSAPP_ONBOARDING_PROMPT = `Primeros pasos por WhatsApp (obligato
 - Como cocinan va en cookingStyle: la que mas se parezca a lo que diga, sin volver a preguntar. Si solo dice cuanto cocinan y no encaja en ninguna ("poco", "casi nunca"), pasalo en cookingFreq.
 - No preguntes por la prioridad ni por gustos: los platos, solo como diga "Platos favoritos" mas abajo. Si te dice algun plato sin preguntarle, pasalo en favoriteDishes.
 - Aprovecha todo lo que te diga en un mensaje y no repitas preguntas ya contestadas. "Somos 3" sin mas son 3 adultos y 0 niños.
-- En cuanto tengas adultos, niños y como cocinan (y lo que pida "Platos favoritos"), llama a complete_onboarding. Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
+- Quien hace la compra (PRO-383), solo si son 2 adultos o mas: cuando ya tengas cuantos son y como cocinan, preguntale una sola vez "¿Quién hace la compra?" con [[opciones: Yo | Otra persona de casa | Nos turnamos]] y pasa la respuesta en shopper (me, other o shared). Con 1 adulto no lo preguntes ni pases shopper. Si complete_onboarding te devuelve una invitacion para quien hace la compra, ponla en tu respuesta tal cual, en un bloque aparte, para que la reenvie.
+- En cuanto tengas adultos, niños y como cocinan (y lo que pidan "Quien hace la compra" y "Platos favoritos"), llama a complete_onboarding. Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
 - No preguntes por alergias, intolerancias ni nada de salud: el sistema le manda despues el enlace para añadirlas en la web con su permiso. Si te las cuenta, no las guardes y dile que las añada ahi.
 - Si antes de terminar te pide otra cosa de comida, hazla en una linea y vuelve a la pregunta pendiente.`
 

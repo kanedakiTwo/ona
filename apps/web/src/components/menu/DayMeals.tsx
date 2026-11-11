@@ -23,6 +23,7 @@ import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, Re
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
 import { isTaperDish, replacedDishLine, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
+import { trackSheetAction } from "@/lib/usageEvents"
 import { DAY_MEAL_ORDER, firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
@@ -467,12 +468,13 @@ export function AbsentMealCard({
       )}
       {!readOnly && (
         <>
-          <MenuSheet open={open === "actions"} onClose={close} eyebrow={`${label} · ${dayName}`} title="Sin plato todavía">
+          <MenuSheet open={open === "actions"} onClose={close} eyebrow={`${label} · ${dayName}`} title="Sin plato todavía" sheet="no_hay">
             <div className="flex flex-col gap-0.5">
-              <SheetAction icon={Replace} label="Elegir receta" hint="Busca en el catálogo" onClick={() => setOpen("picker")} />
+              <SheetAction icon={Replace} label="Elegir receta" action="elegir_receta" hint="Busca en el catálogo" onClick={() => setOpen("picker")} />
               <SheetAction
                 icon={Shuffle}
                 label="Una al azar"
+                action="cambiar_azar"
                 hint="Una receta que encaje con tu semana"
                 disabled={isAdding}
                 onClick={() => {
@@ -485,12 +487,14 @@ export function AbsentMealCard({
                   <SheetAction
                     icon={Snowflake}
                     label="Del congelador"
+                    action="congelador"
                     hint="Un táper que ya tienes: no suma a la compra"
                     onClick={() => setOpen("freezer")}
                   />
                   <SheetAction
                     icon={Refrigerator}
                     label="Táper de la nevera"
+                    action="taper_nevera"
                     hint="Ya cocinado, en la nevera: no suma a la compra"
                     onClick={() => setOpen("fridge")}
                   />
@@ -546,7 +550,10 @@ export function SkippedDay({ readOnly, onUnskip }: { readOnly: boolean; onUnskip
       {!readOnly && (
         <button
           type="button"
-          onClick={onUnskip}
+          onClick={() => {
+            trackSheetAction("dia", "reactivar_dia")
+            onUnskip()
+          }}
           className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink"
         >
           <RotateCw size={14} /> Reactivar día
@@ -594,7 +601,10 @@ export function DayFooter({
       {canSkip && (
         <button
           type="button"
-          onClick={() => setConfirmSkip(true)}
+          onClick={() => {
+            trackSheetAction("dia", "saltar_dia")
+            setConfirmSkip(true)
+          }}
           className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-[14px] text-ink-mid transition-colors hover:bg-cream-deep hover:text-ink"
         >
           <CalendarX size={15} /> Saltar día
@@ -609,13 +619,14 @@ export function DayFooter({
         message="Se quitan sus platos, salvo los fijados. Con «Reactivar día» puedes volver a llenarlo."
         confirmLabel="Saltar día"
       />
-      <MenuSheet open={open} onClose={() => setOpen(false)} eyebrow="Solo afecta a esta semana" title={`Añadir comida al ${dayName}`}>
+      <MenuSheet open={open} onClose={() => setOpen(false)} eyebrow="Solo afecta a esta semana" title={`Añadir comida al ${dayName}`} sheet="dia">
         <div className="flex flex-col gap-0.5">
           {missing.map((m) => (
             <SheetAction
               key={m}
               icon={Plus}
               label={mealLabel(m)}
+              action="anadir_comida"
               disabled={isAdding}
               onClick={() => {
                 onAddMeal(m)
@@ -628,6 +639,7 @@ export function DayFooter({
               <SheetAction
                 icon={Snowflake}
                 label="Del congelador"
+                action="congelador"
                 hint="Un táper que ya tienes: no suma a la compra"
                 disabled={isAdding}
                 onClick={() => {
@@ -638,6 +650,7 @@ export function DayFooter({
               <SheetAction
                 icon={Refrigerator}
                 label="Táper de la nevera"
+                action="taper_nevera"
                 hint="Ya cocinado, en la nevera: no suma a la compra"
                 disabled={isAdding}
                 onClick={() => {

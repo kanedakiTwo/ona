@@ -74,7 +74,7 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName))
 
     const startedAt = Date.now()
-    const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode })
+    const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
 
     // «Efecto bola de nieve» (PRO-170): after generating a menu in the
     // household's first generated weeks, the reply opens with the same line

@@ -46,7 +46,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 export const weekTypeOptionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('type'), type: z.enum(DISH_TYPE_KEYS as unknown as [string, ...string[]]) }),
-  z.object({ kind: z.literal('recipe'), recipeId: z.string().uuid(), name: z.string().trim().min(1).max(160) }),
+  z.object({ kind: z.literal('recipe'), recipeId: z.string().min(1).max(64), name: z.string().trim().min(1).max(160) }),
   z.object({ kind: z.literal('fixed'), label: z.string().trim().min(1).max(60), items: z.array(fixedMealItemSchema).max(10) }),
   z.object({ kind: z.literal('taper') }),
   z.object({ kind: z.literal('any') }),

@@ -69,10 +69,10 @@ export function recipesForDishName<R extends Pick<RecipeWithCourse, 'name' | 'au
 /** Pure: the dish type a name says («pizza», «legumbres», «ensalada»), or null. */
 export function dishTypeForName(name: string): string | null {
   const n = normalize(name).trim()
-  const singular = (s: string) => s.replace(/(es|s)$/, '')
+  const same = (a: string, b: string) => a === b || a === `${b}s` || a === `${b}es` || b === `${a}s` || b === `${a}es`
   for (const t of DISH_TYPES) {
     const forms = [t.key, normalize(t.label), ...normalize(t.label).split(/ y /)].map((f) => f.trim())
-    if (forms.some((f) => f === n || singular(f) === singular(n))) return t.key
+    if (forms.some((f) => same(f, n))) return t.key
   }
   return null
 }
@@ -391,9 +391,13 @@ export async function editWeekTypeAsPlantilla(
  * changed for any recipe.
  */
 export async function weekTypeDishTypeAt(userId: string, weekStart: string, day: number, meal: string, position: number, db: Db = defaultDb): Promise<string | null> {
-  if (!(MEALS as readonly string[]).includes(meal)) return null
   const { days } = await loadWeekTypeForUser(userId, db).catch(() => ({ days: null as WeekTypeDays | null }))
-  if (!days) return null
+  return days ? weekTypeDishTypeIn(days, weekStart, day, meal, position) : null
+}
+
+/** Pure: `weekTypeDishTypeAt` on a week type already loaded. */
+export function weekTypeDishTypeIn(days: WeekTypeDays, weekStart: string, day: number, meal: string, position: number): string | null {
+  if (!(MEALS as readonly string[]).includes(meal)) return null
   const slot = weekTypeSlotAt(days, day, meal as Meal)
   const options = weekTypeOptionsFor(slot, weekStart)
   const o = slot.together ? options[position] : position === 0 ? options[0] : undefined

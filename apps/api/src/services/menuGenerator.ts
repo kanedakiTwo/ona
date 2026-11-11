@@ -158,6 +158,40 @@ export function buildRandomMenu(
     }
   }
 
+  // «Semana tipo» (D-182): the dishes the week type asks for are chosen
+  // first, for the whole week, so a free slot earlier in the week never takes
+  // the only ceviche Thursday asked for. Free positions stay for the draw.
+  const prefilled = new Map<string, (Dish | undefined)[]>()
+  for (const [key, specs] of Object.entries(slotSpecs ?? {})) {
+    const [d, meal] = key.split(':')
+    const dayIndex = Number(d)
+    if (!template[dayIndex]?.[meal] || skippedDays?.has(dayIndex)) continue
+    if (existingDays && lockedSlots[d]?.[meal] && existingDays[dayIndex]?.[meal]) continue
+    const avoidGroup = meal === 'dinner' ? dinnerAvoidGroups?.[dayIndex] : undefined
+    const slotPool = avoidGroup ? withoutFoodGroup(allRecipes, avoidGroup) : allRecipes
+    prefilled.set(key, specs.map((spec) => {
+      if (spec.kind === 'preset') {
+        if (spec.dish.kind === 'recipe') usedRecipeIds.add(spec.dish.recipeId)
+        return { ...spec.dish } as Dish
+      }
+      if (spec.kind !== 'type') return undefined
+      // Only recipes of that type, with every filter as usual (the school menu too).
+      const typed = slotPool.filter((r) => r.dishTypes?.includes(spec.type))
+      const tries = onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id)), typed] : [typed]
+      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
+      let picked: RecipeWithCourse | undefined
+      for (const p of tries) if ((picked = findForCourse(p, null, opts) as RecipeWithCourse | undefined)) break
+      if (picked) {
+        if (onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
+        usedRecipeIds.add(picked.id)
+        return { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null } as RecipeDish
+      }
+      warnings.push(`dish_type_missing_${spec.type}_${meal}_d${dayIndex}`)
+      // A dish (Pizza, Ceviche…) is written by its name; a broad type (Carne, Indio…) is drawn free.
+      return dishTypeInfo(spec.type)?.kind === 'broad' ? undefined : dishTypeNote(spec.type)
+    }))
+  }
+
   for (let dayIndex = 0; dayIndex < template.length; dayIndex++) {
     const dayTemplate = template[dayIndex]
     const dayMenu: DayMenu = {}
@@ -206,9 +240,10 @@ export function buildRandomMenu(
       const dayCounts = Array.isArray(mealDishCounts) ? mealDishCounts[dayIndex] : mealDishCounts
       const specs = slotSpecs?.[slotKey(dayIndex, meal)]
       const wantedCount = dishCountFor(meal as Meal, dayCounts ?? {})
-      // With specs: a type asks for no course; free dishes keep the meal's courses (4 together: none).
+      // With specs: a type and the free dishes of options together ask for no
+      // course; the other free dishes keep the meal's courses.
       const wantedCourses: (Course | null)[] = specs
-        ? specs.map((sp, k) => (sp.kind === 'type' || specs.length > 3 ? null : coursesFor(specs.length as 1 | 2 | 3)[k]))
+        ? specs.map((sp, k) => (sp.kind === 'type' || (sp.kind === 'free' && sp.anyCourse) || specs.length > 3 ? null : coursesFor(specs.length as 1 | 2 | 3)[k]))
         : coursesFor(wantedCount)
       const dishes: Dish[] = []
 
@@ -220,30 +255,12 @@ export function buildRandomMenu(
 
       for (let k = 0; k < wantedCourses.length; k++) {
         const course = wantedCourses[k]
-        const spec = specs?.[k]
-        if (spec?.kind === 'preset') {
-          dishes.push({ ...spec.dish } as Dish)
-          if (spec.dish.kind === 'recipe') usedRecipeIds.add(spec.dish.recipeId)
+        // «Semana tipo»: a dish already chosen before the draw (its type, a
+        // concrete recipe, something fixed) goes in as it is.
+        const chosen = prefilled.get(slotKey(dayIndex, meal))?.[k]
+        if (chosen) {
+          dishes.push(chosen)
           continue
-        }
-        if (spec?.kind === 'type') {
-          // Only recipes of that type, with every filter as usual (the school menu too).
-          const typed = slotPool.filter((r) => r.dishTypes?.includes(spec.type))
-          const typeTries = onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id)), typed] : [typed]
-          let pickedType: RecipeWithCourse | undefined
-          for (const p of typeTries) if ((pickedType = findForCourse(p, null, { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }) as RecipeWithCourse | undefined)) break
-          if (pickedType) {
-            if (onlyFavoriteIds && !onlyFavoriteIds.has(pickedType.id)) favoritesShort++
-            usedRecipeIds.add(pickedType.id)
-            dishes.push({ kind: 'recipe', recipeId: pickedType.id, recipeName: pickedType.name, course: pickedType.course ?? null } as RecipeDish)
-            continue
-          }
-          warnings.push(`dish_type_missing_${spec.type}_${meal}_d${dayIndex}`)
-          // A dish (Pizza, Ceviche…) is written by its name; a broad type (Carne, Indio…) takes any recipe.
-          if (dishTypeInfo(spec.type)?.kind !== 'broad') {
-            dishes.push(dishTypeNote(spec.type))
-            continue
-          }
         }
         // Same main protein as the other meal of the day (PRO-238): only if nothing else fits.
         const pool = avoid?.size && (course === 'main' || course === null)

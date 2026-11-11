@@ -19,7 +19,8 @@ import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions
 import type { RecipeWithCourse } from './matchableRecipes.js'
 import { applyTaper } from './taper.js'
 
-export type DishSpec = { kind: 'free' } | { kind: 'type'; type: string } | { kind: 'preset'; dish: Dish }
+/** `anyCourse`: a free dish among options together (no starter/main/dessert order). */
+export type DishSpec = { kind: 'free'; anyCourse?: boolean } | { kind: 'type'; type: string } | { kind: 'preset'; dish: Dish }
 
 /** A concrete recipe of the week type that breaks someone's allergy or diet: the slot goes free and says so (PRO-345). */
 export interface WeekTypeConflict {
@@ -111,7 +112,10 @@ export function planWeekType(
       if (options.length === 0) continue
       let list: DishSpec[]
       if (slot.together && options.length > 1) {
-        list = options.map((o) => specOf(o, d, meal))
+        list = options.map((o) => {
+          const spec = specOf(o, d, meal)
+          return spec.kind === 'free' ? { kind: 'free', anyCourse: true } : spec
+        })
       } else {
         const first = specOf(options[0], d, meal)
         // Something fixed with no recipe is the whole meal (PRO-218); one

@@ -306,6 +306,7 @@ export const WEB_PAGE_TEMPLATES: readonly string[] = [
   '/profile/ficha/historial',
   '/profile/memoria',
   '/profile/pantry',
+  '/profile/semana-tipo',
   '/profile/staples',
   '/profile/suscripcion',
   '/receta-del-dia',

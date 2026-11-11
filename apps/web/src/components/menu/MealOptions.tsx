@@ -37,7 +37,6 @@ import {
   RotateCcw,
   Shuffle,
   History,
-  Tag,
   Trash2,
   Unlock,
   Users,
@@ -60,7 +59,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { MEAL_TYPE_TAGS, MEAL_TYPE_TAG_LABELS, isFixedDish, isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { useSetSlotEaten } from "@/hooks/useMenu"
@@ -82,7 +81,6 @@ export interface SlotHandlers {
   remove: () => void
   setServings: (servings: number | null) => void
   ban: (recipeId: string) => void
-  setPinnedType: (pinnedType: string | null) => void
   addDish: (payload: DishPayload) => void
   addRandomDish: () => void
   removeDish: (position: number) => void
@@ -126,7 +124,7 @@ export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
   return menuRecipeHref(recipeId, slotServings(ctx))
 }
 
-type OpenSheet = null | "actions" | "picker" | "pin" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
+type OpenSheet = null | "actions" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -190,12 +188,9 @@ export function MealOptionsSheets({
   // anywhere — unless it's the batch of planned leftovers (a táper for tomorrow included). On a táper
   // of any kind, «No son sobras de otro día» brings it back to the list.
   const canMarkCooked = isSingleRecipe && !isLeftover && (fromFreezer || !ctx.feedsLeftovers)
-  const pinnedType = first?.pinnedType ?? null
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
   const lockedHint = locked ? "Desfíjala para cambiarla" : undefined
-  // PRO-1141: a «plato fijo» of the ficha is changed by choosing, never at random.
-  const fixedDish = isFixedDish(first)
 
   return (
     <>
@@ -237,8 +232,8 @@ export function MealOptionsSheets({
               <SheetAction
                 icon={Shuffle}
                 label="Cambiar al azar"
-                hint={lockedHint ?? (fixedDish ? "Es un plato fijo de vuestra ficha" : "Otra receta que encaje con tu semana")}
-                disabled={locked || fixedDish || ctx.isRegenerating}
+                hint={lockedHint ?? "Otra receta que encaje con tu semana"}
+                disabled={locked || ctx.isRegenerating}
                 onClick={() => {
                   handlers.regenerate()
                   close()
@@ -265,19 +260,6 @@ export function MealOptionsSheets({
             disabled={locked}
             onClick={() => setOpen("addDish")}
           />
-          {canReshape && (
-            <SheetAction
-              icon={Tag}
-              label="Tipo de comida"
-              hint={
-                pinnedType
-                  ? `Fijado: ${(MEAL_TYPE_TAG_LABELS as Record<string, string>)[pinnedType] ?? pinnedType}`
-                  : lockedHint ?? "Cremas, legumbres, pasta…"
-              }
-              disabled={locked}
-              onClick={() => setOpen("pin")}
-            />
-          )}
           <SheetAction
             icon={locked ? Unlock : Lock}
             label={locked ? "Desfijar" : "Fijar"}
@@ -370,15 +352,6 @@ export function MealOptionsSheets({
         confirmLabel="Quitar"
       />
 
-      <PinTypeSheet
-        open={open === "pin"}
-        onClose={close}
-        current={pinnedType}
-        onPick={(next) => {
-          handlers.setPinnedType(next)
-          close()
-        }}
-      />
 
       {typeof document !== "undefined" &&
         createPortal(
@@ -615,49 +588,3 @@ function DinerStepper({
   )
 }
 
-/* ── Pin a meal type (cremas, pizza…) so Aleatorio/Elegir respect it. */
-function PinTypeSheet({
-  open,
-  onClose,
-  current,
-  onPick,
-}: {
-  open: boolean
-  onClose: () => void
-  current: string | null
-  onPick: (next: string | null) => void
-}) {
-  return (
-    <MenuSheet open={open} onClose={onClose} eyebrow="Fijar tipo" title="¿Qué tipo de comida?">
-      <div className="flex flex-wrap gap-2">
-        {MEAL_TYPE_TAGS.map((tag) => {
-          const active = tag === current
-          return (
-            <button
-              key={tag}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onPick(active ? null : tag)}
-              className={`min-h-[44px] rounded-full px-4 text-[14px] transition-colors ${
-                active ? "bg-ink text-cream" : "border border-border bg-paper text-ink hover:border-ink"
-              }`}
-            >
-              {MEAL_TYPE_TAG_LABELS[tag]}
-            </button>
-          )
-        })}
-      </div>
-      {current ? (
-        <button
-          type="button"
-          onClick={() => onPick(null)}
-          className="mt-4 min-h-[44px] text-[14px] text-ink-mid underline underline-offset-2 hover:text-ink"
-        >
-          Quitar pin
-        </button>
-      ) : (
-        <p className="mt-4 text-[13px] text-ink-soft">La sugerencia respetará la etiqueta a partir de ahora.</p>
-      )}
-    </MenuSheet>
-  )
-}

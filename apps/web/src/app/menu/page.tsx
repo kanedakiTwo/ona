@@ -42,7 +42,6 @@ import {
   useUnbanRecipe,
   useSkipDay,
   useUnskipDay,
-  useSetSlotPinnedType,
   useAddDish,
   useRemoveDish,
   usePatchDish,
@@ -201,7 +200,6 @@ export default function MenuPage() {
   const unbanRecipe = useUnbanRecipe()
   const skipDay = useSkipDay()
   const unskipDay = useUnskipDay()
-  const setSlotPinnedType = useSetSlotPinnedType()
   const addDish = useAddDish()
   const removeDish = useRemoveDish()
   const patchDish = usePatchDish()
@@ -402,10 +400,6 @@ export default function MenuPage() {
           ban: (recipeId) => {
             haptic.medium()
             banRecipe.mutate({ menuId, recipeId }, { onSuccess: () => regenerateMeal.mutate(base) })
-          },
-          setPinnedType: (pinnedType) => {
-            haptic.light()
-            setSlotPinnedType.mutate({ ...base, pinnedType })
           },
           addDish: (payload) => {
             haptic.light()

@@ -8,7 +8,7 @@
  * settings the generator reads (one "Guardar cambios") and the account card.
  * Secondary actions sit behind "···" sheets (`MenuSheet`). 2–3 columns at lg+.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
@@ -60,7 +60,7 @@ import { useMimo } from '@/components/mimo/MimoProvider'
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
 import { FixedMealsEditor } from '@/components/profile/FixedMealsEditor'
-import { fixedMealsFromTemplate, type FixedMeal } from '@ona/shared'
+import { firstMenuWeeks, plantillaEdits, plantillaFromWeekType, type FixedMeal, type PlantillaView, type WeekTypeDays } from '@ona/shared'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
@@ -172,6 +172,9 @@ export default function ProfilePage() {
   const [fixedMeals, setFixedMeals] = useState<FixedMeal[]>([])
   // PRO-223: days whose lunch is a táper of the dinner before (never Monday).
   const [taperDays, setTaperDays] = useState<string[]>([])
+  // «Semana tipo» (D-182): the card above is a view of the household's week
+  // type; saving writes only the slots changed here (never the rest of it).
+  const weekTypeRef = useRef<{ days: WeekTypeDays; view: PlantillaView } | null>(null)
   const [restrictionInput, setRestrictionInput] = useState('')
   // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
@@ -222,7 +225,8 @@ export default function ProfilePage() {
     Promise.all([
       api.get<any>(`/user/${user.id}/settings`).catch(() => null),
       api.get<{ restrictions?: string[]; adults?: number; kidsCount?: number }>(`/user/${user.id}`).catch(() => null),
-    ]).then(([data, account]) => {
+      api.get<{ days: WeekTypeDays }>(`/households/me/week-type`).catch(() => null),
+    ]).then(([data, account, weekType]) => {
       // The account, not the copy kept in this browser: Mimo may have noted
       // the kids since (2026-10-22: a tester's profile said 0 niños).
       if (typeof account?.adults === 'number' && account.adults > 0) {
@@ -232,47 +236,16 @@ export default function ProfilePage() {
       if (blob?.physical) setPhysical(blob.physical)
       const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
       setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
-      const rawMt = blob?.mealTemplate ?? blob?.meal_template
-      if (rawMt && typeof rawMt === 'object') {
-        // Coerce legacy on/off (`string[]`) to the numeric shape with the
-        // household default so the stepper has somewhere to start.
-        const defaultDiners = Math.max(
-          1,
-          (user.adults ?? 2) + Math.ceil((user.kidsCount ?? 0) * 0.5),
-        )
-        const next: MealTemplate = {}
-        for (const day of DAYS) {
-          const cell = (rawMt as Record<string, unknown>)[day]
-          if (Array.isArray(cell)) {
-            const counts: Record<string, number> = {}
-            for (const meal of cell) {
-              if (typeof meal === 'string') counts[meal] = defaultDiners
-            }
-            next[day] = counts
-          } else if (cell && typeof cell === 'object') {
-            const counts: Record<string, number> = {}
-            for (const [meal, n] of Object.entries(cell as Record<string, unknown>)) {
-              const v = typeof n === 'number' ? Math.floor(n) : 0
-              if (v > 0) counts[meal] = v
-            }
-            next[day] = counts
-          } else {
-            next[day] = {}
-          }
-        }
-        setMealTemplate(next)
-      }
-      setFixedMeals(fixedMealsFromTemplate(blob))
-      if (Array.isArray(blob?.taperDays)) {
-        setTaperDays((blob.taperDays as unknown[]).filter((d): d is string => typeof d === 'string' && (DAYS as readonly string[]).includes(d) && d !== 'lunes'))
-      }
-      const rawMdc = blob?.mealDishCounts
-      if (rawMdc && typeof rawMdc === 'object') {
-        const cleaned: Partial<Record<Meal, 1 | 2 | 3>> = {}
-        for (const [m, c] of Object.entries(rawMdc as Record<string, unknown>)) {
-          if (c === 1 || c === 2 || c === 3) cleaned[m as Meal] = c
-        }
-        setMealDishCounts(cleaned)
+      if (weekType?.days) {
+        const defaultDiners = Math.max(1, (account?.adults ?? user.adults ?? 2) + Math.ceil((account?.kidsCount ?? user.kidsCount ?? 0) * 0.5))
+        const view = plantillaFromWeekType(weekType.days, defaultDiners)
+        weekTypeRef.current = { days: weekType.days, view }
+        const grid: MealTemplate = {}
+        for (const day of DAYS) grid[day] = { ...(view.mealTemplate[day] ?? {}) }
+        setMealTemplate(grid)
+        setMealDishCounts({ ...view.mealDishCounts })
+        setFixedMeals(view.fixedMeals)
+        setTaperDays(view.taperDays.filter((d) => d !== 'lunes'))
       }
     }).catch(() => {})
   }, [user])
@@ -411,9 +384,20 @@ export default function ProfilePage() {
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
         template: healthActive
-          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave }, mealTemplate, mealDishCounts, fixedMeals, taperDays }
-          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts, fixedMeals, taperDays },
+          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave } }
+          : { preferences: { ...preferences, restrictions: [] } },
       }))
+      // «Semana tipo» (D-182): only the slots changed in the plantilla card.
+      const wt = weekTypeRef.current
+      if (wt) {
+        const after: PlantillaView = { mealTemplate, mealDishCounts, fixedMeals, taperDays }
+        const edits = plantillaEdits(wt.days, wt.view, after, firstMenuWeeks().weeks[0])
+        calls.push((async () => {
+          let days = wt.days
+          for (const e of edits) days = (await api.put<{ days: WeekTypeDays }>(`/households/me/week-type/${e.day}/${e.meal}`, e.slot)).days
+          weekTypeRef.current = { days, view: after }
+        })())
+      }
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)

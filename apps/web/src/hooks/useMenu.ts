@@ -9,7 +9,6 @@ interface MealSlot {
   /** Per-slot diner override (this week only); null/undefined = household default. */
   servings?: number | null
   /** Pinned meal-type tag — matcher restricts Aleatorio/Añadir to recipes with this tag. */
-  pinnedType?: string | null
   /** `'leftover'` = cloned from another slot (kind:'planned' is the default). */
   kind?: "planned" | "leftover" | null
   /** Source slot back-reference when kind === 'leftover'. */
@@ -258,32 +257,6 @@ export function useSetSlotEaten() {
 }
 
 /**
- * Pin a meal-type tag (cremas, legumbres, pizza, …) onto a slot. The matcher
- * then restricts every Aleatorio / Añadir pick on this slot to recipes whose
- * `tags` includes the tag. Pass `null` to clear the pin.
- */
-export function useSetSlotPinnedType() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (params: {
-      menuId: string
-      day: number
-      meal: string
-      pinnedType: string | null
-    }) => {
-      const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
-      return api.patch<Menu>(url, { pinnedType: params.pinnedType })
-    },
-    onSuccess: (data) => {
-      if (data?.userId && data?.weekStart) {
-        queryClient.setQueryData(["menu", data.userId, data.weekStart], data)
-      }
-      queryClient.invalidateQueries({ queryKey: ["menu"] }); queryClient.invalidateQueries({ queryKey: ["shopping-list"] })
-    },
-  })
-}
-
-/**
  * Veto a recipe for the rest of the week. Idempotent: re-banning the same
  * recipe is a no-op on the server. Pair with `useUnbanRecipe` for "Levantar
  * veto" in the panel.
@@ -432,7 +405,7 @@ export function useLockMeal() {
 /**
  * Add a dish to a meal slot. Dishes can be either recipes or freeform notes.
  * The `payload` shape is a discriminated union:
- *   { kind: 'recipe'; recipeId: string; course?: Course; pinnedType?: string }
+ *   { kind: 'recipe'; recipeId: string; course?: Course }
  *   { kind: 'note'; text: string }
  */
 export function useAddDish() {
@@ -443,7 +416,7 @@ export function useAddDish() {
       day: number
       meal: string
       payload:
-        | { kind: 'recipe'; recipeId: string; course?: string | null; pinnedType?: string | null; variant?: 'planned' | 'freezer' | 'fridge' }
+        | { kind: 'recipe'; recipeId: string; course?: string | null; variant?: 'planned' | 'freezer' | 'fridge' }
         | { kind: 'note'; text: string }
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish`
@@ -504,7 +477,7 @@ export function useRemoveDish() {
 }
 
 /**
- * Update a dish's metadata (note text, pinnedType, newPosition for reordering, course).
+ * Update a dish's metadata (note text, newPosition for reordering, course).
  * Position is 0-indexed; newPosition moves the dish within the slot (no swap).
  */
 export function usePatchDish() {
@@ -515,7 +488,7 @@ export function usePatchDish() {
       day: number
       meal: string
       position: number
-      patch: { text?: string; pinnedType?: string | null; newPosition?: number; course?: string | null; variant?: 'planned' | 'freezer' | 'cooked' }
+      patch: { text?: string; newPosition?: number; course?: string | null; variant?: 'planned' | 'freezer' | 'cooked' }
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}`
       return api.patch<Menu>(url, params.patch)
@@ -531,7 +504,7 @@ export function usePatchDish() {
 
 /**
  * Regenerate a recipe dish at a given position via the matcher (Aleatorio).
- * Respects the slot's pinnedType and menu's bannedRecipeIds.
+ * Respects the dish type the household's «semana tipo» asks for there and the menu's bannedRecipeIds.
  */
 export function useRegenerateDish() {
   const queryClient = useQueryClient()

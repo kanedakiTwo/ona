@@ -16,7 +16,7 @@ import { AdminAccountDeletionError, deleteAccount } from '../services/accountDel
 import { cancelSubscriptionsPaidBy } from '../services/billing.js'
 import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
 import { alignHouseholdMemory } from '../services/userMemoryStore.js'
-import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
+import { analyzeOnboardingIntoMemory, FIRST_MENU_WAIT_MS, trackOnboardingAnalysis, type OnboardingAnalysisResult } from '../services/onboardingMemoryAnalysis.js'
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import { householdRestrictionsBefore, reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
@@ -237,6 +237,19 @@ router.put('/user/:id/onboarding-draft', validate(onboardingDraftSchema), async 
   }
 })
 
+/** The analysis's result when it ends within `ms`; null when late or failed. */
+async function settleWithin(work: Promise<OnboardingAnalysisResult>, ms: number): Promise<OnboardingAnalysisResult | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms)
+  })
+  try {
+    return await Promise.race([work.catch(() => null), late])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 // POST /user/:id/onboarding
 router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: AuthRequest, res) => {
   try {
@@ -272,7 +285,12 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     // registered the same way so the first menu waits for it too (≤ 15 s).
     void trackOnboardingAnalysis(userId, refineHouseholdSoon(userId, 'onboarding', analysis))
 
-    res.json(updated)
+    // «Semana tipo» fase 4 (D-182): with «tu caso» written, the answer waits
+    // for that read (at most FIRST_MENU_WAIT_MS, which the first menu waited
+    // anyway) and brings what went into the week type, for «Así lo he
+    // entendido». Late or failed → the sign-up goes on as before.
+    const understood = typeof cookingNote === 'string' && cookingNote.trim() ? await settleWithin(analysis, FIRST_MENU_WAIT_MS) : null
+    res.json(understood?.weekType ? { ...updated, weekTypeUnderstood: understood.weekType } : updated)
   } catch (err) {
     console.error('Onboarding error:', err)
     res.status(500).json({ error: 'Internal server error' })

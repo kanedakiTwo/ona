@@ -64,7 +64,7 @@ describe('onboarding answers → memory (PRO-138)', () => {
       { key: 'time_available', value: { viernes: { mode: 'total', minutes: 0 } } },
     ])
     const written: any[] = []
-    const keys = await analyzeOnboardingIntoMemory(
+    const { keys } = await analyzeOnboardingIntoMemory(
       USER,
       {
         adults: 2,
@@ -123,7 +123,7 @@ describe('onboarding answers → memory (PRO-138)', () => {
     const failing = async () => {
       throw new Error('overloaded')
     }
-    const keys = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
+    const { keys } = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
       create: failing,
       readMemory: async () => ({}),
       writeMemory: async () => {
@@ -169,7 +169,7 @@ describe('«Cuéntanos tu caso» reaches the first menu (PRO-242)', () => {
     )
     let saved: { changes: TemplateChange[]; diners: number } | null = null
     const memory: any[] = []
-    const keys = await analyzeOnboardingIntoMemory(
+    const { keys } = await analyzeOnboardingIntoMemory(
       USER,
       { adults: 2, kidsCount: 0, cookingFreq: 'daily', cookingNote: NOTE },
       {
@@ -218,7 +218,7 @@ describe('«Cuéntanos tu caso» reaches the first menu (PRO-242)', () => {
 
   it('no template change → the week type is never written', async () => {
     const { create } = fakeModel([{ key: 'notes', value: ['Teletrabaja'] }])
-    const keys = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
+    const { keys } = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
       create,
       readMemory: async () => ({}),
       writeMemory: async () => undefined,

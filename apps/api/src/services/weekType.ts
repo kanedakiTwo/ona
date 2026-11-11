@@ -241,7 +241,7 @@ export function currentWeekStart(now: Date = new Date()): string {
 }
 
 /** The recipes a dish name is searched in: those the user may be served. */
-async function loadRecipesFor(userId: string, db: Db): Promise<RecipeWithCourse[]> {
+export async function loadRecipesFor(userId: string, db: Db = defaultDb): Promise<RecipeWithCourse[]> {
   const { loadMatchableRecipes } = await import('./matchableRecipes.js')
   return loadMatchableRecipes(userId, db)
 }

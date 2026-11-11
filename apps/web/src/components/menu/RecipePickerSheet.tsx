@@ -13,8 +13,8 @@ interface RecipePickerSheetProps {
   title: string
   /** Optional helper line under the title (e.g. "para el lunes · cena"). */
   subtitle?: string
-  /** Called with the chosen recipe id. The sheet closes after the parent confirms. */
-  onPick: (recipe: { id: string; name: string }) => void
+  /** Called with the chosen recipe. The sheet closes after the parent confirms. */
+  onPick: (recipe: { id: string; name: string; imageUrl?: string | null }) => void
   /**
    * PRO-74: with 0 results, «Usar "<lo escrito>" como plato» puts the typed
    * text in the slot instead of the current dish (a note, not one more dish).
@@ -28,6 +28,14 @@ interface RecipePickerSheetProps {
  * filter by `meal_type` — any recipe can be assigned to any slot. It DOES
  * hide recipes that break the user's allergies or diet (`fitsMe`, PRO-61):
  * a vegetarian must never be offered chicken here.
+ *
+ * Layout (Miguel, 2026-11-10): the search field sits at the bottom of the
+ * sheet and the results above it, in a list with its own scroll, so the field
+ * never moves when the number of results changes. The sheet has a fixed
+ * height and follows the visible viewport (`useVisibleViewport`), so on a
+ * phone the keyboard pushes the field up instead of covering it.
+ * The catalogue is only asked for while the sheet is open (2026-11-10: every
+ * slot's closed picker asked for it when /menu loaded, ~4 s of server work).
  */
 export function RecipePickerSheet({
   open,
@@ -47,8 +55,9 @@ export function RecipePickerSheet({
   const search = useDeferredValue(query.trim())
   const { data: recipes = [], isLoading, isPlaceholderData } = useRecipes(
     { perPage: 100, fitsMe: true, search: search || undefined },
-    { keepPrevious: true },
+    { keepPrevious: true, enabled: open },
   )
+  const viewport = useVisibleViewport(open)
   // The list on screen is for an older query: don't say «Sin resultados» yet.
   const searching = isPlaceholderData || search !== query.trim()
 
@@ -73,14 +82,16 @@ export function RecipePickerSheet({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40"
+      className="fixed inset-x-0 top-0 z-[80] flex h-[100dvh] items-end justify-center bg-black/40 lg:items-center"
+      style={viewport ? { top: viewport.top, height: viewport.height } : undefined}
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-[480px] rounded-t-3xl bg-[#FAF6EE] pb-6 shadow-2xl"
+        data-testid="recipe-picker"
+        className="relative flex h-[88%] max-h-[680px] w-full max-w-[480px] flex-col rounded-t-3xl bg-[#FAF6EE] shadow-2xl lg:h-[80%] lg:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 px-5 pt-5">
+        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5">
           <div className="min-w-0">
             <div className="text-eyebrow text-[#7A7066]">Cambiar plato</div>
             <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
@@ -103,21 +114,7 @@ export function RecipePickerSheet({
           </button>
         </div>
 
-        <div className="mt-4 px-5">
-          <div className="flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3">
-            <Search size={14} className="text-[#7A7066]" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar receta…"
-              className="flex-1 bg-transparent py-2 text-[14px] text-[#1A1612] outline-none placeholder:text-[#7A7066]"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 max-h-[60vh] overflow-y-auto px-5">
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5" data-testid="picker-results">
           {(isLoading || (searching && filtered.length === 0)) && (
             <div className="py-8 text-center text-[12px] italic text-[#7A7066]">
               {isLoading ? "Cargando catálogo…" : "Buscando…"}
@@ -160,8 +157,8 @@ export function RecipePickerSheet({
               <li key={r.id}>
                 <button
                   type="button"
-                  onClick={() => onPick({ id: r.id, name: r.name })}
-                  className="flex w-full items-center justify-between gap-3 py-2.5 text-left hover:bg-[#F2EDE0]"
+                  onClick={() => onPick({ id: r.id, name: r.name, imageUrl: r.imageUrl ?? null })}
+                  className="flex min-h-[44px] w-full items-center justify-between gap-3 py-2.5 text-left hover:bg-[#F2EDE0]"
                 >
                   <span className="min-w-0 truncate text-[14px] text-[#1A1612]">
                     {r.name}
@@ -174,7 +171,53 @@ export function RecipePickerSheet({
             ))}
           </ul>
         </div>
+
+        {/* Fixed at the bottom: the results change above it, never its place. */}
+        <div
+          className="shrink-0 border-t border-[#E8E2D3] px-5 pt-3 pb-[calc(12px+var(--safe-bottom))] lg:pb-4"
+          data-testid="picker-search"
+        >
+          <div className="flex items-center gap-2 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3">
+            <Search size={14} className="text-[#7A7066]" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar receta…"
+              aria-label="Buscar receta"
+              className="min-h-[44px] flex-1 bg-transparent py-2 text-[16px] text-[#1A1612] outline-none placeholder:text-[#7A7066]"
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
+}
+
+/**
+ * The part of the screen the keyboard leaves (`visualViewport`), while the
+ * sheet is open. Android Chrome and iOS Safari don't shrink the layout
+ * viewport when the keyboard opens, so a field fixed at the bottom would sit
+ * under it; following the visible viewport keeps it above the keyboard.
+ * Null where the API doesn't exist (the sheet then fills `100dvh`).
+ */
+function useVisibleViewport(active: boolean): { top: number; height: number } | null {
+  const [box, setBox] = useState<{ top: number; height: number } | null>(null)
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null
+    if (!active || !vv) {
+      setBox(null)
+      return
+    }
+    const update = () => setBox({ top: vv.offsetTop, height: vv.height })
+    update()
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    return () => {
+      vv.removeEventListener("resize", update)
+      vv.removeEventListener("scroll", update)
+    }
+  }, [active])
+  return box
 }

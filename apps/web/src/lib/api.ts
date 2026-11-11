@@ -161,20 +161,21 @@ export const api = {
     return apiFetch<T>(path, { method: "GET" })
   },
 
-  post<T = unknown>(path: string, body?: unknown) {
-    return apiFetch<T>(path, { method: "POST", body })
+  // `opts.signal`: e.g. the menu's changes give up after 20 s (2026-11-10).
+  post<T = unknown>(path: string, body?: unknown, opts?: { signal?: AbortSignal }) {
+    return apiFetch<T>(path, { method: "POST", body, ...opts })
   },
 
-  put<T = unknown>(path: string, body?: unknown) {
-    return apiFetch<T>(path, { method: "PUT", body })
+  put<T = unknown>(path: string, body?: unknown, opts?: { signal?: AbortSignal }) {
+    return apiFetch<T>(path, { method: "PUT", body, ...opts })
   },
 
-  patch<T = unknown>(path: string, body?: unknown) {
-    return apiFetch<T>(path, { method: "PATCH", body })
+  patch<T = unknown>(path: string, body?: unknown, opts?: { signal?: AbortSignal }) {
+    return apiFetch<T>(path, { method: "PATCH", body, ...opts })
   },
 
-  delete<T = unknown>(path: string, body?: unknown) {
-    return apiFetch<T>(path, { method: "DELETE", body })
+  delete<T = unknown>(path: string, body?: unknown, opts?: { signal?: AbortSignal }) {
+    return apiFetch<T>(path, { method: "DELETE", body, ...opts })
   },
 
   /** POST JSON, get audio back (chat read-aloud). null on 204 (nothing to say). */

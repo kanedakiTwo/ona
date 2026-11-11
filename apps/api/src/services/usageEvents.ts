@@ -24,7 +24,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { ALERT_KINDS, carrefourLinks, isHealthMemoryKey, splitFridgeAnswer, type BasketSendResult, type CarrefourLineInput, type WeekTypeSlot } from '@ona/shared'
+import { ALERT_KINDS, carrefourLinks, isHealthMemoryKey, isMenuSheetAction, splitFridgeAnswer, type BasketSendResult, type CarrefourLineInput, type WeekTypeSlot } from '@ona/shared'
 import { detectSocialPlatform } from './sources/social.js'
 import { detectSourceType } from './sources/sourceType.js'
 
@@ -91,6 +91,8 @@ export const USAGE_EVENTS = [
   'cook_now_chosen',
   // PRO-383: «¿Quién hace la compra?» in the sign-up (`props.value` = me · other · shared; channel web or whatsapp).
   'shopper_answered',
+  // PRO-1174: an option tapped in one of the menu's «···» sheets (`props.sheet`, `props.action`: MENU_SHEET_ACTIONS).
+  'menu_sheet_action',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -709,6 +711,7 @@ export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'quien_compra', 'inv
 export const ONBOARDING_STEP_ACTIONS = ['visto', 'hecho'] as const
 export const USAGE_SCREENS = [
   'menu',
+  'cocinar',
   'lista',
   'compra',
   'receta',
@@ -743,6 +746,8 @@ export const CLIENT_USAGE_EVENTS = [
   'content_shared',
   'week_printed',
   'handsfree_started',
+  // PRO-1174: the options of the menu's «···» sheets.
+  'menu_sheet_action',
 ] as const
 export type ClientUsageEvent = (typeof CLIENT_USAGE_EVENTS)[number]
 
@@ -789,6 +794,9 @@ export function clientEventProps(name: unknown, raw: unknown): { name: ClientUsa
       const where = oneOf(HANDSFREE_WHERE, p.where)
       return where ? { name: ev, props: { where } } : null
     }
+    case 'menu_sheet_action':
+      // An option of that sheet only (MENU_SHEET_ACTIONS): anything else is not stored.
+      return isMenuSheetAction(p.sheet, p.action) ? { name: ev, props: { sheet: p.sheet, action: p.action as string } } : null
   }
 }
 

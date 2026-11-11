@@ -63,7 +63,8 @@ import { isTaperDish, type Dish, type MealSlot, type RecipeDish } from "@ona/sha
 import { mealLabel } from "@/lib/labels"
 import { useRecipeCookStats, useRecordCook } from "@/hooks/useCookLogs"
 import { useSetSlotEaten } from "@/hooks/useMenu"
-import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
+import { ConfirmSheet, MenuSheet, SheetAction, useSheetTracker } from "./MenuSheet"
+import { trackSheetAction } from "@/lib/usageEvents"
 import { RatingPromptSheet } from "@/components/cooking/RatingPromptSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
 import { AddDishSheet } from "./AddDishSheet"
@@ -191,6 +192,8 @@ export function MealOptionsSheets({
   const label = mealLabel(ctx.meal)
   const locked = ctx.isLocked
   const lockedHint = locked ? "Desfíjala para cambiarla" : undefined
+  // PRO-1174: which sheet this is, for `menu_sheet_action`.
+  const sheet = isSingleRecipe ? "comida" : dishes.length === 0 ? "vacio" : "comida_varios"
 
   return (
     <>
@@ -199,6 +202,7 @@ export function MealOptionsSheets({
         onClose={close}
         eyebrow={`${label} · ${ctx.dayLabel}`}
         title={first?.recipeName ?? (dishes.length > 0 ? label : "Sin plato todavía")}
+        sheet={sheet}
       >
         {/* PRO-259: why Mimo chose it — only menus from the planner carry it. */}
         {first?.why && (
@@ -218,13 +222,14 @@ export function MealOptionsSheets({
 
         <div className="flex flex-col gap-0.5">
           {first && (
-            <SheetAction icon={BookOpen} label="Ver receta" href={slotRecipeHref(first.recipeId, ctx)} />
+            <SheetAction icon={BookOpen} label="Ver receta" action="ver_receta" href={slotRecipeHref(first.recipeId, ctx)} />
           )}
           {canReshape && (
             <>
               <SheetAction
                 icon={Replace}
                 label="Elegir otra receta"
+                action="elegir_receta"
                 hint={lockedHint ?? "Busca en el catálogo"}
                 disabled={locked || ctx.isRegenerating}
                 onClick={() => setOpen("picker")}
@@ -232,6 +237,7 @@ export function MealOptionsSheets({
               <SheetAction
                 icon={Shuffle}
                 label="Cambiar al azar"
+                action="cambiar_azar"
                 hint={lockedHint ?? "Otra receta que encaje con tu semana"}
                 disabled={locked || ctx.isRegenerating}
                 onClick={() => {
@@ -245,6 +251,7 @@ export function MealOptionsSheets({
             <SheetAction
               icon={History}
               label={fromFreezer ? "No son sobras de otro día" : "Son sobras de otro día"}
+              action={fromFreezer ? "sobras_no" : "sobras_si"}
               hint={lockedHint ?? (fromFreezer ? "Vuelve a sumar a la compra" : "Ya está hecho (nevera, congelador…): no suma a la compra")}
               disabled={locked}
               onClick={() => {
@@ -256,6 +263,7 @@ export function MealOptionsSheets({
           <SheetAction
             icon={Plus}
             label="Añadir plato"
+            action="anadir_plato"
             hint={lockedHint ?? "Otro plato o una nota en esta comida"}
             disabled={locked}
             onClick={() => setOpen("addDish")}
@@ -263,6 +271,7 @@ export function MealOptionsSheets({
           <SheetAction
             icon={locked ? Unlock : Lock}
             label={locked ? "Desfijar" : "Fijar"}
+            action={locked ? "desfijar" : "fijar"}
             hint={locked ? "Volverá a cambiar si regeneras la semana" : "Se queda aunque regeneres la semana"}
             onClick={() => {
               handlers.toggleLock()
@@ -273,6 +282,7 @@ export function MealOptionsSheets({
             <SheetAction
               icon={Ban}
               label="Vetar esta receta"
+              action="vetar"
               hint={lockedHint ?? "No volverá a salir esta semana"}
               disabled={locked}
               onClick={() => setOpen("confirmBan")}
@@ -284,6 +294,7 @@ export function MealOptionsSheets({
             <SheetAction
               icon={Package}
               label="Quitar táper"
+              action="taper_no"
               hint="La comida queda vacía para poner otra cosa"
               disabled={locked}
               onClick={() => {
@@ -295,6 +306,7 @@ export function MealOptionsSheets({
             <SheetAction
               icon={Package}
               label="Me lo llevo en táper"
+              action="taper_si"
               hint={lockedHint ?? `Sobras de la cena del ${ctx.taperFrom.dayLabel}: se hace una ración más`}
               disabled={locked}
               onClick={() => {
@@ -316,6 +328,7 @@ export function MealOptionsSheets({
           <SheetAction
             icon={Trash2}
             label={`Quitar ${label.toLowerCase()}`}
+            action="quitar_comida"
             hint={lockedHint ?? "Solo de este día; tus preferencias no cambian"}
             destructive
             disabled={locked}
@@ -409,6 +422,7 @@ function CookedAction({
       <SheetAction
         icon={RotateCcw}
         label={setEaten.isPending ? "Guardando…" : "Desmarcar"}
+        action="desmarcar_cocinada"
         hint="Comido · vuelve a quedar por cocinar"
         disabled={setEaten.isPending}
         onClick={() => setEaten.mutate({ ...slotKey, eaten: false }, { onSuccess: onUnmarked })}
@@ -419,6 +433,7 @@ function CookedAction({
     <SheetAction
       icon={ChefHat}
       label={record.isPending ? "Guardando…" : "Marcar como cocinada"}
+      action="cocinada"
       hint={count > 0 ? `La has cocinado ${count} ${count === 1 ? "vez" : "veces"}` : undefined}
       disabled={record.isPending}
       onClick={() => {
@@ -449,11 +464,15 @@ function DishList({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
   const ids = dishes.map((_, i) => `dish-${i}`)
+  const track = useSheetTracker()
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return
     const from = ids.indexOf(String(e.active.id))
     const to = ids.indexOf(String(e.over.id))
-    if (from >= 0 && to >= 0) handlers.reorderDish(from, to)
+    if (from >= 0 && to >= 0) {
+      track("ordenar_platos")
+      handlers.reorderDish(from, to)
+    }
   }
   return (
     <div className="mb-3">
@@ -466,10 +485,35 @@ function DishList({
                 key={ids[i]}
                 id={ids[i]}
                 dish={dish}
-                onClickThumb={dish.kind === "recipe" ? () => onOpenRecipe(dish.recipeId) : undefined}
-                onRegenerate={dish.kind === "recipe" ? () => handlers.regenerateDish(i) : undefined}
-                onRemove={() => handlers.removeDish(i)}
-                onSaveNote={dish.kind === "note" ? (text) => handlers.editNote(i, text) : undefined}
+                // PRO-1174: each dish's own options count as the `plato` sheet.
+                onClickThumb={
+                  dish.kind === "recipe"
+                    ? () => {
+                        trackSheetAction("plato", "ver_receta")
+                        onOpenRecipe(dish.recipeId)
+                      }
+                    : undefined
+                }
+                onRegenerate={
+                  dish.kind === "recipe"
+                    ? () => {
+                        trackSheetAction("plato", "cambiar_azar")
+                        handlers.regenerateDish(i)
+                      }
+                    : undefined
+                }
+                onRemove={() => {
+                  trackSheetAction("plato", "quitar_plato")
+                  handlers.removeDish(i)
+                }}
+                onSaveNote={
+                  dish.kind === "note"
+                    ? (text) => {
+                        trackSheetAction("plato", "editar_nota")
+                        handlers.editNote(i, text)
+                      }
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -538,6 +582,7 @@ function DinerStepper({
   const effective = value ?? fallback
   const hasOverride = value != null
   const clamp = (n: number) => Math.max(1, Math.min(24, n))
+  const track = useSheetTracker()
   return (
     <div className="mt-1 flex min-h-[56px] items-center justify-between gap-3 rounded-2xl px-3">
       <div className="flex items-center gap-3.5 text-ink">
@@ -551,7 +596,10 @@ function DinerStepper({
                 {" · "}
                 <button
                   type="button"
-                  onClick={() => onChange(null)}
+                  onClick={() => {
+                    track("comensales_quitar")
+                    onChange(null)
+                  }}
                   className="underline underline-offset-2 hover:text-terracotta-deep"
                 >
                   Quitar
@@ -566,7 +614,10 @@ function DinerStepper({
           type="button"
           aria-label="Menos comensales"
           disabled={disabled || effective <= 1}
-          onClick={() => onChange(clamp(effective - 1))}
+          onClick={() => {
+            track("comensales_menos")
+            onChange(clamp(effective - 1))
+          }}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors hover:bg-cream-deep disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Minus size={16} />
@@ -578,7 +629,10 @@ function DinerStepper({
           type="button"
           aria-label="Más comensales"
           disabled={disabled || effective >= 24}
-          onClick={() => onChange(clamp(effective + 1))}
+          onClick={() => {
+            track("comensales_mas")
+            onChange(clamp(effective + 1))
+          }}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors hover:bg-cream-deep disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus size={16} />

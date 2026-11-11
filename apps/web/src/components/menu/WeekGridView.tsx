@@ -67,7 +67,9 @@ import {
   type Dish,
   type MealSlot,
   type RecipeDish,
+  type MenuSheetAction,
 } from "@ona/shared"
+import { trackSheetAction } from "@/lib/usageEvents"
 import { shortRecipeName } from "@/lib/recipeView"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
 import { AddDishSheet } from "@/components/menu/AddDishSheet"
@@ -432,6 +434,7 @@ function DaySection({
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
+                trackSheetAction("dia", "reactivar_dia")
                 onUnskipDay(dayIndex)
               }}
               className="ml-auto inline-flex items-center gap-1 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-[#1A1612] transition-colors hover:border-[#1A1612]"
@@ -582,6 +585,7 @@ function SlotRow({
     actions.push({
       icon: Replace,
       label: "Elegir receta",
+      action: "elegir_receta",
       onSelect: () => setReplacePickerOpen(true),
     })
   }
@@ -589,6 +593,7 @@ function SlotRow({
     actions.push({
       icon: Shuffle,
       label: "Aleatorio",
+      action: "cambiar_azar",
       onSelect: () => onRandomize(dayIndex, meal),
     })
   }
@@ -596,6 +601,7 @@ function SlotRow({
     actions.push({
       icon: Plus,
       label: "Añadir plato",
+      action: "anadir_plato",
       onSelect: () => setAddDishOpen(true),
     })
   }
@@ -603,6 +609,7 @@ function SlotRow({
     actions.push({
       icon: isLocked ? Unlock : Lock,
       label: isLocked ? "Desbloquear" : "Bloquear",
+      action: isLocked ? "desfijar" : "fijar",
       onSelect: () => onToggleLock(dayIndex, meal, !isLocked),
     })
   }
@@ -610,6 +617,7 @@ function SlotRow({
     actions.push({
       icon: Ban,
       label: "Vetar receta",
+      action: "vetar",
       onSelect: () => setConfirm("ban"),
       destructive: true,
     })
@@ -618,6 +626,7 @@ function SlotRow({
     actions.push({
       icon: Trash2,
       label: "Quitar slot",
+      action: "quitar_comida",
       onSelect: () => setConfirm("remove"),
       destructive: true,
     })
@@ -716,6 +725,8 @@ function SlotRow({
 interface ActionDef {
   icon: typeof Shuffle
   label: string
+  /** PRO-1174: the option, counted as `menu_sheet_action` of the `semana_fila` sheet. */
+  action: MenuSheetAction
   onSelect: () => void
   destructive?: boolean
 }
@@ -990,6 +1001,7 @@ function RowActionsButton({ actions }: { actions: ActionDef[] }) {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
+                    trackSheetAction("semana_fila", a.action)
                     a.onSelect()
                     setOpen(false)
                   }}

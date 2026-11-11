@@ -4,7 +4,8 @@
  * One day of the menu, "D · Luz y foto" (2026-10-08):
  *   - the featured meal (first one with a recipe) as a photo hero with an
  *     overlapping caption card: eyebrow "Comida · 28 min · 3 raciones",
- *     Fraunces title, ink pill "Empezar a cocinar" (→ cook mode) and "···";
+ *     Fraunces title, ink pill "Empezar a cocinar" (→ cook mode, with its menu slot) and "···";
+ *     today, a quiet «¿Otra cosa? Cocinar ahora» (→ /cocinar) under them;
  *   - the other meals as horizontal rows (photo, eyebrow, title) + "···";
  *   - empty slots as one quiet "Añadir plato" card + "···"; tapping the card
  *     opens the same sheet as "···" (Miguel, 2026-11-05);
@@ -22,7 +23,9 @@ import { motion, useReducedMotion } from "motion/react"
 import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, Replace, RotateCw, Shuffle, Snowflake, TriangleAlert, Utensils, X } from "lucide-react"
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
 import { isTaperDish, replacedDishLine, type MealSlot, type RecipeDish } from "@ona/shared"
+import { cookHref } from "@/lib/cookHref"
 import { mealLabel } from "@/lib/labels"
+import { trackSheetAction } from "@/lib/usageEvents"
 import { DAY_MEAL_ORDER, dishName, firstRecipeDish, mealEyebrow, slotDishParts, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
@@ -42,10 +45,6 @@ const DAY_SHORT = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 export type SlotPropsFn = (meal: string, slot: MealSlot) => { ctx: SlotContext; handlers: SlotHandlers }
 
 const servingsOf = slotServings
-
-function cookHref(recipeId: string, servings: number) {
-  return `/recipes/${recipeId}/cook?servings=${servings}`
-}
 
 /** Small state chips under a title — only rendered when there is state to show. */
 function SlotChips({
@@ -167,7 +166,10 @@ export function ExtraDishLines({
             {canRemove && (
               <button
                 type="button"
-                onClick={() => handlers.removeDish(position)}
+                onClick={() => {
+                  trackSheetAction("plato", "quitar_plato")
+                  handlers.removeDish(position)
+                }}
                 aria-label={`Quitar «${name}»`}
                 className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-cream-deep hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
               >
@@ -188,10 +190,13 @@ export function MealHero({
   handlers,
   readOnly,
   layout = "bleed",
+  isToday = false,
 }: {
   ctx: SlotContext
   handlers: SlotHandlers
   readOnly: boolean
+  /** The day shown is today: a quiet «¿Otra cosa? Cocinar ahora» under the actions (specs/cook-now.md). */
+  isToday?: boolean
   /** `bleed` = mobile, photo edge to edge + caption card overlapping below.
    *  `card` = desktop, rounded 420 px photo with the caption card inside. */
   layout?: "bleed" | "card"
@@ -249,7 +254,7 @@ export function MealHero({
         </>
       ) : (
       <Link
-        href={cookHref(first.recipeId, servingsOf(ctx))}
+        href={cookHref(first.recipeId, servingsOf(ctx), { menuId: ctx.menuId, day: ctx.day, meal: ctx.meal })}
         className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-full bg-ink px-[22px] text-[15px] font-semibold text-cream transition-colors hover:bg-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink lg:flex-none"
       >
         <Play size={15} fill="currentColor" strokeWidth={0} />
@@ -264,6 +269,15 @@ export function MealHero({
         />
       )}
     </div>
+  )
+  const cookNowLink = isToday && !readOnly && (
+    <Link
+      href="/cocinar"
+      data-testid="menu-cook-now"
+      className="self-start text-[13px] text-ink-soft underline decoration-1 underline-offset-4 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+    >
+      ¿Otra cosa? Cocinar ahora
+    </Link>
   )
 
   const motionProps = {
@@ -299,6 +313,7 @@ export function MealHero({
           <div className="min-w-0 flex-1">{captionText}</div>
         </div>
         {captionActions}
+        {cookNowLink}
         {sheets}
       </motion.article>
     )
@@ -333,6 +348,7 @@ export function MealHero({
       >
         {captionText}
         {captionActions}
+        {cookNowLink}
       </div>
       {sheets}
     </motion.article>
@@ -565,12 +581,13 @@ export function AbsentMealSheets({
   const close = () => setOpen(null)
   return (
     <>
-      <MenuSheet open={open === "actions"} onClose={close} eyebrow={`${label} · ${dayName}`} title="Sin plato todavía">
+      <MenuSheet open={open === "actions"} onClose={close} eyebrow={`${label} · ${dayName}`} title="Sin plato todavía" sheet="no_hay">
         <div className="flex flex-col gap-0.5">
-          <SheetAction icon={Replace} label="Elegir receta" hint="Busca en el catálogo" onClick={() => setOpen("picker")} />
+          <SheetAction icon={Replace} label="Elegir receta" action="elegir_receta" hint="Busca en el catálogo" onClick={() => setOpen("picker")} />
           <SheetAction
             icon={Shuffle}
             label="Una al azar"
+            action="cambiar_azar"
             hint="Una receta que encaje con tu semana"
             disabled={isAdding}
             onClick={() => {
@@ -583,12 +600,14 @@ export function AbsentMealSheets({
               <SheetAction
                 icon={Snowflake}
                 label="Del congelador"
+                action="congelador"
                 hint="Un táper que ya tienes: no suma a la compra"
                 onClick={() => setOpen("freezer")}
               />
               <SheetAction
                 icon={Refrigerator}
                 label="Táper de la nevera"
+                action="taper_nevera"
                 hint="Ya cocinado, en la nevera: no suma a la compra"
                 onClick={() => setOpen("fridge")}
               />
@@ -642,7 +661,10 @@ export function SkippedDay({ readOnly, onUnskip }: { readOnly: boolean; onUnskip
       {!readOnly && (
         <button
           type="button"
-          onClick={onUnskip}
+          onClick={() => {
+            trackSheetAction("dia", "reactivar_dia")
+            onUnskip()
+          }}
           className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink"
         >
           <RotateCw size={14} /> Reactivar día
@@ -690,7 +712,10 @@ export function DayFooter({
       {canSkip && (
         <button
           type="button"
-          onClick={() => setConfirmSkip(true)}
+          onClick={() => {
+            trackSheetAction("dia", "saltar_dia")
+            setConfirmSkip(true)
+          }}
           className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-[14px] text-ink-mid transition-colors hover:bg-cream-deep hover:text-ink"
         >
           <CalendarX size={15} /> Saltar día
@@ -705,13 +730,14 @@ export function DayFooter({
         message="Se quitan sus platos, salvo los fijados. Con «Reactivar día» puedes volver a llenarlo."
         confirmLabel="Saltar día"
       />
-      <MenuSheet open={open} onClose={() => setOpen(false)} eyebrow="Solo afecta a esta semana" title={`Añadir comida al ${dayName}`}>
+      <MenuSheet open={open} onClose={() => setOpen(false)} eyebrow="Solo afecta a esta semana" title={`Añadir comida al ${dayName}`} sheet="dia">
         <div className="flex flex-col gap-0.5">
           {missing.map((m) => (
             <SheetAction
               key={m}
               icon={Plus}
               label={mealLabel(m)}
+              action="anadir_comida"
               disabled={isAdding}
               onClick={() => {
                 onAddMeal(m)
@@ -724,6 +750,7 @@ export function DayFooter({
               <SheetAction
                 icon={Snowflake}
                 label="Del congelador"
+                action="congelador"
                 hint="Un táper que ya tienes: no suma a la compra"
                 disabled={isAdding}
                 onClick={() => {
@@ -734,6 +761,7 @@ export function DayFooter({
               <SheetAction
                 icon={Refrigerator}
                 label="Táper de la nevera"
+                action="taper_nevera"
                 hint="Ya cocinado, en la nevera: no suma a la compra"
                 disabled={isAdding}
                 onClick={() => {
@@ -766,19 +794,22 @@ export function DayMeals({
   absent,
   slotProps,
   readOnly,
+  isToday = false,
 }: {
   featured: DaySlot | null
   rest: DaySlot[]
   absent?: AbsentMeals
   slotProps: SlotPropsFn
   readOnly: boolean
+  /** The day shown is today (the menu page knows it from its day strip). */
+  isToday?: boolean
 }) {
   return (
     <>
       {featured && (
         // data-first-steps: the dish the «Primeros pasos» guide lights up (PRO-07).
         <div data-first-steps="dish">
-          <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={readOnly} />
+          <MealHero {...slotProps(featured.meal, featured.slot)} readOnly={readOnly} isToday={isToday} />
         </div>
       )}
       <div className={`flex flex-col gap-3.5 ${featured ? "mt-3.5" : "mt-4"}`}>

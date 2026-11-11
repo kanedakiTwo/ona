@@ -281,7 +281,7 @@ export const createRecipeSchema = z.object({
 
   course: courseSchema.optional(),
 
-  ingredients: z.array(recipeIngredientWriteSchema).min(1),
+  ingredients: z.array(recipeIngredientWriteSchema).min(1, 'Añade al menos un ingrediente de la lista'),
   steps: z.array(recipeStepSchema).default([]),
 })
 

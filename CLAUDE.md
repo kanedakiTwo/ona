@@ -122,6 +122,7 @@ The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT
 
 ## Working principles
 
+- **If you see over-engineering, simplify** (Miguel, 2026-11-11, D-183). Build the least that solves the real problem; rare cases go to «out of this version»; from a review, apply only what prevents a real failure (losing data, breaking production, allergies, money). Say in one line what you dropped.
 - **Specs document what exists**, not aspirational features. If the code disagrees with a spec, fix the spec or the code — never ignore the divergence.
 - **Update specs when you change behavior** (see "Specs are a living document" above).
 - **Prefer the editorial design system** (`@theme` tokens in `globals.css`) for new UI: cream `#FAF6EE`, ink `#1A1612`, terracotta `#C65D38`, forest `#2D6A4F`, Fraunces + Cormorant + Inter.

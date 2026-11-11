@@ -272,6 +272,7 @@ export { ingredientCalories, recipeCalories, dayCalories, menuCalories } from '.
 export { ingredientNutrients, sumNutrients, nutrientsToPercentages, updateNutrientBalance, normalizeDeviation } from './utils/nutrients.js'
 export { firstMenuWeeks, pastDayIndexes } from './utils/firstMenuWeeks.js'
 export type { FirstMenuWeeks } from './utils/firstMenuWeeks.js'
+export { FOLD_FROM, foldIngredientName, hasSameIngredientName } from './utils/ingredientSearch.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
 export {
   SEASONAL_PRODUCE,
@@ -729,3 +730,5 @@ export { ISO_DAY_RE, isIsoDay, RECIPE_OF_THE_DAY_PHOTO_SIZES, RECIPE_OF_THE_DAY_
 export type { RecipeOfTheDayPhotoFormat, RecipeOfTheDayView } from './types/recipeOfTheDay.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'
 export { moveSlotInWeek, dishKey, slotKey, MENU_CHANGED_CODE } from './utils/menuSlots.js'
+export type { MenuSheetName, MenuSheetAction } from './constants/menuSheets.js'
+export { MENU_SHEETS, MENU_SHEET_ACTIONS, isMenuSheetAction } from './constants/menuSheets.js'

@@ -7,7 +7,7 @@
  * daily / weekly / funnel blocks and are unit-tested.
  */
 import { sql } from 'drizzle-orm'
-import { HOUSEHOLD_INVITE_SOURCES, isHouseholdInviteSource, type HouseholdInviteSource } from '@ona/shared'
+import { HOUSEHOLD_INVITE_SOURCES, MENU_SHEETS, isHouseholdInviteSource, isMenuSheetAction, type HouseholdInviteSource, type MenuSheetName } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
@@ -406,6 +406,34 @@ export function buildPropBreakdown(rows: readonly EventPropRow[]) {
   return out
 }
 
+export interface MenuSheetActionRow {
+  sheet: string
+  action: string
+  count: number
+}
+
+/**
+ * Pure (PRO-1174): `menu_sheet_action` in the window by sheet and option —
+ * every sheet of MENU_SHEETS (zeros included), its total and how many taps
+ * each option had, most tapped first. Rows outside the closed list are dropped.
+ */
+export function buildMenuSheetActions(rows: readonly MenuSheetActionRow[]) {
+  const out = Object.fromEntries(MENU_SHEETS.map((s) => [s, { total: 0, actions: {} as Record<string, number> }])) as Record<
+    MenuSheetName,
+    { total: number; actions: Record<string, number> }
+  >
+  for (const r of rows) {
+    if (!isMenuSheetAction(r.sheet, r.action)) continue
+    const cur = out[r.sheet]
+    cur.total += r.count
+    cur.actions[r.action] = (cur.actions[r.action] ?? 0) + r.count
+  }
+  for (const s of MENU_SHEETS) {
+    out[s].actions = Object.fromEntries(Object.entries(out[s].actions).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])))
+  }
+  return out
+}
+
 export interface MimoSkillRow {
   skill: string
   canal: string | null
@@ -477,6 +505,9 @@ export const BREAKDOWN_EVENTS = [
   'content_shared',
   'week_printed',
   'handsfree_started',
+  // PRO-1174: «al azar» or chosen (how), the meal or one dish (target); the menu's sheets by sheet and by action.
+  'meal_swapped',
+  'menu_sheet_action',
 ] as const
 
 export const USAGE_DEFINITIONS = {
@@ -494,7 +525,8 @@ export const USAGE_DEFINITIONS = {
   screens: 'PRO-120: screen_viewed per ISO week; each row is one person and screen and Madrid day (capped on the server), so views = people-days. top = the screens with views, most viewed first.',
   householdsBySystem:
     'PRO-307: active households of the window (see activeHouseholds) by the system of the last browser they came in with: the most recent usage event with a device (screen_viewed, from the day this shipped, 2026-10-22; or app_opened_installed) — android, ios (iPhone; iPadOS Safari says it is a Mac and counts as desktop), desktop, unknown (no such event: WhatsApp only, or no web visit since). Only that word is stored, never the browser string. Counts only.',
-  breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp) — and, since PRO-1024, the tricks\' events (menu_generated, shopping_list_viewed range, meal_adjusted, taper_set, leftover_dish_set, dish_added, template_changed, memory_set, recipe_rated, recipe_note_saved, favorite_toggled, recipe_photo_main, with_what_i_have_used, shopping_line_edited, staple_toggled, content_shared, week_printed, handsfree_started) — how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
+  breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp) — and, since PRO-1024, the tricks\' events (menu_generated, shopping_list_viewed range, meal_adjusted, taper_set, leftover_dish_set, dish_added, template_changed, memory_set, recipe_rated, recipe_note_saved, favorite_toggled, recipe_photo_main, with_what_i_have_used, shopping_line_edited, staple_toggled, content_shared, week_printed, handsfree_started) — and, since PRO-1174, meal_swapped (how: auto = «al azar», picked = chosen; target: meal or dish; from: receta) and menu_sheet_action (sheet, action; crossed in menuSheetActions) — how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
+  menuSheetActions: 'PRO-1174: menu_sheet_action in the window, the options tapped in the menu\'s «···» sheets, by sheet — comida (one dish), comida_varios (several dishes or a note), plato (each dish of that list), vacio (a meal with no dish), no_hay (a meal the day doesn\'t have), dia (the day\'s footer), semana (the week\'s sheet), semana_fila (a row of the week view) — with its total and the taps of each option (closed list MENU_SHEET_ACTIONS), most tapped first. A tap is counted when the option is tapped, before any confirmation. Web only. Counts only.',
   mimoSkills: 'PRO-1022: mimo_skill_used in the window, one row per Mimo tool (skill = the tool name) that returned data, most used first: total and by where the conversation was — web (chat in the app), whatsapp, telegram, voice. A tool that failed or found nothing (data null) leaves none. Counts only, never text.',
   ...GROWTH_DEFINITIONS,
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
@@ -595,6 +627,13 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       WHERE e.name = 'mimo_skill_used' AND e.props ? 'skill' AND e.created_at >= ${from} AND ${counted}
       GROUP BY 1, 2
   `)
+  // PRO-1174: the menu's sheets, by sheet and option. Counts only leave.
+  const menuSheetQ = db.execute(sql`
+    SELECT e.props->>'sheet' AS sheet, e.props->>'action' AS action, COUNT(*)::int AS count
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'menu_sheet_action' AND e.created_at >= ${from} AND ${counted}
+      GROUP BY 1, 2
+  `)
   // PRO-307: the last device seen per household (any time kept). Ids stay in this process: only counts leave.
   const lastDeviceQ = db.execute(sql`
     SELECT DISTINCT ON (e.household_id) e.household_id::text AS household_id, e.props->>'device' AS device
@@ -603,12 +642,13 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       ORDER BY e.household_id, e.created_at DESC
   `)
   const days = dayRange(fromDay, today)
-  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, growth] = await Promise.all([
+  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, menuSheetRows, growth] = await Promise.all([
     onboardingStepsQ,
     screensQ,
     breakdownQ,
     tasteCardsQ,
     mimoSkillsQ,
+    menuSheetQ,
     // PRO-379: the growth line, the trial today and time to the first menu. Counts only leave.
     loadGrowthReport({ includeInternal: inc, now }, db),
   ])
@@ -679,6 +719,9 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     tasteCards: Object.fromEntries((tasteCardRows.rows as any[]).map((r) => [String(r.action), Number(r.cards)])),
     mimoSkills: buildMimoSkills(
       (mimoSkillRows.rows as any[]).map((r) => ({ skill: String(r.skill), canal: r.canal ?? null, count: Number(r.count) })),
+    ),
+    menuSheetActions: buildMenuSheetActions(
+      (menuSheetRows.rows as any[]).map((r) => ({ sheet: String(r.sheet), action: String(r.action), count: Number(r.count) })),
     ),
     growth: growth.growth,
     trial: growth.trial,

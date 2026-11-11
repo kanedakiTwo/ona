@@ -128,9 +128,9 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
 
-  // The hero is today's featured meal and its CTA opens cook mode for it.
+  // The hero is today's featured meal and its CTA opens cook mode for it, with its menu slot (PRO-1108).
   const cook = hero.getByRole('link', { name: /empezar a cocinar/i })
-  await expect(cook).toHaveAttribute('href', new RegExp(`^/recipes/${expectedId}/cook\\?servings=\\d+$`))
+  await expect(cook).toHaveAttribute('href', new RegExp(`^/recipes/${expectedId}/cook\\?servings=\\d+&menu=${menu.id}&day=${todayIdx}&meal=\\w+$`))
   // …above the fold, clear of the tab bar.
   const viewport = page.viewportSize()!
   const box = (await cook.boundingBox())!
@@ -162,7 +162,7 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
 
   // Bottom tab bar: visible text labels, active tab marked.
   const nav = page.getByRole('navigation', { name: 'Navegación principal' })
-  for (const label of ['Menú', 'Compra', 'Recetas', 'Perfil']) {
+  for (const label of ['Menú', 'Cocinar', 'Compra', 'Recetas', 'Perfil']) {
     await expect(nav.getByText(label, { exact: true })).toBeVisible()
   }
   // Mimo is the floating button, not a tab (D-023).

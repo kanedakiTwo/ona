@@ -36,6 +36,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/admin/invite-campaigns',
   '/admin/invite-campaigns/:x',
   '/admin/menu-planner/comparison',
+  '/admin/menu-planner/gemelos',
   '/admin/metrics',
   '/admin/month-menus',
   '/admin/newsletter/drafts',

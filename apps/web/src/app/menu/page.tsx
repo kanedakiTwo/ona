@@ -49,6 +49,7 @@ import {
   useRegenerateDish,
   useAddRandomDish,
   useSetTaper,
+  useReplaceWithNote,
 } from "@/hooks/useMenu"
 import { useQueryLoad } from "@/components/profile/SubLoadError"
 import { useUser } from "@/hooks/useUser"
@@ -209,6 +210,7 @@ export default function MenuPage() {
   const regenerateDish = useRegenerateDish()
   const addRandomDish = useAddRandomDish()
   const setTaper = useSetTaper()
+  const replaceWithNote = useReplaceWithNote()
 
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
@@ -437,15 +439,10 @@ export default function MenuPage() {
             haptic.medium()
             setTaper.mutate({ ...base, on })
           },
+          // One request since 2026-11-10 (`PUT …/meal/:meal { note }`).
           replaceWithNote: (text) => {
             haptic.medium()
-            deleteMealSlot.mutate(base, {
-              onSuccess: () =>
-                addDish.mutate(
-                  { ...base, payload: { kind: "note", text } },
-                  { onSuccess: () => { if (slot.servings != null) updateSlotServings.mutate({ ...base, servings: slot.servings }) } },
-                ),
-            })
+            replaceWithNote.mutate({ ...base, text })
           },
         }
         return {

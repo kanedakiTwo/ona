@@ -177,7 +177,8 @@ test.describe('desktop', () => {
     await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
     const picker = page.getByTestId('recipe-picker')
     await picker.getByPlaceholder('Buscar receta…').fill(target.name)
-    await picker.getByRole('button', { name: new RegExp(`^${target.name}`) }).first().click()
+    // The list row: its name, then «Mimoia» / «tuya» (a name with «(» or «+» must not break a RegExp).
+    await picker.locator('ul li button').filter({ hasText: target.name }).first().click()
     // On screen while the request is still held.
     await expect(hero.getByRole('heading', { level: 2 })).toHaveText(target.name, { timeout: 1_500 })
     expect(release.length).toBe(1)
@@ -218,6 +219,124 @@ test.describe('desktop', () => {
     await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible({ timeout: 900 })
     await expect(page.getByTestId('menu-change-failed')).toContainText('No se ha podido guardar el cambio', { timeout: 10_000 })
     await expect(hero.locator('[data-extra-dish="Romanescu"]')).toHaveCount(0)
+  })
+
+  // 2026-11-10 review of the queue of changes.
+  test.describe('the queue of changes', () => {
+    async function lunchWithThreeDishes(page: Page) {
+      const ctx = await userWithFullWeek(page)
+      for (const text of ['Romanescu', 'Pan']) expect((await addNote(page, ctx.headers, ctx.week, ctx.d, 'lunch', text)).ok()).toBeTruthy()
+      return ctx
+    }
+    const serverLunch = async (page: Page, headers: Record<string, string>, week: Week, d: number) => {
+      const w: Week = await (await page.request.get(`${API}/menu/${week.userId}/${week.weekStart}`, { headers })).json()
+      return (w.days[d]?.lunch?.dishes ?? []).map((x) => (x.kind === 'note' ? x.text : 'receta'))
+    }
+
+    test('one fails: the ones behind it go back with it, never sent, and the page says how many', async ({ page }) => {
+      test.setTimeout(120_000)
+      const { week, headers, d } = await lunchWithThreeDishes(page)
+      // The first «Quitar» (Romanescu, position 1) fails after a while.
+      let first = true
+      await page.route(new RegExp(`/menu/${week.id}/day/${d}/meal/lunch/dish/\\d+`), async (route) => {
+        if (route.request().method() === 'DELETE' && first) {
+          first = false
+          await new Promise((r) => setTimeout(r, 1_500))
+          return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"Internal server error"}' })
+        }
+        await route.continue()
+      })
+      await page.goto(`/menu?day=${d}`)
+      const hero = page.getByTestId('menu-hero')
+      await expect(hero.locator('[data-extra-dish="Pan"]')).toBeVisible({ timeout: 20_000 })
+      await hero.getByRole('button', { name: 'Quitar «Romanescu»' }).click()
+      // On screen Pan is now position 1: removing it is queued behind.
+      await hero.getByRole('button', { name: 'Quitar «Pan»' }).click()
+      await expect(page.getByTestId('menu-change-failed')).toContainText('he deshecho 2 cambios', { timeout: 10_000 })
+      await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible()
+      await expect(hero.locator('[data-extra-dish="Pan"]')).toBeVisible()
+      await page.waitForLoadState('networkidle')
+      // The server removed nothing: «Quitar Pan» (position 1) never reached it to take Romanescu.
+      expect(await serverLunch(page, headers, week, d)).toEqual(['receta', 'Romanescu', 'Pan'])
+    })
+
+    test('a request that never answers gives up after 20 s and goes back', async ({ page }) => {
+      test.setTimeout(120_000)
+      const { week, d } = await lunchWithThreeDishes(page)
+      await page.route(new RegExp(`/menu/${week.id}/day/${d}/meal/lunch/dish/\\d+`), async (route) => {
+        if (route.request().method() === 'DELETE') return new Promise<void>(() => {})
+        await route.continue()
+      })
+      await page.goto(`/menu?day=${d}`)
+      const hero = page.getByTestId('menu-hero')
+      await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible({ timeout: 20_000 })
+      await hero.getByRole('button', { name: 'Quitar «Romanescu»' }).click()
+      await expect(hero.locator('[data-extra-dish="Romanescu"]')).toHaveCount(0)
+      await expect(page.getByTestId('menu-change-failed')).toContainText('No se ha podido guardar el cambio', { timeout: 30_000 })
+      await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible()
+    })
+
+    test('coming back to the window while a change is on its way doesn\'t paint the old week', async ({ page }) => {
+      test.setTimeout(120_000)
+      const { week, headers, d } = await userWithFullWeek(page)
+      const release: (() => void)[] = []
+      let holding = true
+      await page.route(new RegExp(`/menu/${week.id}/day/`), async (route) => {
+        if (holding && route.request().method() !== 'GET') await new Promise<void>((r) => release.push(r))
+        await route.continue()
+      })
+      await page.goto(`/menu?day=${d}`)
+      const hero = page.getByTestId('menu-hero')
+      await expect(hero).toBeVisible({ timeout: 20_000 })
+      await page.waitForTimeout(800)
+      await hero.getByRole('button', { name: /más opciones de comida/i }).click()
+      await page.getByRole('dialog').getByRole('button', { name: /^añadir plato$/i }).click()
+      await page.getByRole('button', { name: /añadir nota/i }).click()
+      await page.getByPlaceholder('Pan con tomate').fill('Romanescu')
+      await page.getByRole('button', { name: 'Añadir', exact: true }).click()
+      await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible({ timeout: 1_500 })
+      expect(release.length).toBe(1)
+      // Two minutes later the window gets the focus back: the week is stale.
+      const browserNow = await page.evaluate(() => Date.now())
+      await page.clock.setFixedTime(new Date(browserNow + 2 * 60_000))
+      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+      await page.waitForTimeout(1_500)
+      await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible()
+      const saved = page.waitForResponse((r) => r.request().method() === 'POST' && r.url().endsWith(`/day/${d}/meal/lunch/dish`))
+      holding = false
+      for (const r of release.splice(0)) r()
+      expect((await saved).status()).toBe(200)
+      await page.waitForLoadState('networkidle')
+      await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible()
+      const w: Week = await (await page.request.get(`${API}/menu/${week.userId}/${week.weekStart}`, { headers })).json()
+      expect(w.days[d]?.lunch?.dishes?.some((x) => x.kind === 'note' && x.text === 'Romanescu')).toBe(true)
+    })
+
+    test('«Usar "…" como plato» is one request and keeps «Solo hoy»', async ({ page }) => {
+      test.setTimeout(120_000)
+      const { week, headers, d } = await userWithFullWeek(page)
+      expect((await page.request.patch(`${API}/menu/${week.id}/day/${d}/meal/lunch`, { headers, data: { servings: 4 } })).ok()).toBeTruthy()
+      const writes: string[] = []
+      page.on('request', (r) => {
+        if (r.method() !== 'GET' && r.url().includes(`/menu/${week.id}/`)) writes.push(`${r.method()} ${new URL(r.url()).pathname}`)
+      })
+      await page.goto(`/menu?day=${d}`)
+      const hero = page.getByTestId('menu-hero')
+      await expect(hero).toBeVisible({ timeout: 20_000 })
+      await page.waitForTimeout(800)
+      await hero.getByRole('button', { name: /más opciones de comida/i }).click()
+      await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+      const picker = page.getByTestId('recipe-picker')
+      await picker.getByPlaceholder('Buscar receta…').fill('Cenamos fuera esta vez')
+      await picker.getByRole('button', { name: /como plato/ }).click()
+      await page.waitForLoadState('networkidle')
+      expect(writes).toEqual([`PUT /menu/${week.id}/day/${d}/meal/lunch`])
+      const w: Week & { days: Record<string, { servings?: number | null } | undefined>[] } = await (
+        await page.request.get(`${API}/menu/${week.userId}/${week.weekStart}`, { headers })
+      ).json()
+      expect(w.days[d]?.lunch?.dishes).toEqual([{ kind: 'note', text: 'Cenamos fuera esta vez' }])
+      expect((w.days[d]?.lunch as { servings?: number | null }).servings).toBe(4)
+    })
   })
 })
 

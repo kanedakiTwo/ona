@@ -50,6 +50,7 @@ import {
   useRegenerateDish,
   useAddRandomDish,
   useSetTaper,
+  useReplaceWithNote,
 } from "@/hooks/useMenu"
 import { useQueryLoad } from "@/components/profile/SubLoadError"
 import { useUser } from "@/hooks/useUser"
@@ -67,6 +68,7 @@ import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
+import { ChangeFailedNotice } from "@/components/menu/ChangeFailedNotice"
 import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
 import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
@@ -208,6 +210,7 @@ export default function MenuPage() {
   const regenerateDish = useRegenerateDish()
   const addRandomDish = useAddRandomDish()
   const setTaper = useSetTaper()
+  const replaceWithNote = useReplaceWithNote()
 
   // Household diner count — the fallback when a slot has no override.
   const { data: profile } = useUser(user?.id)
@@ -436,15 +439,10 @@ export default function MenuPage() {
             haptic.medium()
             setTaper.mutate({ ...base, on })
           },
+          // One request since 2026-11-10 (`PUT …/meal/:meal { note }`).
           replaceWithNote: (text) => {
             haptic.medium()
-            deleteMealSlot.mutate(base, {
-              onSuccess: () =>
-                addDish.mutate(
-                  { ...base, payload: { kind: "note", text } },
-                  { onSuccess: () => { if (slot.servings != null) updateSlotServings.mutate({ ...base, servings: slot.servings }) } },
-                ),
-            })
+            replaceWithNote.mutate({ ...base, text })
           },
         }
         return {
@@ -804,6 +802,7 @@ export default function MenuPage() {
         )}
         {weekSheet}
         {firstSteps}
+        <ChangeFailedNotice />
         <TasteIntroScreen />
         <PriceSurveySheet />
       </div>
@@ -973,6 +972,7 @@ export default function MenuPage() {
 
       {weekSheet}
       {firstSteps}
+      <ChangeFailedNotice />
       <TasteIntroScreen />
       <PriceSurveySheet />
     </div>

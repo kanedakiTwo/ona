@@ -8,7 +8,7 @@
  * settings the generator reads (one "Guardar cambios") and the account card.
  * Secondary actions sit behind "···" sheets (`MenuSheet`). 2–3 columns at lg+.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
@@ -58,16 +58,12 @@ import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
 import { MyRecipesSection } from './sections/MyRecipesSection'
-import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
-import { FixedMealsEditor } from '@/components/profile/FixedMealsEditor'
-import { firstMenuWeeks, plantillaEdits, plantillaFromWeekType, slotWithoutOptions, weekTypeDishLines, weekTypeSlotAt, type FixedMeal, type PlantillaView, type WeekTypeDays } from '@ona/shared'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { BasketConsentsCard } from '@/components/profile/BasketConsentsCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
-import type { Meal } from '@ona/shared'
 import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
@@ -90,25 +86,6 @@ interface Household {
   adults: number
   kidsCount: number
 }
-
-/**
- * Per-day meal template with diner counts.
- *
- * Each day maps a meal name ('desayuno' | 'almuerzo' | 'merienda' | 'cena')
- * to the number of diners for that slot (>= 1). Absence of the key means the
- * slot is off and won't be generated. The API normalizes either this shape or
- * the legacy `string[]` shape; we keep loading both for backwards compat but
- * always save the numeric one. See `extractMealDiners` in `menuGenerator.ts`.
- */
-interface MealTemplate {
-  [day: string]: Record<string, number>
-}
-
-const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-const DAYS_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-const DAY_LABELS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-const MEAL_LABELS: Record<Meal, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
-const MEALS = ['desayuno', 'almuerzo', 'merienda', 'cena'] as const
 
 const ACTIVITY_LABELS: Record<string, string> = {
   sedentary: 'Sedentario',
@@ -161,49 +138,6 @@ export default function ProfilePage() {
     restrictions: [], priority: 'balanced',
   })
   const [household, setHousehold] = useState<Household>({ adults: 2, kidsCount: 0 })
-  const [mealTemplate, setMealTemplate] = useState<MealTemplate>(() => {
-    // Default: 3 meals every day, 2 diners each — matches the previous on/off
-    // default ("desayuno, almuerzo, cena") but seeded with sensible counts so
-    // the menu generator can flow them into shopping-list quantities.
-    const t: MealTemplate = {}
-    for (const d of DAYS) t[d] = { desayuno: 2, almuerzo: 2, cena: 2 }
-    return t
-  })
-  const [mealDishCounts, setMealDishCounts] = useState<Partial<Record<Meal, 1 | 2 | 3>>>({})
-  // Comidas fijas (PRO-218): saved in the same blob as the plantilla.
-  const [fixedMeals, setFixedMeals] = useState<FixedMeal[]>([])
-  // PRO-223: days whose lunch is a táper of the dinner before (never Monday).
-  const [taperDays, setTaperDays] = useState<string[]>([])
-  // «Semana tipo» (D-182): the card above is a view of the household's week
-  // type; saving writes only the slots changed here (never the rest of it).
-  const weekTypeRef = useRef<{ days: WeekTypeDays; view: PlantillaView; defaultDiners: number } | null>(null)
-  // Its «platos fijos» (dish types, recipes, dishes written) shown as lines with «Quitar» until phase 2.
-  const [weekTypeDays, setWeekTypeDays] = useState<WeekTypeDays | null>(null)
-
-  /** Show the week type in the card (on load and after saving). */
-  const showWeekType = useCallback((days: WeekTypeDays, defaultDiners: number) => {
-    const view = plantillaFromWeekType(days, defaultDiners)
-    weekTypeRef.current = { days, view, defaultDiners }
-    setWeekTypeDays(days)
-    const grid: MealTemplate = {}
-    for (const day of DAYS) grid[day] = { ...(view.mealTemplate[day] ?? {}) }
-    setMealTemplate(grid)
-    setMealDishCounts({ ...view.mealDishCounts })
-    setFixedMeals(view.fixedMeals)
-    setTaperDays(view.taperDays.filter((d) => d !== 'lunes'))
-  }, [])
-
-  /** «Quitar» a plato fijo: that slot back to «Cualquier receta», at once. */
-  const removeWeekTypeDish = useCallback(async (day: number, meal: Meal) => {
-    const wt = weekTypeRef.current
-    if (!wt) return
-    const slot = slotWithoutOptions(weekTypeSlotAt(wt.days, day, meal))
-    const res = await api.put<{ days: WeekTypeDays }>(`/households/me/week-type/${day}/${meal}`, slot).catch(() => null)
-    if (res?.days) {
-      weekTypeRef.current = { ...wt, days: res.days }
-      setWeekTypeDays(res.days)
-    }
-  }, [])
   const [restrictionInput, setRestrictionInput] = useState('')
   // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
@@ -254,8 +188,7 @@ export default function ProfilePage() {
     Promise.all([
       api.get<any>(`/user/${user.id}/settings`).catch(() => null),
       api.get<{ restrictions?: string[]; adults?: number; kidsCount?: number }>(`/user/${user.id}`).catch(() => null),
-      api.get<{ days: WeekTypeDays }>(`/households/me/week-type`).catch(() => null),
-    ]).then(([data, account, weekType]) => {
+    ]).then(([data, account]) => {
       // The account, not the copy kept in this browser: Mimo may have noted
       // the kids since (2026-10-22: a tester's profile said 0 niños).
       if (typeof account?.adults === 'number' && account.adults > 0) {
@@ -265,12 +198,8 @@ export default function ProfilePage() {
       if (blob?.physical) setPhysical(blob.physical)
       const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
       setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
-      if (weekType?.days) {
-        const defaultDiners = Math.max(1, (account?.adults ?? user.adults ?? 2) + Math.ceil((account?.kidsCount ?? user.kidsCount ?? 0) * 0.5))
-        showWeekType(weekType.days, defaultDiners)
-      }
     }).catch(() => {})
-  }, [user, showWeekType])
+  }, [user])
 
   // Hydrate household sizing from the user object (already includes
   // adults + kidsCount after the 0005 migration). Falls back to the
@@ -317,42 +246,6 @@ export default function ProfilePage() {
 
   function removeRestriction(value: string) {
     setPreferences((p) => ({ ...p, restrictions: p.restrictions.filter((r) => r !== value) }))
-  }
-
-  const defaultDinersForCell = useMemo(() => {
-    return Math.max(
-      1,
-      (household.adults ?? 2) + Math.ceil((household.kidsCount ?? 0) * 0.5),
-    )
-  }, [household.adults, household.kidsCount])
-
-  function adjustMealDiners(day: string, meal: string, delta: number) {
-    setMealTemplate((prev) => {
-      const cur = prev[day] ?? {}
-      const has = Object.prototype.hasOwnProperty.call(cur, meal)
-      const current = has ? cur[meal] : 0
-      // First tap on an off cell seeds the household default rather than 1, so
-      // the typical user (couple, family) doesn't have to spam +.
-      const next = has
-        ? Math.max(0, Math.min(24, current + delta))
-        : delta > 0
-          ? defaultDinersForCell
-          : 0
-      const nextCell: Record<string, number> = { ...cur }
-      if (next > 0) nextCell[meal] = next
-      else delete nextCell[meal]
-      return { ...prev, [day]: nextCell }
-    })
-  }
-
-  function clearMealDiners(day: string, meal: string) {
-    setMealTemplate((prev) => {
-      const cur = prev[day] ?? {}
-      if (!Object.prototype.hasOwnProperty.call(cur, meal)) return prev
-      const nextCell: Record<string, number> = { ...cur }
-      delete nextCell[meal]
-      return { ...prev, [day]: nextCell }
-    })
   }
 
   const handleSave = useCallback(async () => {
@@ -409,24 +302,12 @@ export default function ProfilePage() {
           ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave } }
           : { preferences: { ...preferences, restrictions: [] } },
       }))
-      // «Semana tipo» (D-182): only the slots changed in the plantilla card.
-      const wt = weekTypeRef.current
-      if (wt) {
-        const after: PlantillaView = { mealTemplate, mealDishCounts, fixedMeals, taperDays }
-        const edits = plantillaEdits(wt.days, wt.view, after, firstMenuWeeks().weeks[0])
-        calls.push((async () => {
-          let days = wt.days
-          for (const e of edits) days = (await api.put<{ days: WeekTypeDays }>(`/households/me/week-type/${e.day}/${e.meal}`, e.slot)).days
-          // What the week type says now (a slot only a comida fija had turned on is «no hay» again).
-          if (edits.length) showWeekType(days, wt.defaultDiners)
-        })())
-      }
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, updateUser, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive, needsReligion, showWeekType])
+  }, [user, updateUser, physical, preferences, household, healthActive, needsReligion])
 
 
   if (authLoading || !user) {
@@ -437,7 +318,6 @@ export default function ProfilePage() {
     )
   }
 
-  const activeMeals = Object.values(mealTemplate).reduce((n, day) => n + Object.keys(day).length, 0)
   const showWhatsApp = Boolean(whatsapp.data?.available || whatsapp.data?.linked)
 
   return (
@@ -752,140 +632,13 @@ export default function ProfilePage() {
           </div>
 
           <div className="grid gap-3 lg:gap-4">
-            {/* Plantilla semanal */}
-            <ProfileCard
+            {/* «Tu semana tipo» (D-182): its own page. */}
+            <ProfileHubLink
+              href="/profile/semana-tipo"
               icon={CalendarDays}
-              title="Plantilla semanal"
-              status={`${activeMeals} ${activeMeals === 1 ? 'comida' : 'comidas'} a la semana`}
-            >
-              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
-                Qué comidas incluye tu menú cada día y para cuántos comensales.
-                Toca <span className="font-mono">+</span> para activar (parte con tu
-                casa por defecto, <span className="tabular-nums">{defaultDinersForCell}</span>),
-                <span className="font-mono"> −</span> para bajar y dejar la celda
-                vacía para apagarla.
-              </p>
-
-              <div className="mt-4">
-                <MealDishCountControls value={mealDishCounts} onChange={setMealDishCounts} />
-              </div>
-
-              <div className="mt-4 overflow-hidden rounded-2xl border border-border-soft bg-paper">
-                <div className="grid grid-cols-[36px_1fr_1fr_1fr_1fr]">
-                  <div />
-                  {MEALS.map((m) => (
-                    <div key={m} className="border-l border-border-soft py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
-                      {m === 'desayuno' ? 'Des' : m === 'almuerzo' ? 'Com' : m === 'merienda' ? 'Mer' : 'Cen'}
-                    </div>
-                  ))}
-                  {DAYS.map((day, di) => (
-                    <div key={day} className="contents">
-                      <div className="flex items-center justify-center border-t border-border-soft">
-                        <span className="font-serif-text text-[15px] font-[650] text-ink" title={day}>
-                          {DAYS_SHORT[di]}
-                        </span>
-                      </div>
-                      {MEALS.map((meal) => {
-                        const count = mealTemplate[day]?.[meal] ?? 0
-                        const active = count > 0
-                        return (
-                          <div
-                            key={meal}
-                            className={`flex min-h-[44px] items-stretch border-l border-t border-border-soft ${
-                              active ? 'bg-ink text-cream' : 'bg-transparent'
-                            }`}
-                          >
-                            {active ? (
-                              <div className="flex w-full items-center justify-between">
-                                <button
-                                  type="button"
-                                  onClick={() => adjustMealDiners(day, meal, -1)}
-                                  className="flex h-11 w-7 shrink-0 items-center justify-center transition-colors hover:bg-cream/15"
-                                  aria-label={`Menos comensales en ${meal} ${day}`}
-                                >
-                                  <Minus size={12} />
-                                </button>
-                                <span className="text-[13px] font-medium tabular-nums">{count}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => adjustMealDiners(day, meal, 1)}
-                                  disabled={count >= 24}
-                                  className="flex h-11 w-7 shrink-0 items-center justify-center transition-colors hover:bg-cream/15 disabled:opacity-30"
-                                  aria-label={`Más comensales en ${meal} ${day}`}
-                                >
-                                  <Plus size={12} />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => adjustMealDiners(day, meal, 1)}
-                                className="flex w-full items-center justify-center text-ink-muted transition-colors hover:bg-cream-deep"
-                                aria-label={`Activar ${meal} el ${day}`}
-                              >
-                                <Plus size={14} />
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <FixedMealsEditor value={fixedMeals} onChange={setFixedMeals} />
-
-              {/* PRO-223 · «El táper de mañana» on fixed days. */}
-              <div className="mt-4" role="group" aria-label="Días de táper">
-                <div className="text-[14px] font-medium text-ink">Días de táper</div>
-                <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-                  Los días que comes fuera y te llevas la cena de la víspera: esa cena se hace con una ración más.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {DAYS.slice(1).map((day, i) => {
-                    const on = taperDays.includes(day)
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        aria-pressed={on}
-                        aria-label={`Táper el ${day}`}
-                        onClick={() => setTaperDays((prev) => (on ? prev.filter((d) => d !== day) : [...prev, day]))}
-                        className={`min-h-[40px] min-w-[40px] rounded-full border px-3 text-[13px] ${
-                          on ? 'border-ink bg-ink text-cream' : 'border-border bg-paper text-ink-mid'
-                        }`}
-                      >
-                        {DAYS_SHORT[i + 1]}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              {/* «Semana tipo» (D-182): its fixed dishes, until «Tu semana tipo» (phase 2). */}
-              {weekTypeDishLines(weekTypeDays).length > 0 && (
-                <div className="mt-4" role="group" aria-label="Platos fijos">
-                  <div className="text-[14px] font-medium text-ink">Platos fijos</div>
-                  <ul className="mt-1">
-                    {weekTypeDishLines(weekTypeDays).map((l) => (
-                      <li key={`${l.day}-${l.meal}`} className="flex min-h-[44px] items-center justify-between gap-3 border-t border-border-soft text-[13px] text-ink">
-                        <span>
-                          {DAY_LABELS[l.day]} · {MEAL_LABELS[l.meal]}: {l.label}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeWeekTypeDish(l.day, l.meal)}
-                          aria-label={`Quitar ${l.label} del ${DAY_LABELS[l.day].toLowerCase()}`}
-                          className="min-h-[40px] px-2 text-[13px] text-ink-mid underline underline-offset-2 hover:text-ink"
-                        >
-                          Quitar
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </ProfileCard>
+              title="Tu semana tipo"
+              status="Lo que soléis comer cada día: el menú sale de ahí"
+            />
 
             {/* Recordatorios */}
             <ProfileCard

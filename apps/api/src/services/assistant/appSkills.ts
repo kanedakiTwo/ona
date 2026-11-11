@@ -1400,7 +1400,7 @@ export function applyTemplateChange(
 const updateWeeklyTemplate: SkillDefinition = {
   name: 'update_weekly_template',
   description:
-    'Cambia la plantilla semanal fija del perfil (afecta a los proximos menus): cuantos comensales hay en una comida ciertos dias (diners; 0 = esa comida no se planifica, ej. "entre semana no comemos en casa") y/o cuantos platos lleva esa comida (dishes 1-3, ej. "quiero primero y segundo en la comida").',
+    'Cambia en la semana tipo del hogar los comensales de una comida en varios dias a la vez (diners; 0 = esa comida no se planifica, ej. "entre semana no comemos en casa") y/o cuantos platos lleva esa comida (dishes 1-3, ej. "quiero primero y segundo en la comida"). Afecta a los proximos menus. Para lo que se come un dia y una comida (un plato, un tipo, turnos, "cada dos semanas") o para quitar una comida de un dia ("quita el desayuno del domingo"), usa set_week_type_slot.',
   parameters: {
     type: 'object',
     properties: {

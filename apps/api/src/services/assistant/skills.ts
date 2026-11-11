@@ -45,6 +45,7 @@ import { fichaSkills } from './fichaSkills.js'
 import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
+import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
 import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
@@ -3181,6 +3182,8 @@ export const skills: SkillDefinition[] = [
   ...fixedMealSkills,
   // PRO-223: «mañana me llevo táper».
   ...taperSkills,
+  // «Semana tipo» por Mimo (D-182 fase 3, specs/advisor.md):
+  ...weekTypeSkills,
   // Menú del cole (PRO-224, specs/menus.md):
   ...schoolMenuSkills,
   // PRO-228: «Sí, mételo» al repaso mensual del congelador.

@@ -1,19 +1,12 @@
 # Cook from Pantry
 
-**Status:** retired (PRO-1108, 2026-11-11). The card on `/menu`, `GET /recipes/match-pantry` and `services/pantryMatcher.ts` are gone; «Con lo que tienes» moves to the «Cocinar» tab, on the «Cocinar ahora» search (`services/cookNow/*`, plan `docs/superpowers/plans/2026-11-03-cocinar-ahora.md`). What follows is what it did, for history.
+**Status:** retired (PRO-1108, 2026-11-11). The card on `/menu`, `GET /recipes/match-pantry` and `services/pantryMatcher.ts` are gone; «Con lo que tienes» lives in the «Cocinar» tab (PRO-1107), on the «Cocinar ahora» search ([Cook now](./cook-now.md), `services/cookNow/*`, plan `docs/superpowers/plans/2026-11-03-cocinar-ahora.md`). What follows is what it did, for history.
 
-"Lo que puedes cocinar con lo que tienes" — given the household pantry (PR 11), rank every catalogue recipe by how much of it the household already has on hand. The top 3 surface as a small card on `/menu`.
+"Lo que puedes cocinar con lo que tienes" — given the household pantry (PR 11), rank every catalogue recipe by how much of it the household already has on hand. Until 2026-11-11 the top 3 surfaced as a small card on `/menu`.
 
 ## User Capabilities
 
-- An authed user with a non-empty pantry sees a "Con lo que tienes · Puedes cocinar esto" card on `/menu` below the day's meals (since the 2026-10-08 redesign the first screen is today's food).
-- The card lists the top 3 recipes by pantry coverage, each as a row:
-  - thumbnail
-  - recipe name
-  - `<matched>/<total> ingredientes` + total time (when known)
-  - coverage percentage badge (right side)
-- Tap a row → goes to `/recipes/[id]`.
-- When the pantry is empty or no recipe matches at all, the card hides entirely (no empty state — the user doesn't need yet another "go fill your pantry" prompt).
+- Nothing on screen any more. Until 2026-11-11 an authed user with a non-empty pantry saw a "Con lo que tienes · Puedes cocinar esto" card on `/menu` (top 3 by coverage, `<matched>/<total> ingredientes`, a percentage, tap → `/recipes/[id]`). Since PRO-1107 the «Con lo que tienes» card is in the «Cocinar» tab and uses `POST /cook-now/proposal` ([Cook now](./cook-now.md)).
 
 ## Scoring
 
@@ -60,4 +53,4 @@ type PantryMatchHit = {
 
 ## Source
 
-Retired in PRO-1108: no code left. Its successor lives in `apps/api/src/services/cookNow/` and `apps/web/src/app/cocinar/page.tsx`.
+Retired in PRO-1108: no code left. Its successor lives in `apps/api/src/services/cookNow/`, `apps/web/src/app/cocinar/page.tsx` and `apps/web/src/components/cocinar/PantryMatchCard.tsx` (PRO-1107).

@@ -60,7 +60,7 @@ import { useMimo } from '@/components/mimo/MimoProvider'
 import { MyRecipesSection } from './sections/MyRecipesSection'
 import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
 import { FixedMealsEditor } from '@/components/profile/FixedMealsEditor'
-import { firstMenuWeeks, plantillaEdits, plantillaFromWeekType, type FixedMeal, type PlantillaView, type WeekTypeDays } from '@ona/shared'
+import { firstMenuWeeks, plantillaEdits, plantillaFromWeekType, slotWithoutOptions, weekTypeDishLines, weekTypeSlotAt, type FixedMeal, type PlantillaView, type WeekTypeDays } from '@ona/shared'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
@@ -106,6 +106,8 @@ interface MealTemplate {
 
 const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
 const DAYS_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+const DAY_LABELS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+const MEAL_LABELS: Record<Meal, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
 const MEALS = ['desayuno', 'almuerzo', 'merienda', 'cena'] as const
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -174,7 +176,34 @@ export default function ProfilePage() {
   const [taperDays, setTaperDays] = useState<string[]>([])
   // «Semana tipo» (D-182): the card above is a view of the household's week
   // type; saving writes only the slots changed here (never the rest of it).
-  const weekTypeRef = useRef<{ days: WeekTypeDays; view: PlantillaView } | null>(null)
+  const weekTypeRef = useRef<{ days: WeekTypeDays; view: PlantillaView; defaultDiners: number } | null>(null)
+  // Its «platos fijos» (dish types, recipes, dishes written) shown as lines with «Quitar» until phase 2.
+  const [weekTypeDays, setWeekTypeDays] = useState<WeekTypeDays | null>(null)
+
+  /** Show the week type in the card (on load and after saving). */
+  const showWeekType = useCallback((days: WeekTypeDays, defaultDiners: number) => {
+    const view = plantillaFromWeekType(days, defaultDiners)
+    weekTypeRef.current = { days, view, defaultDiners }
+    setWeekTypeDays(days)
+    const grid: MealTemplate = {}
+    for (const day of DAYS) grid[day] = { ...(view.mealTemplate[day] ?? {}) }
+    setMealTemplate(grid)
+    setMealDishCounts({ ...view.mealDishCounts })
+    setFixedMeals(view.fixedMeals)
+    setTaperDays(view.taperDays.filter((d) => d !== 'lunes'))
+  }, [])
+
+  /** «Quitar» a plato fijo: that slot back to «Cualquier receta», at once. */
+  const removeWeekTypeDish = useCallback(async (day: number, meal: Meal) => {
+    const wt = weekTypeRef.current
+    if (!wt) return
+    const slot = slotWithoutOptions(weekTypeSlotAt(wt.days, day, meal))
+    const res = await api.put<{ days: WeekTypeDays }>(`/households/me/week-type/${day}/${meal}`, slot).catch(() => null)
+    if (res?.days) {
+      weekTypeRef.current = { ...wt, days: res.days }
+      setWeekTypeDays(res.days)
+    }
+  }, [])
   const [restrictionInput, setRestrictionInput] = useState('')
   // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
@@ -238,17 +267,10 @@ export default function ProfilePage() {
       setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
       if (weekType?.days) {
         const defaultDiners = Math.max(1, (account?.adults ?? user.adults ?? 2) + Math.ceil((account?.kidsCount ?? user.kidsCount ?? 0) * 0.5))
-        const view = plantillaFromWeekType(weekType.days, defaultDiners)
-        weekTypeRef.current = { days: weekType.days, view }
-        const grid: MealTemplate = {}
-        for (const day of DAYS) grid[day] = { ...(view.mealTemplate[day] ?? {}) }
-        setMealTemplate(grid)
-        setMealDishCounts({ ...view.mealDishCounts })
-        setFixedMeals(view.fixedMeals)
-        setTaperDays(view.taperDays.filter((d) => d !== 'lunes'))
+        showWeekType(weekType.days, defaultDiners)
       }
     }).catch(() => {})
-  }, [user])
+  }, [user, showWeekType])
 
   // Hydrate household sizing from the user object (already includes
   // adults + kidsCount after the 0005 migration). Falls back to the
@@ -395,7 +417,8 @@ export default function ProfilePage() {
         calls.push((async () => {
           let days = wt.days
           for (const e of edits) days = (await api.put<{ days: WeekTypeDays }>(`/households/me/week-type/${e.day}/${e.meal}`, e.slot)).days
-          weekTypeRef.current = { days, view: after }
+          // What the week type says now (a slot only a comida fija had turned on is «no hay» again).
+          if (edits.length) showWeekType(days, wt.defaultDiners)
         })())
       }
       await Promise.all(calls)
@@ -403,7 +426,7 @@ export default function ProfilePage() {
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, updateUser, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive, needsReligion])
+  }, [user, updateUser, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive, needsReligion, showWeekType])
 
 
   if (authLoading || !user) {
@@ -839,6 +862,29 @@ export default function ProfilePage() {
                   })}
                 </div>
               </div>
+              {/* «Semana tipo» (D-182): its fixed dishes, until «Tu semana tipo» (phase 2). */}
+              {weekTypeDishLines(weekTypeDays).length > 0 && (
+                <div className="mt-4" role="group" aria-label="Platos fijos">
+                  <div className="text-[14px] font-medium text-ink">Platos fijos</div>
+                  <ul className="mt-1">
+                    {weekTypeDishLines(weekTypeDays).map((l) => (
+                      <li key={`${l.day}-${l.meal}`} className="flex min-h-[44px] items-center justify-between gap-3 border-t border-border-soft text-[13px] text-ink">
+                        <span>
+                          {DAY_LABELS[l.day]} · {MEAL_LABELS[l.meal]}: {l.label}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeWeekTypeDish(l.day, l.meal)}
+                          aria-label={`Quitar ${l.label} del ${DAY_LABELS[l.day].toLowerCase()}`}
+                          className="min-h-[40px] px-2 text-[13px] text-ink-mid underline underline-offset-2 hover:text-ink"
+                        >
+                          Quitar
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </ProfileCard>
 
             {/* Recordatorios */}

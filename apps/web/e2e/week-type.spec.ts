@@ -63,6 +63,15 @@ test('saving the profile keeps the week type and writes only the slot changed in
   await page.getByRole('button', { name: /guardar cambios/i }).click()
   await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
   expect(await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).toEqual(wt)
+
+  // «Platos fijos»: Friday's pizza is a line with «Quitar», and «Quitar» leaves that dinner free.
+  const fixed = page.getByRole('group', { name: 'Platos fijos' })
+  await expect(fixed).toContainText('Viernes · cena: Pizza')
+  await fixed.getByRole('button', { name: 'Quitar Pizza del viernes' }).click()
+  await expect(fixed).toHaveCount(0)
+  const after = await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()
+  expect(after.days[4].dinner.options).toBeUndefined()
+  expect(after.days[0].lunch.diners).toBe(before + 1)
 })
 
 test('a generated week follows the week type two weeks running', async ({ page }) => {

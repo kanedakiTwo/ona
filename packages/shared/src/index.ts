@@ -266,6 +266,8 @@ export {
   PLANTILLA_MEALS,
   plantillaFromWeekType,
   plantillaEdits,
+  weekTypeDishLines,
+  slotWithoutOptions,
 } from './types/weekType.js'
 export type { WeekTypeOption, WeekTypeSlot, WeekTypeDays, PlantillaView } from './types/weekType.js'
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'

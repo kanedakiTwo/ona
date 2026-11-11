@@ -37,6 +37,12 @@ export interface WeekTypeSlot {
   dishes?: 1 | 2 | 3
   /** Monday (YYYY-MM-DD) of the week it was saved: that week takes the first option. */
   since?: string
+  /**
+   * The slot was «no hay» and only something fixed (a comida fija) turned it
+   * on: when that goes, it is «no hay» again (removing a fixed breakfast
+   * never brings a breakfast to the menu).
+   */
+  offWhenFree?: boolean
 }
 
 /** Index 0 = Monday … 6 = Sunday. A meal missing from a day takes `defaultWeekTypeSlot`. */
@@ -59,6 +65,7 @@ export const weekTypeSlotSchema = z.object({
   diners: z.number().int().min(1).max(24).optional(),
   dishes: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   since: isoDate.optional(),
+  offWhenFree: z.boolean().optional(),
 })
 
 /** Lunch and dinner every day; breakfast and snack are opt-in (as the generator's default plantilla). */
@@ -166,7 +173,8 @@ export function plantillaFromWeekType(days: WeekTypeDays | null | undefined, def
       mealTemplate[dayKey][PLANTILLA_MEALS[m]] = slot.diners ?? defaultDiners
       if (slot.dishes && slot.dishes > 1 && !mealDishCounts[m]) mealDishCounts[m] = slot.dishes
       const options = slot.options ?? []
-      const fixed = options.length === 1 && options[0].kind === 'fixed' ? options[0] : null
+      // A comida fija carries what it has per person; a dish written with nothing is a «plato fijo» (weekTypeDishes).
+      const fixed = options.length === 1 && options[0].kind === 'fixed' && options[0].items.length > 0 ? options[0] : null
       if (fixed) {
         const prev = fixedByMeal.get(m)
         if (!prev) fixedByMeal.set(m, { meal: m, days: [dayKey], label: fixed.label, items: fixed.items.map((i) => ({ ...i })) })
@@ -197,6 +205,7 @@ export function plantillaEdits(
       const countBefore = before.mealTemplate[dayKey]?.[PLANTILLA_MEALS[m]] ?? 0
       const countAfter = after.mealTemplate[dayKey]?.[PLANTILLA_MEALS[m]] ?? 0
       if (countBefore !== countAfter) {
+        delete next.offWhenFree
         if (countAfter > 0) {
           delete next.off
           next.diners = countAfter
@@ -214,10 +223,16 @@ export function plantillaEdits(
       const fixedBefore = fixedMealFor(before.fixedMeals, d, m)
       const fixedAfter = fixedMealFor(after.fixedMeals, d, m)
       if (JSON.stringify(fixedBefore) !== JSON.stringify(fixedAfter)) {
-        options = options.filter((o) => o.kind !== 'fixed')
+        options = options.filter((o) => o.kind !== 'fixed' || o.items.length === 0)
         if (fixedAfter) {
           options = [{ kind: 'fixed', label: fixedAfter.label, items: fixedAfter.items.map((i) => ({ ...i })) }]
+          if (next.off) next.offWhenFree = true
           delete next.off
+        } else if (fixedBefore && next.offWhenFree && options.length === 0) {
+          // Only the comida fija had turned it on: «no hay» again.
+          next.off = true
+          delete next.diners
+          delete next.offWhenFree
         }
       }
       if (m === 'lunch' && before.taperDays.includes(dayKey) !== after.taperDays.includes(dayKey)) {
@@ -228,10 +243,38 @@ export function plantillaEdits(
         if (options.length) next.options = options
         else delete next.options
         if (options.length < 2) delete next.together
-        next.since = weekStart
+        if (options.length) next.since = weekStart
+        else delete next.since
       }
       if (stableSlotJson(next) !== stableSlotJson(prev)) out.push({ day: d, meal: m, slot: next })
     }
   })
   return out
+}
+
+/**
+ * Pure (phase 1 only): the slots whose options the plantilla card doesn't
+ * show — dish types, concrete recipes, dishes written with nothing, turns —
+ * as one line each («Viernes · cena: Pizza»), so they can be removed there
+ * until «Tu semana tipo» (phase 2).
+ */
+export function weekTypeDishLines(days: WeekTypeDays | null | undefined): Array<{ day: number; meal: Meal; label: string }> {
+  const out: Array<{ day: number; meal: Meal; label: string }> = []
+  for (let d = 0; d < 7; d++) {
+    for (const m of MEALS) {
+      const slot = weekTypeSlotAt(days, d, m)
+      const options = slot.options ?? []
+      if (slot.off || options.length === 0) continue
+      const shown = options.length === 1 && ((options[0].kind === 'fixed' && options[0].items.length > 0) || options[0].kind === 'taper')
+      if (shown) continue
+      out.push({ day: d, meal: m, label: options.map(weekTypeOptionLabel).join(slot.together ? ' + ' : ' / ') })
+    }
+  }
+  return out
+}
+
+/** Pure: the slot without its options (back to «Cualquier receta», or «no hay» if only they turned it on). */
+export function slotWithoutOptions(slot: WeekTypeSlot): WeekTypeSlot {
+  const { options: _o, together: _t, since: _s, offWhenFree, ...rest } = slot
+  return offWhenFree ? { ...rest, off: true } : rest
 }

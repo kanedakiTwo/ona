@@ -42,6 +42,7 @@ import {
   type LetterFacts,
   type NewsletterLetterRepo,
 } from './newsletterLetter.js'
+import { numbersBlock, numbersSentence, type HouseholdNumbers, type NumbersBlock } from './newsletterNumbers.js'
 import {
   ACCENT,
   BODY,
@@ -89,6 +90,9 @@ import {
  *     «corre_la_voz» (`newsletterStats.ts`).
  *   - Every account gets its own recipe and tip (PRO-1020, `newsletterTips.ts`),
  *     counted in the slots «receta» and «truco» and logged in `newsletter_tip_log`.
+ *   - Every account with something done in the week (or the month) gets «Tu
+ *     semana con Mimoia» (PRO-1199, `newsletterNumbers.ts`): only figures that
+ *     aren't zero; nothing at all → no block. Never the waitlist.
  */
 
 // ─── Content ─────────────────────────────────────────────────────
@@ -268,15 +272,33 @@ function correLaVozBlock(share: CorreLaVoz, inviteLine: string): string {
   )
 }
 
+/** «Tu semana con Mimoia» (PRO-1199): a paper card with the household's figures, one per line. */
+function numbersBlockHtml(b: NumbersBlock): string {
+  const lines = b.lines
+    .map(
+      (l) =>
+        `<tr><td style="padding:0 10px 8px 0;vertical-align:top;font-family:${SANS};font-size:15px;line-height:1.5;color:${TERRACOTTA};">·</td><td style="padding:0 0 8px;font-family:${SANS};font-size:15px;line-height:1.5;color:${INK};">${esc(l)}</td></tr>`,
+    )
+    .join('')
+  return row(
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${PAPER};border:1px solid ${BORDER_SOFT};border-radius:16px;"><tr><td style="padding:22px 22px 14px;">
+<p style="${EYEBROW}color:${TERRACOTTA_DEEP};">${esc(b.title)}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">${lines}</table>
+</td></tr></table>`,
+    '0 28px 28px',
+  )
+}
+
 /**
  * The visual newsletter, on the shared brand shell (emailBrand.ts): masthead
  * with the logo → greeting (optional) → headline → letter → the star recipe's photo full width →
- * sections → cards → «Corre la voz» → signature → footer band. Absolute image URLs with `alt`.
- * `unsubscribeUrl`, `leaveListUrl` and `share` are per recipient.
+ * «Tu semana con Mimoia» (accounts, PRO-1199) → sections → cards → «Corre la voz» → signature →
+ * footer band. Absolute image URLs with `alt`.
+ * `unsubscribeUrl`, `leaveListUrl`, `share` and `numbers` are per recipient.
  */
 export function renderNewsletterEmail(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
-  links: { unsubscribeUrl: string; leaveListUrl?: string; share?: CorreLaVoz; now?: Date } & BrandAssets,
+  links: { unsubscribeUrl: string; leaveListUrl?: string; share?: CorreLaVoz; numbers?: NumbersBlock | null; now?: Date } & BrandAssets,
 ): { html: string; text: string } {
   const c = input.content
   const inviteLine = newsletterInviteLine(links.now)
@@ -301,6 +323,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
       c.headline ? headlineRow(c.headline) : '',
       intro,
       star,
+      links.numbers ? numbersBlockHtml(links.numbers) : '',
       ...(c.sections ?? []).map(sectionBlock),
       c.news ? sideBlock(`Novedad en ${BRAND_NAME}`, c.news) : '',
       c.tip ? sideBlock(`Un truco con ${ASSISTANT_NAME}`, c.tip) : '',
@@ -329,6 +352,7 @@ ${button(c.cta.label, c.cta.url, '6px 28px 38px')}`
     '',
     `${c.cta.label}: ${c.cta.url}`,
     '',
+    ...(links.numbers ? [links.numbers.title.toUpperCase(), ...links.numbers.lines.map((l) => `· ${l}`), ''] : []),
     ...(c.sections ?? []).flatMap((s) => [
       ...(s.label || s.title ? [[s.label?.toUpperCase(), s.title].filter(Boolean).join(': ')] : []),
       ...(s.quote ? [`«${s.quote}»`] : []),
@@ -822,6 +846,8 @@ export function withPersonalPick(
 export interface PersonalLetter {
   name: string | null
   reason: string
+  /** PRO-1199: «Tu semana con Mimoia» (accounts only); null = nothing to say, no block. */
+  numbers?: NumbersBlock | null
 }
 
 export const GENERIC_LETTER: PersonalLetter = { name: null, reason: reasonLine(EMPTY_LETTER_FACTS, undefined, new Date()) }
@@ -830,15 +856,16 @@ export const GENERIC_LETTER: PersonalLetter = { name: null, reason: reasonLine(E
  * PRO-1123: Miguel's template filled in for one person: `{nombre}`,
  * `{receta}` (the recipe they get, after `withPersonalPick`) and `{porque}`
  * in the subject, the preheader, the letter (greeting, headline, intro,
- * signoff, small print), the star's text and the sections. A template without
- * placeholders comes out as written.
+ * signoff, small print), the star's text and the sections; PRO-1199:
+ * `{numeros}`, the household's figures in one sentence (gone without them).
+ * A template without placeholders comes out as written.
  */
 export function withPersonalLetter(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   letter: PersonalLetter = GENERIC_LETTER,
 ): Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'> {
   const c = input.content
-  const vars = { name: letter.name, recipe: c.star.title, reason: letter.reason }
+  const vars = { name: letter.name, recipe: c.star.title, reason: letter.reason, numbers: numbersSentence(letter.numbers) }
   const f = (s: string) => fillLetter(s, vars)
   const opt = (s: string | undefined) => (s === undefined ? undefined : f(s))
   return {
@@ -858,6 +885,11 @@ export function withPersonalLetter(
   }
 }
 
+/** PRO-1199: does the template carry `{numeros}` anywhere? Then the block doesn't go: the letter says it. */
+export function usesNumbersPlaceholder(input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>): boolean {
+  return [input.subject, input.preheader ?? '', JSON.stringify(input.content)].some((t) => t.includes('{numeros}'))
+}
+
 export function buildNewsletterMessage(
   input: Pick<NewsletterSendInput, 'subject' | 'preheader' | 'content'>,
   to: string,
@@ -875,7 +907,9 @@ export function buildNewsletterMessage(
   const share = tokens.referralCode ? correLaVozLinks(web, tokens.referralCode, tokens.inviteKind ?? 'lista', track) : undefined
   const oneClick = `${api}/newsletter/unsubscribe?t=${encodeURIComponent(tokens.token)}${issueId ? `&i=${encodeURIComponent(issueId)}` : ''}`
   const personal = withPersonalLetter({ ...input, content: withPersonalPick(input.content, pick, web, track) }, letter)
-  const { html, text } = renderNewsletterEmail(personal, { unsubscribeUrl, leaveListUrl, share, ...brandAssets(web) })
+  // When Miguel's letter already says them (`{numeros}`), the block doesn't repeat them.
+  const numbers = letter?.numbers && !usesNumbersPlaceholder(input) ? letter.numbers : null
+  const { html, text } = renderNewsletterEmail(personal, { unsubscribeUrl, leaveListUrl, share, numbers, ...brandAssets(web) })
   return {
     to,
     subject: personal.subject,
@@ -974,6 +1008,7 @@ async function composeLetters(
   const accountIds = recipients.flatMap((r) => (r.source === 'user' && r.userId ? [r.userId] : []))
   let facts = new Map<string, LetterFacts>()
   let seasons = new Map<string, string[]>()
+  let numbers = new Map<string, HouseholdNumbers>()
   if (deps.letters) {
     try {
       facts = await deps.letters.accountFacts(accountIds, now)
@@ -984,12 +1019,23 @@ async function composeLetters(
       facts = new Map()
       seasons = new Map()
     }
+    // PRO-1199: a failure here only leaves out the figures.
+    if (deps.letters.numbers && accountIds.length > 0) {
+      try {
+        numbers = await deps.letters.numbers(accountIds, now)
+      } catch (err: any) {
+        console.warn('[newsletter] no household figures (no «Tu semana» block):', err?.message ?? err)
+        numbers = new Map()
+      }
+    }
   }
   const out = new Map<string, PersonalLetter>()
   for (const r of recipients) {
     const f = (r.source === 'user' ? (r.userId ? facts.get(r.userId) : undefined) : r.letter) ?? EMPTY_LETTER_FACTS
     const recipeId = r.userId ? choices.get(r.userId)?.pick.recipe?.recipeId : undefined
-    out.set(r.hash, { name: f.firstName, reason: reasonLine(f, recipeId ? seasons.get(recipeId) : undefined, now) })
+    // Only accounts have figures; the waitlist never gets the block.
+    const n = r.source === 'user' && r.userId ? numbersBlock(numbers.get(r.userId)) : null
+    out.set(r.hash, { name: f.firstName, reason: reasonLine(f, recipeId ? seasons.get(recipeId) : undefined, now), numbers: n })
   }
   return out
 }

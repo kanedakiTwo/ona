@@ -189,6 +189,8 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/register',
   '/school-menu',
   '/school-menu/read',
+  '/sean-ellis',
+  '/sean-ellis/dismiss',
   '/shop-extension/consent',
   '/shop-extension/consent/:x',
   '/shop-extension/status',

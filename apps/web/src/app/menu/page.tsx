@@ -17,6 +17,7 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { SeanEllisCard } from "@/components/menu/SeanEllisCard"
 import { AutoplanCard } from "@/components/menu/AutoplanCard"
 import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
@@ -778,6 +779,7 @@ export default function MenuPage() {
                 <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
+                <SeanEllisCard />
                 {favoritesNotice}
                 {statusCard}
               </>
@@ -823,6 +825,7 @@ export default function MenuPage() {
             <AfinaNoticeCard />
             <TasteMenuCard />
             <WhatsAppNudgeCard />
+            <SeanEllisCard />
             {statusCard}
           </div>
         )}
@@ -859,6 +862,7 @@ export default function MenuPage() {
       <AfinaNoticeCard />
       <TasteMenuCard />
       <WhatsAppNudgeCard />
+      <SeanEllisCard />
 
       {!showWeekGrid && (
         <WeekStrip

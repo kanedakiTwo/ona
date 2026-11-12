@@ -304,6 +304,7 @@ describe('feedbackForAgents', () => {
       byChannel: { whatsapp: 1, app: 3 },
       byPage: { none: 1, '/recipes/:x': 1, otra: 1, '/entrar/:x': 1 },
       byTag: {},
+      seanEllis: {},
       possibleAllergies: [{ date: '2026-10-21', channel: 'whatsapp' }],
     })
     expect(JSON.stringify(v)).not.toMatch(/celíaca|encanta|AbCdEf/)

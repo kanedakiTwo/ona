@@ -14,6 +14,7 @@ import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, N
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
+import { noteAutoplanReply } from '../weeklyAutoplan.js'
 import { recordServiceMessageCost } from './serviceCost.js'
 import { needsReturnDisclosure, withReturnDisclosure } from './aiNotice.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
@@ -886,6 +887,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         ...(images ? { photo: true } : {}),
       },
     })
+    // PRO-382: a reply to «tu semana ya está hecha» → autoplan_accepted / autoplan_changed.
+    noteAutoplanReply(userId, response.toolsUsed ?? [], now)
     await out('reply', await replyMessages(response, userId, deps, lastSentButtons(rows)))
     if ((response.toolsUsed ?? []).includes('complete_onboarding') && link.onboardingDone === false) {
       // First menu done: health data goes to the web (with consent), then the
@@ -1029,10 +1032,13 @@ async function handleSchoolMenu(
 /** How long after the Sunday message a bare photo still answers «¿Qué te queda en la nevera?». */
 export const FRIDGE_PHOTO_WINDOW_MS = 12 * 60 * 60 * 1000
 
-/** True when the last thing Mimo sent (in the rows given) is the Sunday planning message. */
+/** Mimo's messages about next week: the Sunday planning one and, since PRO-382, «tu semana ya está hecha». */
+const WEEK_PLANNING_KINDS: ReadonlySet<string> = new Set(['weekly_nudge', 'weekly_autoplan'])
+
+/** True when the last thing Mimo sent (in the rows given) is about planning next week. */
 export function askedForFridge(rows: ReadonlyArray<{ direction?: string | null; kind?: string | null; status?: string | null }>): boolean {
   const lastOut = [...rows].reverse().find((r) => r.direction === 'out' && r.status !== 'failed' && r.kind !== 'ack')
-  return lastOut?.kind === 'weekly_nudge'
+  return WEEK_PLANNING_KINDS.has(lastOut?.kind ?? '')
 }
 
 async function handleImage(

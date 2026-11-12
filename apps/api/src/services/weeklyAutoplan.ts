@@ -296,7 +296,7 @@ export const defaultAutoplanDeps: AutoplanDeps = {
 interface AutoplanRow {
   id: string
   userId: string
-  payload: { menuId?: string; viewedBy?: string[]; changed?: boolean } & Record<string, unknown>
+  payload: { menuId?: string; viewedBy?: string[]; changed?: boolean; noticeAt?: string; answered?: boolean } & Record<string, unknown>
 }
 
 async function loadAutoplanRow(scopeKey: string, weekStart: string): Promise<AutoplanRow | null> {
@@ -378,10 +378,13 @@ export function noteAutoplanChange(userId: string | null | undefined, weekStart:
     const scope = await resolveScope(userId)
     const row = await loadAutoplanRow(scope.value, weekStart)
     if (!row?.payload.menuId || row.payload.changed) return
-    await db
+    // Conditional: the reply to «tu semana ya está hecha» (PRO-382) may note the same change.
+    const marked = await db
       .update(notificationSchedule)
       .set({ payload: sql`${notificationSchedule.payload} || '{"changed": true}'::jsonb` })
-      .where(eq(notificationSchedule.id, row.id))
+      .where(and(eq(notificationSchedule.id, row.id), sql`NOT (${notificationSchedule.payload} ? 'changed')`))
+      .returning({ id: notificationSchedule.id })
+    if (marked.length === 0) return
     trackEvent('autoplan_changed', { userId, channel, props: { week: weekStart } })
   })().catch((err) => console.warn('[autoplan] change note failed (ignored):', err?.message ?? err))
 }
@@ -393,4 +396,58 @@ export function noteAutoplanChangeForMenu(menuId: string, userId: string | null 
     const [m] = await db.select({ weekStart: menus.weekStart }).from(menus).where(eq(menus.id, menuId)).limit(1)
     if (m?.weekStart) noteAutoplanChange(userId, String(m.weekStart), channel, now)
   })().catch((err) => console.warn('[autoplan] change note failed (ignored):', err?.message ?? err))
+}
+
+// ─── The reply to «tu semana ya está hecha» (PRO-382) ──────────────
+
+/** Mimo's tools that change a week's menu: a reply that used one asked for a change. */
+export const AUTOPLAN_CHANGE_TOOLS: ReadonlySet<string> = new Set([
+  'swap_meal',
+  'add_dish',
+  'remove_dish',
+  'clear_meal',
+  'move_meal',
+  'set_meal_note',
+  'set_meal_servings',
+  'set_day_skipped',
+  'set_leftovers',
+  'add_freezer_dish',
+  'ban_recipe_this_week',
+  'generate_weekly_menu',
+])
+
+/** Pure: «vale» or anything that changed nothing → accepted; a change through Mimo's tools → changed. */
+export function autoplanReplyOutcome(toolsUsed: readonly string[]): 'accepted' | 'changed' {
+  return toolsUsed.some((t) => AUTOPLAN_CHANGE_TOOLS.has(t)) ? 'changed' : 'accepted'
+}
+
+/**
+ * A WhatsApp message right after «tu semana ya está hecha» (the last thing
+ * Mimo sent that person): the first reply is `autoplan_accepted`, or
+ * `autoplan_changed` when Mimo changed the week with it. Once per household
+ * and week, before its Monday. Never throws, never blocks.
+ */
+export function noteAutoplanReply(userId: string, toolsUsed: readonly string[], now: Date = new Date()): void {
+  if (process.env.VITEST) return
+  const { due, weekStart } = autoplanDue(now)
+  if (!due) return
+  ;(async () => {
+    const scope = await resolveScope(userId)
+    const row = await loadAutoplanRow(scope.value, weekStart)
+    if (!row?.payload.noticeAt || row.payload.answered) return
+    const res: any = await db.execute(sql`
+      SELECT kind FROM whatsapp_messages
+       WHERE user_id = ${userId}::uuid AND direction = 'out' AND status <> 'failed' AND kind <> 'ack' AND created_at <= ${now.toISOString()}::timestamptz
+       ORDER BY created_at DESC LIMIT 1
+    `)
+    if (((res.rows ?? res) as Array<{ kind: string }>)[0]?.kind !== 'weekly_autoplan') return
+    const marked = await db
+      .update(notificationSchedule)
+      .set({ payload: sql`${notificationSchedule.payload} || '{"answered": true}'::jsonb` })
+      .where(and(eq(notificationSchedule.id, row.id), sql`NOT (${notificationSchedule.payload} ? 'answered')`))
+      .returning({ id: notificationSchedule.id })
+    if (marked.length === 0) return
+    if (autoplanReplyOutcome(toolsUsed) === 'changed') noteAutoplanChange(userId, weekStart, 'whatsapp', now)
+    else trackEvent('autoplan_accepted', { userId, channel: 'whatsapp', props: { week: weekStart } })
+  })().catch((err) => console.warn('[autoplan] reply note failed (ignored):', err?.message ?? err))
 }

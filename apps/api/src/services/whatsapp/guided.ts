@@ -44,6 +44,7 @@ export const GUIDED_KINDS = [
   'dinner_checkin',
   'shopping_reminder',
   'weekly_nudge',
+  'weekly_autoplan',
   'first_steps',
   'freezer_review',
 ] as const
@@ -94,6 +95,15 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
       'La pregunta de si le preparas el menú de la semana que viene y, tal cual, las preguntas de antes de planificar («¿Alguna comida fuera de casa esta semana?», «¿Viene alguien?» y «¿Qué te queda en la nevera?»), diciendo que puede contestarlas con sus palabras (o con una foto de la nevera) y que solo cambian esa semana.',
     tone: 'Dos o tres frases, de domingo tranquilo, sin presionar.',
     maxChars: 520,
+    asks: true,
+  },
+  // PRO-382 (D-158): the Thursday week, already made (weeklyAutoplan.ts → autoplanNotice.ts).
+  weekly_autoplan: {
+    purpose: 'Decir que la semana que viene ya está hecha.',
+    mustCarry:
+      'Las fechas de la semana tal cual, 3 o 4 platos por su nombre exacto, que la lista de la compra también está lista y que conteste «vale» o lo que quiera cambiar (por ejemplo, «cámbiame el jueves»).',
+    tone: 'De jueves tranquilo, sin presión: la semana ya está, solo si quiere cambiar algo.',
+    maxChars: 500,
     asks: true,
   },
   freezer_review: {
@@ -232,7 +242,8 @@ export function validateGuided(
   if (healthClaimWords(t).length > 0 || talksHealthEffects(t)) return { ok: false, reason: 'health' }
   const allowed = new Set([...(fallback.match(URL_RE) ?? []), ...spec.required.flatMap((r) => r.match(URL_RE) ?? [])].map(trimUrl))
   for (const u of t.match(URL_RE) ?? []) if (!allowed.has(trimUrl(u))) return { ok: false, reason: 'unknown_link' }
-  if (guide.asks && !t.includes('?')) return { ok: false, reason: 'no_question' }
+  // A link's `?` (`/menu?week=…`, PRO-382) is not a question.
+  if (guide.asks && !t.replace(URL_RE, ' ').includes('?')) return { ok: false, reason: 'no_question' }
   if (/^["«“]|["»”]$/.test(t)) return { ok: false, reason: 'quoted' }
   const seen = new Set(previous.flatMap(sentencesOf))
   if (sentencesOf(t).some((s) => seen.has(s))) return { ok: false, reason: 'repeats' }

@@ -49,6 +49,7 @@ import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
 import { runWeeklyAutoplanIfDue } from './weeklyAutoplan.js'
+import { sendAutoplanNoticesIfDue } from './autoplanNotice.js'
 import { recordPendingReferralRewardsIfDue } from './referralRewards.js'
 import { purgeOldUsageEventsIfDue } from './usageEvents.js'
 import { runFeatureUsagePassIfDue } from './featureUsage.js'
@@ -753,6 +754,14 @@ async function tickOnce(): Promise<true> {
     if (a && (a.generated || a.failed)) console.log(`[autoplan] ${a.weekStart}: ${a.generated} semanas hechas, ${a.failed} fallidas, omitidos ${JSON.stringify(a.skipped)}`)
   } catch (err) {
     console.error('[notificationScheduler] weekly autoplan failed:', err)
+  }
+  // PRO-382: and tell the household, once, by the first channel that gets through.
+  try {
+    const n = await sendAutoplanNoticesIfDue(now)
+    if (n && (n.dropped || n.failed || Object.values(n.sent).some(Boolean)))
+      console.log(`[autoplan] avisos ${n.weekStart}: enviados ${JSON.stringify(n.sent)}, tope ${n.dropped}, fallidos ${n.failed}, omitidos ${n.skipped}`)
+  } catch (err) {
+    console.error('[notificationScheduler] autoplan notices failed:', err)
   }
 
   // PRO-1023: uso de cada función por hogar, desde los eventos de ayer

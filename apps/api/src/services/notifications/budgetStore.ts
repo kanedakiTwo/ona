@@ -141,7 +141,7 @@ export async function recordNotices(row: {
   budgetKey: string
   userId: string
   entries: readonly NoticeLogEntry[]
-  channel: 'whatsapp' | 'push' | 'both' | null
+  channel: 'whatsapp' | 'push' | 'email' | 'both' | null
   now: Date
 }): Promise<void> {
   if (row.entries.length === 0) return

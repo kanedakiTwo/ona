@@ -10,6 +10,7 @@ import {
   TERRACOTTA,
   brandAssets,
   button,
+  buttonPair,
   emailDocument,
   esc,
   footerBand,
@@ -194,7 +195,11 @@ export interface BrandEmail {
   paragraphs: string[]
   /** A short numbered list after the paragraphs («Para empezar»). */
   steps?: string[]
+  /** PRO-382: label · value lines in a paper card (the week's days and dishes). */
+  table?: Array<{ label: string; value: string }>
   button?: { label: string; url: string }
+  /** PRO-382: a second call to action next to `button` (outlined). */
+  secondButton?: { label: string; url: string }
   /** Paragraphs after the button (e.g. how the link works). */
   after?: string[]
   /** «Un abrazo,» before the signer's name. */
@@ -229,6 +234,22 @@ export function renderBrandEmail(e: BrandEmail): { html: string; text: string } 
         '4px 28px 26px',
       )
     : ''
+  const table = e.table?.length
+    ? row(
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${PAPER};border:1px solid ${BORDER_SOFT};border-radius:16px;"><tr><td style="padding:14px 22px;">${e.table
+          .map(
+            (r, k) =>
+              `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${k > 0 ? ` style="border-top:1px dashed ${BORDER_SOFT};"` : ''}><tr><td width="110" valign="top" style="padding:9px 0;font-family:${SANS};font-size:13px;line-height:1.5;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:${MUTED};">${esc(r.label)}</td><td valign="top" style="padding:9px 0;font-family:${SANS};font-size:16px;line-height:1.5;color:${INK};">${esc(r.value)}</td></tr></table>`,
+          )
+          .join('')}</td></tr></table>`,
+        '4px 28px 26px',
+      )
+    : ''
+  const cta = e.button
+    ? e.secondButton
+      ? buttonPair(e.button, e.secondButton, '6px 28px 16px')
+      : button(e.button.label, e.button.url, '6px 28px 26px')
+    : ''
   const html = emailDocument(
     plainHeadline(e.heading),
     e.preheader,
@@ -237,7 +258,8 @@ export function renderBrandEmail(e: BrandEmail): { html: string; text: string } 
       headlineRow(e.heading),
       body(e.paragraphs, '24px 28px 6px'),
       steps,
-      e.button ? button(e.button.label, e.button.url, '6px 28px 26px') : '',
+      table,
+      cta,
       body(e.after ?? [], '0 28px 6px'),
       signature(e.signoff, e.from, '10px 28px 40px'),
       footerBand(assets, [
@@ -251,7 +273,9 @@ export function renderBrandEmail(e: BrandEmail): { html: string; text: string } 
     '',
     ...e.paragraphs.flatMap((t) => [t, '']),
     ...(e.steps?.length ? [...e.steps.map((t, k) => `${k + 1}. ${t}`), ''] : []),
+    ...(e.table?.length ? [...e.table.map((r) => `${r.label}: ${r.value}`), ''] : []),
     ...(e.button ? [`${e.button.label}: ${e.button.url}`, ''] : []),
+    ...(e.secondButton ? [`${e.secondButton.label}: ${e.secondButton.url}`, ''] : []),
     ...(e.after ?? []).flatMap((t) => [t, '']),
     ...(e.signoff ? [e.signoff] : []),
     ...(e.from ? [e.from.name, ...(e.from.role ? [e.from.role] : [])] : []),

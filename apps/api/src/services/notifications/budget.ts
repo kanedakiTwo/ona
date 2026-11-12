@@ -25,7 +25,8 @@ export const WEEKLY_NOTICE_BUDGET = 4
 
 /**
  * 1 = no fix if forgotten (defrost, soak, temper, start cooking) and the
- *     Sunday nudge (PRO-1076: without it the week isn't planned);
+ *     Thursday «la semana ya está hecha» (PRO-382, in the Sunday nudge's
+ *     place: PRO-1076);
  * 2 = food that goes off (expiry dates, leftovers, freezer);
  * 3 = helps to plan (shopping, questions before planning);
  * 4 = everything else.
@@ -40,9 +41,12 @@ export type NoticePriority = 1 | 2 | 3 | 4
 export const NOTICE_PRIORITY: Readonly<Record<string, NoticePriority>> = {
   prep_alerts: 1,
   cooking_reminder: 1,
-  // PRO-1076 (D-146): week of 19-oct, 11 Sunday nudges possible, 0 sent.
-  weekly_nudge: 1,
+  // PRO-382 (D-158): «vuestra semana ya está hecha» takes the Sunday nudge's
+  // seat (PRO-1076): without it the household doesn't know the week is done.
+  weekly_autoplan: 1,
   // 2: caducidades, sobras, congelador (no proactive kind yet).
+  // The Sunday nudge, now only for whoever switched the autopilot off: helps to plan.
+  weekly_nudge: 3,
   shopping_reminder: 3,
   dinner_checkin: 4,
   daily_brief: 4,

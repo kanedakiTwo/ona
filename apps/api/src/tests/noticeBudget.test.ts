@@ -25,7 +25,8 @@ describe('priorities', () => {
     expect(WEEKLY_NOTICE_BUDGET).toBe(4)
     expect(noticePriority('prep_alerts')).toBe(1)
     expect(noticePriority('cooking_reminder')).toBe(1)
-    expect(noticePriority('weekly_nudge')).toBe(1) // PRO-1076
+    expect(noticePriority('weekly_autoplan')).toBe(1) // PRO-382, in the Sunday nudge's seat (PRO-1076)
+    expect(noticePriority('weekly_nudge')).toBe(3)
     expect(noticePriority('shopping_reminder')).toBe(3)
     expect(noticePriority('dinner_checkin')).toBe(4)
     expect(noticePriority('something_new')).toBe(4)
@@ -176,23 +177,25 @@ describe('prep alerts of one moment', () => {
     })
   })
 })
-describe('the Sunday nudge goes out (PRO-1076, D-146)', () => {
+describe('«la semana ya está hecha» goes out (PRO-382, in the seat PRO-1076 gave the Sunday nudge)', () => {
   const sunday = new Date('2026-10-25T17:30:00Z') // Sunday 18:30 Madrid
   // Three units spent this week; a cooking reminder is still known for tonight.
   const lastUnit = state({ used: 3, reservedP1: 1 })
 
-  it('with 4 units and a dinner_checkin pending, the weekly_nudge takes the last one', () => {
+  it('with 4 units and a dinner_checkin pending, the weekly_autoplan takes the last one', () => {
     expect(planMoment([{ kind: 'dinner_checkin' }], lastUnit).send).toHaveLength(0)
-    const plan = planMoment([{ kind: 'weekly_nudge' }], lastUnit)
-    expect(plan.send.map((c) => c.kind)).toEqual(['weekly_nudge'])
+    // The Sunday nudge (only without the autopilot) no longer jumps the reserve.
+    expect(planMoment([{ kind: 'weekly_nudge' }], lastUnit).send).toHaveLength(0)
+    const plan = planMoment([{ kind: 'weekly_autoplan' }], lastUnit)
+    expect(plan.send.map((c) => c.kind)).toEqual(['weekly_autoplan'])
     expect(plan.counts).toBe(true)
-    expect(logEntriesFor(plan, 'ok')).toEqual([{ kind: 'weekly_nudge', priority: 1, outcome: 'enviado', counted: true }])
+    expect(logEntriesFor(plan, 'ok')).toEqual([{ kind: 'weekly_autoplan', priority: 1, outcome: 'enviado', counted: true }])
   })
 
   it('in the same moment as a dinner_checkin it leads the message and spends one unit', () => {
-    const plan = planMoment([{ kind: 'dinner_checkin' }, { kind: 'weekly_nudge' }], lastUnit)
-    expect(plan.send.map((c) => c.kind)).toEqual(['weekly_nudge', 'dinner_checkin'])
-    expect(logEntriesFor(plan, 'ok').filter((e) => e.counted)).toEqual([{ kind: 'weekly_nudge', priority: 1, outcome: 'enviado', counted: true }])
+    const plan = planMoment([{ kind: 'dinner_checkin' }, { kind: 'weekly_autoplan' }], lastUnit)
+    expect(plan.send.map((c) => c.kind)).toEqual(['weekly_autoplan', 'dinner_checkin'])
+    expect(logEntriesFor(plan, 'ok').filter((e) => e.counted)).toEqual([{ kind: 'weekly_autoplan', priority: 1, outcome: 'enviado', counted: true }])
   })
 
   it('outside the 24 h window it goes by its template (simulated)', () => {
@@ -201,7 +204,7 @@ describe('the Sunday nudge goes out (PRO-1076, D-146)', () => {
     expect(route).toEqual({ delivery: 'template', template: 'plantilla_simulada_plan_semana' })
     // Inside the window it stays free-form.
     expect(deliveryFor('weekly_nudge', new Date(sunday.getTime() - 3600_000), sunday, { weekly_nudge: 'x' }, '').delivery).toBe('session')
-    const plan = planMoment([{ kind: 'weekly_nudge' }], lastUnit)
+    const plan = planMoment([{ kind: 'weekly_nudge' }], state({ used: 3 }))
     expect(logEntriesFor(plan, momentDelivery({ status: 'ok' }, null).delivery)[0]).toMatchObject({ outcome: 'enviado', counted: true })
   })
 
@@ -209,8 +212,8 @@ describe('the Sunday nudge goes out (PRO-1076, D-146)', () => {
     const lastInbound = new Date(sunday.getTime() - 3 * 24 * 3600_000)
     expect(deliveryFor('weekly_nudge', lastInbound, sunday, { daily_brief: 'mimoia_menu_de_hoy' }, '')).toEqual({ delivery: 'skip', template: null })
     const out = momentDelivery({ status: 'skipped', error: 'outside-24h-window' }, null)
-    expect(logEntriesFor(planMoment([{ kind: 'weekly_nudge' }], lastUnit), out.delivery)).toEqual([
-      { kind: 'weekly_nudge', priority: 1, outcome: 'fuera_ventana', counted: false },
+    expect(logEntriesFor(planMoment([{ kind: 'weekly_nudge' }], state({ used: 3 })), out.delivery)).toEqual([
+      { kind: 'weekly_nudge', priority: 3, outcome: 'fuera_ventana', counted: false },
     ])
   })
 })

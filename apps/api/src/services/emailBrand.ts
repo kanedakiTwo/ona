@@ -92,6 +92,16 @@ export function button(label: string, url: string, padding = '6px 28px 34px'): s
   )
 }
 
+/**
+ * PRO-382: two calls to action side by side (they wrap on a phone): the first
+ * is the forest pill, the second the same pill in outline.
+ */
+export function buttonPair(primary: { label: string; url: string }, secondary: { label: string; url: string }, padding = '6px 28px 34px'): string {
+  const pill = (b: { label: string; url: string }, filled: boolean) =>
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;margin:0 10px 10px 0;"><tr><td style="${filled ? `background:${FOREST};` : `border:1.5px solid ${FOREST};`}border-radius:999px;"><a href="${esc(b.url)}" style="display:inline-block;padding:${filled ? '15px 30px' : '13.5px 28.5px'};font-family:${SANS};font-size:16px;font-weight:600;color:${filled ? CREAM : FOREST};text-decoration:none;">${esc(b.label)}</a></td></tr></table>`
+  return row(`${pill(primary, true)}${pill(secondary, false)}`, padding)
+}
+
 /** Logo (linked home) + an eyebrow line + an optional second line, over a thin rule. */
 export function masthead(assets: BrandAssets, eyebrow?: string, subline?: string): string {
   const logo = assets.logoUrl

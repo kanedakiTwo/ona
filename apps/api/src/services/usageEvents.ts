@@ -86,6 +86,8 @@ export const USAGE_EVENTS = [
   'autoplan_generated',
   'autoplan_viewed',
   'autoplan_changed',
+  // PRO-382: the reply to «tu semana ya está hecha» without a change («vale»).
+  'autoplan_accepted',
   // «Cocinar ahora» (PRO-1106, specs/cook-now.md): the four questions answered, a proposal chosen.
   'cook_now_proposed',
   'cook_now_chosen',

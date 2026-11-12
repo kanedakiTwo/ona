@@ -12,7 +12,9 @@
  *     it on. If that also fails, the alert stays as not sent.
  *
  * Email carries only account and legal messages (welcome, password, invites,
- * newsletter, trial day 12, the notice 15 days before the first charge). The
+ * newsletter, trial day 12, the notice 15 days before the first charge), and
+ * «vuestra semana ya está hecha» (PRO-382, `autoplanNotice.ts`) when neither
+ * WhatsApp nor the phone notification can carry it. The
  * founder offer (first resolved week or day 10, PRO-384) is in the app plus ONE message: WhatsApp if it gets
  * through, otherwise email (`founderOffer.ts`).
  */
@@ -49,10 +51,10 @@ export function channelsFor(kind: ProactiveKind, whatsapp: WhatsAppAlertState): 
   return PUSH_WITHOUT_WHATSAPP.has(kind) ? ['push'] : []
 }
 
-export interface DeliveryResult {
+export interface DeliveryResult<C extends string = AlertChannel> {
   status: 'sent' | 'failed'
   /** The channel that delivered it, null when none did. */
-  channel: AlertChannel | null
+  channel: C | null
   errorMessage: string | null
 }
 
@@ -61,10 +63,10 @@ export interface DeliveryResult {
  * runs only when the previous failed or was skipped (never both). A sender that
  * throws counts as an error.
  */
-export async function deliverInOrder(
-  channels: readonly AlertChannel[],
-  send: Record<AlertChannel, () => Promise<ChannelOutcome>>,
-): Promise<DeliveryResult> {
+export async function deliverInOrder<C extends string = AlertChannel>(
+  channels: readonly C[],
+  send: Record<C, () => Promise<ChannelOutcome>>,
+): Promise<DeliveryResult<C>> {
   const errors: string[] = []
   for (const ch of channels) {
     let out: ChannelOutcome

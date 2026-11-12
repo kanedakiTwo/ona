@@ -47,7 +47,7 @@ Every paid provider call writes one row — user (nullable), household (user's p
 | `assistant_chat` (web chat turn, all tool rounds) | Anthropic Opus 5.5 (`ASSISTANT_MODEL` = `CLAUDE_MODEL`, since 2026-10-19, PRO-232; Sonnet 5.5 from 2026-10-12, Haiku 4.5 before) | user |
 | `whatsapp_chat` | Anthropic Opus 5.5 (same model as the web chat) | user (WhatsApp turn) |
 | `telegram_chat` | Anthropic Opus 5.5 (same model as the web chat) | user (Telegram turn, PRO-313; channel off today) |
-| `voice_note_transcription` (WhatsApp voice notes) | The first that works of Groq `GROQ_TRANSCRIBE_MODEL` (`whisper-large-v3-turbo`), AiKit `AIKIT_TRANSCRIBE_MODEL` (`google/gemini-3.8-flash`), OpenAI `OPENAI_TRANSCRIBE_MODEL` (2026-10-25; one row per provider called, the row's provider says which transcribed) | user |
+| `voice_note_transcription` (WhatsApp voice notes) | The first that works of Groq `GROQ_TRANSCRIBE_MODEL` (`whisper-large-v3-turbo`), OpenAI `OPENAI_TRANSCRIBE_MODEL` (2026-10-25; AiKit `google/gemini-3.8-flash` until PRO-1122; one row per provider called, the row's provider says which transcribed) | user |
 | `mimo_voice_transcription` (Mimo's voice in the app, `POST /stt`) | Same chain as `voice_note_transcription` | user |
 | `chat_tts` (Mimo's replies read aloud, `POST /tts`; units = characters, priced per 1,000 chars) | ElevenLabs `ELEVENLABS_MODEL` | user |
 | `voice_realtime` (**historical**: OpenAI Realtime voice mode, client-reported minutes; retired 2026-10-09, old rows kept) | OpenAI `gpt-realtime*` | user |

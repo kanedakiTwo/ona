@@ -10,7 +10,7 @@ import { cookNowHitLine } from "@ona/shared"
 import { useCookNowPhrase, type CookNowItem, type CookNowProposal } from "@/hooks/useCookNow"
 import { PILL_INK, PILL_OUTLINE, SUB_LIST, SubNotice } from "@/components/profile/SubPage"
 
-export const LOCKED_NOTICE = "Esa comida está bloqueada en tu menú: la cocinas igual, pero no la apunto."
+export const EATEN_NOTICE = "Hoy ya habéis comido y cenado: la cocinas igual, pero no la apunto en el menú."
 
 function minutesLine(item: CookNowItem): string | null {
   if (item.recipe.totalTime == null) return null
@@ -21,7 +21,6 @@ export function ProposalView({
   proposal,
   loading,
   failed,
-  locked,
   choosing,
   onCook,
   onRestart,
@@ -29,7 +28,6 @@ export function ProposalView({
   proposal: CookNowProposal | undefined
   loading: boolean
   failed: boolean
-  locked: boolean
   choosing: boolean
   onCook: (item: CookNowItem) => void
   onRestart: () => void
@@ -70,12 +68,7 @@ export function ProposalView({
     <div data-testid="cook-now-proposal">
       {proposal.meal === null && (
         <p role="status" className="mb-4 rounded-2xl bg-cream-deep px-4 py-3 text-[14px] text-ink-mid">
-          Hoy ya habéis comido y cenado: la cocinas igual, pero no la apunto en el menú.
-        </p>
-      )}
-      {proposal.meal !== null && locked && (
-        <p role="status" className="mb-4 rounded-2xl bg-cream-deep px-4 py-3 text-[14px] text-ink-mid">
-          {LOCKED_NOTICE}
+          {EATEN_NOTICE}
         </p>
       )}
       {proposal.fallback && (

@@ -8,19 +8,23 @@ import {
   timeAvailableForChoice,
   validateMemoryFactValue,
   buildMemoryDigestText,
+  fullWeekTypeDays,
+  plantillaEdits,
+  plantillaFromWeekType,
   type UserMemory,
 } from '@ona/shared'
 import {
   analyzeOnboardingIntoMemory,
   applyTemplateChanges,
+  awayEdit,
   awaitOnboardingAnalysis,
   buildAnalysisUserText,
   factsToWrite,
   ONBOARDING_ANALYSIS_MODEL,
   parseTemplateChanges,
   trackOnboardingAnalysis,
+  type TemplateChange,
 } from '../services/onboardingMemoryAnalysis.js'
-import { extractMealDiners, normalizeMealTemplate } from '../services/menuGenerator.js'
 import { setCostSinkForTests, type CostRow } from '../services/costLedger.js'
 
 const USER = '11111111-1111-4111-8111-111111111111'
@@ -60,7 +64,7 @@ describe('onboarding answers → memory (PRO-138)', () => {
       { key: 'time_available', value: { viernes: { mode: 'total', minutes: 0 } } },
     ])
     const written: any[] = []
-    const keys = await analyzeOnboardingIntoMemory(
+    const { keys } = await analyzeOnboardingIntoMemory(
       USER,
       {
         adults: 2,
@@ -119,7 +123,7 @@ describe('onboarding answers → memory (PRO-138)', () => {
     const failing = async () => {
       throw new Error('overloaded')
     }
-    const keys = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
+    const { keys } = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
       create: failing,
       readMemory: async () => ({}),
       writeMemory: async () => {
@@ -163,9 +167,9 @@ describe('«Cuéntanos tu caso» reaches the first menu (PRO-242)', () => {
       [{ key: 'notes', value: ['El hijo (15 años) come en el instituto a mediodía entre semana'] }],
       [{ days: WEEKDAYS, meal: 'lunch', away: 1 }],
     )
-    let saved: Record<string, any> | null = null
+    let saved: { changes: TemplateChange[]; diners: number } | null = null
     const memory: any[] = []
-    const keys = await analyzeOnboardingIntoMemory(
+    const { keys } = await analyzeOnboardingIntoMemory(
       USER,
       { adults: 2, kidsCount: 0, cookingFreq: 'daily', cookingNote: NOTE },
       {
@@ -174,9 +178,9 @@ describe('«Cuéntanos tu caso» reaches the first menu (PRO-242)', () => {
         writeMemory: async (_id, facts) => {
           memory.push(...facts)
         },
-        readTemplate: async () => null,
-        writeTemplate: async (_id, t) => {
-          saved = t
+        writeTemplateChanges: async (_id, changes, diners) => {
+          saved = { changes, diners }
+          return true
         },
       },
     )
@@ -186,15 +190,13 @@ describe('«Cuéntanos tu caso» reaches the first menu (PRO-242)', () => {
     expect(keys).toContain('notes')
     expect(memory.find((f) => f.key === 'notes').value[0]).toMatch(/instituto/)
 
-    // What the generator reads from it: Mon–Fri lunch 1, weekend lunch and every dinner 2.
-    const diners = extractMealDiners(saved)
-    for (const d of WEEKDAYS) expect(diners[d].lunch).toBe(1)
-    expect(diners[5].lunch).toBe(2)
-    expect(diners[6].lunch).toBe(2)
-    for (let d = 0; d < 7; d++) expect(diners[d].dinner).toBe(2)
-    // No meal switched off by the change.
-    const slots = normalizeMealTemplate(saved)!
-    expect(slots.every((day) => day.lunch && day.dinner)).toBe(true)
+    // What the household's week type (D-182) gets from it: Mon–Fri lunch 1,
+    // weekend lunch and every dinner untouched (the household's 2).
+    const days = fullWeekTypeDays()
+    const before = plantillaFromWeekType(days, saved!.diners)
+    const edits = plantillaEdits(days, before, awayEdit(saved!.changes, saved!.diners)(structuredClone(before)), '2026-11-09')
+    expect(edits.map((e) => `${e.day}:${e.meal}`)).toEqual(WEEKDAYS.map((d) => `${d}:lunch`))
+    for (const e of edits) expect(e.slot).toEqual({ diners: 1 })
   })
 
   it('applies over an existing plantilla, never below 0, and drops malformed changes', () => {
@@ -214,16 +216,13 @@ describe('«Cuéntanos tu caso» reaches the first menu (PRO-242)', () => {
     expect(applyTemplateChanges(existing, [], 2)).toBeNull()
   })
 
-  it('no template change → the template is never read or written', async () => {
+  it('no template change → the week type is never written', async () => {
     const { create } = fakeModel([{ key: 'notes', value: ['Teletrabaja'] }])
-    const keys = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
+    const { keys } = await analyzeOnboardingIntoMemory(USER, { adults: 1, kidsCount: 0 }, {
       create,
       readMemory: async () => ({}),
       writeMemory: async () => undefined,
-      readTemplate: async () => {
-        throw new Error('should not read')
-      },
-      writeTemplate: async () => {
+      writeTemplateChanges: async () => {
         throw new Error('should not write')
       },
     })

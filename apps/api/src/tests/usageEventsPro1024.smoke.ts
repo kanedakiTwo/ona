@@ -51,13 +51,12 @@ describe.skipIf(!reachable)('eventos de uso de los trucos (PRO-1024)', () => {
     const userId = reg.body.user.id as string
     const token = reg.body.token as string
 
-    // Weekly template: the first save sets the táper days; the second only adds a fixed meal.
-    const template = { mealTemplate: { lunes: { almuerzo: 2 } }, taperDays: ['martes'] }
-    expect((await call('PUT', `/user/${userId}/settings`, { template }, token)).status).toBe(200)
-    const fixed = [{ meal: 'desayuno', days: ['lunes'], items: [{ name: 'Tostada', quantity: 1, unit: 'u' }] }]
-    expect((await call('PUT', `/user/${userId}/settings`, { template: { ...template, fixedMeals: fixed } }, token)).status).toBe(200)
-    const changed = (await eventsOf(userId, 'template_changed', 2)).map((p: any) => p.what)
-    expect(changed).toEqual(expect.arrayContaining(['taper_days', 'meals']))
+    // «Semana tipo» (D-182): Tuesday's lunch becomes a táper; then Monday gets a fixed breakfast.
+    expect((await call('PUT', '/households/me/week-type/1/lunch', { options: [{ kind: 'taper' }] }, token)).status).toBe(200)
+    const fixed = { options: [{ kind: 'fixed', label: 'Tostada', items: [{ name: 'Tostada', quantity: 1, unit: 'u' }] }] }
+    expect((await call('PUT', '/households/me/week-type/0/breakfast', fixed, token)).status).toBe(200)
+    const changed = (await eventsOf(userId, 'template_changed', 3)).map((p: any) => p.what)
+    expect(changed).toEqual(expect.arrayContaining(['taper_days', 'meals', 'fixed_meals']))
     expect(changed.filter((w) => w === 'taper_days')).toHaveLength(1)
 
     // Memory: a kitchen fact counts by key; a health key never does.

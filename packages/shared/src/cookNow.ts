@@ -5,7 +5,7 @@
  * schemas of /cook-now/*.
  */
 import { z } from 'zod'
-import type { DayMenu, LockedSlots, MealSlot } from './types/menu.js'
+import type { DayMenu, MealSlot } from './types/menu.js'
 import { isRecipeDish, isTaperVariant, type RecipeDish } from './types/menuDish.js'
 
 export const COOK_NOW_MINUTES = [15, 30, 45] as const
@@ -26,19 +26,19 @@ export interface DisplaceTarget {
   day: number
   /** Names of the recipe dishes it would replace, joined; null = free. */
   replaces: string | null
-  /** Skipped day or locked meal. */
+  /** A skipped day. A locked meal is a target too (PRO-1175: the lock only keeps it when the week is redone). */
   disabled: boolean
 }
 
 /** The rest of the week (tomorrow → Sunday), same meal, for «Pasarlas a otro día». */
-export function displaceTargets(days: readonly DayMenu[], fromDay: number, meal: string, locked: LockedSlots, skippedDays: readonly number[]): DisplaceTarget[] {
+export function displaceTargets(days: readonly DayMenu[], fromDay: number, meal: string, skippedDays: readonly number[]): DisplaceTarget[] {
   const out: DisplaceTarget[] = []
   for (let day = fromDay + 1; day <= 6; day++) {
     const names = (days[day]?.[meal]?.dishes ?? []).filter(isRecipeDish).map((d) => d.recipeName ?? '').filter(Boolean)
     out.push({
       day,
       replaces: names.length > 0 ? listEs(names) : null,
-      disabled: skippedDays.includes(day) || !!locked[String(day)]?.[meal],
+      disabled: skippedDays.includes(day),
     })
   }
   return out

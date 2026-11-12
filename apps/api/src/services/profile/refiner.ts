@@ -65,6 +65,7 @@ import { recordCost, anthropicUnits } from '../costLedger.js'
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { spendCapStatus } from '../spendCap.js'
 import { factSentence } from './view.js'
+import { fixedDishOf } from './reader.js'
 import { sameFactValue } from './writer.js'
 import { mentionsHealth } from './healthText.js'
 import { collectHouseholdDaySignals, type HouseholdDaySignals, type SignalMember } from './signals.js'
@@ -366,6 +367,8 @@ export type DiscardReason =
   | 'duplicate_question'
   | 'over_limit'
   | 'paused'
+  /** «Semana tipo» (D-182): a fixed dish with day and meal (phase 3 lets Mimo propose it). */
+  | 'week_type'
 
 /** What a rule threw away: reason and type, never the content. */
 export interface Discarded {
@@ -521,6 +524,14 @@ export function planRefinement(ctx: RefinerContext, refs: RefinerRefs, output: R
     // What the household forgot in «Tu ficha» comes back only as a question (PRO-317).
     if (ctx.forgotten?.some((f) => f.type === factType && f.subjectUserId === subject!.userId && f.subjectPersonId === subject!.personId && sameFactValue(f.value, value))) {
       pushQuestion(subject, `Me ha parecido ver otra vez algo que olvidaste: «${factSentence(factType, value, 'casa') ?? factType}». ¿Lo apunto?`, factType, reason, op)
+      continue
+    }
+
+    // «Semana tipo» (D-182): a fixed dish with its day and meal belongs to the
+    // household's week type, which only the household changes until Mimo
+    // learns to propose it (phase 3); the refiner doesn't write it anywhere.
+    if (factType === 'fixed_dish' && fixedDishOf(value)) {
+      discarded.push({ reason: 'week_type', op, type })
       continue
     }
 

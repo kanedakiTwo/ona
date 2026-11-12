@@ -1,4 +1,6 @@
 import crypto from 'crypto'
+import { refreshRecipeDishTypes } from '../dishTypes.js'
+import { fromWeekTypeOf, poolOfDishType, weekTypeDishTypeAt } from '../weekType.js'
 import { and, eq, desc, ilike, or, inArray, isNull } from 'drizzle-orm'
 import {
   menus,
@@ -12,7 +14,7 @@ import {
   menuLogs,
   shoppingLists,
 } from '../../db/schema.js'
-import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isFixedDish, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
+import { nutrientsToPercentages, TARGET_MACROS, detectSeason, recipeDishesOf, isPantryLocation, firstMenuWeeks, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, Meal, NutrientBalance, WeekPlan } from '@ona/shared'
 import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } from '@ona/shared'
 import { describeWeekPlan } from '../weekPlan.js'
@@ -43,6 +45,7 @@ import { fichaSkills } from './fichaSkills.js'
 import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
+import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
 import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
@@ -791,9 +794,7 @@ async function pickWhatIHaveRecipe(
   if ((menu?.bannedRecipeIds as string[] | undefined)?.includes(recipe.id)) {
     return { data: null, summary: `"${recipe.name}" esta vetada esta semana; no la he puesto.`, uiHint: 'text' }
   }
-  if ((menu?.locked as Record<string, Record<string, boolean>> | undefined)?.[String(t.dayIndex)]?.[meal]) {
-    return { data: null, summary: `La ${slotLabel} esta fijada; no la he cambiado. Si quieres, desfijala primero.`, uiHint: 'text' }
-  }
+  // A locked meal changes too when asked (PRO-1175): the lock only keeps it when the week is redone.
   const dish = { kind: 'recipe' as const, recipeId: recipe.id, recipeName: recipe.name }
   let saved: { days?: unknown } | undefined
   if (menu) {
@@ -1407,17 +1408,6 @@ const swapMeal: SkillDefinition = {
       }
     }
 
-    // A ficha's «plato fijo» (PRO-1141) is never swapped at random: only for a named recipe.
-    const fixedHere = days[dayIndex]?.[meal]?.dishes.find(isFixedDish)
-    if (fixedHere) {
-      const name = fixedHere.kind === 'recipe' ? fixedHere.recipeName ?? 'el plato fijo' : fixedHere.text
-      return {
-        data: null,
-        summary: `No he cambiado nada: "${name}" es un plato fijo de la ficha del hogar para la ${slotLabel}. Si quiere otro, pregúntale cuál y vuelve a llamar con recipeName.`,
-        uiHint: 'text',
-      }
-    }
-
     // Collect used recipe IDs (excluding the one being replaced)
     const usedRecipeIds = new Set<string>()
     for (let d = 0; d < days.length; d++) {
@@ -1450,7 +1440,9 @@ const swapMeal: SkillDefinition = {
     const allRecipes = await schoolDinnerPool(await loadMatchableRecipes(userId, db), menu, dayIndex, meal, db)
     const season = detectSeason()
 
-    const newRecipe = findRecipeForSlot(allRecipes, {
+    // «Semana tipo» (D-182): another recipe of the type it asks for there.
+    const wtType = await weekTypeDishTypeAt(userId, menu.weekStart, dayIndex, meal, 0, db)
+    const newRecipe = findRecipeForSlot(poolOfDishType(allRecipes, wtType), {
       meal: meal as Meal,
       season,
       usedRecipeIds,
@@ -1464,7 +1456,7 @@ const swapMeal: SkillDefinition = {
     }
 
     // Update the menu (the slot keeps its «Solo hoy», PRO-102)
-    days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: newRecipe.id, recipeName: newRecipe.name }])
+    days[dayIndex][meal] = slotWithDishes(days[dayIndex][meal], [{ kind: 'recipe', recipeId: newRecipe.id, recipeName: newRecipe.name, ...fromWeekTypeOf(wtType, newRecipe) }])
 
     const [updated] = await db
       .update(menus)
@@ -2730,6 +2722,8 @@ const editRecipe: SkillDefinition = {
     }
 
     await db.update(recipes).set(updates).where(eq(recipes.id, target.id))
+    // «Semana tipo» (D-182): a new name may mean other dish types.
+    if (updates.name !== undefined) await refreshRecipeDishTypes(db, target.id)
 
     return {
       data: { recipeId: target.id, changed: changedFields },
@@ -2921,6 +2915,7 @@ const addRecipeToMine: SkillDefinition = {
           storage: full.storage,
           nutritionPerServing: full.nutritionPerServing,
           tags: full.tags ?? [],
+          dishTypes: full.dishTypes ?? null,
           internalTags: baseInternalTags,
           sourceUrl: full.sourceUrl,
           sourceType: 'manual',
@@ -3187,6 +3182,8 @@ export const skills: SkillDefinition[] = [
   ...fixedMealSkills,
   // PRO-223: «mañana me llevo táper».
   ...taperSkills,
+  // «Semana tipo» por Mimo (D-182 fase 3, specs/advisor.md):
+  ...weekTypeSkills,
   // Menú del cole (PRO-224, specs/menus.md):
   ...schoolMenuSkills,
   // PRO-228: «Sí, mételo» al repaso mensual del congelador.

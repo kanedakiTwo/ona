@@ -12,9 +12,9 @@
  */
 import { and, eq, asc, isNull } from 'drizzle-orm'
 import { randomBytes } from 'node:crypto'
-import { householdInviteExpiresAt, isFoundingHousehold, type HouseholdInviteSource } from '@ona/shared'
+import { fullWeekTypeDays, householdInviteExpiresAt, isFoundingHousehold, type HouseholdInviteSource } from '@ona/shared'
 import { db } from '../db/connection.js'
-import { households, householdMembers, householdInvites, users } from '../db/schema.js'
+import { households, householdMembers, householdInvites, householdWeekTypes, users } from '../db/schema.js'
 
 export type HouseholdRole = 'owner' | 'member' | 'child'
 
@@ -411,6 +411,7 @@ async function ensureSoloHouseholdFallback(userId: string, leftHouseholdId: stri
     // Create a fresh solo household.
     const [h] = await db.insert(households).values({ name: 'Mi casa', ownerId: userId }).returning({ id: households.id })
     await db.insert(householdMembers).values({ householdId: h.id, userId, role: 'owner' })
+    await createWeekTypeRow(h.id)
     fallbackId = h.id
   }
   await db.update(users).set({ primaryHouseholdId: fallbackId }).where(eq(users.id, userId))
@@ -423,6 +424,12 @@ export async function createSoloHouseholdForNewUser(userId: string): Promise<str
     .values({ name: 'Mi casa', ownerId: userId })
     .returning({ id: households.id })
   await db.insert(householdMembers).values({ householdId: h.id, userId, role: 'owner' })
+  await createWeekTypeRow(h.id)
   await db.update(users).set({ primaryHouseholdId: h.id }).where(eq(users.id, userId))
   return h.id
+}
+
+/** «Semana tipo» (D-182): a new household starts with lunch and dinner every day. */
+async function createWeekTypeRow(householdId: string): Promise<void> {
+  await db.insert(householdWeekTypes).values({ householdId, slots: fullWeekTypeDays() }).onConflictDoNothing({ target: householdWeekTypes.householdId })
 }

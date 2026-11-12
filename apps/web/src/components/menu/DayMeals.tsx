@@ -20,13 +20,14 @@ import { useState } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
-import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, Replace, RotateCw, Shuffle, Snowflake, TriangleAlert, Utensils } from "lucide-react"
+import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, Replace, RotateCw, Shuffle, Snowflake, TriangleAlert, Utensils, X } from "lucide-react"
 import { FreezerDishSheets, type TaperVariant } from "./FreezerDishSheets"
-import { isTaperDish, replacedDishLine, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
+import { isTaperDish, replacedDishLine, weekTypeChipOf, type MealSlot, type RecipeDish } from "@ona/shared"
+import { DishTypeIcon } from "@/components/weekType/DishTypeIcon"
 import { cookHref } from "@/lib/cookHref"
 import { mealLabel } from "@/lib/labels"
 import { trackSheetAction } from "@/lib/usageEvents"
-import { DAY_MEAL_ORDER, firstRecipeDish, mealEyebrow, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
+import { DAY_MEAL_ORDER, dishName, firstRecipeDish, mealEyebrow, slotDishParts, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
@@ -61,14 +62,14 @@ function SlotChips({
   const fromFreezer = first?.variant === "freezer"
   const fromFridge = first?.variant === "fridge"
   const fromOtherDay = first?.variant === "cooked"
-  // Without a recipe the title already lists the notes («Cenamos fuera»): don't repeat them (PRO-185).
-  const others = first ? (ctx.slot.dishes ?? []).filter((d) => d !== first) : []
   const eaten = !!ctx.slot.eaten && !showEatenElsewhere
   // PRO-364: someone saved an allergy or diet this dish breaks and there was nothing to put instead.
   const conflict = (ctx.slot.dishes ?? []).some((d) => d.kind === "recipe" && d.restrictionConflict)
   // PRO-345: Mimoia changed the dish because the recipe changed or was deleted.
   const replaced = first?.replaced ?? null
-  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && !replaced && ctx.slot.servings == null && others.length === 0) return null
+  // PRO-1186: «Legumbres · semana tipo», or the warning when no recipe of that type fitted.
+  const weekType = weekTypeChipOf(ctx.slot.dishes)
+  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && !replaced && !weekType && ctx.slot.servings == null) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
       {conflict && (
@@ -81,14 +82,23 @@ function SlotChips({
           <RotateCw size={11} /> {replacedDishLine(replaced)}
         </span>
       )}
+      {weekType && (
+        <span
+          data-testid={weekType.missing ? "week-type-missing" : "week-type-chip"}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${weekType.missing ? "bg-warn-bg text-terracotta-deep" : "bg-cream-deep text-ink-mid"}`}
+        >
+          {weekType.missing ? <TriangleAlert size={11} strokeWidth={2.2} /> : <DishTypeIcon type={weekType.type ?? "recipe"} size={12} />} {weekType.label}
+        </span>
+      )}
       {eaten && (
         <span data-testid="meal-eaten" className="inline-flex items-center gap-1 rounded-full bg-forest/10 px-2 py-0.5 font-semibold text-forest">
           <Check size={11} strokeWidth={2.6} /> Comido
         </span>
       )}
+      {/* PRO-1175: a quiet lock, not «Fijada» — every dish chosen by hand has it now. */}
       {ctx.isLocked && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
-          <Lock size={11} strokeWidth={2.2} /> Fijada
+        <span data-testid="meal-kept" title="Se queda si rehaces la semana" className="inline-flex items-center rounded-full bg-cream-deep px-1.5 py-1 text-ink-mid">
+          <Lock size={11} strokeWidth={2.2} role="img" aria-label="Se queda si rehaces la semana" />
         </span>
       )}
       {fromFreezer && (
@@ -114,12 +124,74 @@ function SlotChips({
       {ctx.slot.servings != null && !leftover && (
         <span className="rounded-full bg-cream-deep px-2 py-0.5">Solo hoy: {ctx.slot.servings}</span>
       )}
-      {others.length > 0 && (
-        <span className="min-w-0">
-          + {others.map((d: Dish) => (d.kind === "recipe" ? d.recipeName ?? "Receta" : d.text)).join(", ")}
-        </span>
-      )}
     </div>
+  )
+}
+
+/* ─────────────────────────── Other dishes ─────────────────────────── */
+
+/**
+ * The meal's other dishes (Miguel, 2026-11-10: «había una nota de Romanescu
+ * que no se veía por ningún sitio»): one line each with its name — a recipe
+ * links to it, a written dish in italics — and «Quitar» (×), under the main
+ * dish. Until then they were a small «+ Romanescu» next to the chips.
+ */
+export function ExtraDishLines({
+  ctx,
+  handlers,
+  readOnly,
+  size = "md",
+  className = "",
+}: {
+  ctx: SlotContext
+  handlers: SlotHandlers
+  readOnly: boolean
+  /** `lg` = the desktop hero, `md` = mobile hero and rows, `sm` = small side rows. */
+  size?: "sm" | "md" | "lg"
+  className?: string
+}) {
+  const { others } = slotDishParts(ctx.slot)
+  if (others.length === 0) return null
+  const text = size === "lg" ? "text-[18px]" : size === "md" ? "text-[16px]" : "text-[15px]"
+  const canRemove = !readOnly
+  return (
+    <ul data-testid="extra-dishes" className={`flex flex-col ${className}`}>
+      {others.map(({ dish, position }) => {
+        const name = dishName(dish)
+        return (
+          <li
+            key={`${position}-${name}`}
+            data-extra-dish={name}
+            className="flex min-h-[36px] items-center gap-2.5 border-t border-dashed border-border-soft first:border-t-0"
+          >
+            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-terracotta" />
+            {dish.kind === "recipe" ? (
+              <Link
+                href={slotRecipeHref(dish.recipeId, ctx)}
+                className={`min-w-0 flex-1 font-serif-text font-[600] leading-[1.2] text-ink hover:underline hover:underline-offset-4 ${text}`}
+              >
+                {name}
+              </Link>
+            ) : (
+              <span className={`min-w-0 flex-1 font-serif-text italic leading-[1.2] text-ink-mid ${text}`}>{name}</span>
+            )}
+            {canRemove && (
+              <button
+                type="button"
+                onClick={() => {
+                  trackSheetAction("plato", "quitar_plato")
+                  handlers.removeDish(position)
+                }}
+                aria-label={`Quitar «${name}»`}
+                className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-cream-deep hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -159,6 +231,7 @@ export function MealHero({
         </Link>
       </h2>
       <SlotChips ctx={ctx} first={first} showEatenElsewhere />
+      <ExtraDishLines ctx={ctx} handlers={handlers} readOnly={readOnly} size={layout === "card" ? "lg" : "md"} className="mt-1" />
     </div>
   )
   const captionActions = (
@@ -314,8 +387,10 @@ export function MealRow({
     return <EmptyMealCard ctx={ctx} handlers={handlers} readOnly={readOnly} />
   }
 
-  // Note-only slot ("comemos fuera"): no recipe to open.
-  const title = first?.recipeName ?? dishes.map((d) => (d.kind === "note" ? d.text : "")).filter(Boolean).join(", ")
+  // The main dish big; the others as lines under it (a note-only slot,
+  // «Cenamos fuera», shows its first text as the title, PRO-185).
+  const { main } = slotDishParts(ctx.slot)
+  const title = main ? dishName(main) : ""
   const eyebrow = mealEyebrow(label, slotMinutes(ctx.slot))
   const body = (
     <>
@@ -327,33 +402,36 @@ export function MealRow({
       />
       <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
-          {ctx.isLocked && <Lock size={11} strokeWidth={2.2} aria-label="Fijada" />}
+          {ctx.isLocked && <Lock size={11} strokeWidth={2.2} role="img" aria-label="Se queda si rehaces la semana" />}
           {eyebrow}
         </span>
-        <span className="font-serif-text text-[20px] font-[650] leading-[1.15] text-ink">{title}</span>
+        <span className={`font-serif-text text-[20px] font-[650] leading-[1.15] text-ink ${first ? "" : "italic"}`}>{title}</span>
         <SlotChips ctx={{ ...ctx, isLocked: false }} first={first} />
       </span>
     </>
   )
 
   return (
-    <div className="mx-4 flex items-center gap-1">
-      {first ? (
-        <Link
-          href={slotRecipeHref(first.recipeId, ctx)}
-          className="flex min-w-0 flex-1 items-center gap-3.5 rounded-2xl text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-        >
-          {body}
-        </Link>
-      ) : (
-        <div className="flex min-w-0 flex-1 items-center gap-3.5">{body}</div>
-      )}
-      {!readOnly && (
-        <>
-          <MealOptionsButton ctl={ctl} label={`Más opciones de ${label.toLowerCase()}`} className="text-ink-mid" />
-          <MealOptionsSheets ctl={ctl} ctx={ctx} handlers={handlers} />
-        </>
-      )}
+    <div className="mx-4 flex flex-col">
+      <div className="flex items-center gap-1">
+        {first ? (
+          <Link
+            href={slotRecipeHref(first.recipeId, ctx)}
+            className="flex min-w-0 flex-1 items-center gap-3.5 rounded-2xl text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          >
+            {body}
+          </Link>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-3.5">{body}</div>
+        )}
+        {!readOnly && (
+          <>
+            <MealOptionsButton ctl={ctl} label={`Más opciones de ${label.toLowerCase()}`} className="text-ink-mid" />
+            <MealOptionsSheets ctl={ctl} ctx={ctx} handlers={handlers} />
+          </>
+        )}
+      </div>
+      <ExtraDishLines ctx={ctx} handlers={handlers} readOnly={readOnly} className="ml-[118px] mt-1.5 pr-1" />
     </div>
   )
 }
@@ -440,8 +518,7 @@ export function AbsentMealCard({
 }: Omit<AbsentMeals, "meals"> & { meal: MealKey; readOnly: boolean; compact?: boolean }) {
   const label = mealLabel(meal)
   const Icon = mealIconFor(meal)
-  const [open, setOpen] = useState<null | "actions" | "picker" | TaperVariant>(null)
-  const close = () => setOpen(null)
+  const [open, setOpen] = useState<AbsentSheet>(null)
   const body = (
     <>
       <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-bone text-clay">
@@ -479,76 +556,110 @@ export function AbsentMealCard({
         </button>
       )}
       {!readOnly && (
-        <>
-          <MenuSheet open={open === "actions"} onClose={close} eyebrow={`${label} · ${dayName}`} title="Sin plato todavía" sheet="no_hay">
-            <div className="flex flex-col gap-0.5">
-              <SheetAction icon={Replace} label="Elegir receta" action="elegir_receta" hint="Busca en el catálogo" onClick={() => setOpen("picker")} />
-              <SheetAction
-                icon={Shuffle}
-                label="Una al azar"
-                action="cambiar_azar"
-                hint="Una receta que encaje con tu semana"
-                disabled={isAdding}
-                onClick={() => {
-                  onAdd(meal)
-                  close()
-                }}
-              />
-              {onAddFreezer && (
-                <div className="mt-1 border-t border-border-soft pt-1">
-                  <SheetAction
-                    icon={Snowflake}
-                    label="Del congelador"
-                    action="congelador"
-                    hint="Un táper que ya tienes: no suma a la compra"
-                    onClick={() => setOpen("freezer")}
-                  />
-                  <SheetAction
-                    icon={Refrigerator}
-                    label="Táper de la nevera"
-                    action="taper_nevera"
-                    hint="Ya cocinado, en la nevera: no suma a la compra"
-                    onClick={() => setOpen("fridge")}
-                  />
-                </div>
-              )}
-            </div>
-          </MenuSheet>
-          {/* Out of the page's transformed wrappers, like the meal sheet's picker. */}
-          {typeof document !== "undefined" &&
-            createPortal(
-              <RecipePickerSheet
-                open={open === "picker"}
-                onClose={close}
-                title={`${label} del ${dayName}`}
-                subtitle="Sin plato"
-                onPick={(picked) => {
-                  onAdd(meal, picked.id)
-                  close()
-                }}
-                onUseText={
-                  onAddNote
-                    ? (text) => {
-                        onAddNote(meal, text)
-                        close()
-                      }
-                    : undefined
-                }
-              />,
-              document.body,
-            )}
-          {onAddFreezer && (
-            <FreezerDishSheets
-              open={open === "freezer" || open === "fridge"}
-              onClose={close}
-              missing={[meal]}
-              variant={open === "fridge" ? "fridge" : "freezer"}
-              onAdd={(m, recipeId) => onAddFreezer(m, recipeId, open === "fridge" ? "fridge" : "freezer")}
-            />
-          )}
-        </>
+        <AbsentMealSheets
+          open={open}
+          setOpen={setOpen}
+          meal={meal}
+          dayName={dayName}
+          isAdding={isAdding}
+          onAdd={onAdd}
+          onAddNote={onAddNote}
+          onAddFreezer={onAddFreezer}
+        />
       )}
     </div>
+  )
+}
+
+export type AbsentSheet = null | "actions" | "picker" | TaperVariant
+
+/**
+ * What to put in a meal the day lacks: «Comida · viernes — Sin plato
+ * todavía» with Elegir receta, Una al azar, Del congelador and Táper de la
+ * nevera, then the picker or the táper sheets. Shared by the «El viernes no
+ * hay comida» card and the «no hay» cells of «La semana» (2026-11-10).
+ */
+export function AbsentMealSheets({
+  open,
+  setOpen,
+  meal,
+  dayName,
+  isAdding,
+  onAdd,
+  onAddNote,
+  onAddFreezer,
+}: Omit<AbsentMeals, "meals"> & { meal: MealKey; open: AbsentSheet; setOpen: (next: AbsentSheet) => void }) {
+  const label = mealLabel(meal)
+  const close = () => setOpen(null)
+  return (
+    <>
+      <MenuSheet open={open === "actions"} onClose={close} eyebrow={`${label} · ${dayName}`} title="Sin plato todavía" sheet="no_hay">
+        <div className="flex flex-col gap-0.5">
+          <SheetAction icon={Replace} label="Elegir receta" action="elegir_receta" hint="Busca en el catálogo" onClick={() => setOpen("picker")} />
+          <SheetAction
+            icon={Shuffle}
+            label="Una al azar"
+            action="cambiar_azar"
+            hint="Una receta que encaje con tu semana"
+            disabled={isAdding}
+            onClick={() => {
+              onAdd(meal)
+              close()
+            }}
+          />
+          {onAddFreezer && (
+            <div className="mt-1 border-t border-border-soft pt-1">
+              <SheetAction
+                icon={Snowflake}
+                label="Del congelador"
+                action="congelador"
+                hint="Un táper que ya tienes: no suma a la compra"
+                onClick={() => setOpen("freezer")}
+              />
+              <SheetAction
+                icon={Refrigerator}
+                label="Táper de la nevera"
+                action="taper_nevera"
+                hint="Ya cocinado, en la nevera: no suma a la compra"
+                onClick={() => setOpen("fridge")}
+              />
+            </div>
+          )}
+        </div>
+      </MenuSheet>
+      {/* Out of the page's transformed wrappers, like the meal sheet's picker. */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <RecipePickerSheet
+            open={open === "picker"}
+            onClose={close}
+            title={`${label} del ${dayName}`}
+            subtitle="Sin plato"
+            onPick={(picked) => {
+              onAdd(meal, picked.id)
+              close()
+            }}
+            onUseText={
+              onAddNote
+                ? (text) => {
+                    onAddNote(meal, text)
+                    close()
+                  }
+                : undefined
+            }
+          />,
+          document.body,
+        )}
+      {onAddFreezer && (
+        <FreezerDishSheets
+          open={open === "freezer" || open === "fridge"}
+          onClose={close}
+          missing={[meal]}
+          variant={open === "fridge" ? "fridge" : "freezer"}
+          onAdd={(m, recipeId) => onAddFreezer(m, recipeId, open === "fridge" ? "fridge" : "freezer")}
+        />
+      )}
+    </>
   )
 }
 

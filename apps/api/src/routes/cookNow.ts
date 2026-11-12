@@ -18,7 +18,7 @@ router.use('/cook-now', authMiddleware)
 router.get('/cook-now/today', async (req: AuthRequest, res) => {
   try {
     const t = await loadCookNowToday(req.userId!)
-    res.json({ weekStart: t.weekStart, day: t.day, meal: t.meal, menuId: t.menu?.id ?? null, planned: t.planned, locked: t.locked, slotServings: t.slotServings, targets: t.targets })
+    res.json({ weekStart: t.weekStart, day: t.day, meal: t.meal, menuId: t.menu?.id ?? null, planned: t.planned, slotServings: t.slotServings, targets: t.targets })
   } catch (err) {
     console.error('GET /cook-now/today error:', err)
     res.status(500).json({ error: 'Internal server error' })

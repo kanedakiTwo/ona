@@ -58,16 +58,12 @@ import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
 import { MyRecipesSection } from './sections/MyRecipesSection'
-import { MealDishCountControls } from '@/components/profile/MealDishCountControls'
-import { FixedMealsEditor } from '@/components/profile/FixedMealsEditor'
-import { fixedMealsFromTemplate, type FixedMeal } from '@ona/shared'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { BasketConsentsCard } from '@/components/profile/BasketConsentsCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
-import type { Meal } from '@ona/shared'
 import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
@@ -90,23 +86,6 @@ interface Household {
   adults: number
   kidsCount: number
 }
-
-/**
- * Per-day meal template with diner counts.
- *
- * Each day maps a meal name ('desayuno' | 'almuerzo' | 'merienda' | 'cena')
- * to the number of diners for that slot (>= 1). Absence of the key means the
- * slot is off and won't be generated. The API normalizes either this shape or
- * the legacy `string[]` shape; we keep loading both for backwards compat but
- * always save the numeric one. See `extractMealDiners` in `menuGenerator.ts`.
- */
-interface MealTemplate {
-  [day: string]: Record<string, number>
-}
-
-const DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'] as const
-const DAYS_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
-const MEALS = ['desayuno', 'almuerzo', 'merienda', 'cena'] as const
 
 const ACTIVITY_LABELS: Record<string, string> = {
   sedentary: 'Sedentario',
@@ -159,19 +138,6 @@ export default function ProfilePage() {
     restrictions: [], priority: 'balanced',
   })
   const [household, setHousehold] = useState<Household>({ adults: 2, kidsCount: 0 })
-  const [mealTemplate, setMealTemplate] = useState<MealTemplate>(() => {
-    // Default: 3 meals every day, 2 diners each — matches the previous on/off
-    // default ("desayuno, almuerzo, cena") but seeded with sensible counts so
-    // the menu generator can flow them into shopping-list quantities.
-    const t: MealTemplate = {}
-    for (const d of DAYS) t[d] = { desayuno: 2, almuerzo: 2, cena: 2 }
-    return t
-  })
-  const [mealDishCounts, setMealDishCounts] = useState<Partial<Record<Meal, 1 | 2 | 3>>>({})
-  // Comidas fijas (PRO-218): saved in the same blob as the plantilla.
-  const [fixedMeals, setFixedMeals] = useState<FixedMeal[]>([])
-  // PRO-223: days whose lunch is a táper of the dinner before (never Monday).
-  const [taperDays, setTaperDays] = useState<string[]>([])
   const [restrictionInput, setRestrictionInput] = useState('')
   // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
   const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
@@ -232,48 +198,6 @@ export default function ProfilePage() {
       if (blob?.physical) setPhysical(blob.physical)
       const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
       setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
-      const rawMt = blob?.mealTemplate ?? blob?.meal_template
-      if (rawMt && typeof rawMt === 'object') {
-        // Coerce legacy on/off (`string[]`) to the numeric shape with the
-        // household default so the stepper has somewhere to start.
-        const defaultDiners = Math.max(
-          1,
-          (user.adults ?? 2) + Math.ceil((user.kidsCount ?? 0) * 0.5),
-        )
-        const next: MealTemplate = {}
-        for (const day of DAYS) {
-          const cell = (rawMt as Record<string, unknown>)[day]
-          if (Array.isArray(cell)) {
-            const counts: Record<string, number> = {}
-            for (const meal of cell) {
-              if (typeof meal === 'string') counts[meal] = defaultDiners
-            }
-            next[day] = counts
-          } else if (cell && typeof cell === 'object') {
-            const counts: Record<string, number> = {}
-            for (const [meal, n] of Object.entries(cell as Record<string, unknown>)) {
-              const v = typeof n === 'number' ? Math.floor(n) : 0
-              if (v > 0) counts[meal] = v
-            }
-            next[day] = counts
-          } else {
-            next[day] = {}
-          }
-        }
-        setMealTemplate(next)
-      }
-      setFixedMeals(fixedMealsFromTemplate(blob))
-      if (Array.isArray(blob?.taperDays)) {
-        setTaperDays((blob.taperDays as unknown[]).filter((d): d is string => typeof d === 'string' && (DAYS as readonly string[]).includes(d) && d !== 'lunes'))
-      }
-      const rawMdc = blob?.mealDishCounts
-      if (rawMdc && typeof rawMdc === 'object') {
-        const cleaned: Partial<Record<Meal, 1 | 2 | 3>> = {}
-        for (const [m, c] of Object.entries(rawMdc as Record<string, unknown>)) {
-          if (c === 1 || c === 2 || c === 3) cleaned[m as Meal] = c
-        }
-        setMealDishCounts(cleaned)
-      }
     }).catch(() => {})
   }, [user])
 
@@ -322,42 +246,6 @@ export default function ProfilePage() {
 
   function removeRestriction(value: string) {
     setPreferences((p) => ({ ...p, restrictions: p.restrictions.filter((r) => r !== value) }))
-  }
-
-  const defaultDinersForCell = useMemo(() => {
-    return Math.max(
-      1,
-      (household.adults ?? 2) + Math.ceil((household.kidsCount ?? 0) * 0.5),
-    )
-  }, [household.adults, household.kidsCount])
-
-  function adjustMealDiners(day: string, meal: string, delta: number) {
-    setMealTemplate((prev) => {
-      const cur = prev[day] ?? {}
-      const has = Object.prototype.hasOwnProperty.call(cur, meal)
-      const current = has ? cur[meal] : 0
-      // First tap on an off cell seeds the household default rather than 1, so
-      // the typical user (couple, family) doesn't have to spam +.
-      const next = has
-        ? Math.max(0, Math.min(24, current + delta))
-        : delta > 0
-          ? defaultDinersForCell
-          : 0
-      const nextCell: Record<string, number> = { ...cur }
-      if (next > 0) nextCell[meal] = next
-      else delete nextCell[meal]
-      return { ...prev, [day]: nextCell }
-    })
-  }
-
-  function clearMealDiners(day: string, meal: string) {
-    setMealTemplate((prev) => {
-      const cur = prev[day] ?? {}
-      if (!Object.prototype.hasOwnProperty.call(cur, meal)) return prev
-      const nextCell: Record<string, number> = { ...cur }
-      delete nextCell[meal]
-      return { ...prev, [day]: nextCell }
-    })
   }
 
   const handleSave = useCallback(async () => {
@@ -411,15 +299,15 @@ export default function ProfilePage() {
       }
       calls.push(api.put(`/user/${user.id}/settings`, {
         template: healthActive
-          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave }, mealTemplate, mealDishCounts, fixedMeals, taperDays }
-          : { preferences: { ...preferences, restrictions: [] }, mealTemplate, mealDishCounts, fixedMeals, taperDays },
+          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave } }
+          : { preferences: { ...preferences, restrictions: [] } },
       }))
       await Promise.all(calls)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (e) { console.error(e) }
     finally { setSaving(false) }
-  }, [user, updateUser, physical, preferences, household, mealTemplate, mealDishCounts, fixedMeals, taperDays, healthActive, needsReligion])
+  }, [user, updateUser, physical, preferences, household, healthActive, needsReligion])
 
 
   if (authLoading || !user) {
@@ -430,7 +318,6 @@ export default function ProfilePage() {
     )
   }
 
-  const activeMeals = Object.values(mealTemplate).reduce((n, day) => n + Object.keys(day).length, 0)
   const showWhatsApp = Boolean(whatsapp.data?.available || whatsapp.data?.linked)
 
   return (
@@ -745,117 +632,13 @@ export default function ProfilePage() {
           </div>
 
           <div className="grid gap-3 lg:gap-4">
-            {/* Plantilla semanal */}
-            <ProfileCard
+            {/* «Tu semana tipo» (D-182): its own page. */}
+            <ProfileHubLink
+              href="/profile/semana-tipo"
               icon={CalendarDays}
-              title="Plantilla semanal"
-              status={`${activeMeals} ${activeMeals === 1 ? 'comida' : 'comidas'} a la semana`}
-            >
-              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
-                Qué comidas incluye tu menú cada día y para cuántos comensales.
-                Toca <span className="font-mono">+</span> para activar (parte con tu
-                casa por defecto, <span className="tabular-nums">{defaultDinersForCell}</span>),
-                <span className="font-mono"> −</span> para bajar y dejar la celda
-                vacía para apagarla.
-              </p>
-
-              <div className="mt-4">
-                <MealDishCountControls value={mealDishCounts} onChange={setMealDishCounts} />
-              </div>
-
-              <div className="mt-4 overflow-hidden rounded-2xl border border-border-soft bg-paper">
-                <div className="grid grid-cols-[36px_1fr_1fr_1fr_1fr]">
-                  <div />
-                  {MEALS.map((m) => (
-                    <div key={m} className="border-l border-border-soft py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
-                      {m === 'desayuno' ? 'Des' : m === 'almuerzo' ? 'Com' : m === 'merienda' ? 'Mer' : 'Cen'}
-                    </div>
-                  ))}
-                  {DAYS.map((day, di) => (
-                    <div key={day} className="contents">
-                      <div className="flex items-center justify-center border-t border-border-soft">
-                        <span className="font-serif-text text-[15px] font-[650] text-ink" title={day}>
-                          {DAYS_SHORT[di]}
-                        </span>
-                      </div>
-                      {MEALS.map((meal) => {
-                        const count = mealTemplate[day]?.[meal] ?? 0
-                        const active = count > 0
-                        return (
-                          <div
-                            key={meal}
-                            className={`flex min-h-[44px] items-stretch border-l border-t border-border-soft ${
-                              active ? 'bg-ink text-cream' : 'bg-transparent'
-                            }`}
-                          >
-                            {active ? (
-                              <div className="flex w-full items-center justify-between">
-                                <button
-                                  type="button"
-                                  onClick={() => adjustMealDiners(day, meal, -1)}
-                                  className="flex h-11 w-7 shrink-0 items-center justify-center transition-colors hover:bg-cream/15"
-                                  aria-label={`Menos comensales en ${meal} ${day}`}
-                                >
-                                  <Minus size={12} />
-                                </button>
-                                <span className="text-[13px] font-medium tabular-nums">{count}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => adjustMealDiners(day, meal, 1)}
-                                  disabled={count >= 24}
-                                  className="flex h-11 w-7 shrink-0 items-center justify-center transition-colors hover:bg-cream/15 disabled:opacity-30"
-                                  aria-label={`Más comensales en ${meal} ${day}`}
-                                >
-                                  <Plus size={12} />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => adjustMealDiners(day, meal, 1)}
-                                className="flex w-full items-center justify-center text-ink-muted transition-colors hover:bg-cream-deep"
-                                aria-label={`Activar ${meal} el ${day}`}
-                              >
-                                <Plus size={14} />
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <FixedMealsEditor value={fixedMeals} onChange={setFixedMeals} />
-
-              {/* PRO-223 · «El táper de mañana» on fixed days. */}
-              <div className="mt-4" role="group" aria-label="Días de táper">
-                <div className="text-[14px] font-medium text-ink">Días de táper</div>
-                <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-                  Los días que comes fuera y te llevas la cena de la víspera: esa cena se hace con una ración más.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {DAYS.slice(1).map((day, i) => {
-                    const on = taperDays.includes(day)
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        aria-pressed={on}
-                        aria-label={`Táper el ${day}`}
-                        onClick={() => setTaperDays((prev) => (on ? prev.filter((d) => d !== day) : [...prev, day]))}
-                        className={`min-h-[40px] min-w-[40px] rounded-full border px-3 text-[13px] ${
-                          on ? 'border-ink bg-ink text-cream' : 'border-border bg-paper text-ink-mid'
-                        }`}
-                      >
-                        {DAYS_SHORT[i + 1]}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </ProfileCard>
+              title="Tu semana tipo"
+              status="Lo que soléis comer cada día: el menú sale de ahí"
+            />
 
             {/* Recordatorios */}
             <ProfileCard

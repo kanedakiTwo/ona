@@ -3,7 +3,7 @@ import { placeCookNowRecipe } from '../services/cookNow/place.js'
 
 const r = (name: string, extra: Record<string, unknown> = {}) => ({ kind: 'recipe' as const, recipeId: name, recipeName: name, ...extra })
 const week = () => [
-  { dinner: { servings: 3, dishes: [r('Lentejas', { pinnedType: 'legumbres' }), { kind: 'note' as const, text: 'pan' }] } },
+  { dinner: { servings: 3, dishes: [r('Lentejas', { course: 'main' }), { kind: 'note' as const, text: 'pan' }] } },
   { dinner: { dishes: [r('Merluza')] }, lunch: { dishes: [r('Táper', { variant: 'leftover', leftoverOf: { day: 0, meal: 'dinner', dishPosition: 0 } })] } },
   {}, {}, {}, {}, {},
 ] as any[]
@@ -19,7 +19,7 @@ describe('placeCookNowRecipe', () => {
   })
   it('moves the planned recipe dishes (settings kept) to the chosen day, replacing what was there', () => {
     const out = placeCookNowRecipe(week(), { day: 0, meal: 'dinner' }, tortilla, null, 1)
-    expect(out[1].dinner.dishes).toEqual([r('Lentejas', { pinnedType: 'legumbres' })])
+    expect(out[1].dinner.dishes).toEqual([r('Lentejas', { course: 'main' })])
   })
   it('leftovers of the moved slot follow it', () => {
     const out = placeCookNowRecipe(week(), { day: 0, meal: 'dinner' }, tortilla, null, 3)

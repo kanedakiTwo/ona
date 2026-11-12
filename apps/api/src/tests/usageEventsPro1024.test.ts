@@ -20,7 +20,7 @@ import {
   sanitizeProps,
   shoppingRangeKind,
   skillUsageEvents,
-  templateChanges,
+  weekTypeSlotChanges,
   weekPlanProps,
 } from '../services/usageEvents.js'
 import { buildScreensWeekly } from '../services/usageReport.js'
@@ -55,8 +55,7 @@ describe('PRO-1024 server events', () => {
   it('meal_adjusted: servings, the dish type and the lock', () => {
     expect(routeUsageEvent(req('PATCH', '/menu/m1/day/2/meal/dinner', { servings: 4 }))).toEqual({ name: 'meal_adjusted', channel: 'web', props: { what: 'servings' } })
     expect(routeUsageEvent(req('PATCH', '/menu/m1/day/2/meal/dinner', { eaten: true }))).toBeNull()
-    expect(routeUsageEvent(req('PATCH', '/menu/m1/day/2/meal/dinner/dish/0', { pinnedType: 'pescado' }))?.props).toEqual({ what: 'tipo' })
-    expect(routeUsageEvent(req('PATCH', '/menu/m1/day/2/meal/dinner/dish/0', { newPosition: 1, pinnedType: 'pescado' }))).toBeNull()
+    expect(routeUsageEvent(req('PATCH', '/menu/m1/day/2/meal/dinner/dish/0', { newPosition: 1 }))).toBeNull()
     expect(routeUsageEvent(req('PUT', '/menu/m1/day/2/meal/dinner/lock', { locked: true }))?.props).toEqual({ what: 'lock', on: true })
     expect(routeUsageEvent(req('PUT', '/menu/m1/day/2/meal/dinner/lock', { locked: false }))?.props).toEqual({ what: 'lock', on: false })
   })
@@ -85,20 +84,15 @@ describe('PRO-1024 server events', () => {
     expect(routeUsageEvent(req('PUT', '/menu/m1/day/1/meal/lunch', { recipeId: 'r', from: 'receta' }))?.props).toEqual({ target: 'meal', how: 'picked', from: 'receta' })
   })
 
-  it('template_changed: one per part that changed, never the health parts', () => {
-    const before = {
-      mealTemplate: { lunes: { almuerzo: 2, cena: 2 }, martes: { cena: 2 } },
-      mealDishCounts: { almuerzo: 1 },
-      fixedMeals: [],
-      taperDays: ['martes'],
-      preferences: { restrictions: ['celiaquia'] },
-    }
-    expect(templateChanges(before, { ...before, preferences: { restrictions: [] } })).toEqual([])
-    expect(templateChanges(before, { ...before, taperDays: ['martes', 'jueves'], fixedMeals: [{ type: 'desayuno' }] })).toEqual(['fixed_meals', 'taper_days'])
-    expect(templateChanges(before, { ...before, mealTemplate: { lunes: { almuerzo: 3, cena: 2 }, martes: { cena: 2 } } })).toEqual(['diners'])
-    expect(templateChanges(before, { ...before, mealTemplate: { lunes: { almuerzo: 2, cena: 2 }, martes: { cena: 2, desayuno: 2 } } })).toEqual(['meals'])
-    expect(templateChanges(before, { ...before, mealDishCounts: { almuerzo: 2 } })).toEqual(['dish_counts'])
-    expect(templateChanges(null, { taperDays: ['jueves'] })).toEqual(['taper_days'])
+  it('template_changed: one per part of a «semana tipo» slot that changed (D-182)', () => {
+    const before = { diners: 2, options: [{ kind: 'taper' as const }] }
+    expect(weekTypeSlotChanges(before, { ...before })).toEqual([])
+    expect(weekTypeSlotChanges(before, { diners: 3, options: [{ kind: 'taper' }] })).toEqual(['diners'])
+    expect(weekTypeSlotChanges(before, { off: true })).toEqual(['meals', 'diners', 'taper_days'])
+    expect(weekTypeSlotChanges({}, { dishes: 2 })).toEqual(['dish_counts'])
+    expect(weekTypeSlotChanges({}, { options: [{ kind: 'fixed', label: 'Yogur', items: [] }] })).toEqual(['fixed_meals'])
+    expect(weekTypeSlotChanges({}, { options: [{ kind: 'type', type: 'pizza' }, { kind: 'any' }] })).toEqual(['week_type'])
+    expect(weekTypeSlotChanges(undefined, {})).toEqual([])
   })
 
   it('memory_set names the key from PATCH /memory and from Mimo, never the value', () => {

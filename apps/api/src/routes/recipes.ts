@@ -60,6 +60,7 @@ import {
   DIFFICULTIES,
   RETIRED_RECIPE_TAG,
   PLAN_GRATIS_IMPORTS_MESSAGE,
+  isDishType,
   type Difficulty,
   type Meal,
   type Recipe,
@@ -521,6 +522,11 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
     if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
+    // ?dishType=<clave> (PRO-1175): the type chips of the menu's picker
+    // («Legumbres», «Cremas y sopas»…), `recipes.dish_types` (D-182). An
+    // unknown key is ignored.
+    const dishType = req.query.dishType
+    if (isDishType(dishType)) conditions.push(arrayContains(recipes.dishTypes, [dishType]))
     // ?ingredient=<nombre> (PRO-375, «Este mes»): recipes with that
     // ingredient, by normalised name (a calendar product takes its terms:
     // «setas» → champiñón, boletus…).
@@ -1134,6 +1140,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
           advancePrep: source.advancePrep ?? [],
           nutritionPerServing: source.nutritionPerServing,
           nutritionIncomplete: source.nutritionIncomplete ?? false,
+          dishTypes: source.dishTypes ?? null,
           tags: source.tags ?? [],
           internalTags: baseInternalTags,
           sourceUrl: source.sourceUrl,

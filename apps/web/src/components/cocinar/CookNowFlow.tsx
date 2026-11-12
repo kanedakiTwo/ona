@@ -14,7 +14,7 @@ import { chooseBody, proposalBody } from "@/lib/cookNowPayload"
 import { cookHref } from "@/lib/cookHref"
 import { PILL_INK } from "@/components/profile/SubPage"
 import { PantryConfirmStep } from "./PantryConfirmStep"
-import { LOCKED_NOTICE, ProposalView } from "./ProposalView"
+import { EATEN_NOTICE, ProposalView } from "./ProposalView"
 import { DisplaceSheet } from "./DisplaceSheet"
 
 type Minutes = 15 | 30 | 45 | null
@@ -60,7 +60,7 @@ export function CookNowFlow({
   const choose = useCookNowChoose()
 
   const plannedNames = today.planned.map((d) => d.recipeName)
-  const canPlace = today.meal !== null && !today.locked
+  const canPlace = today.meal !== null
 
   function back() {
     if (step === 1) onClose()
@@ -79,9 +79,9 @@ export function CookNowFlow({
         if (r.placed) {
           router.push(cookHref(recipeId, servings, { menuId: r.menuId, day: r.day, meal: r.meal }))
         } else {
-          if (r.reason !== "locked" && r.reason !== "no_meal") return router.push(cookHref(recipeId, servings))
-          // Say it before leaving: the meal got locked (or eaten) after the page loaded.
-          setNotice(LOCKED_NOTICE)
+          if (r.reason !== "no_meal") return router.push(cookHref(recipeId, servings))
+          // Say it before leaving: both meals got eaten after the page loaded.
+          setNotice(EATEN_NOTICE)
           setTimeout(() => router.push(cookHref(recipeId, servings)), 1800)
         }
       },
@@ -207,7 +207,6 @@ export function CookNowFlow({
                 proposal={proposal.data}
                 loading={proposal.isPending}
                 failed={proposal.isError}
-                locked={today.locked}
                 choosing={choose.isPending}
                 onCook={cook}
                 onRestart={() => setStep(1)}

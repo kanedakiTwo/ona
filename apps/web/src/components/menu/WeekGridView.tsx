@@ -51,7 +51,6 @@ import {
   Lock,
   MoreHorizontal,
   Moon,
-  Pin,
   Plus,
   Replace,
   RotateCcw,
@@ -64,7 +63,6 @@ import {
   Users,
 } from "lucide-react"
 import {
-  MEAL_TYPE_TAG_LABELS,
   type DayMenu,
   type Dish,
   type MealSlot,
@@ -106,7 +104,7 @@ interface Props {
   weekStart: string
   todayIndex: number
   skippedDays?: number[]
-  /** Lock state per slot — drives the "Fijado" chip + the menu's Bloquear/Desbloquear label. */
+  /** Lock state per slot — drives the small padlock (PRO-1175) + the menu's Bloquear/Desbloquear label. */
   lockedSlots?: LockedMap
   /** Household-derived diner count, used as the fallback when the slot has no override. */
   defaultDiners?: number
@@ -534,7 +532,6 @@ function SlotRow({
   const dishes: Dish[] = slot?.dishes ?? []
   const recipeDishes = dishes.filter((d): d is RecipeDish => d.kind === 'recipe')
   const firstRecipe = recipeDishes[0] ?? null
-  const slotPinnedType = firstRecipe?.pinnedType ?? null
   // A leftover is part of its source batch: no «N pax» chip (PRO-75).
   const slotServingsOverride = firstRecipe?.variant === "leftover" ? null : slot?.servings ?? null
 
@@ -661,7 +658,6 @@ function SlotRow({
         firstRecipe={firstRecipe}
         cellData={cellData}
         isLocked={isLocked}
-        slotPinnedType={slotPinnedType}
         slotServingsOverride={slotServingsOverride}
         defaultDiners={defaultDiners}
         actions={actions}
@@ -744,7 +740,6 @@ function FilledRow({
   firstRecipe,
   cellData,
   isLocked,
-  slotPinnedType,
   slotServingsOverride,
   defaultDiners,
   actions,
@@ -763,7 +758,6 @@ function FilledRow({
   firstRecipe: RecipeDish | null
   cellData: CellData | null
   isLocked: boolean
-  slotPinnedType: string | null
   slotServingsOverride: number | null
   defaultDiners?: number
   actions: ActionDef[]
@@ -845,9 +839,8 @@ function FilledRow({
           </span>
         )}
         {isLocked && (
-          <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded-full bg-[#C65D38] px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE] backdrop-blur-sm">
-            <Lock size={9} strokeWidth={2} />
-            Fijado
+          <span title="Se queda si rehaces la semana" className="absolute left-1 top-1 inline-flex items-center rounded-full bg-[#FAF6EE]/95 p-1 text-[#1A1612] backdrop-blur-sm">
+            <Lock size={9} strokeWidth={2} role="img" aria-label="Se queda si rehaces la semana" />
           </span>
         )}
       </div>
@@ -862,15 +855,9 @@ function FilledRow({
           )}
         </div>
 
-        {/* Pinned-type + servings chips (mirror Vista día's surface). */}
-        {(slotPinnedType || slotServingsOverride != null) && (
+        {/* Servings chip (mirrors Vista día's surface). */}
+        {slotServingsOverride != null && (
           <div className="mt-1 flex flex-wrap items-center gap-1">
-            {slotPinnedType && (
-              <span className="inline-flex items-center gap-0.5 rounded-full border border-[#C65D38]/30 bg-[#FDEEE8] px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#C65D38]">
-                <Pin size={9} strokeWidth={2} />
-                {(MEAL_TYPE_TAG_LABELS as Record<string, string>)[slotPinnedType] ?? slotPinnedType}
-              </span>
-            )}
             {slotServingsOverride != null && (
               <span className="inline-flex items-center gap-0.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#7A7066]">
                 <Users size={9} strokeWidth={2} />

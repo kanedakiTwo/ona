@@ -24,8 +24,8 @@ export type {
 } from './types/recipe.js'
 export type { Menu, DayMenu, MealSlot, LockedSlots, MealDishCounts, MenuFit, MenuFitLevel, MenuFitMissReason, RecipeAddMethod } from './types/menu.js'
 export { menuFitLevel } from './types/menu.js'
-export type { Dish, RecipeDish, NoteDish, DishReplacedReason } from './types/menuDish.js'
-export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish } from './types/menuDish.js'
+export type { Dish, RecipeDish, NoteDish, DishReplacedReason, FromWeekType } from './types/menuDish.js'
+export { isRecipeDish, isNoteDish, isTaperDish, isTaperVariant, recipeDishesOf, replacedDishLine, isFixedDish, weekTypeChipOf } from './types/menuDish.js'
 export { INGREDIENT_ROLES, ingredientRoleMarkSchema, ingredientRolesUpdateSchema } from './types/ingredientRole.js'
 export type { IngredientRole, IngredientRoleMark } from './types/ingredientRole.js'
 export {
@@ -192,7 +192,6 @@ export type {
   Difficulty,
   Aisle,
   SourceType,
-  MealTypeTag,
 } from './constants/enums.js'
 
 // Zod schemas
@@ -240,9 +239,41 @@ export {
   DIFFICULTIES,
   AISLES,
   SOURCE_TYPES,
-  MEAL_TYPE_TAGS,
-  MEAL_TYPE_TAG_LABELS,
 } from './constants/enums.js'
+export {
+  DISH_TYPES,
+  DISH_TYPE_KEYS,
+  DISH_TYPE_FAMILIES,
+  DISH_TYPE_FAMILY_LABELS,
+  isDishType,
+  dishTypeInfo,
+} from './constants/dishTypes.js'
+export type { DishType, DishTypeFamily, DishTypeInfo } from './constants/dishTypes.js'
+export {
+  WEEK_TYPE_MAX_OPTIONS,
+  weekTypeOptionSchema,
+  weekTypeSlotSchema,
+  defaultWeekTypeSlot,
+  weekTypeSlotAt,
+  fullWeekTypeDays,
+  taperAllowedAt,
+  weekTypeSlotError,
+  weeksBetween,
+  weekTypeOptionsFor,
+  weekTypeOptionLabel,
+  stableSlotJson,
+  PLANTILLA_DAYS,
+  PLANTILLA_MEALS,
+  plantillaFromWeekType,
+  plantillaEdits,
+  weekTypeDishLines,
+  slotWithoutOptions,
+  weekTypeSlotView,
+  weekTypeSlotFromView,
+  addWeeksTo,
+  weekTypePreview,
+} from './types/weekType.js'
+export type { WeekTypeOption, WeekTypeSlot, WeekTypeDays, PlantillaView, WeekTypeSlotView } from './types/weekType.js'
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
 export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from './constants/aiDisclosure.js'
@@ -729,5 +760,6 @@ export type {
 export { ISO_DAY_RE, isIsoDay, RECIPE_OF_THE_DAY_PHOTO_SIZES, RECIPE_OF_THE_DAY_PATH } from './types/recipeOfTheDay.js'
 export type { RecipeOfTheDayPhotoFormat, RecipeOfTheDayView } from './types/recipeOfTheDay.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'
+export { moveSlotInWeek, dishKey, slotKey, MENU_CHANGED_CODE, withLock, swapLocks } from './utils/menuSlots.js'
 export type { MenuSheetName, MenuSheetAction } from './constants/menuSheets.js'
 export { MENU_SHEETS, MENU_SHEET_ACTIONS, isMenuSheetAction } from './constants/menuSheets.js'

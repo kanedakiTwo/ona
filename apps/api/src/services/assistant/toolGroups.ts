@@ -55,11 +55,11 @@ const DAYS = 'lunes|martes|miercoles|jueves|viernes|sabado|domingo'
 
 export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
   menu: {
-    label: 'cambiar el menu: generar la semana, añadir, quitar, mover, vaciar o fijar comidas, comensales, notas, vetos, comido o cocinado, quien cocina, historial',
+    label: 'cambiar el menu: generar la semana, añadir, quitar, mover, vaciar o fijar comidas, comensales, notas, vetos, comido o cocinado, quien cocina, historial, la semana tipo (lo de cada semana)',
     tools: [
       'generate_weekly_menu', 'add_dish', 'remove_dish', 'clear_meal', 'set_day_skipped', 'set_meal_note',
       'set_meal_servings', 'lock_meal', 'move_meal', 'ban_recipe_this_week', 'mark_meal_eaten', 'log_cooked',
-      'set_cook_today', 'suggest_recipes', 'get_menu_history', 'update_weekly_template',
+      'set_cook_today', 'suggest_recipes', 'get_menu_history', 'update_weekly_template', 'get_week_type', 'set_week_type_slot',
     ],
     words: new RegExp(
       `\\b(menus?|semana|hoy|manana|ayer|finde|${DAYS}|comidas?|cenas?|cenamos|comemos|desayun\\w*|meriend\\w*|almuerz\\w*|platos?|cambia\\w*|quita\\w*|pon|ponme|ponlo|ponla|pongas|mete\\w*|anade\\w*|anadir|mueve|mover|pasa|intercambia\\w*|fuera|invitad\\w*|comensales|raciones|somos|seremos|vienen|genera\\w*|haz|hazme|hazlo|planifica\\w*|repit\\w*|veta\\w*|harto|bloquea\\w*|deja\\w*|cocinad[oa]|cocina|cocino|cocinas|hice|hizo|hecho|hecha|historial|ultima vez|semana pasada|sugier\\w*|sugerencias?|ideas?|propon\\w*|apunta\\w*|nota)\\b`,
@@ -126,7 +126,7 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
       'get_ficha', 'explain_ficha_fact', 'note_ficha_fact', 'forget_ficha_fact', 'set_ficha_learning',
       'get_ficha_question', 'answer_ficha_question', 'list_taste_verdicts', 'forget_taste_verdicts', 'update_memory',
     ],
-    words: /\b(ficha|sabes de|por que crees|de donde sacas|aprend\w*|afina|me apetece|me encanta|no para mi|valoraciones|cartas|olvida\w*|recuerda que|apunta que|en casa)\b/,
+    words: /\b(ficha|sabes de|por que crees|de donde sacas|aprend\w*|afina|me apetece|(?:me|nos|le|les) (?:gusta|gustan|encanta|encantan)|no para mi|valoraciones|cartas|olvida\w*|recuerda que|apunta que|en casa)\b/,
   },
 }
 

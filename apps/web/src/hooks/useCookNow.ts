@@ -17,7 +17,6 @@ export interface CookNowToday {
   meal: CookNowMeal | null
   menuId: string | null
   planned: CookNowPlannedDish[]
-  locked: boolean
   slotServings: number | null
   targets: DisplaceTarget[]
 }
@@ -41,7 +40,7 @@ export interface CookNowProposal {
 
 export type CookNowChooseResult =
   | { placed: true; menuId: string; weekStart: string; day: number; meal: string }
-  | { placed: false; reason: "no_meal" | "locked" | "not_found" | "banned" }
+  | { placed: false; reason: "no_meal" | "not_found" | "banned" }
 
 export function useCookNowToday() {
   return useQuery<CookNowToday>({ queryKey: ["cook-now", "today"], queryFn: () => api.get<CookNowToday>("/cook-now/today") })

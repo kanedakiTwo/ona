@@ -12,8 +12,8 @@
  * - `fichaMenuConstraints(ficha)`: lo que el menú respeta como filtro fijo —
  *   equipo que no hay («sin horno hasta nuevo aviso»), disgustos de todo el
  *   hogar, afinidades muy negativas con un ingrediente y si alguien quiere
- *   proteína en cada plato (`protein_minimum`); y sus platos fijos con su
- *   día y su comida (`fixed_dish`, PRO-1141), que el generador pone primero.
+ *   proteína en cada plato (`protein_minimum`). Los platos fijos con día y
+ *   comida (`fixed_dish`) viven desde D-182 en la semana tipo del hogar.
  *
  * `user_memories` sigue siendo lo que Mimo escribe; la ficha se suma a lo
  * que lee. Ver specs/household-profile.md → «Quién lee la ficha».
@@ -186,13 +186,6 @@ export interface FichaMenuConstraints {
    * dishes too (the menu is the household's, so one person is enough).
    */
   strictProteinMinimum: boolean
-  /**
-   * PRO-1141: the ficha's «platos fijos» that say their days and their meal
-   * («pizza el viernes por la noche»), in the ficha's order. Days are 0 =
-   * Monday … 6 = Sunday. One without days or without a meal can't be placed
-   * and is left out (Mimo still reads it in the digest).
-   */
-  fixedDishes: FichaFixedDish[]
 }
 
 export interface FichaFixedDish {
@@ -201,7 +194,11 @@ export interface FichaFixedDish {
   meal: Meal
 }
 
-/** Pure: a `fixed_dish` value the menu can place, or null. */
+/**
+ * Pure: a `fixed_dish` value with its days and meal, or null. Since the
+ * «semana tipo» (D-182) the menu no longer reads these facts: the migration
+ * (`weekType.ts`) and the writers turn them into week type slots.
+ */
 export function fixedDishOf(value: unknown): FichaFixedDish | null {
   const parsed = NEW_PROFILE_FACT_VALUE_SCHEMAS.fixed_dish.safeParse(value)
   if (!parsed.success || !parsed.data.days?.length || !parsed.data.meal) return null
@@ -241,7 +238,7 @@ export function equipmentMissingIn(text: string): string[] {
 
 /** Pure: the menu's fixed filters from the ficha (health types are never read here: restrictions keep their own path). */
 export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuConstraints {
-  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false, fixedDishes: [] }
+  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false }
   if (!ficha) return out
   const addDislike = (s: string) => {
     const t = s.trim().toLowerCase()
@@ -260,9 +257,6 @@ export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuCon
     } else if (f.type === 'affinity') {
       const v = f.value as { kind?: string; target?: string; score?: number }
       if (v?.kind === 'ingredient' && typeof v.target === 'string' && Number(v.score) <= -2) addDislike(v.target)
-    } else if (f.type === 'fixed_dish') {
-      const fixed = fixedDishOf(f.value)
-      if (fixed) out.fixedDishes.push(fixed)
     }
   }
   return out

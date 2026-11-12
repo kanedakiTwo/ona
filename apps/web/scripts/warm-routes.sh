@@ -41,6 +41,7 @@ ROUTES=(
   /profile/memoria
   /profile/ficha
   /profile/ficha/historial
+  /profile/semana-tipo
   /afinar
   /whatsapp/conectar
   /advisor

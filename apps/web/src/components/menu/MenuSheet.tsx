@@ -135,6 +135,7 @@ export function SheetAction({
   external,
   testId,
   action,
+  pressed,
 }: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
   label: string
@@ -148,6 +149,8 @@ export function SheetAction({
   testId?: string
   /** PRO-1174: the option this is, counted as `menu_sheet_action` with the sheet around it. */
   action?: MenuSheetAction
+  /** A toggle (PRO-1175, «Que no cambie si rehago la semana»): its state, as `aria-pressed`. */
+  pressed?: boolean
 }) {
   const track = useSheetTracker()
   const handleClick = () => {
@@ -197,7 +200,7 @@ export function SheetAction({
     )
   }
   return (
-    <button type="button" onClick={handleClick} disabled={disabled} className={cls} data-testid={testId} {...a11y}>
+    <button type="button" onClick={handleClick} disabled={disabled} aria-pressed={pressed} className={cls} data-testid={testId} {...a11y}>
       {body}
     </button>
   )

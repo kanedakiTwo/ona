@@ -18,7 +18,6 @@ const TODAY = {
   meal: 'dinner',
   menuId: 'menu-e2e',
   planned: [{ recipeId: '00000000-0000-4000-8000-0000000000b1', recipeName: 'Merluza al horno', imageUrl: null, totalTime: 35 }],
-  locked: false,
   slotServings: null,
   targets: [
     { day: 3, replaces: null, disabled: false },

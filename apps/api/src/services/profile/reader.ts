@@ -25,6 +25,7 @@ import { householdPersons, householdProfiles, profileFacts, users } from '../../
 import { madridParts } from '../madridTime.js'
 import { mentionsHealth, stripHealthFromWhatsAppText } from './healthText.js'
 import { normaliseEquipment } from '../recipeMatcher.js'
+import { hasBabyAtHome } from '../undercookedRecipes.js'
 
 type Db = typeof defaultDb
 
@@ -186,6 +187,8 @@ export interface FichaMenuConstraints {
    * dishes too (the menu is the household's, so one person is enough).
    */
   strictProteinMinimum: boolean
+  /** Someone aged 0 to 2 lives here (PRO-1181: no runny yolk nor pink mince). */
+  babyAtHome: boolean
 }
 
 export interface FichaFixedDish {
@@ -238,8 +241,9 @@ export function equipmentMissingIn(text: string): string[] {
 
 /** Pure: the menu's fixed filters from the ficha (health types are never read here: restrictions keep their own path). */
 export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuConstraints {
-  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false }
+  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false, babyAtHome: false }
   if (!ficha) return out
+  out.babyAtHome = hasBabyAtHome(ficha.persons)
   const addDislike = (s: string) => {
     const t = s.trim().toLowerCase()
     if (t && !out.dislikes.includes(t)) out.dislikes.push(t)

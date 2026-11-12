@@ -276,7 +276,7 @@ export {
 export type { WeekTypeOption, WeekTypeSlot, WeekTypeDays, PlantillaView, WeekTypeSlotView } from './types/weekType.js'
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
-export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from './constants/aiDisclosure.js'
+export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT, AI_SIGNATURE, AI_TEMPLATE_FOOTER } from './constants/aiDisclosure.js'
 export { KITCHEN_APPLIANCES, BASIC_UTENSILS, foldEquipment, classifyEquipment, appliancesIn, unknownEquipmentCounts } from './constants/equipment.js'
 export type { EquipmentKind } from './constants/equipment.js'
 export {

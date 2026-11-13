@@ -22,7 +22,7 @@ test('recipe detail: marking cooked increments the count', async ({ page }) => {
   await page.goto('/recipes')
   const card = page
     .getByRole('main')
-    .locator('a[href^="/recipes/"]:not([href="/recipes/new"])')
+    .locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])')
     .first()
   await expect(card).toBeVisible({ timeout: 10_000 })
   await Promise.all([page.waitForURL(/\/recipes\/[0-9a-f-]{36}(\?|$)/), card.click()])

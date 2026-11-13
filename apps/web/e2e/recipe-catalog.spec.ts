@@ -25,7 +25,7 @@ test('catalog renders + detail page opens for the first card', async ({ page }) 
   // the contract here is that the route renders.
   const cards = page
     .getByRole('main')
-    .locator('a[href^="/recipes/"]:not([href="/recipes/new"])')
+    .locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])')
   try {
     await cards.first().waitFor({ state: 'visible', timeout: 10_000 })
   } catch {

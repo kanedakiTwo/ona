@@ -14,7 +14,7 @@ En `packages/shared/src/constants/featureCatalog.ts`, una entrada por truco:
 - `per`: `hogar` (una fila por hogar) o `persona` (una por persona y hogar).
 - `events`: qué eventos cuentan. Un evento cuenta si coincide con alguna regla: el `name` y, si la regla los trae, el `channel` y las `props` (todas las claves; una lista es «cualquiera de estos valores»).
 
-Las entradas de hoy salen de los eventos que ya existen:
+Las entradas de hoy salen de los eventos que ya existen. «Cocinar ahora» (`/cocinar`, [Cook now](./cook-now.md)) no es todavía un truco del catálogo: su visita es `screen_viewed` `cocinar` (antes `despensa`, porque `/profile/pantry` redirige allí) y sus usos, `cook_now_proposed` y `cook_now_chosen` ([metrics.md](./metrics.md)); «Terminar» en el modo cocina cuenta en `marcar_cocinado` (`meal_cooked`, con `fromMenu` cuando viene del menú).
 
 | id | Función | Tipo | Por | Eventos |
 |---|---|---|---|---|

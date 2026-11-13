@@ -2,7 +2,11 @@ import { Router } from 'express'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from '../services/costLedger.js'
+<<<<<<< 85eda96b6c87975bc8c3c32d2423f9a3d6f69564
 import { eq, ilike, count, asc, desc, sql } from 'drizzle-orm'
+=======
+import { eq, count, asc, desc, sql } from 'drizzle-orm'
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
 import { db } from '../db/connection.js'
 import { ingredients, recipeIngredients } from '../db/schema.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
@@ -21,8 +25,12 @@ import {
   levenshtein,
   normalizeForDedupe,
 } from '../services/ingredientAutoCreate.js'
+<<<<<<< 85eda96b6c87975bc8c3c32d2423f9a3d6f69564
 import { recomputeRecipesUsing } from '../services/nutrition/recomputeRecipes.js'
 import { invalidateRecipeCatalogCache } from '../services/recipePersistence.js'
+=======
+import { ingredientSearch } from '../services/ingredientSearch.js'
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
 import { createUsdaClient } from '../services/nutrition/usdaClient.js'
 import { fetchBedcaNutrition } from '../services/nutrition/bedcaClient.js'
 import { inferAllergenTagsFromName } from '../services/nutrition/allergens.js'
@@ -83,11 +91,16 @@ router.get('/ingredients', async (req, res) => {
     // the lookup-by-id missed.
     const perPage = Math.min(500, Math.max(1, parseInt(req.query.perPage as string) || 20))
     const sort = (req.query.sort as string) || 'name'
-    const search = req.query.search as string | undefined
+    const search = typeof req.query.search === 'string' ? ingredientSearch(req.query.search) : null
     const offset = (page - 1) * perPage
 
+<<<<<<< 85eda96b6c87975bc8c3c32d2423f9a3d6f69564
     // Case-insensitive: «Manitas» finds «manitas de cerdo» (PRO-1125).
     const where = search ? ilike(ingredients.name, `%${search}%`) : undefined
+=======
+    // Without case or accents ("Tomate" → "tomate", "brocoli" → "brócoli"), exact name first
+    const where = search?.where
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
 
     // Total count
     const [{ total }] = await db
@@ -107,7 +120,7 @@ router.get('/ingredients', async (req, res) => {
       .select()
       .from(ingredients)
       .where(where)
-      .orderBy(orderFn)
+      .orderBy(...(search ? [asc(search.rank), orderFn] : [orderFn]))
       .limit(perPage)
       .offset(offset)
 

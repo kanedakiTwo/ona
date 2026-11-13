@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback } from "react"
 import { useExtractRecipeFromImage } from "@/hooks/useRecipes"
 import { Camera, X, Loader2, RotateCcw } from "lucide-react"
-import { cn } from "@/lib/utils"
 import type { ExtractedRecipe } from "@ona/shared"
 
 interface PhotoRecipeUploadProps {

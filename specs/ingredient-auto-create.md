@@ -12,9 +12,18 @@ The same plumbing is reused by:
 
 ## User Capabilities
 
+<<<<<<< 85eda96b6c87975bc8c3c32d2423f9a3d6f69564
 - Users typing in the ingredient picker on `/recipes/new` see the existing catalog filtered as they type (debounced search against `GET /ingredients?search=`, case-insensitive)
 - **Since PRO-1125 the household never maps an ingredient.** When nothing matches the typed name exactly AND the user has typed ≥ 2 chars: if the search found nothing, the catalogue's look-alikes first («¿Es *manitas de cerdo*?», `GET /ingredients/similar`); then «Añadir "<nombre>"», which posts `{ name }` to `/ingredients/auto-create` (stub row: allergens and aisle from the name, no nutrition) and selects it. No modal, no USDA list; the recipe shows «nutrición incompleta» until Cocina fills the values at night ([Nutrition](./nutrition.md) → Filling missing nutrition). See [Recipes](./recipes.md)
 - If the typed name fuzzy-matches an existing catalog ingredient (Levenshtein ≤ 2 against normalized names), the dedupe path returns the existing row instead of creating a duplicate, and the picker shows its name
+=======
+- Users typing in the ingredient picker on `/recipes/new` see the existing catalog filtered as they type (debounced search against `GET /ingredients?search=`). The search ignores case, accents and extra spaces («Tomate», «TOMATE» and «tomáte» find «tomate»; «brocoli» finds «brócoli»), and shows the exact name first, then names that start with what was typed, then names with a word that starts with it, then the rest (`services/ingredientSearch.ts`, one fold rule with `foldIngredientName` in `@ona/shared`). Until 2026-11-10 it compared the raw text, so «Tomate» found nothing and the form offered to create it.
+- When the user has typed ≥ 2 chars and no result has the same name once folded (`hasSameIngredientName`), a "Crear nuevo ingrediente '<nombre>'" option appears below the results
+- Clicking it opens a modal that shows up to 5 USDA candidates: each card shows the USDA description, the data type (Foundation / SR Legacy / FNDDS — Branded entries are filtered out), and the per-100 g nutrition (kcal + macros)
+- The user picks one ("Crear con USDA") or "Crear sin nutrición" if no candidate is right
+- The new ingredient row is persisted, slotted into the recipe form's ingredient list, and the modal closes
+- If the typed name fuzzy-matches an existing catalog ingredient (Levenshtein ≤ 2 against normalized names), the dedupe path returns the existing row instead of creating a duplicate; the modal indicates "Ya existe '<existing name>' — usaremos esa"
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
 
 ## Manual search
 
@@ -156,7 +165,15 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 - [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) — auto-creates unknown extracted ingredients
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — `--auto-create-missing` flag
 - [apps/api/scripts/refillIngredientNutrition.ts](../apps/api/scripts/refillIngredientNutrition.ts) — fills ingredients saved as zero-nutrition stubs
+<<<<<<< 85eda96b6c87975bc8c3c32d2423f9a3d6f69564
 - [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — picker: search, «¿Es …?» look-alikes, «Añadir» (PRO-1125)
 - [apps/web/src/components/recipes/IngredientCandidateCard.tsx](../apps/web/src/components/recipes/IngredientCandidateCard.tsx) — candidate card of the re-map modal
 - [apps/web/src/app/admin/sections/RemapModal.tsx](../apps/web/src/app/admin/sections/RemapModal.tsx) — admin re-map modal: best entry with «Vale» / «Buscar otra», manual search, estimate
+=======
+- [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — picker + modal (manual search, translations, BEDCA, estimate button)
+- [apps/web/src/components/recipes/IngredientCandidateCard.tsx](../apps/web/src/components/recipes/IngredientCandidateCard.tsx) — shared candidate card for both modals
+- [apps/web/src/app/admin/sections/RemapModal.tsx](../apps/web/src/app/admin/sections/RemapModal.tsx) — re-map modal mirroring the auto-create UX
+- [apps/api/src/services/ingredientSearch.ts](../apps/api/src/services/ingredientSearch.ts) — the folded `GET /ingredients?search=` filter and ranking
+- [packages/shared/src/utils/ingredientSearch.ts](../packages/shared/src/utils/ingredientSearch.ts) — `foldIngredientName`, `hasSameIngredientName`
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
 - [apps/web/src/hooks/useIngredients.ts](../apps/web/src/hooks/useIngredients.ts) — `useSearchIngredients`, `useSuggestIngredient`, `useAutoCreateIngredient`, `useEstimateNutrition`, `useEstimateNutritionPreview`

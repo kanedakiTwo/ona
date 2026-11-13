@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { Check, Lock } from "lucide-react"
+import { Check } from "lucide-react"
 import { MenuSheet } from "@/components/menu/MenuSheet"
 import { useAddMealSlot, useMenu, useRegenerateMeal } from "@/hooks/useMenu"
 import { addToMenuSlots, mondayOf, type AddToMenuSlot } from "@/lib/addToMenu"
@@ -47,9 +47,9 @@ export function AddToMenuSheet({
   }
 
   function place(s: AddToMenuSlot) {
-    if (!menu || busy || s.action === "locked" || s.action === "already") return
+    if (!menu || busy || s.action === "already") return
     setError(null)
-    const params = { menuId: menu.id, day: s.day, meal: s.meal, recipeId }
+    const params = { menuId: menu.id, day: s.day, meal: s.meal, recipeId, from: "receta" as const }
     const where = `${weekdayName(s.day)}, ${mealLabel(s.meal).toLowerCase()}`
     const onSuccess = () => {
       haptic.medium()
@@ -128,15 +128,13 @@ export function AddToMenuSheet({
 
 function SlotButton({ slot, disabled, onClick }: { slot: AddToMenuSlot; disabled: boolean; onClick: () => void }) {
   const meal = mealLabel(slot.meal)
-  const inert = slot.action === "locked" || slot.action === "already"
+  const inert = slot.action === "already"
   const hint =
-    slot.action === "locked"
-      ? "Fijada"
-      : slot.action === "already"
-        ? "Ya está aquí"
-        : slot.current
-          ? `Sustituir ${slot.current}`
-          : "Libre"
+    slot.action === "already"
+      ? "Ya está aquí"
+      : slot.current
+        ? `Sustituir ${slot.current}`
+        : "Libre"
   return (
     <button
       type="button"
@@ -152,7 +150,6 @@ function SlotButton({ slot, disabled, onClick }: { slot: AddToMenuSlot; disabled
     >
       <span className="flex items-center gap-1 text-[13px] font-semibold text-ink">
         {meal}
-        {slot.action === "locked" && <Lock size={12} aria-hidden />}
         {slot.action === "already" && <Check size={12} aria-hidden />}
       </span>
       <span className="line-clamp-1 text-[12px] text-ink-muted">

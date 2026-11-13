@@ -10,7 +10,7 @@ export const MAX_WITH_WHAT_I_HAVE = 3
 
 export type PickedIngredient = Pick<Ingredient, "id" | "name">
 
-function useDebounced<T>(value: T, ms: number): T {
+export function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value)
   useEffect(() => {
     const t = setTimeout(() => setV(value), ms)

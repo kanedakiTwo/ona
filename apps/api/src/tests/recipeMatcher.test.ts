@@ -4,15 +4,18 @@
  * week generation, single-slot regenerate, manual add, leftover clone).
  * Bugs here propagate everywhere, so changes get tests first.
  *
- * TDD note (PR 5): the bannedRecipeIds + pinnedType filters land here.
+ * TDD note (PR 5): the bannedRecipeIds filter lands here (the pinnedType
+ * one left with the «semana tipo», D-182).
  * These tests pin the new contract; the matcher implementation follows.
  */
 import { describe, expect, it } from 'vitest'
 import {
+  findRecipeForSlot,
   matchRecipes,
   type MatcherOptions,
   type RecipeWithIngredients,
 } from '../services/recipeMatcher.js'
+import { cuisineBiasOf, tasteWeight } from '../services/menuTastes.js'
 
 // Fixture pool. Every recipe matches the baseline `lunch` + `spring`
 // query so each test can vary only the predicate it exercises.
@@ -50,51 +53,6 @@ const baseOptions: MatcherOptions = {
   restrictions: [],
   favoriteRecipeIds: new Set(),
 }
-
-describe('matchRecipes: pinnedType', () => {
-  it('only returns recipes whose `tags` include the pinned type', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: 'cremas',
-    })
-    expect(out.map((r) => r.id)).toEqual(['r2'])
-  })
-
-  it('returns the empty pool when no recipe carries the pinned tag', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: 'parrilla', // none of the fixture recipes carries this
-    })
-    expect(out).toEqual([])
-  })
-
-  it('treats a null pinnedType as a no-op (same as absent)', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: null,
-    })
-    expect(out.map((r) => r.id).sort()).toEqual(['r1', 'r2', 'r3'])
-  })
-
-  it('combines with bannedRecipeIds — pinned crema that is also banned still falls out', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: 'cremas',
-      bannedRecipeIds: new Set(['r2']),
-    })
-    expect(out).toEqual([])
-  })
-
-  it('combines with the meal-type filter — pinning "cremas" on a slot that excludes the candidate by meal returns empty', () => {
-    // Pretend r2 only matches dinner (not lunch). The slot wants lunch.
-    const recipes = [{ ...RECIPES[1], meals: ['dinner'] }, RECIPES[0], RECIPES[2]]
-    const out = matchRecipes(recipes, {
-      ...baseOptions,
-      pinnedType: 'cremas',
-    })
-    expect(out).toEqual([])
-  })
-})
 
 describe('matchRecipes: availableEquipment (user_memories.equipment)', () => {
   const oven = {
@@ -309,5 +267,68 @@ describe('matchRecipes: allergies and diets (2026-10-07 regression)', () => {
   it('"vegetariano" drops meat by ingredient', () => {
     expect(ids(['vegetariano'])).not.toContain('r5')
     expect(ids(['vegetariano'])).toContain('r2')
+  })
+})
+
+// PRO-1201: the ficha's cuisines and the cook's level weigh the draw.
+describe('findRecipeForSlot: cuisines and cooking level of the ficha (PRO-1201)', () => {
+  const dish = (id: string, cuisine: string | null, difficulty: string = 'medium'): RecipeWithIngredients => ({
+    id,
+    name: id,
+    meals: ['lunch'],
+    seasons: ['spring'],
+    tags: [],
+    internalTags: cuisine ? [`cocina:${cuisine}`] : [],
+    difficulty,
+    ingredients: [{ ingredientId: `i-${id}`, ingredientName: `ingrediente ${id}`, quantity: 100, unit: 'g' }],
+  })
+  const japonesa = dish('japonesa', 'japonesa')
+  const espanola = dish('espanola', 'espanola')
+  const mexicana = dish('mexicana', 'mexicana')
+  const dificil = dish('dificil', 'espanola', 'hard')
+  const facil = dish('facil', 'espanola', 'easy')
+
+  const draws = (pool: RecipeWithIngredients[], tastes?: MatcherOptions['tastes'], n = 1000) => {
+    const count: Record<string, number> = {}
+    for (let i = 0; i < n; i++) {
+      const r = findRecipeForSlot(pool, { ...baseOptions, tastes })!
+      count[r.id] = (count[r.id] ?? 0) + 1
+    }
+    return (id: string) => count[id] ?? 0
+  }
+
+  it('«asiática: 20»: a Japanese recipe comes out much less than a Spanish one', () => {
+    const got = draws([japonesa, espanola], { cuisineBias: { asiatica: 20 } })
+    expect(got('japonesa')).toBeGreaterThan(0)
+    expect(got('japonesa') * 3).toBeLessThan(got('espanola'))
+  })
+
+  it('«mexicana: 90»: a Mexican recipe comes out more; Spanish stays neutral', () => {
+    const got = draws([mexicana, espanola], { cuisineBias: { mexicana: 90 } })
+    expect(got('mexicana')).toBeGreaterThan(got('espanola') * 1.2)
+  })
+
+  it('«easy»: a hard recipe almost never; «medium» a little less; «advanced» as before', () => {
+    expect(draws([dificil, facil], { cookingSkill: 'easy' })('dificil')).toBeLessThan(150)
+    expect(tasteWeight(dificil, { cookingSkill: 'medium' })).toBe(0.7)
+    expect(tasteWeight(dificil, { cookingSkill: 'advanced' })).toBe(1)
+    expect(tasteWeight(facil, { cookingSkill: 'easy' })).toBe(1)
+  })
+
+  it('without a ficha (or a cuisine it doesn\'t name, or a recipe without one) the weight is as today', () => {
+    expect(tasteWeight(japonesa, undefined)).toBe(1)
+    expect(tasteWeight(japonesa, {})).toBe(1)
+    expect(tasteWeight(espanola, { cuisineBias: { asiatica: 90 } })).toBe(1)
+    expect(tasteWeight(dish('propia', null), { cuisineBias: { asiatica: 10 }, cookingSkill: 'easy' })).toBe(1)
+    const got = draws([japonesa, espanola])
+    expect(Math.abs(got('japonesa') - got('espanola'))).toBeLessThan(150)
+  })
+
+  it('a family covers its cuisines and a named cuisine wins over its family', () => {
+    expect(tasteWeight(japonesa, { cuisineBias: { asiatica: 90 } })).toBe(1.5)
+    expect(tasteWeight(japonesa, { cuisineBias: { asiatica: 90, japonesa: 10 } })).toBe(0.15)
+    expect(tasteWeight(dish('asia', 'asiatica'), { cuisineBias: { japonesa: 85 } })).toBe(1.5)
+    expect(tasteWeight(espanola, { cuisineBias: { mediterranea: 30 } })).toBe(0.15)
+    expect(cuisineBiasOf({ 'Oriente Medio': 120, Española: '50', mala: 'x' })).toEqual({ 'oriente-medio': 100, espanola: 50 })
   })
 })

@@ -22,8 +22,8 @@ import {
   normalizeDeviation,
   TARGET_MACROS,
   MENU_GENERATION,
+  isBaseRecipe,
 } from '@ona/shared'
-import { applyTemplateTapers } from './taper.js'
 import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
 import { applyWeekPlan } from './weekPlan.js'
 import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
@@ -33,206 +33,34 @@ import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
+import { memoryTastes, type MenuTastes } from './menuTastes.js'
+import { compileRestrictions } from './dietaryRestrictions.js'
+import { applyWeekTypeTapers, writtenDishBreaks, dishTypeNote, markWeekTypeConflicts, missingDishTypes, planWeekType, presetRecipeIds, presetSlots, slotKey, weekTypeFromTemplate, type DishSpec } from './weekTypePlan.js'
+import { loadWeekTypeForUser } from './weekType.js'
+import { recordCatalogWish } from './catalogWishes.js'
+import { getPrimaryHouseholdId } from './scopeResolver.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
-import type { MealDishCounts, Dish, RecipeDish, Course, FixedMeal, FoodGroup } from '@ona/shared'
-import { fixedMealFor, fixedMealsFromTemplate, fixedNoteText } from '@ona/shared'
+import type { MealDishCounts, Dish, RecipeDish, Course, FoodGroup } from '@ona/shared'
+import { dishTypeInfo } from '@ona/shared'
 import { loadSchoolDinnerAvoidGroups, withoutFoodGroup } from './schoolMenu.js'
-import { getPrimaryHouseholdId } from './scopeResolver.js'
+import { everydayPolicy, everydayTries, isDiscovery, loadIsStarting, type EverydayPolicy } from './everydayMenu.js'
 
-/**
- * Lunch + dinner every day, until the user sets their own plantilla in the
- * profile. Breakfast is opt-in: few households plan it, and with breakfast on
- * by default most new menus came back with `no_main_available_breakfast_*`
- * warnings and empty breakfast slots.
- */
-export function defaultTemplate(): DayTemplate[] {
-  return Array.from({ length: 7 }, () => ({
-    lunch: true,
-    dinner: true,
-  }))
+export { defaultTemplate, normalizeMealTemplate, extractMealDiners, extractMealDishCounts } from './legacyPlantilla.js'
+
+/** Slots of the template that `locks` marks (the week type's preset ones). */
+function countLocked(template: DayTemplate[], locks: LockedSlots): number {
+  let n = 0
+  template.forEach((day, d) => { for (const meal of Object.keys(day)) if (day[meal] && locks[String(d)]?.[meal]) n++ })
+  return n
 }
 
-// Frontend ↔ backend meal-template shapes.
-//
-// The profile page stores `userSettings.template` as a junk-drawer blob:
-//   { physical, preferences, mealTemplate: { [day]: string[] } }
-// where day is a Spanish weekday ('lunes'…'domingo') and the values are
-// Spanish meal names ('desayuno' | 'almuerzo' | 'merienda' | 'cena').
-//
-// The menu generator wants a 7-entry `DayTemplate[]` with the canonical
-// enum keys ('breakfast' | 'lunch' | 'snack' | 'dinner'). Without this
-// translation the cast `as DayTemplate[]` silently returns an object,
-// `.length` is undefined, and every menu falls back to the default
-// (all three meals on every day) — which is the bug Miguel hit when his
-// "no breakfasts" preferences kept producing breakfasts anyway.
-const SPANISH_DAY_INDEX: Record<string, number> = {
-  lunes: 0, martes: 1, miercoles: 2, miércoles: 2, jueves: 3,
-  viernes: 4, sabado: 5, sábado: 5, domingo: 6,
-}
-const SPANISH_TO_MEAL: Record<string, Meal> = {
-  desayuno: 'breakfast',
-  almuerzo: 'lunch',
-  comida: 'lunch',
-  merienda: 'snack',
-  cena: 'dinner',
-}
-
-/**
- * Coerce whatever `userSettings.template` actually contains into a 7-day
- * `DayTemplate[]`. Returns null when the input carries no usable shape so
- * the caller can fall back to `defaultTemplate()`.
- *
- * Accepts three input shapes (in order of precedence):
- *   1. Legacy `DayTemplate[]` (already the right shape).
- *   2. `{ mealTemplate: { [Spanish day]: Spanish meal[] } }` — pure on/off.
- *   3. `{ mealTemplate: { [Spanish day]: { [Spanish meal]: number } } }` —
- *      the post-2026-05-30 shape that also carries per-slot diner counts.
- *      We accept any positive number here; the 0/absent meaning "off" is
- *      enforced by the UI's stepper component, but we also treat 0 as off
- *      defensively so historical writes can't accidentally enable a slot.
- */
-export function normalizeMealTemplate(raw: unknown): DayTemplate[] | null {
-  if (Array.isArray(raw) && raw.length === 7) {
-    // Legacy DayTemplate[] — already the right shape.
-    return raw as DayTemplate[]
-  }
-  // `mealTemplate` lives either at the top level or nested inside the
-  // profile page's junk-drawer blob ({ physical, preferences, mealTemplate }).
-  const blob = raw as { mealTemplate?: unknown } | null
-  const mt = blob && typeof blob === 'object' ? blob.mealTemplate : null
-  if (!mt || typeof mt !== 'object') return null
-
-  const out: DayTemplate[] = Array.from({ length: 7 }, () => ({}))
-  let anySlot = false
-  for (const [dayKey, meals] of Object.entries(mt)) {
-    const idx = SPANISH_DAY_INDEX[dayKey.toLowerCase()]
-    if (idx == null) continue
-    if (Array.isArray(meals)) {
-      for (const meal of meals) {
-        const canonical = SPANISH_TO_MEAL[String(meal).toLowerCase()]
-        if (canonical) {
-          out[idx][canonical] = true
-          anySlot = true
-        }
-      }
-    } else if (meals && typeof meals === 'object') {
-      for (const [mealKey, count] of Object.entries(meals as Record<string, unknown>)) {
-        const canonical = SPANISH_TO_MEAL[mealKey.toLowerCase()]
-        if (!canonical) continue
-        const n = typeof count === 'number' ? count : NaN
-        if (Number.isFinite(n) && n > 0) {
-          out[idx][canonical] = true
-          anySlot = true
-        }
-      }
-    }
-  }
-  return anySlot ? out : null
-}
-
-/**
- * Per-slot diner counts paired with `normalizeMealTemplate`'s output.
- *
- * Returns a 7-entry array (indexed 0=Monday…6=Sunday); each entry maps a
- * canonical meal key ('breakfast' | 'lunch' | 'snack' | 'dinner') to the
- * positive integer of diners the user wants in that slot. Missing entries
- * mean "use the household default" (the same fallback applied to slots
- * generated without any template input).
- *
- * Accepts the same input shapes as `normalizeMealTemplate`; legacy on/off
- * shapes produce an empty result so callers fall back to the household
- * multiplier untouched.
- */
-export function extractMealDiners(raw: unknown): Record<Meal, number>[] {
-  const out: Record<Meal, number>[] = Array.from(
-    { length: 7 },
-    () => ({}) as Record<Meal, number>,
-  )
-  const blob = raw as { mealTemplate?: unknown } | null
-  const mt = blob && typeof blob === 'object' ? blob.mealTemplate : null
-  if (!mt || typeof mt !== 'object') return out
-  for (const [dayKey, meals] of Object.entries(mt)) {
-    const idx = SPANISH_DAY_INDEX[dayKey.toLowerCase()]
-    if (idx == null || !meals || typeof meals !== 'object' || Array.isArray(meals)) {
-      continue
-    }
-    for (const [mealKey, count] of Object.entries(meals as Record<string, unknown>)) {
-      const canonical = SPANISH_TO_MEAL[mealKey.toLowerCase()]
-      if (!canonical) continue
-      const n = typeof count === 'number' ? count : NaN
-      if (Number.isFinite(n) && n > 0) {
-        out[idx][canonical] = Math.floor(n)
-      }
-    }
-  }
+/** Two sets of locked slots as one. */
+function mergeLocks(a: LockedSlots, b: LockedSlots): LockedSlots {
+  const out: LockedSlots = { ...a }
+  for (const [d, meals] of Object.entries(b)) out[d] = { ...(out[d] ?? {}), ...meals }
   return out
-}
-
-/**
- * Per-meal-type dish count, parsed from userSettings.template's junk-drawer
- * blob: `{ mealDishCounts: { breakfast?: 1|2|3, lunch?: 1|2|3, ... } }`.
- * Missing entries default to 1 in `dishCountFor`. Invalid values (anything
- * outside 1/2/3) are dropped.
- */
-export function extractMealDishCounts(raw: unknown): MealDishCounts {
-  if (!raw || typeof raw !== 'object') return {}
-  const blob = raw as { mealDishCounts?: unknown }
-  const mdc = blob.mealDishCounts
-  if (!mdc || typeof mdc !== 'object') return {}
-  const out: MealDishCounts = {}
-  for (const [meal, count] of Object.entries(mdc as Record<string, unknown>)) {
-    if (count === 1 || count === 2 || count === 3) {
-      out[meal as keyof MealDishCounts] = count
-    }
-  }
-  return out
-}
-
-/**
- * Pure (PRO-218): the template without the fixed meals' slots, so the
- * generator never picks a recipe for them.
- */
-export function templateWithoutFixed(template: DayTemplate[], fixed: readonly FixedMeal[]): DayTemplate[] {
-  if (fixed.length === 0) return template
-  return template.map((day, i) => {
-    const out: DayTemplate = { ...day }
-    for (const meal of Object.keys(out)) if (fixedMealFor(fixed, i, meal)) delete out[meal]
-    return out
-  })
-}
-
-/**
- * Pure (PRO-218): put the fixed meals into the generated week as one note
- * «Fijo: <label>» carrying its items (the shopping list reads them). A locked
- * slot keeps what it had; a «sin cocinar» day stays empty; the slot takes the
- * plantilla's diners when it has them.
- */
-export function withFixedMeals(
-  days: DayMenu[],
-  fixed: readonly FixedMeal[],
-  opts: { lockedSlots?: LockedSlots; existingDays?: DayMenu[]; skippedDays?: Set<number>; mealDiners?: Record<Meal, number>[] } = {},
-): DayMenu[] {
-  if (fixed.length === 0) return days
-  return days.map((day, i) => {
-    if (opts.skippedDays?.has(i)) return day
-    const out: DayMenu = { ...day }
-    for (const f of fixed) {
-      if (!fixedMealFor(fixed, i, f.meal)) continue
-      const locked = opts.lockedSlots?.[String(i)]?.[f.meal] && opts.existingDays?.[i]?.[f.meal]
-      if (locked) {
-        out[f.meal] = opts.existingDays![i][f.meal]
-        continue
-      }
-      const diners = opts.mealDiners?.[i]?.[f.meal as Meal]
-      out[f.meal] = {
-        ...(diners && diners > 0 ? { servings: diners } : {}),
-        dishes: [{ kind: 'note', text: fixedNoteText(f), fixed: { items: f.items.map((x) => ({ ...x })) } }],
-      }
-    }
-    return out
-  })
 }
 
 /**
@@ -278,7 +106,8 @@ export function buildRandomMenu(
   availableEquipment?: Set<string>,
   timeBudgetByDay?: Record<number, DayTimeBudget>,
   mealDiners?: Record<Meal, number>[],
-  mealDishCounts?: MealDishCounts,
+  /** Per meal, or per day and meal (the week type's slots). */
+  mealDishCounts?: MealDishCounts | MealDishCounts[],
   likedRecipeIds?: Set<string>,
   /** PRO-224: day index → the group the kids ate at school; that dinner avoids it. */
   dinnerAvoidGroups?: Record<number, FoodGroup>,
@@ -289,11 +118,30 @@ export function buildRandomMenu(
    * counts in `favoritesShort`.
    */
   onlyFavoriteIds?: ReadonlySet<string>,
+  /**
+   * «Semana tipo» (D-182): per slot (`${day}:${meal}`), one spec per dish —
+   * a dish type (only recipes of that type), a preset dish (a concrete
+   * recipe, something fixed) or free. Slots without one draw as before.
+   */
+  slotSpecs?: Record<string, DishSpec[]>,
+  /** PRO-1201: the ficha's cuisines and cooking level, weights of every draw. */
+  tastes?: MenuTastes,
+  /**
+   * PRO-1200 (`everydayMenu.ts`): while the household is starting, every
+   * drawn dish comes from the `diario` recipes when one fits; afterwards, at
+   * most `discoveries` from outside. Absent = draw as before.
+   */
+  everyday?: EverydayPolicy | null,
 ): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
+  // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
+  // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
+  if (allRecipes.some((r) => isBaseRecipe(r))) allRecipes = allRecipes.filter((r) => !isBaseRecipe(r))
   const usedRecipeIds = new Set<string>()
   const days: DayMenu[] = []
   const warnings: string[] = []
   let favoritesShort = 0
+  let discoveriesLeft = everyday?.discoveries ?? 0
+  const notePick = (id: string) => { if (isDiscovery(everyday, id)) discoveriesLeft-- }
   const proteinById = new Map<string, string | null>()
   let recipeById: Map<string, RecipeWithCourse> | null = null
   const proteinOfId = (id: string): string | null => {
@@ -321,6 +169,50 @@ export function buildRandomMenu(
         }
       }
     }
+  }
+
+  // «Semana tipo» (D-182): the dishes the week type asks for are chosen
+  // first, for the whole week, so a free slot earlier in the week never takes
+  // the only ceviche Thursday asked for. Free positions stay for the draw.
+  const prefilled = new Map<string, (Dish | undefined)[]>()
+  // A type with no recipe that fits, drawn free there: that dish says so (PRO-1186).
+  const missingType = new Map<string, Map<number, string>>()
+  let rules: ReturnType<typeof compileRestrictions> | null = null
+  for (const [key, specs] of Object.entries(slotSpecs ?? {})) {
+    const [d, meal] = key.split(':')
+    const dayIndex = Number(d)
+    if (!template[dayIndex]?.[meal] || skippedDays?.has(dayIndex)) continue
+    if (existingDays && lockedSlots[d]?.[meal] && existingDays[dayIndex]?.[meal]) continue
+    const avoidGroup = meal === 'dinner' ? dinnerAvoidGroups?.[dayIndex] : undefined
+    const slotPool = avoidGroup ? withoutFoodGroup(allRecipes, avoidGroup) : allRecipes
+    prefilled.set(key, specs.map((spec, position) => {
+      if (spec.kind === 'preset') {
+        if (spec.dish.kind === 'recipe') usedRecipeIds.add(spec.dish.recipeId)
+        return { ...spec.dish } as Dish
+      }
+      if (spec.kind !== 'type') return undefined
+      // Only recipes of that type, with every filter as usual (the school menu too).
+      const typed = slotPool.filter((r) => r.dishTypes?.includes(spec.type))
+      const tries = [...(onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id))] : []), ...everydayTries([typed], everyday, discoveriesLeft)]
+      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
+      let picked: RecipeWithCourse | undefined
+      for (const p of tries) if ((picked = findForCourse(p, null, opts) as RecipeWithCourse | undefined)) break
+      if (picked) {
+        if (onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
+        usedRecipeIds.add(picked.id)
+        notePick(picked.id)
+        return { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null, fromWeekType: { type: spec.type } } as RecipeDish
+      }
+      warnings.push(`dish_type_missing_${spec.type}_${meal}_d${dayIndex}`)
+      // A dish (Pizza, Ceviche…) is written by its name — unless the name
+      // itself breaks an allergy or diet; a broad type (Carne, Indio…) is drawn free.
+      const note = dishTypeNote(spec.type)
+      if (dishTypeInfo(spec.type)?.kind === 'broad' || (note.kind === 'note' && writtenDishBreaks(note.text, (rules ??= compileRestrictions(restrictions))))) {
+        ;(missingType.get(key) ?? missingType.set(key, new Map()).get(key)!).set(position, spec.type)
+        return undefined
+      }
+      return { ...note, fromWeekType: { type: spec.type, missing: true } } as Dish
+    }))
   }
 
   for (let dayIndex = 0; dayIndex < template.length; dayIndex++) {
@@ -368,8 +260,14 @@ export function buildRandomMenu(
       const dinerOverride = mealDiners?.[dayIndex]?.[meal as Meal]
       const defaultDinersForSlot = dinerOverride && dinerOverride > 0 ? dinerOverride : undefined
 
-      const wantedCount = dishCountFor(meal as Meal, mealDishCounts ?? {})
-      const wantedCourses = coursesFor(wantedCount)
+      const dayCounts = Array.isArray(mealDishCounts) ? mealDishCounts[dayIndex] : mealDishCounts
+      const specs = slotSpecs?.[slotKey(dayIndex, meal)]
+      const wantedCount = dishCountFor(meal as Meal, dayCounts ?? {})
+      // With specs: a type and the free dishes of options together ask for no
+      // course; the other free dishes keep the meal's courses.
+      const wantedCourses: (Course | null)[] = specs
+        ? specs.map((sp, k) => (sp.kind === 'type' || (sp.kind === 'free' && sp.anyCourse) || specs.length > 3 ? null : coursesFor(specs.length as 1 | 2 | 3)[k]))
+        : coursesFor(wantedCount)
       const dishes: Dish[] = []
 
       // Menú del cole (PRO-224): «si comieron lentejas, la cena no es de legumbres».
@@ -378,7 +276,15 @@ export function buildRandomMenu(
       const otherMeal = meal === 'lunch' ? 'dinner' : meal === 'dinner' ? 'lunch' : null
       const avoid = otherMeal ? dayProteins.get(otherMeal) : undefined
 
-      for (const course of wantedCourses) {
+      for (let k = 0; k < wantedCourses.length; k++) {
+        const course = wantedCourses[k]
+        // «Semana tipo»: a dish already chosen before the draw (its type, a
+        // concrete recipe, something fixed) goes in as it is.
+        const chosen = prefilled.get(slotKey(dayIndex, meal))?.[k]
+        if (chosen) {
+          dishes.push(chosen)
+          continue
+        }
         // Same main protein as the other meal of the day (PRO-238): only if nothing else fits.
         const pool = avoid?.size && (course === 'main' || course === null)
           ? slotPool.filter((r) => { const k = proteinOfId(r.id); return !k || !avoid.has(k) })
@@ -395,12 +301,14 @@ export function buildRandomMenu(
           dislikes,
           availableEquipment,
           unavailableEquipment,
+          tastes,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
         }
         // Favourites first (PRO-377), even over the protein rule, which only
-        // asks for another protein when there is one.
+        // asks for another protein when there is one. «De diario» (PRO-1200)
+        // also goes before the protein rule.
         const pools = pool !== slotPool ? [pool, slotPool] : [slotPool]
-        const tries = onlyFavoriteIds ? [...pools.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))), ...pools] : pools
+        const tries = [...(onlyFavoriteIds ? pools.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))) : []), ...everydayTries(pools, everyday, discoveriesLeft)]
         let picked: RecipeWithCourse | undefined
         for (const p of tries) if ((picked = findForCourse(p, course, opts) as RecipeWithCourse | undefined)) break
         if (picked && onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
@@ -409,11 +317,14 @@ export function buildRandomMenu(
           continue
         }
         usedRecipeIds.add(picked.id)
+        notePick(picked.id)
+        const missing = missingType.get(slotKey(dayIndex, meal))?.get(k)
         dishes.push({
           kind: 'recipe',
           recipeId: picked.id,
           recipeName: picked.name,
           course: (picked as RecipeWithCourse).course ?? null,
+          ...(missing ? { fromWeekType: { type: missing, missing: true } } : {}),
         } as RecipeDish)
       }
 
@@ -530,38 +441,6 @@ export async function generateMenu(
 
   if (!user) throw new Error('User not found')
 
-  // Fetch user settings template
-  const [settings] = await db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1)
-
-  // The frontend stores `template` as a junk-drawer blob (physical +
-  // preferences + mealTemplate); normalize it back to DayTemplate[] before
-  // letting the matcher loop over it.
-  const rawTemplate = customTemplate ?? settings?.template
-  // Comidas fijas (PRO-218): those slots are not generated; they are put back
-  // as «Fijo: …» at the end (withFixedMeals). The fixed list lives in the
-  // saved settings blob even when a custom template is passed.
-  const fixedMeals = fixedMealsFromTemplate(settings?.template)
-  // Per-slot diner counts (only present when the profile's plantilla uses the
-  // numeric shape `{ [day]: { [meal]: number } }`). Slots that didn't carry an
-  // explicit count keep `servings` undefined and fall back to the household
-  // multiplier in the shopping-list aggregator.
-  // PRO-225: «¿Alguna comida fuera?» / «¿Viene alguien?» shape this week
-  // only (copies; the saved plantilla is never written).
-  const { template: plannedTemplate, mealDiners } = applyWeekPlan(
-    normalizeMealTemplate(rawTemplate) ?? defaultTemplate(),
-    extractMealDiners(rawTemplate),
-    weekPlan,
-    (d, m) => !!(existingDays?.[d]?.[m] && lockedSlots[String(d)]?.[m]),
-  )
-  const template = templateWithoutFixed(plannedTemplate, fixedMeals)
-  // Per-meal-type dish count from the same junk-drawer blob:
-  // `{ mealDishCounts: { lunch: 2, dinner: 3 } }`. Absent = all 1-dish.
-  const mealDishCounts = extractMealDishCounts(rawTemplate)
-
   // Fetch all recipes with ingredients
   const allRecipes = await loadMatchableRecipes(userId, db)
 
@@ -601,10 +480,6 @@ export async function generateMenu(
   const height = user.height ?? 170
   const age = user.age ?? 30
   const activity = (user.activityLevel as ActivityLevel) ?? 'none'
-  const totalMeals = countMealSlots(template)
-
-  const targetCalories = calculateMenuTargetCalories(sex, weight, height, age, activity, totalMeals)
-
   // 3. Current season
   const season = detectSeason()
 
@@ -617,15 +492,18 @@ export async function generateMenu(
   const dislikesValue = memory?.dislikes?.value
   const equipmentValue = memory?.equipment?.value
   // The household's ficha on top (PRO-253): every member's dislikes and
-  // equipment missing right now («sin horno hasta nuevo aviso»).
-  const { dislikes, availableEquipment, unavailableEquipment } = withFichaFilters(
+  // equipment missing right now («sin horno hasta nuevo aviso»); the
+  // cuisines they like and the cook's level weigh the draw (PRO-1201).
+  const ficha = await loadFichaMenuConstraints(userId, { db })
+  const { dislikes, availableEquipment, unavailableEquipment, tastes } = withFichaFilters(
     {
       dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
       availableEquipment: Array.isArray(equipmentValue)
         ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
         : undefined,
+      tastes: memoryTastes(memory),
     },
-    await loadFichaMenuConstraints(userId, { db }),
+    ficha,
   )
   // Per-day time limits (PRO-138): total or hands-on minutes; «Rapidez» /
   // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
@@ -640,17 +518,51 @@ export async function generateMenu(
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // time limits come from weekTimeBudgets (onboardingPreferences.ts).
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
+  // PRO-1200: what the household chose never counts as outside «de diario» (the fridge does).
+  const chosenIds = new Set(favoriteRecipeIds)
   for (const id of fridgeRecipeIds) favoriteRecipeIds.add(id)
 
   // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
   // comes out on its own. «Afina tu menú» (PRO-146): «Me encanta» weighs like
   // a favourite, «No para mí» of anyone in the household never comes out,
   // «Me apetece» gets a small extra. Matcher-only sets: the week's vetoes stay as they are.
-  const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>(), like: new Set<string>() })))
+  const ratingSets = await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>(), like: new Set<string>() }))
+  const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, ratingSets)
+  for (const id of [...ratingSets.boost, ...(ratingSets.like ?? [])]) chosenIds.add(id)
+
+  // PRO-1200: «de diario» while the household is starting, at most 2 from outside after.
+  const everyday = everydayPolicy(allRecipes, await loadIsStarting(userId, weekStart, db), chosenIds)
+
+  // «Semana tipo» (D-182): the household's usual week, whoever generates
+  // (before, each person's own plantilla). `customTemplate` (tests, tools)
+  // is a plain on/off plantilla with no options.
+  const weekType = customTemplate
+    ? { householdId: null as string | null, days: weekTypeFromTemplate(customTemplate) }
+    : await loadWeekTypeForUser(userId, db)
+  const householdId = weekType.householdId ?? (await getPrimaryHouseholdId(userId, db).catch(() => null))
 
   // 5d. Menú del cole (PRO-224): the dinner of a school day avoids the
   // group of the kids' lunch.
-  const dinnerAvoidGroups = await loadSchoolDinnerAvoidGroups(await getPrimaryHouseholdId(userId, db).catch(() => null), weekStart, db)
+  const dinnerAvoidGroups = await loadSchoolDinnerAvoidGroups(householdId, weekStart, db)
+
+  // §5: what each slot asks for this week (the turn's option, or all of them
+  // together); a concrete recipe goes through the allergy and diet check.
+  const plan = planWeekType(weekType.days, weekStart, { recipes: allRecipes, restrictions, bannedRecipeIds: rated.bannedRecipeIds })
+  // PRO-225: «¿Alguna comida fuera?» / «¿Viene alguien?» shape this week
+  // only (copies; the week type is never written).
+  const { template, mealDiners } = applyWeekPlan(
+    plan.template,
+    plan.mealDiners,
+    weekPlan,
+    (d, m) => !!(existingDays?.[d]?.[m] && lockedSlots[String(d)]?.[m]),
+  )
+  // A concrete recipe of the week type doesn't come out again elsewhere in the week.
+  const fixedRecipeIds = presetRecipeIds(plan.specs)
+  const drawPool = fixedRecipeIds.size ? allRecipes.filter((r) => !fixedRecipeIds.has(r.id)) : allRecipes
+  // Slots whose every dish is preset (something fixed, a concrete recipe)
+  // don't count for the calorie target, as the fixed meals didn't before.
+  const presets = presetSlots(plan.specs)
+  const targetCalories = calculateMenuTargetCalories(sex, weight, height, age, activity, countMealSlots(template) - countLocked(template, presets))
 
   // Per-recipe metabolic profile, once (scoreMenu runs every iteration).
   const metabolic = new Map(allRecipes.map((r) => [r.id, recipeMetabolicProfile(r.ingredients.map((i) => i.ingredientName), season)]))
@@ -664,7 +576,7 @@ export async function generateMenu(
   for (let i = 0; i < MENU_GENERATION.MAX_ITERATIONS; i++) {
     const { days: candidateDays, warnings: candidateWarnings, favoritesShort: candidateShort } = buildRandomMenu(
       template,
-      allRecipes,
+      drawPool,
       season,
       restrictions,
       rated.favoriteRecipeIds,
@@ -676,11 +588,14 @@ export async function generateMenu(
       availableEquipment,
       timeBudgetByDay,
       mealDiners,
-      mealDishCounts,
+      plan.dishCounts,
       rated.likedRecipeIds,
       dinnerAvoidGroups,
       unavailableEquipment,
       onlyFavoriteIds,
+      plan.specs,
+      tastes,
+      everyday,
     )
 
     // Verify the menu has at least some recipes
@@ -703,6 +618,8 @@ export async function generateMenu(
     if (bestFitness < MENU_GENERATION.OPTIMAL_FITNESS) break
   }
 
+  // Preset slots (the week type's) are never where the fridge dish goes.
+  const fridgeLocks = mergeLocks(lockedSlots, presets)
   // PRO-229: if the draw left out everything that uses the fridge, put one in
   // (first free lunch/dinner it fits, Monday first), with the same matcher rules.
   // Not with «mis favoritas» (PRO-377): it would swap a favourite out.
@@ -722,19 +639,28 @@ export async function generateMenu(
           dayIndex,
           dislikes,
           availableEquipment,
+          tastes,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
+          // PRO-1200: while starting, a fridge recipe «de diario» if one fits.
+          everyday: everyday?.discoveries === 0 ? everyday.ids : undefined,
         }),
-      lockedSlots,
+      fridgeLocks,
       skippedDays,
     ).days
 
 
-  // Order: the fridge dish (PRO-229) on the drawn week, then tápers (PRO-223), then fixed meals (PRO-218).
-  const fixedOpts = { lockedSlots, existingDays, skippedDays, mealDiners }
-  // PRO-223: the plantilla's «días de táper» — that lunch is a táper of the dinner before.
-  // Fixed meals (PRO-218) go last, so a fixed slot wins over a táper.
+  // Order: the fridge dish (PRO-229) on the drawn week (never on a preset
+  // slot), then the «En lugar de …» of a concrete recipe that breaks a
+  // restriction, then the week type's tápers (PRO-223).
   const finish = (days: DayMenu[]) =>
-    withFixedMeals(applyTemplateTapers(withFridge(days), rawTemplate, lockedSlots, skippedDays ?? []), fixedMeals, fixedOpts)
+    applyWeekTypeTapers(markWeekTypeConflicts(withFridge(days), plan.conflicts), plan.tapers, { locked: lockedSlots, skippedDays, template })
+
+  // A dish type with no recipe that fits goes to Cocina's wishes (best effort).
+  const wishes = (warnings: string[]) => {
+    for (const type of missingDishTypes(warnings)) {
+      recordCatalogWish({ dish: dishTypeInfo(type)?.label ?? type, source: 'mimo', userId, householdId }).catch(() => {})
+    }
+  }
 
   // PRO-377: dishes of the generated slots not from the favourites (a táper
   // repeats the dinner before; locked slots were not generated).
@@ -742,12 +668,13 @@ export async function generateMenu(
     onlyFavoriteIds ? { ...out, favoritesShort: countOutsideFavorites(out.days, onlyFavoriteIds, lockedSlots) } : out
 
   if (bestDays) {
-    return withShort({ days: finish(bestDays), warnings: bestWarnings })
+    wishes(bestWarnings)
+    return withShort({ days: finish(bestDays), warnings: [...plan.warnings, ...bestWarnings] })
   }
 
   const fallback = buildRandomMenu(
     template,
-    allRecipes,
+    drawPool,
     season,
     restrictions,
     rated.favoriteRecipeIds,
@@ -759,23 +686,27 @@ export async function generateMenu(
     availableEquipment,
     timeBudgetByDay,
     mealDiners,
-    mealDishCounts,
+    plan.dishCounts,
     rated.likedRecipeIds,
     dinnerAvoidGroups,
     unavailableEquipment,
     onlyFavoriteIds,
+    plan.specs,
+    tastes,
+    everyday,
   )
-  return withShort({ days: finish(fallback.days), warnings: fallback.warnings })
+  wishes(fallback.warnings)
+  return withShort({ days: finish(fallback.days), warnings: [...plan.warnings, ...fallback.warnings] })
 }
 
-/** PRO-377: recipe dishes outside the favourites, locked slots and tápers left out. */
+/** PRO-377: recipe dishes outside the favourites, locked slots, tápers and the ficha's fixed dishes (PRO-1141) left out. */
 export function countOutsideFavorites(days: DayMenu[], favoriteIds: ReadonlySet<string>, lockedSlots: LockedSlots = {}): number {
   let n = 0
   days.forEach((day, dayIndex) => {
     for (const [meal, slot] of Object.entries(day ?? {})) {
       if (lockedSlots[String(dayIndex)]?.[meal]) continue
       for (const d of slot?.dishes ?? []) {
-        if (d.kind === 'recipe' && !(d as RecipeDish).leftoverOf && !favoriteIds.has(d.recipeId)) n++
+        if (d.kind === 'recipe' && !(d as RecipeDish).leftoverOf && !d.fixedDish && !favoriteIds.has(d.recipeId)) n++
       }
     }
   })

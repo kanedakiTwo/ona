@@ -13,19 +13,25 @@
  *   formato roto: fila `fallback`. Nunca rompe ni retrasa el menú: se lanza
  *   sin esperar (`startShadowPlan`).
  * - `MENU_PLANNER_SHADOW=off` lo apaga.
+ * - En staging con `MIMO_REMOTO=1` (PRO-390, D-167.3) la petición no va a
+ *   Anthropic: la contesta la oficina con la suscripción por la cola de
+ *   «Mimo remoto» (PRO-1102), tal cual, y la respuesta pasa por el mismo
+ *   comprobador (`finishPlan`). 0 $ de API: sin `usage`, no hay coste.
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { and, desc, eq, gte, inArray, lt } from 'drizzle-orm'
 import { buildMemoryDigestText, detectSeason, isTaperDish, type DayMenu, type DayTimeBudget, type LockedSlots } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
-import { menuEdits, menuPlans, menus, pantryItems, userFavorites, users, userSettings } from '../db/schema.js'
+import { menuEdits, menuPlans, menus, pantryItems, userFavorites, users } from '../db/schema.js'
 import { recordCost, anthropicUnits, type AnthropicUsageLike } from './costLedger.js'
 import { computeCostMicros } from '../config/pricing.js'
+import { dbTurnStore, remoteMessagesClient } from './assistant/mimoRemoto.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
 import { loadHouseholdRatingSets } from './householdRatings.js'
 import { loadMatchableRecipes } from './matchableRecipes.js'
-import { extractMealDiners } from './menuGenerator.js'
+import { loadWeekTypeForUser } from './weekType.js'
+import { planWeekType } from './weekTypePlan.js'
 import {
   PLANNER_EFFORT,
   PLANNER_FEATURE,
@@ -89,17 +95,24 @@ export function setPlannerCallForTests(fake: PlannerCall | null | undefined): vo
   testCall = fake
 }
 
+/** With «Mimo remoto», how long a planner round waits for the office: under the planner's timeout, so an unanswered round ends `caducado`. */
+export const REMOTE_PLANNER_WAIT_MS = PLANNER_TIMEOUT_MS - 10_000
+
 export function defaultShadowDeps(db: Db = defaultDb): ShadowDeps {
   let call: PlannerCall | null = null
   if (testCall !== undefined) call = testCall
-  else if (env.ANTHROPIC_API_KEY) {
+  else if (env.MIMO_REMOTO) {
+    const client = remoteMessagesClient(dbTurnStore(db), { timeoutMs: REMOTE_PLANNER_WAIT_MS })
+    call = (p) => client.messages.create(p)
+  } else if (env.ANTHROPIC_API_KEY) {
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
     call = (p) => client.messages.create(p) as any
   }
   return {
     db,
     call,
-    capExceeded: async (userId) => (await spendCapStatus(userId, { db })).exceeded,
+    // «Mimo remoto» costs nothing, so the monthly cap doesn't stop it.
+    capExceeded: async (userId) => !env.MIMO_REMOTO && (await spendCapStatus(userId, { db })).exceeded,
     now: () => new Date(),
     timeoutMs: PLANNER_TIMEOUT_MS,
   }
@@ -143,7 +156,6 @@ const addDays = (iso: string, n: number) => {
 export async function loadShadowContext(input: ShadowPlanInput, db: Db): Promise<ShadowContext> {
   const [user] = await db.select().from(users).where(eq(users.id, input.userId)).limit(1)
   if (!user) throw new Error('user not found')
-  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, input.userId)).limit(1)
   const householdId = await getPrimaryHouseholdId(input.userId, db)
   const memory = await getMemoryForUser(input.userId).catch(() => ({}) as Awaited<ReturnType<typeof getMemoryForUser>>)
   const ficha = await loadHouseholdFicha(input.userId, { db }).catch(() => null)
@@ -230,11 +242,12 @@ export async function loadShadowContext(input: ShadowPlanInput, db: Db): Promise
     pantryIngredientIds: new Set(pantry.map((p) => p.ingredientId).filter((x): x is string => !!x)),
   })
 
-  const rawTemplate = settings?.template
+  // The household's «semana tipo» (D-182): each slot's diners.
+  const weekType = await loadWeekTypeForUser(input.userId, db)
   const slots = slotsToPlan(input.days, {
     locked: input.locked as Record<string, Record<string, boolean>> | undefined,
     skippedDays: input.skippedDays,
-    mealDiners: extractMealDiners(rawTemplate),
+    mealDiners: planWeekType(weekType.days, input.weekStart, { recipes: [], restrictions: [] }).mealDiners,
     timeBudgetByDay: weekTimeBudgets((memory as any)?.time_available?.value, user),
   })
   const planned = new Set(slots.map((s) => `${s.dayIndex}|${s.meal}`))

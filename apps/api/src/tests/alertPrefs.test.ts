@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../services/recipeImport.js', () => ({ createRecipeFromParts: vi.fn() }))
 
-import { ALERT_KINDS, ALERT_OPT_IN_KINDS, alertKindOn, buildAlertRows, type AlertsOverview } from '@ona/shared'
+import { ALERT_KINDS, ALERT_OPT_IN_KINDS, WEEKLY_NUDGE_AUTOPLAN_NOTE, alertKindOn, buildAlertRows, type AlertsOverview } from '@ona/shared'
 import { appSkills, describeAlerts } from '../services/assistant/appSkills.js'
 import { toolsFor } from '../services/assistant/skills.js'
 import { mergeAlertPrefs } from '../services/notifications/alertPrefs.js'
@@ -25,7 +25,19 @@ describe('buildAlertRows — one row per kind, where it arrives', () => {
   })
   it('WhatsApp with avisos: everything by WhatsApp, the phone notification behind it when on', () => {
     const r = byKind(rows({ whatsapp: { linked: true, notify: true, prefs: {} }, pushSubscribed: true }))
-    for (const k of ALERT_KINDS.filter((k) => !ALERT_OPT_IN_KINDS.has(k))) expect(r[k]).toMatchObject({ on: true, channel: 'whatsapp', fallback: 'push', note: null })
+    const messages = ALERT_KINDS.filter((k) => !ALERT_OPT_IN_KINDS.has(k) && k !== 'weekly_autoplan' && k !== 'weekly_nudge')
+    for (const k of messages) expect(r[k]).toMatchObject({ on: true, channel: 'whatsapp', fallback: 'push', note: null })
+  })
+  it('PRO-381: «La semana, hecha cada jueves» is on by default, in the app; with it on the Sunday nudge is not needed', () => {
+    for (const o of [{}, { whatsapp: { linked: true, notify: true, prefs: {} }, pushSubscribed: true }]) {
+      const r = byKind(rows(o))
+      expect(r.weekly_autoplan).toMatchObject({ on: true, channel: 'app', fallback: null, note: null, title: 'La semana, hecha cada jueves' })
+      expect(r.weekly_nudge).toMatchObject({ on: true, channel: 'off', note: WEEKLY_NUDGE_AUTOPLAN_NOTE })
+    }
+    const off = byKind(rows({ userPrefs: { weekly_autoplan: false }, whatsapp: { linked: true, notify: true, prefs: {} } }))
+    expect(off.weekly_autoplan).toMatchObject({ on: false, channel: 'off' })
+    expect(off.weekly_nudge).toMatchObject({ on: true, channel: 'whatsapp', note: null })
+    expect(byKind(rows({ whatsapp: { linked: true, notify: true, prefs: { weekly_autoplan: false } } })).weekly_autoplan.on).toBe(false)
   })
   it('PRO-215: the morning menu is off until the person asks for it (in either store)', () => {
     expect(byKind(rows({ whatsapp: { linked: true, notify: true, prefs: {} } })).daily_brief).toMatchObject({ on: false, channel: 'off' })
@@ -46,7 +58,7 @@ describe('buildAlertRows — one row per kind, where it arrives', () => {
     expect(byKind(rows()).prep_alerts).toMatchObject({ channel: 'off', note: 'Conecta WhatsApp o activa las notificaciones del móvil.' })
   })
   it('WhatsApp linked with avisos off: says so', () => {
-    expect(byKind(rows({ whatsapp: { linked: true, notify: false, prefs: {} } })).weekly_nudge.note).toBe('Activa los avisos por WhatsApp.')
+    expect(byKind(rows({ whatsapp: { linked: true, notify: false, prefs: {} } })).shopping_reminder.note).toBe('Activa los avisos por WhatsApp.')
   })
   it('a switch off in either store is off, on every channel', () => {
     expect(byKind(rows({ userPrefs: { daily_brief: false }, whatsapp: { linked: true, notify: true, prefs: {} } })).daily_brief).toMatchObject({ on: false, channel: 'off' })
@@ -93,7 +105,9 @@ describe('Mimo: get_alerts / set_alerts (same routes as the screen)', () => {
     const r = await skill('get_alerts').handler({}, ctx(f.api))
     expect(f.calls).toEqual([{ method: 'GET', path: '/notifications/prefs', body: undefined }])
     expect(r.summary).toContain('Sacar del congelador y poner en remojo (prep_alerts): encendido, como notificación del móvil')
-    expect(r.summary).toContain('Domingo de planificar (weekly_nudge): encendido, no llega (Solo llega por WhatsApp.)')
+    expect(r.summary).toContain('¿Toca compra? (shopping_reminder): encendido, no llega (Solo llega por WhatsApp.)')
+    expect(r.summary).toContain('La semana, hecha cada jueves (weekly_autoplan): encendido, en su menú de la app')
+    expect(r.summary).toContain(`Domingo de planificar (weekly_nudge): encendido, no llega (${WEEKLY_NUDGE_AUTOPLAN_NOTE})`)
     expect(r.summary).toContain('Menú del día (daily_brief): apagado')
     expect(r.summary).toContain('Perfil → Avisos')
   })
@@ -112,6 +126,13 @@ describe('Mimo: get_alerts / set_alerts (same routes as the screen)', () => {
     await skill('set_alerts').handler({ kind: 'all', enabled: false }, ctx(web.api))
     expect(web.calls.map((c) => c.path)).toEqual(['/notifications/prefs'])
   })
+  it('PRO-381: «no me hagas tú la semana» → set_alerts weekly_autoplan off (same switch as Perfil → Avisos)', async () => {
+    const f = fakeApi(OVERVIEW(true))
+    const r = await skill('set_alerts').handler({ kind: 'weekly_autoplan', enabled: false }, ctx(f.api, 'whatsapp'))
+    expect(f.calls).toEqual([{ method: 'PATCH', path: '/notifications/prefs', body: { prefs: { weekly_autoplan: false } } }])
+    expect(r.summary).toBe('Hecho: La semana, hecha cada jueves apagado. Se ve en Perfil → Avisos.')
+    expect(skill('set_alerts').parameters.properties.kind.enum).toContain('weekly_autoplan')
+  })
   it('kind=all on does not turn on the opt-in morning menu (PRO-215)', async () => {
     const f = fakeApi(OVERVIEW(true))
     await skill('set_alerts').handler({ kind: 'all', enabled: true }, ctx(f.api))
@@ -120,7 +141,7 @@ describe('Mimo: get_alerts / set_alerts (same routes as the screen)', () => {
   })
   it('turning on one that cannot arrive says why; unknown kinds are refused', async () => {
     const f = fakeApi(OVERVIEW(false))
-    const r = await skill('set_alerts').handler({ kind: 'weekly_nudge', enabled: true }, ctx(f.api))
+    const r = await skill('set_alerts').handler({ kind: 'shopping_reminder', enabled: true }, ctx(f.api))
     expect(r.summary).toContain('Ojo: ahora no te llegaria: Solo llega por WhatsApp.')
     expect((await skill('set_alerts').handler({ kind: 'spam', enabled: true }, ctx(f.api))).summary).toBe('Tipo de aviso desconocido.')
   })

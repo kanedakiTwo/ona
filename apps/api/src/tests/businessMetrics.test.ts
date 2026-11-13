@@ -113,6 +113,40 @@ describe('buildWeekly', () => {
     expect(weekly.map((w) => w.resolvedWeekHouseholds)).toEqual([0, 2, 0])
   })
 
+  // PRO-380 (D-158): sending the list (or an order to the súper / a shop) resolves the week too.
+  it('a household that only sends the list has a resolved week (that week or the weekend before)', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [
+          { householdId: 'h1', week: '2026-09-28' },
+          { householdId: 'h2', week: '2026-09-28' },
+          { householdId: 'h3', week: '2026-09-28' },
+          { householdId: 'h4', week: '2026-10-05' },
+        ],
+        listSentDays: [
+          { householdId: 'h1', day: '2026-09-29' }, // «Mandar la lista» on Tuesday, nothing checked
+          { householdId: 'h2', day: '2026-09-26' }, // order sent to the súper on the Saturday before
+          { householdId: 'h3', day: '2026-09-25' }, // Friday before → does NOT count
+          { householdId: 'h5', day: '2026-09-29' }, // sent but no menu
+        ],
+        shoppingDays: [{ householdId: 'h4', day: '2026-10-06' }],
+      }),
+    )
+    expect(weekly.map((w) => w.resolvedWeekHouseholds)).toEqual([0, 2, 1])
+    expect(DEFINITIONS.resolvedWeekHouseholds).toMatch(/shopping_list_shared/)
+  })
+
+  it('sending and checking the list on the same week counts the household once', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [{ householdId: 'h1', week: '2026-10-05' }],
+        shoppingDays: [{ householdId: 'h1', day: '2026-10-06' }],
+        listSentDays: [{ householdId: 'h1', day: '2026-10-04' }],
+      }),
+    )
+    expect(weekly.map((w) => w.resolvedWeekHouseholds)).toEqual([0, 0, 1])
+  })
+
   it('counts new households by the Madrid signup week', () => {
     const weekly = buildWeekly(
       input({

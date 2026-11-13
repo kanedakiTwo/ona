@@ -35,8 +35,9 @@ test('Tuesday lunch as táper of Monday dinner, and back', async ({ page }) => {
   const strip = page.getByRole('navigation', { name: 'Días de la semana' })
   await expect(strip).toBeVisible({ timeout: 20_000 })
   await strip.getByRole('button').nth(1).click()
-  await page.getByRole('button', { name: /^Más opciones de comida/ }).first().click()
-  await page.getByRole('button', { name: /Me lo llevo en táper/ }).click()
+  // PRO-1175: «Más opciones» → «Ya está hecho / táper…» → «Sobras de la cena de ayer».
+  await openDoneSheet(page)
+  await page.getByRole('button', { name: /^Sobras de la cena de ayer/ }).click()
   await expect(page.getByText(/sobras de lun cena · ya en la compra/i).first()).toBeVisible({ timeout: 10_000 })
 
   const after = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
@@ -44,9 +45,15 @@ test('Tuesday lunch as táper of Monday dinner, and back', async ({ page }) => {
   expect(after.days[1].lunch.dishes[0]).toMatchObject({ recipeName: dinnerName, variant: 'leftover', leftoverOf: { day: 0, meal: 'dinner' } })
 
   // «Quitar táper» leaves the lunch empty.
-  await page.getByRole('button', { name: /^Más opciones de comida/ }).first().click()
+  await openDoneSheet(page)
   await page.getByRole('button', { name: /Quitar táper/ }).click()
   await expect(page.getByText(/sobras de lun cena/i)).toHaveCount(0, { timeout: 10_000 })
   const undone = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
   expect(undone.days[1].lunch.dishes).toEqual([])
 })
+
+async function openDoneSheet(page: Page) {
+  await page.getByRole('button', { name: /^Más opciones de comida/ }).first().click()
+  await page.getByRole('dialog').getByRole('button', { name: /^Más opciones$/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^Ya está hecho/ }).click()
+}

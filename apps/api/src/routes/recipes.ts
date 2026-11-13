@@ -45,6 +45,7 @@ import {
   saveOwnRecipeImage,
 } from '../services/recipeOwnImage.js'
 import { recipeShoppingIssues } from '../services/recipeShoppability.js'
+import { isInternalCall, trackEvent } from '../services/usageEvents.js'
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -58,6 +59,8 @@ import {
   SEASONS,
   DIFFICULTIES,
   RETIRED_RECIPE_TAG,
+  PLAN_GRATIS_IMPORTS_MESSAGE,
+  isDishType,
   type Difficulty,
   type Meal,
   type Recipe,
@@ -70,6 +73,7 @@ import {
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
 import { sortCatalog, type CatalogOrderRow } from '../services/recipeCatalogOrder.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
+import { requirePaidPlan } from '../services/accountAccess.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
 import { runWithCostUser } from '../services/costLedger.js'
 import {
@@ -86,8 +90,9 @@ import { NoExtractableContentError } from '../services/sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../services/net/publicFetch.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
-import { findPantryMatches } from '../services/pantryMatcher.js'
 import { chosenFromIds, findRecipesWithWhatIHave, loadUserRestrictions, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
+import { recipeIdsNamedByDislikes } from '../services/dishDislikes.js'
+import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
 import { loadMatchableRecipes } from '../services/matchableRecipes.js'
 import { recipeIdsBreakingRestrictions } from '../services/dietaryRestrictions.js'
 import { isCoeliacHousehold, recipeDietNotices } from '../services/glutenFreeCharcuterie.js'
@@ -95,7 +100,9 @@ import { effectiveAllergens } from '../services/nutrition/allergens.js'
 import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisibility.js'
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
+import { loadRecipeBaseUses } from '../services/recipeBases.js'
 import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
+import { ingredientMarksOf } from '../services/ingredientRoles.js'
 import { z } from 'zod'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requireRecipeId } from '../middleware/recipeId.js'
@@ -478,9 +485,10 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
         : []
     const customTags = sanitizeCustomTags(customTagsList)
     // ?fitsMe=1 (PRO-61): hide recipes that break the caller's allergies or
-    // diet (profile + memory; dislikes are not applied — an explicit pick may
-    // override a dislike, never an allergy). Used by the menu's «Elegir otra
-    // receta» picker. Anonymous callers: ignored.
+    // diet (profile + memory; ingredient dislikes are not applied — an explicit
+    // pick may override a dislike, never an allergy — but a dislike that names
+    // the dish is, PRO-1142). Used by the menu's «Elegir otra receta» picker.
+    // Anonymous callers: ignored.
     const fitsMe = req.query.fitsMe === '1' || req.query.fitsMe === 'true'
     // ?mine=1 (PRO-299): only the caller's own recipes («Mis recetas»). The
     // web used to filter the first page of the whole catalogue, where the
@@ -514,6 +522,11 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
     if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
+    // ?dishType=<clave> (PRO-1175): the type chips of the menu's picker
+    // («Legumbres», «Cremas y sopas»…), `recipes.dish_types` (D-182). An
+    // unknown key is ignored.
+    const dishType = req.query.dishType
+    if (isDishType(dishType)) conditions.push(arrayContains(recipes.dishTypes, [dishType]))
     // ?ingredient=<nombre> (PRO-375, «Este mes»): recipes with that
     // ingredient, by normalised name (a calendar product takes its terms:
     // «setas» → champiñón, boletus…).
@@ -551,9 +564,13 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
       }
     }
     if (req.userId && fitsMe) {
-      const { restrictions } = await loadUserRestrictions(req.userId, db)
-      if (restrictions.length > 0) {
-        const excluded = recipeIdsBreakingRestrictions(await loadMatchableRecipes(req.userId, db), restrictions)
+      const { restrictions, dislikes: own } = await loadUserRestrictions(req.userId, db)
+      // PRO-1142: and the dishes a dislike of the household names, unless a
+      // «Me apetece» came after it.
+      const { dislikes } = withFichaFilters({ dislikes: own, availableEquipment: undefined }, await loadFichaMenuConstraints(req.userId, { db }))
+      if (restrictions.length > 0 || dislikes.length > 0) {
+        const pool = await loadMatchableRecipes(req.userId, db)
+        const excluded = [...recipeIdsBreakingRestrictions(pool, restrictions), ...recipeIdsNamedByDislikes(pool, dislikes)]
         if (excluded.length > 0) conditions.push(notInArray(recipes.id, excluded))
       }
     }
@@ -610,23 +627,6 @@ router.get('/recipes/seasonal-produce', async (req, res) => {
     res.json(await loadSeasonalProduce(month))
   } catch (err) {
     console.error('GET /recipes/seasonal-produce error:', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
-
-// GET /recipes/match-pantry?limit=N — cook-from-pantry suggestions (PR 12).
-// Auth-only. Ranks every catalogue recipe by what fraction of its required
-// ingredients the caller's household already has at home. Returns the top
-// `limit` (default 3, max 20) sorted by coverage desc. **Must be declared
-// before `/recipes/:id`** so the more-specific path matches first.
-router.get('/recipes/match-pantry', authMiddleware, async (req: AuthRequest, res) => {
-  try {
-    const limitRaw = parseInt(String(req.query.limit ?? '3'), 10)
-    const limit = Math.min(20, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 3))
-    const matches = await findPantryMatches(req.userId!, limit)
-    res.json(matches)
-  } catch (err) {
-    console.error('GET /recipes/match-pantry error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -692,6 +692,9 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
     ])
 
     const recipe = toDetailRecipe(row, ings, steps)
+    // PRO-373: «Usa: Sofrito (2 raciones)», with a link to each base.
+    const bases = await loadRecipeBaseUses(id, { userId: req.userId, isAdmin: req.user?.role === 'admin' })
+    if (bases.length > 0) recipe.bases = bases
     // The reader's heart (it was never sent, so the button looked dead: it
     // saved the favourite and the refetch said «not favourite» again).
     if (req.userId) recipe.is_favorite = (await favoriteIdsOf(req.userId, [id])).has(id)
@@ -731,10 +734,14 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
   }
 })
 
+// Importing recipes (a photo, a link) isn't in the Gratis plan (PRO-385, D-158).
+const paidPlanForImports = requirePaidPlan({ message: PLAN_GRATIS_IMPORTS_MESSAGE })
+
 // POST /recipes/extract-from-image — extract from photo (auth required).
 router.post(
   '/recipes/extract-from-image',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   upload.single('image'),
   async (req: AuthRequest, res) => {
@@ -790,6 +797,7 @@ const extractFromUrlSchema = z.object({
 router.post(
   '/recipes/extract-from-url',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   async (req: AuthRequest, res) => {
     try {
@@ -1132,6 +1140,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
           advancePrep: source.advancePrep ?? [],
           nutritionPerServing: source.nutritionPerServing,
           nutritionIncomplete: source.nutritionIncomplete ?? false,
+          dishTypes: source.dishTypes ?? null,
           tags: source.tags ?? [],
           internalTags: baseInternalTags,
           sourceUrl: source.sourceUrl,
@@ -1156,6 +1165,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
             optional: ing.optional,
             note: ing.note,
             displayOrder: ing.displayOrder ?? i,
+            ...ingredientMarksOf(ing),
           })),
         )
       }
@@ -1535,12 +1545,13 @@ router.post(
         await db
           .delete(userFavorites)
           .where(and(eq(userFavorites.userId, userId), eq(userFavorites.recipeId, recipeId)))
-        res.json({ favorited: false })
       } else {
         const householdId = await getPrimaryHouseholdId(userId)
         await db.insert(userFavorites).values({ userId, householdId, recipeId })
-        res.json({ favorited: true })
       }
+      // PRO-1024: `user_favorites` has no date; the event does (Mimo's toggle_favorite counts in the skill runner).
+      if (!isInternalCall(req)) trackEvent('favorite_toggled', { userId, channel: 'web', props: { on: !existing } })
+      res.json({ favorited: !existing })
     } catch (err) {
       console.error('Toggle favorite error:', err)
       res.status(500).json({ error: 'Internal server error' })

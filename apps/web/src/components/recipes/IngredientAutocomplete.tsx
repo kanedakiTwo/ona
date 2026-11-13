@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Ingredient } from "@ona/shared"
+import { hasSameIngredientName, type Ingredient } from "@ona/shared"
 import {
   useAutoCreateIngredient,
   useSearchIngredients,
@@ -94,12 +94,20 @@ export function IngredientAutocomplete({
   const results = search.data ?? []
 
   const trimmed = query.trim()
+<<<<<<< 85eda96b6c87975bc8c3c32d2423f9a3d6f69564
   // The debounced search must have caught up with what is typed.
   const settled = !search.isLoading && debounced.trim() === trimmed
   const showCreateOption =
     trimmed.length >= 2 && settled && !results.some((ing) => sameName(ing.name, trimmed))
   const similar = useSimilarIngredients(trimmed, open && showCreateOption && results.length === 0)
   const lookAlikes = results.length === 0 ? (similar.data ?? []) : []
+=======
+  // Without case or accents: "Brocoli" doesn't offer to create a second "brócoli"
+  const showCreateOption =
+    trimmed.length >= 2 &&
+    !search.isLoading &&
+    !hasSameIngredientName(search.data ?? [], trimmed)
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
 
   // Close dropdown on outside click.
   useEffect(() => {

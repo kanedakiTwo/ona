@@ -25,8 +25,6 @@ import {
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { unlistedDietMentions } from './stepDietMentions.js'
 
-type Db = typeof defaultDb
-
 /** At most this many ingredients per search (PRO-31: «hasta 3»). */
 export const MAX_CHOSEN_INGREDIENTS = 3
 

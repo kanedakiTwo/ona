@@ -59,7 +59,8 @@ function modelSays(answer: object, usage = { input_tokens: 9000, output_tokens: 
 }
 
 const PIZZA = {
-  op: 'add', fact: '', subject: 'hogar', type: 'fixed_dish', valueJson: JSON.stringify({ dish: 'pizza', days: ['viernes'], meal: 'dinner' }),
+  // Without day nor meal: a taste in the ficha (with them it belongs to the semana tipo, D-182).
+  op: 'add', fact: '', subject: 'hogar', type: 'fixed_dish', valueJson: JSON.stringify({ dish: 'pizza' }),
   confidence: 0.8, evidence: [{ signal: 'alta', date: DAY, summary: 'En el alta dijo «pizza los viernes»' }], validUntil: '', reason: 'Lo dijo en el alta', question: '',
 }
 
@@ -103,7 +104,7 @@ describe('al momento: al acabar el alta y una tanda de «Afina tu menú» (PRO-3
 
     expect(written).toHaveLength(1)
     expect(written[0].origin).toBe('ai_realtime')
-    expect(written[0].plan.ops[0]).toMatchObject({ kind: 'add', type: 'fixed_dish', value: { dish: 'pizza', days: ['viernes'], meal: 'dinner' } })
+    expect(written[0].plan.ops[0]).toMatchObject({ kind: 'add', type: 'fixed_dish', value: { dish: 'pizza' } })
     expect(finish).toHaveBeenCalledWith('row-1', expect.objectContaining({ status: 'applied', applied: 1 }), refsOf(ctx()), NOW)
 
     // Cost: feature «ficha», the household and its owner (their monthly cap), full price (no batch).

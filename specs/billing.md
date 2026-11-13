@@ -72,7 +72,7 @@ Prices include VAT. Caps have no figures yet (PRO-15 sets them on 2026-11-24 wit
 - `subscriptions` (migration `0049_billing_subscriptions`): one row per Stripe subscription — `household_id`, `user_id` (payer, `SET NULL` on delete), `stripe_customer_id`, `stripe_subscription_id` (unique), `plan`, `period`, `status` (Stripe's), `current_period_end`, `trial_end`, `cancel_at_period_end`, `canceled_at`. Written only by the webhook (and by the account-deletion cancel). Plan and period come from the price's **lookup key**, so a plan change in the portal is picked up; checkout metadata (`householdId`, `userId`, `plan`, `period`) is the fallback and the link to the household.
 - `households.trial_ending_email_at` (migration `0069_trial_ending_email`): when the day-12 email went out, so it goes once.
 - Migration `0070_founder_offer`: `subscriptions.founder_price` (boolean, from Stripe metadata), `subscriptions.charge_notice_at` (the legal notice, ours only), `households.founder_offer_at` (the day-7 offer).
-- Migration `0111_billing_churn` (PRO-386): `subscriptions.cancel_reason`, `subscriptions.cancel_feedback`, `subscriptions.past_due_since`, and the table `payment_failures` (one row per failed invoice: `stripe_invoice_id` unique, `stripe_subscription_id`, `household_id` cascade, `notice_channel` `whatsapp|email`, `notice_at`, `created_at`).
+- Migration `0113_billing_churn` (PRO-386): `subscriptions.cancel_reason`, `subscriptions.cancel_feedback`, `subscriptions.past_due_since`, and the table `payment_failures` (one row per failed invoice: `stripe_invoice_id` unique, `stripe_subscription_id`, `household_id` cascade, `notice_channel` `whatsapp|email`, `notice_at`, `created_at`).
 - No card data ever reaches us.
 
 ## Configuration

@@ -1,40 +1,41 @@
 /**
- * Flow 4: edit profile → save → success indicator.
+ * Flow 4: edit your body data → save → success indicator.
  *
- * This spec is a regression for the bug we fixed where the profile save was
- * sending snake_case + putting all blob data into the wrong endpoint. The
- * "✓ Guardado" badge appears for ~2.5s after a 200 response from both the
- * /user/:id and /user/:id/settings calls.
+ * A regression for the bug where the profile save sent snake_case and put
+ * the blob into the wrong endpoint. Since PRO-1203 the body data and the goal
+ * live in your row of «Quién come» («Salud y objetivo», with the health-data
+ * consent) and save themselves: the "✓ Guardado" badge appears after a 200
+ * from both /user/:id and /user/:id/settings.
  */
 
 import { test, expect } from '@playwright/test'
 import { registerFreshUser, completeOnboarding } from './_helpers'
+
+const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
 test.beforeEach(async ({ page }) => {
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 })
 
-test('profile save shows the success indicator', async ({ page }) => {
-  await page.goto('/profile')
-  await expect(page).toHaveURL(/\/profile/)
-
-  // Touch at least one field so the payload isn't empty (otherwise the
-  // user PUT skips, which is a valid path but doesn't exercise the bug).
-  // Find the first numeric input and set a value.
+test('saving your body data shows the success indicator and stores it', async ({ page }) => {
+  await page.goto('/profile/quien/me')
+  const card = page.getByTestId('health-and-goal')
   // Physical data needs the health-data consent first (PRO-21).
-  const consent = page.getByRole('checkbox', { name: /datos de salud/i })
+  const consent = card.getByRole('checkbox', { name: /datos de salud/i })
   await consent.click() // async: the box follows the server's answer
   await expect(consent).toBeChecked({ timeout: 10_000 })
-  const numInput = page.locator('input[inputmode="numeric"], input[type="number"]').first()
-  if (await numInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await numInput.fill('30')
-  }
+  await card.getByRole('spinbutton', { name: /edad/i }).fill('30')
+  await card.getByRole('button', { name: 'Perder peso' }).click()
 
-  const save = page.getByRole('button', { name: /guardar/i })
-  await expect(save).toBeVisible()
-  await save.click()
+  const saved = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/user\/[^/]+\/settings$/.test(r.url()))
+  await card.getByRole('button', { name: /^guardar$/i }).click()
+  expect((await saved).ok()).toBe(true)
+  await expect(card.getByText(/guardado/i)).toBeVisible({ timeout: 10_000 })
 
-  // The save success state shows a check-mark badge with "Guardado" copy.
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const user = JSON.parse((await page.evaluate(() => localStorage.getItem('ona_user')))!)
+  const account = await (await page.request.get(`${API_URL}/user/${user.id}`, { headers: { Authorization: `Bearer ${token}` } })).json()
+  expect(account.age).toBe(30)
+  expect(account.priority).toBe('healthy')
 })

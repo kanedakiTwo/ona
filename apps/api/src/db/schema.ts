@@ -77,6 +77,11 @@ export const users = pgTable('users', {
    * 2026-11-07): stamped when it goes at the end of a reply, so it never repeats.
    */
   leftoversQuestionAt: timestamp('leftovers_question_at', { withTimezone: true }),
+  /**
+   * The Sean Ellis survey (PRO-334, beta): stamped when Mimo asks it on
+   * WhatsApp, the /menu card is closed or it is answered, so it never repeats.
+   */
+  seanEllisAt: timestamp('sean_ellis_at', { withTimezone: true }),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -1837,6 +1842,8 @@ export const userFeedback = pgTable('user_feedback', {
   page: text('page'),
   /** What it answers, when it answers one of Mimo's questions: 'sobras' (PRO-285). */
   tag: text('tag'),
+  /** The option picked, for a question with options: 'muy' | 'algo' | 'nada' | 'ya_no' (tag 'sean_ellis', PRO-334). */
+  answer: text('answer'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),
@@ -1871,6 +1878,24 @@ export const whatsappQuestionSends = pgTable('whatsapp_question_sends', {
 }, (t) => [
   uniqueIndex('uq_whatsapp_question_send').on(t.questionId, t.householdId),
   index('idx_whatsapp_question_sends_user').on(t.userId),
+])
+
+// ─── Pregunta por correo (PRO-1197, specs/admin-dashboard.md) ──
+// The one email Miguel sends from Admin to the households that left the
+// beta (approval 2026-11-11). One row per household and question, claimed
+// before the send: never twice, a failed one is not retried.
+export const emailQuestionSends = pgTable('email_question_sends', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Which email (`EMAIL_QUESTION_CAMPAIGN`). */
+  question: text('question').notNull(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'sending' | 'sent' | 'failed' */
+  status: text('status').notNull().default('sending'),
+  errorMessage: text('error_message'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_email_question_send').on(t.question, t.householdId),
 ])
 
 // ─── «Afina tu menú» (specs/taste.md, PRO-146) ──────────────

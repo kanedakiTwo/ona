@@ -13,6 +13,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'ingredient.estimate_nutrition': 'Nutrición estimada',
   'recipe.update': 'Receta actualizada',
   'recipe.delete': 'Receta eliminada',
+  'recipe.allergens_recompute': 'Alérgenos de la receta recalculados',
   'user.suspend': 'Usuario suspendido',
   'user.unsuspend': 'Usuario reactivado',
   'user.reset_password.generate': 'Enlace de reset generado',
@@ -21,6 +22,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'invite_campaign.create': 'Enlace de invitación creado',
   'invite_campaign.delete': 'Enlace de invitación eliminado',
   'newsletter.send': 'Newsletter enviada',
+  'newsletter.recommendation': 'Recomendación de la newsletter guardada',
   'newsletter.template_save': 'Plantilla de la newsletter guardada',
   'newsletter.preview': 'Vista previa de la newsletter',
   'newsletter.proof': 'Prueba de la newsletter enviada',
@@ -33,6 +35,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'catalog_collection.import': 'Colección del catálogo subida',
   'catalog_recipe.source': 'Enlace o crédito de una receta cambiado',
   'whatsapp_question.send': 'Pregunta única enviada por WhatsApp',
+  'email_question.send': 'Pregunta por correo enviada a los hogares que lo dejaron',
 }
 
 export function actionLabel(code: string): string {

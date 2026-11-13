@@ -10,10 +10,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  findRecipeForSlot,
   matchRecipes,
   type MatcherOptions,
   type RecipeWithIngredients,
 } from '../services/recipeMatcher.js'
+import { cuisineBiasOf, tasteWeight } from '../services/menuTastes.js'
 
 // Fixture pool. Every recipe matches the baseline `lunch` + `spring`
 // query so each test can vary only the predicate it exercises.
@@ -265,5 +267,68 @@ describe('matchRecipes: allergies and diets (2026-10-07 regression)', () => {
   it('"vegetariano" drops meat by ingredient', () => {
     expect(ids(['vegetariano'])).not.toContain('r5')
     expect(ids(['vegetariano'])).toContain('r2')
+  })
+})
+
+// PRO-1201: the ficha's cuisines and the cook's level weigh the draw.
+describe('findRecipeForSlot: cuisines and cooking level of the ficha (PRO-1201)', () => {
+  const dish = (id: string, cuisine: string | null, difficulty: string = 'medium'): RecipeWithIngredients => ({
+    id,
+    name: id,
+    meals: ['lunch'],
+    seasons: ['spring'],
+    tags: [],
+    internalTags: cuisine ? [`cocina:${cuisine}`] : [],
+    difficulty,
+    ingredients: [{ ingredientId: `i-${id}`, ingredientName: `ingrediente ${id}`, quantity: 100, unit: 'g' }],
+  })
+  const japonesa = dish('japonesa', 'japonesa')
+  const espanola = dish('espanola', 'espanola')
+  const mexicana = dish('mexicana', 'mexicana')
+  const dificil = dish('dificil', 'espanola', 'hard')
+  const facil = dish('facil', 'espanola', 'easy')
+
+  const draws = (pool: RecipeWithIngredients[], tastes?: MatcherOptions['tastes'], n = 1000) => {
+    const count: Record<string, number> = {}
+    for (let i = 0; i < n; i++) {
+      const r = findRecipeForSlot(pool, { ...baseOptions, tastes })!
+      count[r.id] = (count[r.id] ?? 0) + 1
+    }
+    return (id: string) => count[id] ?? 0
+  }
+
+  it('«asiática: 20»: a Japanese recipe comes out much less than a Spanish one', () => {
+    const got = draws([japonesa, espanola], { cuisineBias: { asiatica: 20 } })
+    expect(got('japonesa')).toBeGreaterThan(0)
+    expect(got('japonesa') * 3).toBeLessThan(got('espanola'))
+  })
+
+  it('«mexicana: 90»: a Mexican recipe comes out more; Spanish stays neutral', () => {
+    const got = draws([mexicana, espanola], { cuisineBias: { mexicana: 90 } })
+    expect(got('mexicana')).toBeGreaterThan(got('espanola') * 1.2)
+  })
+
+  it('«easy»: a hard recipe almost never; «medium» a little less; «advanced» as before', () => {
+    expect(draws([dificil, facil], { cookingSkill: 'easy' })('dificil')).toBeLessThan(150)
+    expect(tasteWeight(dificil, { cookingSkill: 'medium' })).toBe(0.7)
+    expect(tasteWeight(dificil, { cookingSkill: 'advanced' })).toBe(1)
+    expect(tasteWeight(facil, { cookingSkill: 'easy' })).toBe(1)
+  })
+
+  it('without a ficha (or a cuisine it doesn\'t name, or a recipe without one) the weight is as today', () => {
+    expect(tasteWeight(japonesa, undefined)).toBe(1)
+    expect(tasteWeight(japonesa, {})).toBe(1)
+    expect(tasteWeight(espanola, { cuisineBias: { asiatica: 90 } })).toBe(1)
+    expect(tasteWeight(dish('propia', null), { cuisineBias: { asiatica: 10 }, cookingSkill: 'easy' })).toBe(1)
+    const got = draws([japonesa, espanola])
+    expect(Math.abs(got('japonesa') - got('espanola'))).toBeLessThan(150)
+  })
+
+  it('a family covers its cuisines and a named cuisine wins over its family', () => {
+    expect(tasteWeight(japonesa, { cuisineBias: { asiatica: 90 } })).toBe(1.5)
+    expect(tasteWeight(japonesa, { cuisineBias: { asiatica: 90, japonesa: 10 } })).toBe(0.15)
+    expect(tasteWeight(dish('asia', 'asiatica'), { cuisineBias: { japonesa: 85 } })).toBe(1.5)
+    expect(tasteWeight(espanola, { cuisineBias: { mediterranea: 30 } })).toBe(0.15)
+    expect(cuisineBiasOf({ 'Oriente Medio': 120, Española: '50', mala: 'x' })).toEqual({ 'oriente-medio': 100, espanola: 50 })
   })
 })

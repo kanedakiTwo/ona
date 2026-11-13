@@ -1,5 +1,9 @@
 {
+<<<<<<< 7d6567ecb49b2963e4804a4f749f6b265c674963
   "id": "b21d93ce-b102-4702-bc0f-8f5b1f875a7a",
+=======
+  "id": "c7321f65-26ac-40f1-8b1f-57b50f540122",
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
   "prevId": "3b67eb1a-3a0c-4e90-8483-8ae95a533f52",
   "version": "7",
   "dialect": "postgresql",
@@ -5694,6 +5698,7 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+<<<<<<< 7d6567ecb49b2963e4804a4f749f6b265c674963
     "public.payment_failures": {
       "name": "payment_failures",
       "schema": "",
@@ -5796,6 +5801,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+=======
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
     "public.price_survey_responses": {
       "name": "price_survey_responses",
       "schema": "",
@@ -8612,6 +8619,7 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< 7d6567ecb49b2963e4804a4f749f6b265c674963
         "cancel_reason": {
           "name": "cancel_reason",
           "type": "text",
@@ -8630,6 +8638,8 @@
           "primaryKey": false,
           "notNull": false
         },
+=======
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -9286,6 +9296,15 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< 7d6567ecb49b2963e4804a4f749f6b265c674963
+=======
+        "answer": {
+          "name": "answer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -9729,6 +9748,15 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< 7d6567ecb49b2963e4804a4f749f6b265c674963
+=======
+        "sean_ellis_at": {
+          "name": "sean_ellis_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+>>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
         "role": {
           "name": "role",
           "type": "text",

@@ -29,6 +29,8 @@ ROUTES=(
   /reset
   /onboarding
   /menu
+  /cocinar
+  /profile/pantry
   /shopping
   /recipes
   /recipes/new

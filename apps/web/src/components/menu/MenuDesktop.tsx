@@ -79,6 +79,7 @@ import {
   type AbsentSheet,
   type SlotPropsFn,
 } from "./DayMeals"
+import { WeekTypeDayLine } from "./WeekTypeDayLine"
 import { MealOptionsButton, MealOptionsSheets, slotRecipeHref, useMealOptions } from "./MealOptions"
 import { trackSheetAction } from "@/lib/usageEvents"
 
@@ -210,6 +211,7 @@ export function MenuDesktop(p: Props) {
       >
         {/* Hero row */}
         <div ref={heroRef}>
+          {!isSkipped && <WeekTypeDayLine weekStart={p.weekStart} day={p.selectedDay} className="-mt-3 mb-2" />}
           {isSkipped ? (
             <SkippedDay readOnly={p.readOnly} onUnskip={() => p.onUnskipDay(p.selectedDay)} />
           ) : (

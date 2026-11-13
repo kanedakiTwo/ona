@@ -4,12 +4,13 @@
  * /profile — "D · Luz y foto" (PRO-39): compact header with the household's
  * name, «Tu ficha» first and full width (PRO-318), then paper cards per
  * section (Casa, Afina tu menú, Creencias, Despensa, Fijos, Recetarios,
- * Suscripción, Voz, WhatsApp) with an icon and a status line, then the menu
- * settings the generator reads (one "Guardar cambios") and the account card.
+ * Suscripción, Voz, WhatsApp) with an icon and a status line, «Quién come»
+ * (PRO-1203: one row per person, with their allergies, dislikes, health and
+ * goal inside), the menu settings and the account card. Each screen saves
+ * its own: there is no «Guardar cambios» any more.
  * Secondary actions sit behind "···" sheets (`MenuSheet`). 2–3 columns at lg+.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { motion } from 'motion/react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import {
@@ -17,7 +18,6 @@ import {
   Bell,
   BellOff,
   BookOpen,
-  CalendarDays,
   ChefHat,
   ChevronRight,
   CreditCard,
@@ -27,17 +27,12 @@ import {
   LogOut,
   MessageCircle,
   Mic,
-  Minus,
   Plus,
   Repeat,
-  Ruler,
   Send,
   Shield,
-  ShieldAlert,
-  SlidersHorizontal,
   UserRound,
   Wrench,
-  X,
 } from 'lucide-react'
 import Link from 'next/link'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
@@ -52,263 +47,26 @@ import { FoundingBadge } from '@/components/profile/FoundingBadge'
 import { FichaHubCard } from '@/components/ficha/FichaHubCard'
 import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
-import { allergiesStatus } from '@/lib/profileStatus'
-import { useUser } from '@/hooks/useUser'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
 import { MyRecipesSection } from './sections/MyRecipesSection'
+import { WeekTypeHead } from '@/components/weekType/WeekTypeHead'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
+import { WhoEatsSection } from '@/components/profile/WhoEatsSection'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { BasketConsentsCard } from '@/components/profile/BasketConsentsCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
-import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
-import type { HealthConsentState } from '@ona/shared'
-import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
-import { ReligionConsentNote } from '@/components/ReligionConsentNote'
-
-interface PhysicalData {
-  sex: 'male' | 'female' | ''
-  age: number | ''
-  weight: number | ''
-  height: number | ''
-  activity_level: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
-}
-
-interface Preferences {
-  restrictions: string[]
-  priority: 'balanced' | 'muscle' | 'weight_loss' | 'energy'
-}
-
-interface Household {
-  adults: number
-  kidsCount: number
-}
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  sedentary: 'Sedentario',
-  light: 'Ligero',
-  moderate: 'Moderado',
-  active: 'Activo',
-  very_active: 'Muy activo',
-}
-
-const PRIORITY_LABELS: Record<string, string> = {
-  balanced: 'Equilibrado',
-  muscle: 'Ganar musculo',
-  weight_loss: 'Perder peso',
-  energy: 'Mas energia',
-}
-
-// Shared with onboarding so both offer the same chips (@ona/shared).
-const COMMON_RESTRICTIONS: readonly string[] = RESTRICTION_PRESETS
-
-function calculateBMR(sex: string, weight: number, height: number, age: number): number {
-  if (sex === 'male') return 10 * weight + 6.25 * height - 5 * age + 5
-  return 10 * weight + 6.25 * height - 5 * age - 161
-}
-
-const ACTIVITY_MULTIPLIERS: Record<string, number> = {
-  sedentary: 1.2,
-  light: 1.375,
-  moderate: 1.55,
-  active: 1.725,
-  very_active: 1.9,
-}
+import { subscriptionSummary } from '@ona/shared'
 
 export default function ProfilePage() {
   const { user, logout, updateUser, isLoading: authLoading } = useAuth()
   const whatsapp = useWhatsAppStatus()
   const mimo = useMimo()
 
-  // «Datos físicos, en Perfil» from Tu ficha (`/profile#datos-fisicos`): the
-  // cards only render once the session is read, after Next's own hash scroll.
-  const userReady = !!user
-  useEffect(() => {
-    if (!userReady || !window.location.hash) return
-    document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: 'start' })
-  }, [userReady])
-
-  const [physical, setPhysical] = useState<PhysicalData>({
-    sex: '', age: '', weight: '', height: '', activity_level: 'moderate',
-  })
-  const [preferences, setPreferences] = useState<Preferences>({
-    restrictions: [], priority: 'balanced',
-  })
-  const [household, setHousehold] = useState<Household>({ adults: 2, kidsCount: 0 })
-  const [restrictionInput, setRestrictionInput] = useState('')
-  // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
-  const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
-  const [consentBusy, setConsentBusy] = useState(false)
-  const healthActive = healthConsent?.active === true
-  // Halal under a v1 consent: the current text first (Legal, E-19).
-  const needsReligion = healthActive && !consentCoversReligiousDiet(healthConsent?.version)
-  const [religionDropped, setReligionDropped] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-
-  useEffect(() => {
-    if (!user) return
-    api.get<HealthConsentState>(`/user/${user.id}/health-consent`).then(setHealthConsent).catch(() => {})
-  }, [user])
-
-  async function handleHealthConsent(next: boolean) {
-    if (!user || consentBusy) return
-    if (!next && !window.confirm('Si retiras el consentimiento, borramos tus alergias, restricciones y datos físicos. ¿Seguro?')) return
-    setConsentBusy(true)
-    try {
-      const state = await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: next })
-      setHealthConsent(state)
-      if (!next) {
-        setPhysical({ sex: '', age: '', weight: '', height: '', activity_level: 'moderate' })
-        setPreferences((p) => ({ ...p, restrictions: [] }))
-      }
-    } catch (e) { console.error(e) }
-    finally { setConsentBusy(false) }
-  }
-
-  async function handleReligionConsent(next: boolean) {
-    if (!user || !next || consentBusy) return
-    setConsentBusy(true)
-    try {
-      setHealthConsent(await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: true }))
-      setReligionDropped(false)
-    } catch (e) { console.error(e) }
-    finally { setConsentBusy(false) }
-  }
-
-  useEffect(() => {
-    if (!user) return
-    // Restrictions live in two places: the account (`users.restrictions`,
-    // written by onboarding and read by the menu generator) and the settings
-    // blob. Show the union so nothing picked in onboarding looks lost (PRO-64).
-    Promise.all([
-      api.get<any>(`/user/${user.id}/settings`).catch(() => null),
-      api.get<{ restrictions?: string[]; adults?: number; kidsCount?: number }>(`/user/${user.id}`).catch(() => null),
-    ]).then(([data, account]) => {
-      // The account, not the copy kept in this browser: Mimo may have noted
-      // the kids since (2026-10-22: a tester's profile said 0 niños).
-      if (typeof account?.adults === 'number' && account.adults > 0) {
-        setHousehold({ adults: account.adults, kidsCount: account.kidsCount ?? 0 })
-      }
-      const blob = data?.template && !Array.isArray(data.template) ? data.template : data
-      if (blob?.physical) setPhysical(blob.physical)
-      const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
-      setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
-    }).catch(() => {})
-  }, [user])
-
-  // Hydrate household sizing from the user object (already includes
-  // adults + kidsCount after the 0005 migration). Falls back to the
-  // legacy enum until the user re-saves their profile.
-  useEffect(() => {
-    if (!user) return
-    if (typeof user.adults === 'number' && user.adults > 0) {
-      setHousehold({ adults: user.adults, kidsCount: user.kidsCount ?? 0 })
-      return
-    }
-    switch (user.householdSize) {
-      case 'solo':
-        setHousehold({ adults: 1, kidsCount: 0 })
-        break
-      case 'couple':
-        setHousehold({ adults: 2, kidsCount: 0 })
-        break
-      case 'family_no_kids':
-        setHousehold({ adults: 3, kidsCount: 0 })
-        break
-      case 'family_with_kids':
-        setHousehold({ adults: 2, kidsCount: 2 })
-        break
-    }
-  }, [user])
-
-  const bmr = useMemo(() => {
-    if (!physical.sex || !physical.weight || !physical.height || !physical.age) return null
-    return Math.round(calculateBMR(physical.sex, Number(physical.weight), Number(physical.height), Number(physical.age)))
-  }, [physical])
-
-  const tdee = useMemo(() => {
-    if (!bmr) return null
-    return Math.round(bmr * (ACTIVITY_MULTIPLIERS[physical.activity_level] ?? 1.55))
-  }, [bmr, physical.activity_level])
-
-  function addRestriction(value: string) {
-    const t = value.trim().toLowerCase()
-    if (t && !preferences.restrictions.includes(t)) {
-      setPreferences((p) => ({ ...p, restrictions: [...p.restrictions, t] }))
-    }
-    setRestrictionInput('')
-  }
-
-  function removeRestriction(value: string) {
-    setPreferences((p) => ({ ...p, restrictions: p.restrictions.filter((r) => r !== value) }))
-  }
-
-  const handleSave = useCallback(async () => {
-    if (!user) return
-    setSaving(true); setSaved(false)
-    // Without the current text a v1 consent doesn't cover halal: the rest is saved, halal isn't.
-    const restrictionsToSave = needsReligion ? preferences.restrictions.filter((r) => !isReligiousDiet(r)) : preferences.restrictions
-    setReligionDropped(restrictionsToSave.length < preferences.restrictions.length)
-    try {
-      const ACTIVITY_MAP: Record<string, 'none' | 'light' | 'moderate' | 'high'> = {
-        sedentary: 'none',
-        light: 'light',
-        moderate: 'moderate',
-        active: 'moderate',
-        very_active: 'high',
-      }
-      const userPayload: Record<string, unknown> = {}
-      if (healthActive) {
-      if (physical.sex) userPayload.sex = physical.sex
-      if (physical.age !== '' && physical.age != null) userPayload.age = Number(physical.age)
-      if (physical.weight !== '' && physical.weight != null) userPayload.weight = Number(physical.weight)
-      if (physical.height !== '' && physical.height != null) userPayload.height = Number(physical.height)
-      if (physical.activity_level) userPayload.activityLevel = ACTIVITY_MAP[physical.activity_level] ?? 'moderate'
-      // Same list to the account and to the settings blob (PRO-64): the
-      // screen shows the union of both, so this never drops either side.
-      userPayload.restrictions = restrictionsToSave
-      }
-      const PRIORITY_MAP: Record<string, 'quick' | 'varied' | 'healthy' | 'cheap'> = {
-        balanced: 'varied',
-        muscle: 'healthy',
-        weight_loss: 'healthy',
-        energy: 'quick',
-      }
-      if (preferences.priority) userPayload.priority = PRIORITY_MAP[preferences.priority] ?? 'varied'
-      // Household sizing — required by the shopping-list scaler.
-      if (Number.isFinite(household.adults) && household.adults >= 1) {
-        userPayload.adults = Math.floor(household.adults)
-      }
-      if (Number.isFinite(household.kidsCount) && household.kidsCount >= 0) {
-        userPayload.kidsCount = Math.floor(household.kidsCount)
-      }
-
-      const calls: Promise<unknown>[] = []
-      if (Object.keys(userPayload).length > 0) {
-        // Keep this browser's copy in step, or the next visit starts from the old counts.
-        calls.push(api.put<{ adults?: number; kidsCount?: number }>(`/user/${user.id}`, userPayload).then((saved) => {
-          if (saved.adults !== user.adults || saved.kidsCount !== user.kidsCount) {
-            updateUser({ adults: saved.adults, kidsCount: saved.kidsCount })
-          }
-        }))
-      }
-      calls.push(api.put(`/user/${user.id}/settings`, {
-        template: healthActive
-          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave } }
-          : { preferences: { ...preferences, restrictions: [] } },
-      }))
-      await Promise.all(calls)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) { console.error(e) }
-    finally { setSaving(false) }
-  }, [user, updateUser, physical, preferences, household, healthActive, needsReligion])
-
 
   if (authLoading || !user) {
     return (
@@ -329,12 +87,22 @@ export default function ProfilePage() {
           onMore={() => setMoreOpen(true)}
         />
 
+        {/* PRO-1204: the semana tipo heads the profile — the menu comes out of it. */}
+        <div className="mt-5 lg:mt-6">
+          <WeekTypeHead />
+        </div>
+
         {/* Casa y Mimo: one paper card per sub-page, with a status line. */}
         <div className="mt-6 px-5 lg:mt-8 lg:px-0">
           <GroupLabel>Tu casa y Mimo</GroupLabel>
           <ProfileHub />
           {/* PRO-163: another household, not someone of this one (that's «Invitar a alguien» in Casa). */}
           <InviteHouseholdButton place="perfil" className="mt-3 lg:mt-4" />
+        </div>
+
+        {/* «Quién come» (PRO-1203): one row per person; allergies, dislikes, health and goal inside each. */}
+        <div className="mt-8 px-5 lg:mt-10 lg:max-w-[720px] lg:px-0">
+          <WhoEatsSection />
         </div>
 
         <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
@@ -398,248 +166,12 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Ajustes del menú: what the generator reads. One save button below. */}
+        {/* Ajustes del menú: what the generator reads. */}
         <div className="mt-8 px-5 lg:mt-10 lg:px-0">
           <GroupLabel>Ajustes del menú</GroupLabel>
         </div>
-        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
-          <div className="grid gap-3 lg:gap-4">
-            {/* Datos físicos (RGPD art. 9: only with the health-data consent) */}
-            <ProfileCard
-              id="datos-fisicos"
-              icon={Ruler}
-              title="Datos físicos"
-              status={
-                !healthActive
-                  ? 'Sin tu consentimiento no se guardan'
-                  : tdee
-                    ? `Gasto diario estimado: ${tdee} kcal`
-                    : 'Completa sexo, edad, peso y altura'
-              }
-            >
-              <div className="mt-4" data-testid="health-consent">
-                <HealthConsentCheckbox
-                  checked={healthActive}
-                  disabled={consentBusy || healthConsent === null}
-                  onChange={handleHealthConsent}
-                />
-                {!healthActive && healthConsent !== null && (
-                  <p className="mt-2 text-[12px] italic text-ink-muted">
-                    Sin tu consentimiento no guardamos datos físicos, alergias ni restricciones.
-                  </p>
-                )}
-              </div>
-              <fieldset disabled={!healthActive} className={`mt-5 space-y-5 ${healthActive ? '' : 'opacity-40'}`}>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Sexo" className="col-span-2">
-                    <div className="flex gap-1.5 pt-1">
-                      <SexPill
-                        active={physical.sex === 'male'}
-                        onClick={() => setPhysical((p) => ({ ...p, sex: 'male' }))}
-                      >
-                        Masculino
-                      </SexPill>
-                      <SexPill
-                        active={physical.sex === 'female'}
-                        onClick={() => setPhysical((p) => ({ ...p, sex: 'female' }))}
-                      >
-                        Femenino
-                      </SexPill>
-                    </div>
-                  </Field>
-                  <Field label="Edad">
-                    <input
-                      type="number" min={1} max={120}
-                      value={physical.age}
-                      onChange={(e) => setPhysical((p) => ({ ...p, age: e.target.value ? Number(e.target.value) : '' }))}
-                      placeholder="—"
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Peso · kg">
-                    <input
-                      type="number" min={20} max={300} step={0.1}
-                      value={physical.weight}
-                      onChange={(e) => setPhysical((p) => ({ ...p, weight: e.target.value ? Number(e.target.value) : '' }))}
-                      placeholder="—"
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Altura · cm">
-                    <input
-                      type="number" min={100} max={250}
-                      value={physical.height}
-                      onChange={(e) => setPhysical((p) => ({ ...p, height: e.target.value ? Number(e.target.value) : '' }))}
-                      placeholder="—"
-                      className="input-line"
-                    />
-                  </Field>
-                </div>
-
-                <div>
-                  <Label>Nivel de actividad</Label>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
-                      <Pill
-                        key={value}
-                        active={physical.activity_level === value}
-                        onClick={() => setPhysical((p) => ({ ...p, activity_level: value as PhysicalData['activity_level'] }))}
-                      >
-                        {label}
-                      </Pill>
-                    ))}
-                  </div>
-                </div>
-              </fieldset>
-
-              {bmr && tdee && (
-                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border-soft pt-4">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Metabolismo basal</div>
-                    <div className="mt-1 font-serif-text text-[24px] font-[650] text-ink">
-                      {bmr}<span className="ml-1 text-[13px] font-normal text-ink-muted">kcal</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Gasto diario</div>
-                    <div className="mt-1 font-serif-text text-[24px] font-[650] text-terracotta-deep">
-                      {tdee}<span className="ml-1 text-[13px] font-normal text-ink-muted">kcal</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </ProfileCard>
-
-            {/* Preferencias */}
-            <ProfileCard
-              icon={SlidersHorizontal}
-              title="Preferencias"
-              status={`${household.adults} ${household.adults === 1 ? 'adulto' : 'adultos'} · ${household.kidsCount} ${household.kidsCount === 1 ? 'niño' : 'niños'} · ${PRIORITY_LABELS[preferences.priority] ?? ''}`}
-            >
-              <div className="mt-4 space-y-6">
-                <div>
-                  <Label>Hogar (para escalar la compra)</Label>
-                  <p className="mt-1 text-[12px] italic leading-snug text-ink-muted">
-                    Adultos cuenta a partir de 11 años. Niños son 2 a 10. Menores de 2 no cuentan. Cada niño cuenta como media ración.
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <Stepper
-                      label="Adultos"
-                      value={household.adults}
-                      onMinus={() => setHousehold((h) => ({ ...h, adults: Math.max(1, h.adults - 1) }))}
-                      onPlus={() => setHousehold((h) => ({ ...h, adults: Math.min(20, h.adults + 1) }))}
-                      minusLabel="Quitar adulto"
-                      plusLabel="Añadir adulto"
-                    />
-                    <Stepper
-                      label="Niños 2–10"
-                      value={household.kidsCount}
-                      onMinus={() => setHousehold((h) => ({ ...h, kidsCount: Math.max(0, h.kidsCount - 1) }))}
-                      onPlus={() => setHousehold((h) => ({ ...h, kidsCount: Math.min(20, h.kidsCount + 1) }))}
-                      minusLabel="Quitar niño"
-                      plusLabel="Añadir niño"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Prioridad nutricional</Label>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                      <Pill
-                        key={value}
-                        active={preferences.priority === value}
-                        onClick={() => setPreferences((p) => ({ ...p, priority: value as Preferences['priority'] }))}
-                      >
-                        {label}
-                      </Pill>
-                    ))}
-                  </div>
-                </div>
-
-                <fieldset disabled={!healthActive} className={healthActive ? '' : 'opacity-40'}>
-                  <Label>Alergias, intolerancias y dieta</Label>
-                  {preferences.restrictions.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {preferences.restrictions.map((r) => (
-                        <motion.span
-                          key={r}
-                          layout
-                          initial={{ scale: 0.85, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          className="inline-flex h-10 items-center gap-0.5 rounded-full bg-ink pl-3.5 pr-0.5 text-[13px] text-cream"
-                        >
-                          {r}
-                          <button
-                            type="button"
-                            onClick={() => removeRestriction(r)}
-                            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-cream/15"
-                            aria-label={`Quitar ${r}`}
-                          >
-                            <X size={13} />
-                          </button>
-                        </motion.span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {COMMON_RESTRICTIONS.filter((r) => !preferences.restrictions.includes(r)).map((r) => (
-                      <button
-                        type="button"
-                        key={r}
-                        onClick={() => addRestriction(r)}
-                        className="inline-flex min-h-[40px] items-center gap-1 rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] text-ink-muted hover:border-ink hover:text-ink"
-                      >
-                        <Plus size={12} /> {r}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      type="text"
-                      value={restrictionInput}
-                      onChange={(e) => setRestrictionInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); addRestriction(restrictionInput) }
-                      }}
-                      placeholder="Otra, p. ej. pimiento"
-                      className="input-line flex-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => addRestriction(restrictionInput)}
-                      disabled={!restrictionInput.trim()}
-                      className="h-11 rounded-full bg-ink px-5 text-[13px] font-medium text-cream disabled:opacity-30"
-                    >
-                      Añadir
-                    </button>
-                  </div>
-                  <ReligionConsentNote
-                    restrictions={preferences.restrictions}
-                    needsConsent={needsReligion}
-                    checked={false}
-                    onChange={handleReligionConsent}
-                    disabled={consentBusy}
-                  />
-                  {religionDropped && needsReligion && (
-                    <p role="alert" className="mt-2 text-[13px] text-terracotta-deep">
-                      No hemos guardado «halal»: marca la casilla del texto nuevo para guardarlo.
-                    </p>
-                  )}
-                </fieldset>
-              </div>
-            </ProfileCard>
-          </div>
-
-          <div className="grid gap-3 lg:gap-4">
-            {/* «Tu semana tipo» (D-182): its own page. */}
-            <ProfileHubLink
-              href="/profile/semana-tipo"
-              icon={CalendarDays}
-              title="Tu semana tipo"
-              status="Lo que soléis comer cada día: el menú sale de ahí"
-            />
-
+        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:items-start lg:gap-4 lg:px-0">
+          <div className="grid gap-3 lg:grid-cols-2 lg:items-start lg:gap-4">
             {/* Recordatorios */}
             <ProfileCard
               icon={Bell}
@@ -686,18 +218,6 @@ export default function ProfilePage() {
               </div>
             </ProfileCard>
           </div>
-        </div>
-
-        {/* Save bar */}
-        <div className="mt-6 px-5 lg:flex lg:justify-end lg:px-0">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-ink text-[15px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:opacity-50 lg:w-[320px]"
-          >
-            {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar cambios'}
-          </button>
         </div>
 
         {/* Tu cuenta — session, privacy + right to erasure */}
@@ -747,28 +267,6 @@ export default function ProfilePage() {
           )}
         </div>
       </MenuSheet>
-
-      <style jsx>{`
-        :global(.input-line) {
-          width: 100%;
-          min-height: 44px;
-          background: transparent;
-          border: none;
-          border-bottom: 1px solid var(--color-border);
-          padding: 0.5rem 0;
-          font-family: inherit;
-          font-size: 15px;
-          color: var(--color-ink);
-          outline: none;
-          transition: border-color 200ms;
-        }
-        :global(.input-line:focus) {
-          border-bottom-color: var(--color-ink);
-        }
-        :global(.input-line::placeholder) {
-          color: var(--color-ink-light);
-        }
-      `}</style>
     </div>
   )
 }
@@ -816,8 +314,6 @@ function plural(n: number, one: string, many: string) {
  * sub-page cards, each with a one-line status from its own data.
  */
 function ProfileHub() {
-  const { user } = useAuth()
-  const account = useUser(user?.id)
   const household = useQuery<{ members: unknown[]; pendingInvites?: unknown[] }>({
     queryKey: ['household', 'me'],
     queryFn: () => api.get('/households/me'),
@@ -845,13 +341,6 @@ function ProfileHub() {
           icon={Home}
           title="Casa"
           status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
-        />
-        {/* 2026-10-22: a tester couldn't find where to add «intolerancia al pimiento» after the sign-up. */}
-        <ProfileHubLink
-          href="/profile/casa/alergias?next=/profile"
-          icon={ShieldAlert}
-          title="Alergias e intolerancias"
-          status={allergiesStatus(account.data?.restrictions, account.isError)}
         />
         <ProfileHubLink
           href="/afinar"
@@ -1024,104 +513,6 @@ function PushNotificationsCard() {
         </div>
       </MenuSheet>
     </div>
-  )
-}
-
-function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <Label>{label}</Label>
-      <div className="mt-1">{children}</div>
-    </div>
-  )
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{children}</div>
-  )
-}
-
-function Stepper({
-  label,
-  value,
-  onMinus,
-  onPlus,
-  minusLabel,
-  plusLabel,
-}: {
-  label: string
-  value: number
-  onMinus: () => void
-  onPlus: () => void
-  minusLabel: string
-  plusLabel: string
-}) {
-  const btn =
-    'flex h-11 w-11 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors hover:border-ink'
-  return (
-    <div className="rounded-2xl border border-border-soft bg-cream p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{label}</div>
-      <div className="mt-2 flex items-center justify-between gap-1">
-        <button type="button" onClick={onMinus} className={btn} aria-label={minusLabel}>
-          <Minus size={16} />
-        </button>
-        <span className="w-6 text-center text-xl font-medium tabular-nums text-ink">{value}</span>
-        <button type="button" onClick={onPlus} className={btn} aria-label={plusLabel}>
-          <Plus size={16} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function Pill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`min-h-[40px] rounded-full border px-4 text-[13px] font-medium transition-colors active:scale-95 ${
-        active
-          ? 'border-ink bg-ink text-cream'
-          : 'border-border bg-paper text-ink-mid hover:border-ink'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function SexPill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`h-11 flex-1 rounded-full border px-3 text-[13px] font-medium transition-colors active:scale-95 ${
-        active
-          ? 'border-ink bg-ink text-cream'
-          : 'border-border bg-transparent text-ink-muted hover:border-ink hover:text-ink'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
 

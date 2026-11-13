@@ -11,7 +11,7 @@
  *   (unique per invoice) keeps it to one notice. If neither channel got it
  *   out, the claim is undone so the next retry tries again.
  * - The 7 days: `subscriptions.past_due_since` (`hasPaidAccess` in
- *   `@ona/shared`); after them the household loses the plan until it pays.
+ *   `@ona/shared`); after them the household is on Gratis (PRO-385) until it pays.
  * - `churnCounts`: cancellations by reason and failed payments, for the
  *   growth report (PRO-379).
  *
@@ -42,7 +42,7 @@ export function paymentFailedWhatsApp(i: { plan: PlanKey; publicUrl: string }): 
     '2. Toca «Cambiar la tarjeta».',
     '3. Añade la nueva tarjeta en la página de Stripe.',
     '',
-    `Stripe lo vuelve a intentar solo. Si en ${PAST_DUE_GRACE_DAYS} días sigue sin pagarse, tu hogar se queda sin ${name} hasta que se pague. No se borra nada.`,
+    `Stripe lo vuelve a intentar solo. Si en ${PAST_DUE_GRACE_DAYS} días sigue sin pagarse, tu hogar pasa de ${name} al plan Gratis hasta que se pague. No se borra nada.`,
   ].join('\n')
 }
 
@@ -57,7 +57,7 @@ export function paymentFailedEmail(i: { email: string; plan: PlanKey; publicUrl:
       'Hola:',
       `No hemos podido cobrar el último pago de ${BRAND_NAME} ${name}. Suele ser la tarjeta: caducada, sin saldo o bloqueada por el banco.`,
       'Aquí puedes cambiarla: en Suscripción toca «Cambiar la tarjeta» y añade la nueva en la página de Stripe.',
-      `Stripe lo vuelve a intentar solo. Si en ${PAST_DUE_GRACE_DAYS} días sigue sin pagarse, tu hogar se queda sin ${name} hasta que se pague. No se borra nada.`,
+      `Stripe lo vuelve a intentar solo. Si en ${PAST_DUE_GRACE_DAYS} días sigue sin pagarse, tu hogar pasa de ${name} al plan Gratis hasta que se pague. No se borra nada.`,
     ],
     button: { label: 'Cambiar la tarjeta', url: changeCardUrl(web) },
     after: [`El cobro lo hace Link, de Stripe, que te vende la suscripción de ${BRAND_NAME}.`],

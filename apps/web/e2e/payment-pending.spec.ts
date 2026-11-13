@@ -9,7 +9,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
 
-async function billingPastDue(page: Page, opts: { paused: boolean; canManage?: boolean }) {
+async function billingPastDue(page: Page, opts: { gratis: boolean; canManage?: boolean }) {
   const portalCalls: unknown[] = []
   await page.route(/\/billing$/, (route) =>
     route.request().method() === 'GET'
@@ -21,7 +21,7 @@ async function billingPastDue(page: Page, opts: { paused: boolean; canManage?: b
             canManage: opts.canManage ?? true,
             firstChargeAt: '2027-02-16T11:00:00.000Z',
             access: {
-              state: opts.paused ? 'paused' : 'subscribed',
+              state: opts.gratis ? 'gratis' : 'subscribed',
               trialDays: 14,
               trialEndsAt: '2026-12-28T23:00:00.000Z',
               trialLastDay: '2026-12-28',
@@ -57,34 +57,34 @@ test('failed payment: /menu shows «Pago pendiente» and «Cambiar la tarjeta» 
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
-  const portalCalls = await billingPastDue(page, { paused: false })
+  const portalCalls = await billingPastDue(page, { gratis: false })
   await page.goto('/menu')
   const card = page.getByTestId('payment-pending').first()
   await expect(card).toBeVisible({ timeout: 15_000 })
   await expect(card).toContainText('Pago pendiente')
   await expect(card).toContainText('El pago no ha pasado')
   await expect(card).toContainText('antes del 17 de febrero')
-  await expect(page.getByTestId('account-paused')).toHaveCount(0)
+  await expect(page.getByTestId('plan-gratis')).toHaveCount(0)
 
   await card.getByTestId('payment-pending-cta').click()
   await expect(page).toHaveURL(/portal=stripe/)
   expect(portalCalls).toHaveLength(1)
 })
 
-test('7 days later: the plan is paused until it pays, Mimo shows the same card', async ({ page }) => {
+test('7 days later: Gratis until it pays, Mimo shows the same card', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
-  await billingPastDue(page, { paused: true })
+  await billingPastDue(page, { gratis: true })
   await page.goto('/menu')
   const card = page.getByTestId('payment-pending').first()
   await expect(card).toBeVisible({ timeout: 15_000 })
-  await expect(card).toContainText('Tu plan está en pausa')
+  await expect(card).toContainText('Estás en el plan Gratis')
   await expect(card).toContainText('no se borra nada')
-  // Not the trial's pause card.
-  await expect(page.getByTestId('account-paused')).toHaveCount(0)
+  // Not the plain Gratis card.
+  await expect(page.getByTestId('plan-gratis')).toHaveCount(0)
 
   await page.getByTestId('mimo-button').click()
   await expect(page.getByTestId('mimo-input')).toHaveCount(0)
@@ -92,7 +92,7 @@ test('7 days later: the plan is paused until it pays, Mimo shows the same card',
   await page.keyboard.press('Escape')
 
   await page.goto('/profile/suscripcion?tarjeta=1')
-  await expect(page.getByTestId('subscription-payment-paused')).toContainText('tu plan está en pausa')
+  await expect(page.getByTestId('subscription-payment-gratis')).toContainText('estás en el plan Gratis hasta que se pague')
   await expect(page.getByTestId('subscription-badge')).toHaveText('Pago pendiente')
   await expect(page.getByTestId('change-card')).toBeVisible()
 })
@@ -103,7 +103,7 @@ test('a member reads who changes the card, without the button', async ({ page })
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
-  await billingPastDue(page, { paused: false, canManage: false })
+  await billingPastDue(page, { gratis: false, canManage: false })
   await page.goto('/menu')
   const card = page.getByTestId('payment-pending').first()
   await expect(card).toBeVisible({ timeout: 15_000 })

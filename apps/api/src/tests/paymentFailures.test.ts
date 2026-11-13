@@ -369,15 +369,15 @@ describe('7 days past_due → the plan stops counting (PRO-386)', () => {
     expect(paymentDueBy('active', since)).toBeNull()
   })
 
-  it('GET /billing: subscribed with the due date during the 7 days, not subscribed after', () => {
+  it('GET /billing: subscribed with the due date during the 7 days, Gratis after', () => {
     const opts = { enabled: true, canManage: true, householdCreatedAt: HOUSEHOLD_CREATED }
     const r = row({ status: 'past_due', pastDueSince: since })
     const during = billingStateFor(r, { ...opts, now: AFTER_LAUNCH })
     expect(during.access.state).toBe('subscribed')
     expect(during.subscription).toMatchObject({ status: 'past_due', paymentDueBy: new Date(since.getTime() + 7 * DAY).toISOString() })
     const after = billingStateFor(r, { ...opts, now: new Date(since.getTime() + 8 * DAY) })
-    // Until PRO-385 (plan Gratis) lands, «no plan» after the trial is the pause.
-    expect(after.access.state).toBe('paused')
+    // «No plan» after the trial is Gratis (PRO-385).
+    expect(after.access.state).toBe('gratis')
     // The subscription is still there (live), so the card can lead to the portal.
     expect(after.subscription?.status).toBe('past_due')
     expect(billingStateFor(row({ status: 'active' }), { ...opts, now: AFTER_LAUNCH }).subscription?.paymentDueBy).toBeNull()
@@ -391,7 +391,7 @@ describe('7 days past_due → the plan stops counting (PRO-386)', () => {
   it('the account guard reads it too (accessForUser)', async () => {
     const facts = (f: Partial<AccessFacts>) => async () => ({ householdCreatedAt: HOUSEHOLD_CREATED, latestStatus: null, ...f })
     expect((await accessForUser('u1', AFTER_LAUNCH, facts({ latestStatus: 'past_due', pastDueSince: since }))).state).toBe('subscribed')
-    expect((await accessForUser('u1', new Date(since.getTime() + 8 * DAY), facts({ latestStatus: 'past_due', pastDueSince: since }))).state).toBe('paused')
+    expect((await accessForUser('u1', new Date(since.getTime() + 8 * DAY), facts({ latestStatus: 'past_due', pastDueSince: since }))).state).toBe('gratis')
   })
 })
 

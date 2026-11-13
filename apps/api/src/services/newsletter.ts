@@ -803,10 +803,10 @@ export function withPersonalPick(
   const out = { ...content }
   if (pick.recipe) {
     const { recipeId, ...rest } = pick.recipe
-    out.star = {
-      ...rest,
-      url: track ? trackedPersonalUrl(web, track.issueId, 'receta', recipeId, track.proof) : `${web}/recipes/${recipeId}`,
-    }
+    const url = track ? trackedPersonalUrl(web, track.issueId, 'receta', recipeId, track.proof) : `${web}/recipes/${recipeId}`
+    out.star = { ...rest, url }
+    // E-91: a button to the star («Ver la receta») opens the recipe this email shows, not the star.
+    if (content.cta.url === content.star.url) out.cta = { ...content.cta, url }
   }
   if (pick.tip) {
     out.tip = {

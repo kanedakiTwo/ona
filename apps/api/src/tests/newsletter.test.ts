@@ -1025,6 +1025,34 @@ describe('a recipe and a tip for each person (PRO-1020)', () => {
     expect(adopted).toEqual([{ id: 'l1', adoptedAt: daysAgo(30) }])
   })
 
+  it('E-91: a «Ver la receta» button that points to the star opens the recipe the email shows, tracked or not', async () => {
+    const buttonHref = (html: string) => html.match(/<a href="([^"]+)"[^>]*>Ver la receta<\/a>/)?.[1]
+    const withButton = { ...N4, content: { ...N4.content, cta: { label: 'Ver la receta', url: N4.content.star.url } } }
+
+    // Untracked: straight to the person's recipe page.
+    const plain = okBatch()
+    await sendNewsletter(withButton, { ...deps(memoryRepo(accounts()).repo, plain), tips: memoryTips().tips, now: () => NOW })
+    const [ana, bea, list] = plain.mock.calls[0][0]
+    expect(buttonHref(ana.html)).toBe(`https://mimoia.com/recipes/${R1}`)
+    expect(buttonHref(bea.html)).toBe(`https://mimoia.com/recipes/${R2}`)
+    expect(bea.text).toContain(`Ver la receta: https://mimoia.com/recipes/${R2}`)
+    expect(buttonHref(list.html)).toBe('https://mimoia.com/recipes/lentejas')
+
+    // Through our counter (as n.º 4 went): the person's recipe slot, not the star's link.
+    const { stats } = memoryStats(() => [{ issueId: 'n4', source: 'user' }])
+    const tracked = okBatch()
+    await sendNewsletter(withButton, { ...deps(memoryRepo(accounts()).repo, tracked), stats, tips: memoryTips().tips, now: () => NOW })
+    const [tAna, tBea, tList] = tracked.mock.calls[0][0]
+    expect(buttonHref(tAna.html)).toBe(`https://mimoia.com/n/n4/43?r=${R1}`)
+    expect(buttonHref(tBea.html)).toBe(`https://mimoia.com/n/n4/43?r=${R2}`)
+    expect(buttonHref(tList.html)).toBe('https://mimoia.com/n/n4/1')
+
+    // A button to somewhere else stays the same for everyone.
+    const other = okBatch()
+    await sendNewsletter(N4, { ...deps(memoryRepo(accounts()).repo, other), tips: memoryTips().tips, now: () => NOW })
+    expect(other.mock.calls[0][0][0].html).toContain('href="https://mimoia.com/menu"')
+  })
+
   it('no candidate fits → the star; a failing tips repo → everyone gets the general ones, and the send goes on', async () => {
     const { repo } = memoryRepo(accounts())
     const { tips } = memoryTips()

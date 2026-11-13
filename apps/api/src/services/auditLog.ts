@@ -30,6 +30,8 @@ export type AdminAction =
   | 'ingredient.estimate_nutrition'
   | 'recipe.update'
   | 'recipe.delete'
+  // PRO-1118: an ingredient's allergens changed → the recipes using it
+  | 'recipe.allergens_recompute'
   | 'user.suspend'
   | 'user.unsuspend'
   | 'user.reset_password.generate'

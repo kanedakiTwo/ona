@@ -134,6 +134,18 @@ Then picks one at random from the pool. **Favorites get double weight** — they
 
 **Menú inteligente a la sombra (PRO-255):** after a week is generated, Mimo thinks the same week in the background and stores its proposal in `menu_plans`; the menu the household sees is still this generator's — see [Menú inteligente](./smart-menu.md).
 
+## Recetas «de diario» y el arranque (PRO-1200)
+
+Why (Miguel, 2026-11-12): a new household has no favourites, «Me apetece» or stars, so the matcher drew from the whole catalogue and, with the catalogue growing with blogs and creators, a first menu could bring katsudon. The first menus should look like what that home already eats.
+
+- **The tag:** internal tag `diario` (`EVERYDAY_RECIPE_TAG`, `isEverydayRecipe` in `@ona/shared`, next to `RETIRED_RECIPE_TAG`; public tags count too), set by Cocina (COC-513). With no `diario` recipe in the catalogue the household sees, everything works as before (`everydayPolicy` → null).
+- **Arranque (starting):** the household has fewer than **2 other weeks with a menu** (distinct `menus.week_start`, same household/user scope as favourites, the week being generated aside) **or fewer than 5 signals** (recipes with a favourite, a «Me apetece» or «Me encanta» of any member, or 4-5 stars; each recipe once). A read error counts as starting. `loadIsStarting` in `services/everydayMenu.ts`.
+- **While starting,** every drawn dish — the weekly generator (`buildRandomMenu`: free dishes, dishes of a week-type type, the fridge dish) and every automatic change through `menuSlotPick.ts` («Cambiar», «Que elija Mimoia» with or without a type chip, the week-type draw, the review when restrictions change) — picks only among the `diario` recipes that pass the usual filters; in the generator this goes before the «not the same protein at lunch and dinner» preference. A slot none fits takes the whole catalogue (never an empty slot for this).
+- **After starting,** at most **2 dishes a week from outside `diario`** («para descubrir», `DISCOVERIES_PER_WEEK`), drawn with the usual weights; once the week has them, the rest keep to `diario` (same fallback). In a single change, the rest of the week's dishes say how many are left (`slotEveryday`).
+- **What the household chose never counts as outside** and is never held back: favourites, 5 stars and «Me encanta», «Me apetece», onboarding favourite dishes; locked slots and the week type's concrete recipes are not drawn. The fridge dish (PRO-229) prefers `diario` while starting and is not counted after.
+- **By hand, nothing changes:** «Elegir otra receta», the search and Mimo naming a recipe can put any recipe.
+- Tests: `everydayMenu.test.ts` (invented catalogue: a new household only gets `diario`; a slot none fits gets another; past starting, at most 2 from outside; favourites don't count; no `diario` → the same menu as before).
+
 ## Single-Meal Regeneration
 
 `PUT /menu/:menuId/day/:day/meal/:meal` replaces one slot:
@@ -327,6 +339,7 @@ D-158, pieza 1 (growth line: two weeks in a row with the menu ready before Monda
 - [apps/api/src/services/schoolMenu.ts](../apps/api/src/services/schoolMenu.ts) · [apps/api/src/routes/schoolMenu.ts](../apps/api/src/routes/schoolMenu.ts) · [packages/shared/src/types/schoolMenu.ts](../packages/shared/src/types/schoolMenu.ts) · [apps/web/src/app/profile/casa/cole/page.tsx](../apps/web/src/app/profile/casa/cole/page.tsx) — menú del cole (PRO-224) · [apps/api/src/services/visionImage.ts](../apps/api/src/services/visionImage.ts)
 - [apps/api/src/services/menuFit.ts](../apps/api/src/services/menuFit.ts) — «cuánto ha acertado» (PRO-155) · [apps/web/src/components/menu/MenuFitLine.tsx](../apps/web/src/components/menu/MenuFitLine.tsx)
 - [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts) — core algorithm
+- [apps/api/src/services/everydayMenu.ts](../apps/api/src/services/everydayMenu.ts) — recetas «de diario» and the arranque (PRO-1200)
 - [apps/api/src/services/metabolicScore.ts](../apps/api/src/services/metabolicScore.ts) — per-recipe metabolic profile + weekly quality/variety for the fitness
 - [apps/api/src/services/menuEdits.ts](../apps/api/src/services/menuEdits.ts) — registro de cambios del menú (PRO-149)
 - [apps/api/src/services/menuRecipeRecheck.ts](../apps/api/src/services/menuRecipeRecheck.ts) — saved menus re-checked when a recipe changes or is deleted (PRO-345)

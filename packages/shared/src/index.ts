@@ -356,7 +356,7 @@ export type { OrderMember, OrderMemberInput } from './buy/extensionBasket.js'
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'
 export { RATING_PROMPT_CHOICES, RATING_PROMPT_COOLDOWN_DAYS, shouldAskRating } from './ratingPrompt.js'
-export { FEATURED_RECIPES, RETIRED_RECIPE_TAG, BASE_RECIPE_TAG, isBaseRecipe } from './featuredRecipes.js'
+export { FEATURED_RECIPES, RETIRED_RECIPE_TAG, BASE_RECIPE_TAG, isBaseRecipe, EVERYDAY_RECIPE_TAG, isEverydayRecipe } from './featuredRecipes.js'
 
 // Units
 export { normalizeTerm } from './units/normalize.js'

@@ -77,6 +77,8 @@ Each row:
 - `quantity` — number
 - `unit` — enum `g | ml | u | cda | cdita | pizca | al_gusto`
 - `optional` — boolean. Editable from the recipe edit form (and the `/recipes/new` creation form) via an `opc` pill toggle next to each ingredient row. When true, the recipe detail renders an "opcional" badge inline and the shopping-list aggregator skips the row when scaling
+- `role` — `essential` | `secondary` | null (unmarked; `recipe_ingredients.role`, migration `0107_ingredient_roles`, PRO-1105). Essential: without it, it isn't that dish; secondary: it can be left out. Marked by Cocina (the office) on catalogue recipes only, through `PUT /admin/recipes/:id/ingredient-roles` with `x-cocina-token` or an admin JWT, or in its batch files (`imprescindible`); while unmarked an automatic rule decides (`autoIngredientRole`: optional / al gusto / pizca → secondary; protein, cereal, legume → essential; else 15 % of the weighable grams). An optional line is always secondary. Not in the recipe form: an edit keeps the marks (`carryIngredientMarks`) and «Añadir a mis recetas» copies them. Used by «Cocinar ahora» ([Cook now](./cook-now.md))
+- `substituteIngredientIds` — catalogue ingredient ids that can stand in for it (`substitute_ingredient_ids`, uuid[], default empty, up to 5; Cocina's batch `sustitutos`); not foreign keys
 - `note` — optional free text («en lomos», «picada»). Editable from `/recipes/new` and `/recipes/[id]/edit`: each ingredient row has a «Nota (opcional)» field under quantity/unit (max 200 characters, trimmed; emptying it clears the note on save, PRO-109). The detail shows it next to the ingredient. Tests: `recipeFormContract.test.ts`, `e2e/recipe-ingredient-note.spec.ts`
 
 ### Meal & season fit (3-state)

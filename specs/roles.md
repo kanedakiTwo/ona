@@ -11,7 +11,7 @@ The two-role split is intentional: most decisions today are binary (system vs. s
 ## User Capabilities
 
 - Logged-in users carry a `role` (`user` by default, `admin` for whitelisted emails)
-- Users with `role === 'admin'` see an "Admin" entry from `/profile`'s footer that opens `/admin`
+- Users with `role === 'admin'` see «Panel de admin» in Ajustes (`/profile/ajustes`, behind the gear of Perfil) that opens `/admin`
 - Users with `role === 'user'` see no admin entry; a direct visit to `/admin` shows a 403 page with a link back home
 - Admin status is reconciled on every login: if the user's email is in the `ADMIN_EMAILS` env var, role becomes `admin`; if it's not, an existing admin's role is downgraded to `user`. This keeps the env var the single source of truth for who's an admin
 - A user whose `users.suspended_at` is set cannot log in — login returns 403 with a Spanish error explaining the suspension. Admins can suspend / un-suspend from `/admin/users` (see [User Management](./user-management.md))
@@ -41,7 +41,7 @@ The two-role split is intentional: most decisions today are binary (system vs. s
 - [Business Metrics](./metrics.md) — `GET /admin/metrics`: admin JWT or `x-metrics-token`
 - [User Management](./user-management.md) — admin-only user list, suspend, reset password
 - [Admin Audit Log](./admin-audit-log.md) — every admin mutation lands here
-- [My Recipes](./my-recipes.md) — the user-scoped curator that lives inside `/profile`
+- [My Recipes](./my-recipes.md) — the user-scoped curator at `/recipes/mias` (Recetas tab)
 
 ## Source
 

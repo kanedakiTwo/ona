@@ -73,8 +73,8 @@ export function pricingBlock(): string {
     .map((f) => `- ${f.label}: Gratis ${v(f.gratis)}; Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
     .join('\n')
   const payNow = isBillingConfigured()
-    ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos; con el enlace de una creadora, 4 semanas: el ${CREATOR_BETA_FIRST_CHARGE_LABEL}); si cancela antes no paga nada.`
-    : `Muy pronto podra dejarlo pagado desde Perfil → Suscripcion (en la beta, el primer cobro seria el ${BETA_FIRST_CHARGE_LABEL}); de momento aun no se puede pagar.`
+    ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Ajustes → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos; con el enlace de una creadora, 4 semanas: el ${CREATOR_BETA_FIRST_CHARGE_LABEL}); si cancela antes no paga nada.`
+    : `Muy pronto podra dejarlo pagado desde Perfil → Ajustes → Suscripcion (en la beta, el primer cobro seria el ${BETA_FIRST_CHARGE_LABEL}); de momento aun no se puede pagar.`
   return `Planes y precios (por hogar, IVA incluido; todo esta en mimoia.com/precios):
 ${plans}
 Que incluye cada plan:
@@ -82,7 +82,7 @@ ${table}
 - ${PLAN_CAPS_NOTE}
 - Como funciona: ${FOUNDER_FOOTER}.
 - Si el usuario ya esta en la beta: ${FOUNDER_FOOTER_BETA}. Durante la beta todos tienen Plus gratis. ${payNow}
-- Cambiar de plan, la tarjeta o cancelar: Perfil → Suscripcion → Gestionar mi suscripcion. Si cancela, sigue con su plan hasta el final de lo pagado.
+- Cambiar de plan, la tarjeta o cancelar: Perfil → Ajustes → Suscripcion → Gestionar mi suscripcion. Si cancela, sigue con su plan hasta el final de lo pagado.
 - Quien cobra: Stripe a traves de Link, que emite los recibos; en el extracto aparece LINK.COM* MIMOIA.
 - Si pregunta algo de precios que no este aqui (descuentos, empresas, otros paises), di que no lo sabes y que escriba a ${BRAND_SUPPORT_EMAIL}.`
 }

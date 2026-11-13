@@ -41,7 +41,7 @@ const DAY = 86_400_000
  * (Miguel, `/ona-dia` 2026-10-21) changed only where to remove a «Me
  * apetece»: «Lo que recuerdo de ti» is no longer a screen in Perfil (PRO-318
  * folded it into «Tu ficha»), so the path is the one the web shows today
- * (`app/profile/page.tsx` → `FichaHubCard` «Tu ficha» → `app/profile/ficha`
+ * (`app/profile/page.tsx` → the strip's «Tu ficha» link → `app/profile/ficha`
  * «Editar mis datos uno a uno» → `/profile/memoria`, section «Afina tu menú»
  * of `TasteMemorySection`, with «Olvidar»).
  */

@@ -54,6 +54,8 @@ export type AdminAction =
   | 'catalog_recipe.source'
   // «Pregunta única por WhatsApp» (PRO-1091)
   | 'whatsapp_question.send'
+  // «Pregunta por correo» (PRO-1197)
+  | 'email_question.send'
 
 export type AuditTargetType =
   | 'ingredient'
@@ -67,6 +69,7 @@ export type AuditTargetType =
   | 'catalog_import'
   | 'catalog_collection'
   | 'whatsapp_question'
+  | 'email_question'
 
 export interface AuditRecord {
   adminId: string

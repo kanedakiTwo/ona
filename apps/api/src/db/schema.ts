@@ -1849,6 +1849,24 @@ export const whatsappQuestionSends = pgTable('whatsapp_question_sends', {
   index('idx_whatsapp_question_sends_user').on(t.userId),
 ])
 
+// ─── Pregunta por correo (PRO-1197, specs/admin-dashboard.md) ──
+// The one email Miguel sends from Admin to the households that left the
+// beta (approval 2026-11-11). One row per household and question, claimed
+// before the send: never twice, a failed one is not retried.
+export const emailQuestionSends = pgTable('email_question_sends', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Which email (`EMAIL_QUESTION_CAMPAIGN`). */
+  question: text('question').notNull(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'sending' | 'sent' | 'failed' */
+  status: text('status').notNull().default('sending'),
+  errorMessage: text('error_message'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_email_question_send').on(t.question, t.householdId),
+])
+
 // ─── «Afina tu menú» (specs/taste.md, PRO-146) ──────────────
 // One row per user and recipe: the last verdict wins. «nope» keeps the
 // recipe out of the automatic menu of the whole household; «love» weighs

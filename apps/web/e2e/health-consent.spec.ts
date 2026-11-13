@@ -80,9 +80,9 @@ test('onboarding with the box stores them with date and version; withdrawing del
   expect(user.healthConsentAt).toBeTruthy()
   await expect(page.getByTestId('no-health-data-notice')).toHaveCount(0)
 
-  // Withdraw from the profile (confirm) → data gone, withdrawal recorded.
-  await page.goto('/profile')
-  const box = page.getByRole('checkbox', { name: /datos de salud/i })
+  // Withdraw from your row of «Quién come» (confirm) → data gone, withdrawal recorded.
+  await page.goto('/profile/quien/me')
+  const box = page.getByTestId('health-and-goal').getByRole('checkbox', { name: /datos de salud/i })
   await expect(box).toBeChecked({ timeout: 15_000 })
   page.once('dialog', (d) => d.accept())
   await box.click()

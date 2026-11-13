@@ -261,6 +261,7 @@ function ChoicePill({
 
 export function PersonSheet({
   person,
+  defaultAgeBand = "",
   open,
   onClose,
   onSave,
@@ -268,7 +269,9 @@ export function PersonSheet({
   error,
 }: {
   /** null = a new person. */
-  person: FichaPersonView | null
+  person: Pick<FichaPersonView, "key" | "label" | "ageBand"> | null
+  /** A new person's age to start from («Describir» an undescribed «Un niño», PRO-1203). */
+  defaultAgeBand?: string
   open: boolean
   onClose: () => void
   onSave: (input: { alias: string; ageBand: string }) => void
@@ -278,13 +281,13 @@ export function PersonSheet({
   const aliasId = useId()
   const noteId = useId()
   const [alias, setAlias] = useState(person?.label ?? "")
-  const [band, setBand] = useState<string>(person?.ageBand ?? "")
+  const [band, setBand] = useState<string>(person?.ageBand ?? defaultAgeBand)
 
   useEffect(() => {
     if (!open) return
     setAlias(person?.label ?? "")
-    setBand(person?.ageBand ?? "")
-  }, [open, person?.key, person?.label, person?.ageBand])
+    setBand(person?.ageBand ?? defaultAgeBand)
+  }, [open, person?.key, person?.label, person?.ageBand, defaultAgeBand])
 
   const ready = alias.trim().length > 0 && !!band
 

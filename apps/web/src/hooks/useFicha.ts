@@ -17,6 +17,8 @@ export const FICHA_VIEW_KEY = ["ficha", "view"] as const
 function invalidateFicha(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: FICHA_KEY })
   void qc.invalidateQueries({ queryKey: ["memory"] })
+  // «Quién come» (PRO-1203) lists the same people.
+  void qc.invalidateQueries({ queryKey: ["household", "people"] })
 }
 
 export function useFicha() {

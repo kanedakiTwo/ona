@@ -116,6 +116,7 @@ export default function HouseholdAllergiesPage() {
     try {
       await api.post(`/user/${user.id}/allergies-none`)
       await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
+      await queryClient.invalidateQueries({ queryKey: ["household", "people"] })
     } catch {
       setSaving(false)
       setError("No hemos podido guardarlo. Inténtalo otra vez.")
@@ -165,8 +166,9 @@ export default function HouseholdAllergiesPage() {
       updateUser({ restrictions: updated.restrictions ?? final })
       if (final.length === 0) await api.post(`/user/${user.id}/allergies-none`)
       await queryClient.invalidateQueries({ queryKey: ["household-allergies"] })
-      // The «Alergias e intolerancias» card on /profile reads it.
+      // Your row of «Quién come» (PRO-1203) reads it.
       await queryClient.invalidateQueries({ queryKey: ["user", user.id] })
+      await queryClient.invalidateQueries({ queryKey: ["household", "people"] })
       if (final.length > 0) {
         const { weeks } = firstMenuWeeks()
         const week = await api.get<{ days?: WeekDays }>(`/menu/${user.id}/${weeks[0]}`).catch(() => null)
@@ -200,7 +202,7 @@ export default function HouseholdAllergiesPage() {
     router.push(next)
   }
 
-  // From «Alergias e intolerancias» on /profile (2026-10-22), not on the way to the menu.
+  // From your row of «Quién come» in Perfil (PRO-1203; «Alergias e intolerancias» since 2026-10-22), not on the way to the menu.
   const fromProfile = next.startsWith("/profile")
   const noneLabel = fromProfile ? "No tengo ninguna" : "No tengo ninguna, ver el menú"
   // PRO-347: «No tengo ninguna» also without the box — it stores no health data.

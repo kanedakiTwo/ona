@@ -1779,6 +1779,12 @@ export const subscriptions = pgTable('subscriptions', {
   founderPrice: boolean('founder_price').notNull().default(false),
   /** PRO-136: when the legal notice «15 días antes del primer cobro» went out (once; never written by the webhook). */
   chargeNoticeAt: timestamp('charge_notice_at', { withTimezone: true }),
+  /** PRO-386: Stripe's `cancellation_details.reason` (cancellation_requested, payment_failed, payment_disputed). */
+  cancelReason: text('cancel_reason'),
+  /** PRO-386: the category picked in Stripe's portal (too_expensive, unused, missing_features…). The free comment is never kept (D-094). */
+  cancelFeedback: text('cancel_feedback'),
+  /** PRO-386: since when it is `past_due` (ours: set on the first `past_due`, cleared on any other status). 7 days → no paid access. */
+  pastDueSince: timestamp('past_due_since', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -1786,6 +1792,24 @@ export const subscriptions = pgTable('subscriptions', {
   index('idx_subscriptions_household').on(t.householdId),
   check('subscriptions_plan_check', sql.raw("plan IN ('esencial','plus')")),
   check('subscriptions_period_check', sql.raw("period IN ('mensual','anual')")),
+])
+
+// ─── Failed payments (PRO-386, specs/billing.md) ────────────
+// One row per Stripe invoice whose payment failed (`invoice.payment_failed`):
+// the claim that makes the notice go once per invoice, and what the growth
+// report counts as «impagos».
+export const paymentFailures = pgTable('payment_failures', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  stripeInvoiceId: text('stripe_invoice_id').notNull(),
+  stripeSubscriptionId: text('stripe_subscription_id').notNull(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  /** 'whatsapp' | 'email', once the notice went out; null while it hasn't. */
+  noticeChannel: text('notice_channel'),
+  noticeAt: timestamp('notice_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_payment_failures_invoice').on(t.stripeInvoiceId),
+  index('idx_payment_failures_created').on(t.createdAt),
 ])
 
 // ─── Beta price survey (specs/billing.md) ───────────────────

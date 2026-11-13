@@ -1,9 +1,5 @@
 {
-<<<<<<< 4749aaf429d791691881eeb9419f2864be1c2647
-  "id": "b3fcf65a-6315-462d-a253-082f2cd51d5e",
-=======
   "id": "c7321f65-26ac-40f1-8b1f-57b50f540122",
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
   "prevId": "3b67eb1a-3a0c-4e90-8483-8ae95a533f52",
   "version": "7",
   "dialect": "postgresql",
@@ -1946,116 +1942,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-<<<<<<< 4749aaf429d791691881eeb9419f2864be1c2647
-    "public.email_question_sends": {
-      "name": "email_question_sends",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "question": {
-          "name": "question",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "household_id": {
-          "name": "household_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'sending'"
-        },
-        "error_message": {
-          "name": "error_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sent_at": {
-          "name": "sent_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "uq_email_question_send": {
-          "name": "uq_email_question_send",
-          "columns": [
-            {
-              "expression": "question",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "household_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "email_question_sends_household_id_households_id_fk": {
-          "name": "email_question_sends_household_id_households_id_fk",
-          "tableFrom": "email_question_sends",
-          "tableTo": "households",
-          "columnsFrom": [
-            "household_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "email_question_sends_user_id_users_id_fk": {
-          "name": "email_question_sends_user_id_users_id_fk",
-          "tableFrom": "email_question_sends",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-=======
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
     "public.household_buy_prefs": {
       "name": "household_buy_prefs",
       "schema": "",
@@ -9280,15 +9166,12 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< 4749aaf429d791691881eeb9419f2864be1c2647
-=======
         "answer": {
           "name": "answer",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -9732,15 +9615,12 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< 4749aaf429d791691881eeb9419f2864be1c2647
-=======
         "sean_ellis_at": {
           "name": "sean_ellis_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
         "role": {
           "name": "role",
           "type": "text",

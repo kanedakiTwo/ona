@@ -57,7 +57,7 @@ Every paid provider call writes one row — user (nullable), household (user's p
 | `unit_fallback` (odd units → grams/ml) | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user |
 | `usda_translation` (ingredient auto-create) | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user |
 | `ingredient_nutrition_estimate` ("Estimar con Mimoia") | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user |
-| `recipe_image` (house photo: create/import, regenerate image) | AiKit `AIKIT_IMAGE_MODEL` (`gpt-image-2`, PRO-265); OpenAI `OPENAI_IMAGE_MODEL` (`gpt-image-1`) when AiKit fails. Historical rows: AiKit `imagen-fal` | user (seed script: system) |
+| `recipe_image` (house photo: create/import, regenerate image) | AiKit `AIKIT_IMAGE_MODEL` (`gpt-image-2`, PRO-265); OpenAI `OPENAI_IMAGE_MODEL` (`gpt-image-2`, PRO-1149; `gpt-image-1` until 2026-11-13) when AiKit fails. Historical rows: AiKit `imagen-fal` | user (seed script: system) |
 | `whatsapp_review` (daily conversation reviewer) | Anthropic Opus 5.5 | system |
 | `whatsapp_guided` (PRO-156: the writer of the messages Mimo sends by itself) | Anthropic Opus 5.5 (`CLAUDE_MODEL`), effort low | user (counts against the monthly cap) |
 | `whatsapp_template` (Mimoia-initiated template, outside the 24 h window) | Meta `utility_template` | user |

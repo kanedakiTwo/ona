@@ -9,6 +9,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 const TRIAL = { state: 'trial', trialEndsAt: '2027-01-24T23:00:00.000Z', trialLastDay: '2027-01-24', daysLeft: 7, trialDay: 7 }
 
@@ -35,6 +36,8 @@ async function billingAs(page: Page, over: Record<string, unknown>) {
 test('day 7: the offer on /menu, in Mimo and on Suscripción', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  // PRO-387: one next step at a time; without the consent «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
@@ -62,6 +65,8 @@ test('day 7: the offer on /menu, in Mimo and on Suscripción', async ({ page }) 
 test('legal notice: date and amount, and the link opens the cancel flow', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  // PRO-387: one next step at a time; without the consent «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 

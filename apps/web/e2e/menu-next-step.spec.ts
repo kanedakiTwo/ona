@@ -7,7 +7,7 @@
  * away for the week, and at most one card takes its place.
  */
 import { test, expect } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { completeOnboarding, menuWithRecipesOn, registerFreshUser } from './_helpers'
 
 const CARD_IDS = [
   'no-health-data-notice',
@@ -40,6 +40,29 @@ test('a new account sees a single card above the menu: safety first, then «Mand
   await expect(page.locator('[data-next-step]')).toHaveCount(1)
   await expect(page.getByTestId('next-step-send-list')).toHaveCount(0)
   await health.getByRole('button', { name: 'Entendido' }).click()
+  await expect(health).toHaveCount(0)
+
+  // «Manda la lista» needs a week with dishes: a new account's week is blank until generated.
+  const apiUrl = process.env.API_URL ?? 'http://localhost:8765'
+  const { token, userId, weekStart, todayIdx } = await page.evaluate(() => {
+    const now = new Date()
+    const back = now.getDay() === 0 ? 6 : now.getDay() - 1
+    const monday = new Date(now)
+    monday.setDate(now.getDate() - back)
+    const iso = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+    return {
+      token: localStorage.getItem('ona_token'),
+      userId: JSON.parse(localStorage.getItem('ona_user') ?? '{}').id as string,
+      weekStart: iso,
+      todayIdx: back,
+    }
+  })
+  const headers = { Authorization: `Bearer ${token}` }
+  const gen = await page.request.post(`${apiUrl}/menu/generate`, { headers, data: { userId, weekStart } })
+  expect(gen.ok(), `menu/generate ${gen.status()}`).toBeTruthy()
+  await menuWithRecipesOn(page, headers, userId, weekStart, [[todayIdx, 'dinner']])
+  await page.reload()
+  await expect(page.getByTestId('menu-week-range')).toBeVisible({ timeout: 20_000 })
 
   const sendList = page.getByTestId('next-step-send-list')
   await expect(sendList).toBeVisible({ timeout: 20_000 })

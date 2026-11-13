@@ -113,12 +113,12 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
     words: /\b(nutri\w*|sano|sana|saludable\w*|calorias?|proteinas?|macros?|equilibr\w*|variedad|verduras?|legumbres?|fritos?|procesad\w*|azucar\w*|sal|ventana|ayuno|salud|medico|diabet\w*|colesterol|tension|peso|adelgaz\w*|engord\w*|bueno para|malo para)\b/,
   },
   hogar: {
-    label: 'el hogar y el perfil: cuantos sois, restricciones, memoria (gustos, equipo, presupuesto), invitar, avisos, como cocinais, opiniones para el equipo',
+    label: 'el hogar y el perfil: cuantos sois, restricciones, memoria (gustos, equipo, presupuesto), invitar, avisos, como cocinais, opiniones para el equipo y la encuesta de Mimoia',
     tools: [
       'update_household', 'update_profile', 'update_memory', 'invite_to_household', 'share_invite_link',
-      'set_whatsapp_notifications', 'get_alerts', 'set_alerts', 'set_cooking_style', 'leave_feedback',
+      'set_whatsapp_notifications', 'get_alerts', 'set_alerts', 'set_cooking_style', 'leave_feedback', 'answer_sean_ellis',
     ],
-    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas)\b/,
+    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|decepcionad\w*|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas)\b/,
   },
   ficha: {
     label: 'la ficha del hogar (lo que Mimoia sabe y aprende de la casa) y las valoraciones de «Afina tu menu»',

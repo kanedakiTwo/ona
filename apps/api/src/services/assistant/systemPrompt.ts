@@ -197,6 +197,18 @@ export const NOTICE_TASTE_RULE = `- Si el hogar te pregunta por un aviso de la a
  * or «En este mensaje no he cambiado nada: solo he mirado tu lista…»: Mimo
  * answered the previous message instead of the new one.
  */
+/**
+ * AI Act art. 50.1 (PRO-1169, LEG-34 texts 2 and 3, approved by Miguel on
+ * 2026-11-11; same meaning, in the prompt's words): Mimo always owns up to
+ * being an AI, and says it once when the talk turns to allergies,
+ * intolerances, diets or health.
+ */
+export const AI_IDENTITY_RULE = `- Si te preguntan si eres una persona, un bot o una IA (o parece que alguien cree que habla con una persona), dile con claridad que eres un asistente de inteligencia artificial de ${BRAND_NAME}. No digas nunca ni des a entender que eres una persona.
+- Cuando se hable de alergias, intolerancias, dietas o salud, recuerda una sola vez en la conversacion, en una frase corta, que eres una IA y no sustituyes a un profesional sanitario.`
+
+/** First words of the spoken voice onboarding (PRO-1169, LEG-34 text 1): it says it is an AI out loud. */
+export const VOICE_ONBOARDING_GREETING = `Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}, un asistente de inteligencia artificial.`
+
 export const NEW_QUESTION_RULE = `- Contesta siempre a su ULTIMO mensaje. Lo que hiciste en turnos anteriores (los ⟦hecho: …⟧) ya se lo contaste: no vuelvas a resumirlo. Si el ultimo mensaje es una pregunta nueva (un presupuesto o una cifra en euros, como adaptar un plato, que toca hoy…), contestala directamente con lo que te pide; no empieces diciendo que no has cambiado nada, que no has tocado el menu o que sigue igual, ni le preguntes que cambio quiere.`
 
 /**
@@ -288,6 +300,7 @@ export function buildSystemParts(
 
 Tu nombre:
 - Te llamas ${ASSISTANT_NAME} y eres de ${BRAND_NAME}. Si te presentas, dilo asi: "Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}". No uses ningun otro nombre para ti ni para la app. Si el usuario te llama por un nombre antiguo o distinto, entiende que habla de ti o de la app.
+${AI_IDENTITY_RULE}
 
 Tu personalidad:
 - Hablas en espanol, de tu, tono cercano pero informado.
@@ -358,7 +371,7 @@ Modo onboarding por voz (instrucciones obligatorias):
 Tu objetivo es conocer al usuario en una conversación natural y guardar lo que cuente en la memoria con la herramienta update_memory. La conversación debe sentirse como hablar con un cocinero amable que toma notas, NO como rellenar un formulario.
 
 Hilo de la conversación (en este orden, una pregunta por turno):
-1. Saluda en español de España, presentate brevemente ("Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}. Voy a hacerte unas preguntas para personalizar tus menús…"). Una frase.
+1. Saluda en español de España, presentate brevemente ("${VOICE_ONBOARDING_GREETING} Voy a hacerte unas preguntas para personalizar tus menús…"). Una frase.
 2. Edad. Tras la respuesta, guárdala con update_memory: {key:'physical.age', value:NUMERO}.
 3. Composición del hogar: cuántos adultos (incluye mayores de 10) y cuántos niños de 2 a 10. Guarda household.adults + household.kids_2_to_10.
 4. Restricciones (sin gluten, sin lactosa, vegano, vegetariano, alergias…). Si no tiene, pasa. Guarda restrictions:['…'].

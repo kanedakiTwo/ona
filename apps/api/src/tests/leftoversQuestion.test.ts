@@ -121,6 +121,7 @@ describe('appendReplyOffers: one offer per reply', () => {
     family: async (_u, reply) => reply,
     invite: async (_u, reply) => reply,
     leftovers: (u, reply, opts) => maybeAppendLeftoversQuestion(u, reply, { ...opts, store, now: NOW }),
+    seanEllis: async (_u, reply) => reply,
     ...over,
   })
 

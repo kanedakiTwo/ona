@@ -278,7 +278,7 @@ export { summarizeWeekType, weekTypeCell, weekTypeDayLine, schoolWeekdays, dayLe
 export type { WeekTypeCell, WeekTypeCellKind, WeekTypeSummary } from './types/weekTypeSummary.js'
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
-export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT } from './constants/aiDisclosure.js'
+export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT, AI_SIGNATURE, AI_TEMPLATE_FOOTER } from './constants/aiDisclosure.js'
 export { KITCHEN_APPLIANCES, BASIC_UTENSILS, foldEquipment, classifyEquipment, appliancesIn, unknownEquipmentCounts } from './constants/equipment.js'
 export type { EquipmentKind } from './constants/equipment.js'
 export {
@@ -358,7 +358,7 @@ export type { OrderMember, OrderMemberInput } from './buy/extensionBasket.js'
 export { buildRecipePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'
 export { RATING_PROMPT_CHOICES, RATING_PROMPT_COOLDOWN_DAYS, shouldAskRating } from './ratingPrompt.js'
-export { FEATURED_RECIPES, RETIRED_RECIPE_TAG, BASE_RECIPE_TAG, isBaseRecipe } from './featuredRecipes.js'
+export { FEATURED_RECIPES, RETIRED_RECIPE_TAG, BASE_RECIPE_TAG, isBaseRecipe, EVERYDAY_RECIPE_TAG, isEverydayRecipe } from './featuredRecipes.js'
 
 // Units
 export { normalizeTerm } from './units/normalize.js'

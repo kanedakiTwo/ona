@@ -25,7 +25,8 @@ import {
 import { parseSlotParams, slotDestination } from '../services/newsletterShare.js'
 import { personalSlotDestination } from '../services/newsletterTips.js'
 import { metricsAuth } from '../middleware/metricsAuth.js'
-import { and, eq } from 'drizzle-orm'
+import { newsletterRecommendationAuth, viaNewsletterToken } from '../middleware/newsletterAuth.js'
+import { and, asc, eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import {
@@ -63,7 +64,8 @@ import {
  * The Admin «Newsletter» editor (PRO-1123, D-176), admin JWT:
  *   GET    /admin/newsletter/drafts                       the last issues and their state
  *   GET    /admin/newsletter/drafts/:issueId              recommendation + template + state
- *   PUT    /admin/newsletter/drafts/:issueId/recommendation  Marketing's proposal { subject, preheader?, content }
+ *   PUT    /admin/newsletter/drafts/:issueId/recommendation  Marketing's proposal { subject, preheader?, content };
+ *                                                     also x-newsletter-token (PRO-1198), this route only
  *   PUT    /admin/newsletter/drafts/:issueId/template     Miguel's template (clears proof and schedule)
  *   POST   /admin/newsletter/drafts/:issueId/preview      the saved template for 2–3 real people
  *   POST   /admin/newsletter/drafts/:issueId/proof        the proof, to the signed-in admin's own email
@@ -115,9 +117,18 @@ export interface NewsletterRouterDeps {
   statsAuth: RequestHandler
   /** PRO-1123: the Admin «Newsletter» editor (recommendation, template, proof, schedule). */
   drafts: NewsletterDraftsRepo
+  /** PRO-1198: admin JWT or Marketing's `x-newsletter-token`, on the recommendation route only. */
+  recommendationAuth: RequestHandler
+  /** The admin account Marketing's audit rows hang from (`admin_id` is a user): the oldest admin. */
+  auditAdmin: () => Promise<string | null>
   /** The email of the signed-in admin's own account (the proof goes there). */
   adminEmail: (userId: string) => Promise<string | null>
   now: () => Date
+}
+
+async function oldestAdmin(): Promise<string | null> {
+  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.role, 'admin')).orderBy(asc(users.createdAt)).limit(1)
+  return u?.id ?? null
 }
 
 async function accountEmail(userId: string): Promise<string | null> {
@@ -158,6 +169,8 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
     audit: recordAudit,
     publicUrl: () => env.WEB_PUBLIC_URL,
     drafts: overrides.drafts ?? createDbNewsletterDraftsRepo(),
+    recommendationAuth: newsletterRecommendationAuth,
+    auditAdmin: oldestAdmin,
     adminEmail: accountEmail,
     now: () => new Date(),
     ...overrides,
@@ -268,13 +281,24 @@ export function createNewsletterRouter(overrides: Partial<NewsletterRouterDeps> 
     }
   })
 
-  router.put('/admin/newsletter/drafts/:issueId/recommendation', ...deps.adminAuth, async (req: Request, res: Response) => {
+  // PRO-1198: Marketing writes here with its token; this route only writes `recommendation`.
+  router.put('/admin/newsletter/drafts/:issueId/recommendation', deps.recommendationAuth, async (req: AuthRequest, res: Response) => {
     const issueId = issueParam(req, res)
     if (!issueId) return
     const rec = parseTemplate(req, res)
     if (!rec) return
     try {
+      const marketing = viaNewsletterToken(req)
+      const adminId = marketing ? await deps.auditAdmin() : req.userId!
+      // No account to hang the audit row from: refuse rather than lose the trail.
+      if (!adminId) throw new Error('no admin account for the audit log')
       const d = await deps.drafts.saveRecommendation(issueId, rec, deps.now())
+      await deps.audit({
+        adminId,
+        action: 'newsletter.recommendation',
+        targetType: 'newsletter_issue',
+        payload: { issueId, actor: marketing ? 'marketing' : 'admin' },
+      })
       res.json({ draft: draftView(d, deps.now(), true) })
     } catch (err) {
       fail('recommendation save')(err, res)

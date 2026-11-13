@@ -34,9 +34,14 @@ test('saving the profile never changes the week type', async ({ page }) => {
   const { headers } = await auth(page)
   expect((await page.request.put(`${API_URL}/households/me/week-type/4/dinner`, { headers, data: { options: [{ kind: 'type', type: 'pizza' }] } })).ok()).toBe(true)
   const before = await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()
-  await page.goto('/profile')
-  await page.getByRole('button', { name: /guardar cambios/i }).click()
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  // Since PRO-1203 the profile's settings blob is saved from «Salud y objetivo», in your row of «Quién come».
+  await page.goto('/profile/quien/me')
+  const card = page.getByTestId('health-and-goal')
+  const consent = card.getByRole('checkbox', { name: /datos de salud/i })
+  await consent.click()
+  await expect(consent).toBeChecked({ timeout: 10_000 })
+  await card.getByRole('button', { name: /^guardar$/i }).click()
+  await expect(card.getByText(/guardado/i)).toBeVisible({ timeout: 10_000 })
   expect(await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).toEqual(before)
 })
 

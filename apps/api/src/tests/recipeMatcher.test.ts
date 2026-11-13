@@ -4,7 +4,8 @@
  * week generation, single-slot regenerate, manual add, leftover clone).
  * Bugs here propagate everywhere, so changes get tests first.
  *
- * TDD note (PR 5): the bannedRecipeIds + pinnedType filters land here.
+ * TDD note (PR 5): the bannedRecipeIds filter lands here (the pinnedType
+ * one left with the «semana tipo», D-182).
  * These tests pin the new contract; the matcher implementation follows.
  */
 import { describe, expect, it } from 'vitest'
@@ -50,51 +51,6 @@ const baseOptions: MatcherOptions = {
   restrictions: [],
   favoriteRecipeIds: new Set(),
 }
-
-describe('matchRecipes: pinnedType', () => {
-  it('only returns recipes whose `tags` include the pinned type', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: 'cremas',
-    })
-    expect(out.map((r) => r.id)).toEqual(['r2'])
-  })
-
-  it('returns the empty pool when no recipe carries the pinned tag', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: 'parrilla', // none of the fixture recipes carries this
-    })
-    expect(out).toEqual([])
-  })
-
-  it('treats a null pinnedType as a no-op (same as absent)', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: null,
-    })
-    expect(out.map((r) => r.id).sort()).toEqual(['r1', 'r2', 'r3'])
-  })
-
-  it('combines with bannedRecipeIds — pinned crema that is also banned still falls out', () => {
-    const out = matchRecipes(RECIPES, {
-      ...baseOptions,
-      pinnedType: 'cremas',
-      bannedRecipeIds: new Set(['r2']),
-    })
-    expect(out).toEqual([])
-  })
-
-  it('combines with the meal-type filter — pinning "cremas" on a slot that excludes the candidate by meal returns empty', () => {
-    // Pretend r2 only matches dinner (not lunch). The slot wants lunch.
-    const recipes = [{ ...RECIPES[1], meals: ['dinner'] }, RECIPES[0], RECIPES[2]]
-    const out = matchRecipes(recipes, {
-      ...baseOptions,
-      pinnedType: 'cremas',
-    })
-    expect(out).toEqual([])
-  })
-})
 
 describe('matchRecipes: availableEquipment (user_memories.equipment)', () => {
   const oven = {

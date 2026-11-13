@@ -36,7 +36,7 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
   }
   const note = page.getByLabel(/algo más\? cuéntanos tu caso/i)
   await expect(note).toBeVisible()
-  await expect(note).toHaveAttribute('placeholder', /los lunes ceno tarde/)
+  await expect(note).toHaveAttribute('placeholder', /pasta los miércoles/)
   await page.getByRole('button', { name: /^poco rato de trabajo/i }).click()
   await expect(page.getByRole('button', { name: /^poco rato de trabajo/i })).toHaveAttribute('aria-pressed', 'true')
   await note.fill('teletrabajo y puedo dejar algo al fuego')

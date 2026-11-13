@@ -77,6 +77,11 @@ export const users = pgTable('users', {
    * 2026-11-07): stamped when it goes at the end of a reply, so it never repeats.
    */
   leftoversQuestionAt: timestamp('leftovers_question_at', { withTimezone: true }),
+  /**
+   * The Sean Ellis survey (PRO-334, beta): stamped when Mimo asks it on
+   * WhatsApp, the /menu card is closed or it is answered, so it never repeats.
+   */
+  seanEllisAt: timestamp('sean_ellis_at', { withTimezone: true }),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -301,6 +306,12 @@ export const recipes = pgTable('recipes', {
   seasonFit: jsonb('season_fit'),
 
   equipment: text('equipment').array().default([]),
+  /**
+   * «Semana tipo» (D-182): the dish types of the recipe (`DISH_TYPES` keys:
+   * pizza, legumbres, pescado…), set by `dishTypesOf` on save and import and
+   * filled on boot for rows still null (`dishTypes.ts`).
+   */
+  dishTypes: text('dish_types').array(),
   /** Auto-aggregated from ingredients on save */
   allergens: text('allergens').array().default([]),
 
@@ -724,6 +735,17 @@ export const cookOfDay = pgTable('cook_of_day', {
   assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('uq_cook_of_day').on(t.householdId, t.day)])
+
+// «Semana tipo» (D-182): what the household usually eats each day, one row
+// per household. `slots` is `WeekTypeDays` (@ona/shared types/weekType.ts):
+// 7 days × meal → slot. Written one slot at a time (PUT
+// /households/me/week-type/:day/:meal), read by the menu generator.
+export const householdWeekTypes = pgTable('household_week_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }).unique(),
+  slots: jsonb('slots').notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 // ─── 18. household_invites ──────────────────────────────────
 // One-time tokens the owner generates and shares manually (mirrors the
@@ -1796,6 +1818,8 @@ export const userFeedback = pgTable('user_feedback', {
   page: text('page'),
   /** What it answers, when it answers one of Mimo's questions: 'sobras' (PRO-285). */
   tag: text('tag'),
+  /** The option picked, for a question with options: 'muy' | 'algo' | 'nada' | 'ya_no' (tag 'sean_ellis', PRO-334). */
+  answer: text('answer'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),

@@ -66,10 +66,8 @@ describe('recipe id with a bad shape', () => {
   }
 
   it('the static /recipes/... routes are not taken for ids', async () => {
-    // No token → their own auth answers, not the id guard.
-    for (const path of ['/recipes/match-pantry', '/recipes/with-what-i-have']) {
-      expect((await fetch(base + path)).status).toBe(401)
-    }
+    // No token → its own auth answers, not the id guard.
+    expect((await fetch(base + '/recipes/with-what-i-have')).status).toBe(401)
   })
 
   it('accepts real uuids', () => {

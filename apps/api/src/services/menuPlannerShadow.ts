@@ -23,14 +23,15 @@ import { and, desc, eq, gte, inArray, lt } from 'drizzle-orm'
 import { buildMemoryDigestText, detectSeason, isTaperDish, type DayMenu, type DayTimeBudget, type LockedSlots } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
-import { menuEdits, menuPlans, menus, pantryItems, userFavorites, users, userSettings } from '../db/schema.js'
+import { menuEdits, menuPlans, menus, pantryItems, userFavorites, users } from '../db/schema.js'
 import { recordCost, anthropicUnits, type AnthropicUsageLike } from './costLedger.js'
 import { computeCostMicros } from '../config/pricing.js'
 import { dbTurnStore, remoteMessagesClient } from './assistant/mimoRemoto.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
 import { loadHouseholdRatingSets } from './householdRatings.js'
 import { loadMatchableRecipes } from './matchableRecipes.js'
-import { extractMealDiners } from './menuGenerator.js'
+import { loadWeekTypeForUser } from './weekType.js'
+import { planWeekType } from './weekTypePlan.js'
 import {
   PLANNER_EFFORT,
   PLANNER_FEATURE,
@@ -155,7 +156,6 @@ const addDays = (iso: string, n: number) => {
 export async function loadShadowContext(input: ShadowPlanInput, db: Db): Promise<ShadowContext> {
   const [user] = await db.select().from(users).where(eq(users.id, input.userId)).limit(1)
   if (!user) throw new Error('user not found')
-  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, input.userId)).limit(1)
   const householdId = await getPrimaryHouseholdId(input.userId, db)
   const memory = await getMemoryForUser(input.userId).catch(() => ({}) as Awaited<ReturnType<typeof getMemoryForUser>>)
   const ficha = await loadHouseholdFicha(input.userId, { db }).catch(() => null)
@@ -242,11 +242,12 @@ export async function loadShadowContext(input: ShadowPlanInput, db: Db): Promise
     pantryIngredientIds: new Set(pantry.map((p) => p.ingredientId).filter((x): x is string => !!x)),
   })
 
-  const rawTemplate = settings?.template
+  // The household's «semana tipo» (D-182): each slot's diners.
+  const weekType = await loadWeekTypeForUser(input.userId, db)
   const slots = slotsToPlan(input.days, {
     locked: input.locked as Record<string, Record<string, boolean>> | undefined,
     skippedDays: input.skippedDays,
-    mealDiners: extractMealDiners(rawTemplate),
+    mealDiners: planWeekType(weekType.days, input.weekStart, { recipes: [], restrictions: [] }).mealDiners,
     timeBudgetByDay: weekTimeBudgets((memory as any)?.time_available?.value, user),
   })
   const planned = new Set(slots.map((s) => `${s.dayIndex}|${s.meal}`))

@@ -10,6 +10,9 @@ import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
 import { applyCompoundIngredientTags } from '../services/compoundIngredients.js'
 import { applyNameAllergenTags } from '../services/nutrition/allergenBackfill.js'
+import { applyRecipeDishTypes } from '../services/dishTypes.js'
+import { applyWeekTypeMigration } from '../services/weekType.js'
+import { applyUndercookedMarks } from '../services/undercookedRecipes.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -89,6 +92,28 @@ async function main() {
     await applyNutritionCompleteness(db)
   } catch (err) {
     console.error('[nutrition-completeness] failed:', err)
+  }
+  // Idempotent («Semana tipo», D-182): every recipe still without its dish
+  // types gets them (`dishTypesOf`).
+  try {
+    await applyRecipeDishTypes(db)
+  } catch (err) {
+    console.error('[dish-types] failed:', err)
+  }
+  // Once and repeatable (D-182 §7): every household without a week type gets
+  // the one its plantilla, fixed meals, tápers and ficha gave the menu.
+  try {
+    await applyWeekTypeMigration(db)
+  } catch (err) {
+    console.error('[week-type] failed:', err)
+  }
+  // Idempotent, additive (PRO-1181, D-1009): Cocina's runny-yolk and
+  // pink-mince recipes get their hidden tag and the «Para embarazo o bebés»
+  // line in their steps.
+  try {
+    await applyUndercookedMarks(db)
+  } catch (err) {
+    console.error('[undercooked-marks] failed:', err)
   }
   await pool.end()
 }

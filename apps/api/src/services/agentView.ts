@@ -156,6 +156,14 @@ const MESSAGE_KINDS: ReadonlyArray<readonly [type: string, test: RegExp]> = [
   ['EventRejection', /^\{"isTrusted":(?:true|false)\}$/],
   // A known crawler / link-scanner script, not our code.
   ['ObjectNotFoundMatchingId', /^Object Not Found Matching Id:/],
+  // Scripts an app's built-in browser injects into the page (PRO-354): Instagram and Facebook
+  // on iPhone (their autofill and «pcm» bridges), Chrome and Edge/Bing on iOS, WeChat. They show
+  // up as a TypeError or a ReferenceError of «Safari · iOS», where our links get opened.
+  ['InAppBrowserError', /_AutofillCallbackHandler|_pcmBridgeCallbackHandler|webkit\.messageHandlers|__gCrWeb|instantSearchSDKJSBridge|WeixinJSBridge/],
+  // The browser gives the page no storage (PRO-354): IndexedDB missing or blocked (some in-app
+  // browsers, storage turned off, Safari's «Connection to Indexed Database server lost»), or
+  // localStorage / sessionStorage refused.
+  ['StorageUnavailable', /\bindexedDB\b|Indexed ?Database|\b(?:local|session)Storage\b/i],
   ['NoMessage', /^(?:Error sin mensaje|\(sin mensaje\))$/],
 ]
 
@@ -267,13 +275,28 @@ export interface FeedbackLike {
   page: string | null
   text: string
   createdAt: Date
-  /** What it answers ('sobras', PRO-285; 'pregunta_unica', PRO-1091), or null. */
+  /** What it answers ('sobras', PRO-285; 'pregunta_unica', PRO-1091; 'sean_ellis', PRO-334), or null. */
   tag?: string | null
+  /** The option picked ('sean_ellis': muy | algo | nada | ya_no), or null. */
+  answer?: string | null
 }
 
 const FEEDBACK_CHANNELS = ['app', 'chat', 'whatsapp'] as const
 /** Tags the counts may name (anything else counts as 'otra'). */
-export const FEEDBACK_TAGS = ['sobras', 'pregunta_unica'] as const
+export const FEEDBACK_TAGS = ['sobras', 'pregunta_unica', 'sean_ellis'] as const
+/** services/seanEllisSurvey.ts SEAN_ELLIS_ANSWERS (a test keeps them equal). */
+export const SEAN_ELLIS_ANSWER_LIST = ['muy', 'algo', 'nada', 'ya_no'] as const
+
+/** Counts by option of the Sean Ellis answers (PRO-334), no text; 'sin_opcion' when none was recognised. */
+export function seanEllisCounts(rows: ReadonlyArray<Pick<FeedbackLike, 'tag' | 'answer'>>): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const r of rows) {
+    if (r.tag !== 'sean_ellis') continue
+    const key = oneOf(r.answer, SEAN_ELLIS_ANSWER_LIST) ?? 'sin_opcion'
+    out[key] = (out[key] ?? 0) + 1
+  }
+  return out
+}
 
 /** Counts by tag (PRO-285: the answers to Mimo's leftovers question); untagged rows aren't counted. */
 export function feedbackTagCounts(rows: ReadonlyArray<Pick<FeedbackLike, 'tag'>>): Record<string, number> {
@@ -297,7 +320,7 @@ export function feedbackForAgents(days: number, rows: ReadonlyArray<FeedbackLike
     byPage[page] = (byPage[page] ?? 0) + 1
     if (possibleAllergy(r.text)) possibleAllergies.push({ date: madridParts(r.createdAt).isoDate, channel })
   }
-  return { days, count: rows.length, byChannel, byPage, byTag: feedbackTagCounts(rows), possibleAllergies }
+  return { days, count: rows.length, byChannel, byPage, byTag: feedbackTagCounts(rows), seanEllis: seanEllisCounts(rows), possibleAllergies }
 }
 
 // ─── Mimo's conversation flags ───────────────────────────────────

@@ -36,6 +36,7 @@ import { CATALOG_RENAMES } from '../services/recipeRenames.js'
 import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
 import { applyCatalogTimeTrim } from '../services/recipeTimeTrim.js'
+import { applyRecipeDishTypes } from '../services/dishTypes.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import type { Meal, Season, Unit } from '@ona/shared'
 import { UNITS } from '@ona/shared'
@@ -138,6 +139,8 @@ async function seed(): Promise<void> {
             seasons,
             tags,
             internalTags,
+            // «Semana tipo» (D-182): recomputed below from the new ingredients.
+            dishTypes: null,
             updatedAt: new Date(),
           })
           .where(eq(recipes.id, recipeId))
@@ -198,6 +201,8 @@ async function seed(): Promise<void> {
   await applyCatalogRecipeTimes(db)
   // PRO-284: realistic totals (same fix as on boot).
   await applyCatalogTimeTrim(db)
+  // «Semana tipo» (D-182): each recipe's dish types.
+  await applyRecipeDishTypes(db)
   console.log('Seed complete!')
   await pool.end()
 }

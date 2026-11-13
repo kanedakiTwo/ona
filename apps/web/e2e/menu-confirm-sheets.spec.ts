@@ -100,12 +100,12 @@ test('skip day, remove a meal and ban a recipe confirm in the app sheet, without
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
 
-  // ── «Vetar esta receta» → confirm → the hero gets another recipe.
+  // ── «No la pongas más esta semana» (vetar, PRO-1175) → confirm → the hero gets another recipe.
   await hero.getByRole('button', { name: /más opciones/i }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /^vetar esta receta$/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^no la pongas más esta semana$/i }).click()
   const banSheet = page.getByRole('dialog')
   await expect(banSheet.getByRole('button', { name: /^cancelar$/i })).toBeVisible()
-  await banSheet.getByRole('button', { name: /^vetar$/i }).click()
+  await banSheet.getByRole('button', { name: /^no ponerla$/i }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect
     .poll(async () => (await fetchMenu(page)).days[todayIdx]?.[first!.meal]?.dishes?.[0]?.recipeId, { timeout: 10_000 })

@@ -24,7 +24,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { ALERT_KINDS, carrefourLinks, isHealthMemoryKey, splitFridgeAnswer, type BasketSendResult, type CarrefourLineInput } from '@ona/shared'
+import { ALERT_KINDS, carrefourLinks, isHealthMemoryKey, isMenuSheetAction, splitFridgeAnswer, type BasketSendResult, type CarrefourLineInput, type WeekTypeSlot } from '@ona/shared'
 import { detectSocialPlatform } from './sources/social.js'
 import { detectSourceType } from './sources/sourceType.js'
 
@@ -91,6 +91,8 @@ export const USAGE_EVENTS = [
   'cook_now_chosen',
   // PRO-383: «¿Quién hace la compra?» in the sign-up (`props.value` = me · other · shared; channel web or whatsapp).
   'shopper_answered',
+  // PRO-1174: an option tapped in one of the menu's «···» sheets (`props.sheet`, `props.action`: MENU_SHEET_ACTIONS).
+  'menu_sheet_action',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -333,40 +335,24 @@ function stableJson(v: unknown): string {
   return JSON.stringify(v ?? null)
 }
 
-export const TEMPLATE_PARTS = ['fixed_meals', 'taper_days', 'dish_counts', 'diners', 'meals'] as const
+export const TEMPLATE_PARTS = ['fixed_meals', 'taper_days', 'dish_counts', 'diners', 'meals', 'week_type'] as const
 export type TemplatePart = (typeof TEMPLATE_PARTS)[number]
 
-/** `mealTemplate` (day → meal → diners; or the old day → meal[]) as slot → diners (null = no count). */
-function templateSlots(mealTemplate: unknown): Map<string, number | null> {
-  const out = new Map<string, number | null>()
-  if (!mealTemplate || typeof mealTemplate !== 'object' || Array.isArray(mealTemplate)) return out
-  for (const [day, meals] of Object.entries(mealTemplate as Record<string, unknown>)) {
-    if (Array.isArray(meals)) for (const m of meals) out.set(`${day}:${String(m)}`, null)
-    else if (meals && typeof meals === 'object') {
-      for (const [m, n] of Object.entries(meals as Record<string, unknown>)) out.set(`${day}:${m}`, typeof n === 'number' ? n : null)
-    }
-  }
-  return out
-}
-
 /**
- * Pure (PRO-1024): the parts of the weekly template (`user_settings.template`)
- * that changed on a save — comidas fijas, días de táper, platos por comida,
- * comensales and which meals there are. Health parts are never looked at.
+ * Pure (D-182): the parts of one slot of the «semana tipo» that changed, in
+ * the same words as the old plantilla's (`week_type` = its dish types,
+ * recipes and turns).
  */
-export function templateChanges(before: unknown, after: unknown): TemplatePart[] {
-  const blob = (t: unknown) => (t && typeof t === 'object' && !Array.isArray(t) ? (t as Record<string, unknown>) : {})
-  const b = blob(before)
-  const a = blob(after)
+export function weekTypeSlotChanges(before: WeekTypeSlot | undefined, after: WeekTypeSlot): TemplatePart[] {
+  const b = before ?? {}
   const out: TemplatePart[] = []
-  if (stableJson(b.fixedMeals ?? []) !== stableJson(a.fixedMeals ?? [])) out.push('fixed_meals')
-  const days = (v: unknown) => stableJson(Array.isArray(v) ? [...v].map(String).sort() : [])
-  if (days(b.taperDays) !== days(a.taperDays)) out.push('taper_days')
-  if (stableJson(b.mealDishCounts ?? {}) !== stableJson(a.mealDishCounts ?? {})) out.push('dish_counts')
-  const sb = templateSlots(b.mealTemplate)
-  const sa = templateSlots(a.mealTemplate)
-  if ([...sa.keys()].some((k) => sb.has(k) && sb.get(k) !== sa.get(k))) out.push('diners')
-  if (sb.size !== sa.size || [...sa.keys()].some((k) => !sb.has(k))) out.push('meals')
+  const kinds = (s: WeekTypeSlot, k: string[]) => stableJson((s.options ?? []).filter((o) => k.includes(o.kind)))
+  if (!!b.off !== !!after.off) out.push('meals')
+  if ((b.diners ?? null) !== (after.diners ?? null)) out.push('diners')
+  if ((b.dishes ?? 1) !== (after.dishes ?? 1)) out.push('dish_counts')
+  if (kinds(b, ['fixed']) !== kinds(after, ['fixed'])) out.push('fixed_meals')
+  if (kinds(b, ['taper']) !== kinds(after, ['taper'])) out.push('taper_days')
+  if (kinds(b, ['type', 'recipe', 'any']) !== kinds(after, ['type', 'recipe', 'any']) || !!b.together !== !!after.together) out.push('week_type')
   return out
 }
 
@@ -500,7 +486,6 @@ const ROUTE_EVENTS: RouteEvent[] = [
     event: (req) => {
       if (req.body?.newPosition !== undefined) return null
       const out: RouteEventOut[] = []
-      if ('pinnedType' in (req.body ?? {})) out.push({ name: 'meal_adjusted', props: { what: 'tipo' } })
       const variant = dishVariant(req.body?.variant)
       if (variant) out.push({ name: 'leftover_dish_set', props: { variant } })
       return out
@@ -726,6 +711,7 @@ export const ONBOARDING_STEPS = ['afina', 'canal', 'hogar', 'quien_compra', 'inv
 export const ONBOARDING_STEP_ACTIONS = ['visto', 'hecho'] as const
 export const USAGE_SCREENS = [
   'menu',
+  'cocinar',
   'lista',
   'compra',
   'receta',
@@ -760,6 +746,8 @@ export const CLIENT_USAGE_EVENTS = [
   'content_shared',
   'week_printed',
   'handsfree_started',
+  // PRO-1174: the options of the menu's «···» sheets.
+  'menu_sheet_action',
 ] as const
 export type ClientUsageEvent = (typeof CLIENT_USAGE_EVENTS)[number]
 
@@ -806,6 +794,9 @@ export function clientEventProps(name: unknown, raw: unknown): { name: ClientUsa
       const where = oneOf(HANDSFREE_WHERE, p.where)
       return where ? { name: ev, props: { where } } : null
     }
+    case 'menu_sheet_action':
+      // An option of that sheet only (MENU_SHEET_ACTIONS): anything else is not stored.
+      return isMenuSheetAction(p.sheet, p.action) ? { name: ev, props: { sheet: p.sheet, action: p.action as string } } : null
   }
 }
 

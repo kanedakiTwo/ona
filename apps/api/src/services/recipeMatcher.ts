@@ -58,6 +58,8 @@ export interface RecipeWithIngredients {
   dislikesOverridden?: readonly string[]
   /** Internal tags (`tipo:<slug>`, `proteina:<slug>`), for the week rules (PRO-254). */
   internalTags?: string[] | null
+  /** «Semana tipo» (D-182): `DISH_TYPES` keys (`recipes.dish_types`, else `dishTypesOf`). */
+  dishTypes?: string[] | null
   /** Cached per-serving nutrition; only `kcal` is read here (the planner's day floor). */
   nutritionPerServing?: { kcal?: number | null } | null
   ingredients: Array<{
@@ -105,12 +107,6 @@ export interface MatcherOptions {
    */
   bannedRecipeIds?: Set<string>
   /**
-   * When set, the matcher only returns recipes whose `tags` include this
-   * value. Used by the "Pin meal type to a day" UI (cremas, legumbres,
-   * pizza…). Null / absent means no constraint.
-   */
-  pinnedType?: string | null
-  /**
    * Day index (0-6, Mon-Sun) for this slot. Used by the
    * `weekends_only` frequency filter — recipes with that hint are
    * excluded when `dayIndex < 5`. Optional so legacy callers (the
@@ -151,6 +147,12 @@ export interface MatcherOptions {
   timeBudget?: DayTimeBudget | null
   /** Legacy shape of `timeBudget`: N minutes in total. */
   maxPrepMinutes?: number | null
+  /**
+   * PRO-1200 (`everydayMenu.ts`): the `diario` recipes plus what the
+   * household chose. When any candidate is in it, the draw keeps to those;
+   * when none is, it draws from every candidate. Absent = no-op.
+   */
+  everyday?: ReadonlySet<string>
 }
 
 /**
@@ -173,7 +175,6 @@ export function matchRecipes(
     usedRecipeIds,
     restrictions,
     bannedRecipeIds,
-    pinnedType,
     dislikes,
     availableEquipment,
     unavailableEquipment,
@@ -195,9 +196,6 @@ export function matchRecipes(
   return recipes.filter((recipe) => {
     // 0. Veto wins over everything else — a banned favourite is still out.
     if (bannedRecipeIds?.has(recipe.id)) return false
-
-    // 0b. Pinned meal type — when set, recipe must carry the tag.
-    if (pinnedType && !recipe.tags.includes(pinnedType)) return false
 
     // 0b'. Catalogue quality gate (PRO-73): a system recipe the audit flags
     //      (no steps, too few ingredients, quantities out of range) is
@@ -373,7 +371,9 @@ export function findRecipeForSlot(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,
 ): RecipeWithIngredients | undefined {
-  const candidates = matchRecipes(recipes, options)
+  let candidates = matchRecipes(recipes, options)
+  const everyday = options.everyday
+  if (everyday && candidates.some((r) => everyday.has(r.id))) candidates = candidates.filter((r) => everyday.has(r.id))
   return pickRandom(candidates, options.favoriteRecipeIds, {
     meal: options.meal,
     season: options.season,

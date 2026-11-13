@@ -67,6 +67,12 @@ vi.mock('../services/menuFit.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/menuFit.js')>()),
   evaluateAndSaveMenuFit: vi.fn(async () => null),
 }))
+// «Semana tipo» (D-182): no slot asks for a dish type in these weeks.
+vi.mock('../services/weekType.js', () => ({
+  weekTypeDishTypeAt: vi.fn(async () => null),
+  poolOfDishType: (pool: unknown[]) => pool,
+  fromWeekTypeOf: () => ({}),
+}))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
   scopeWhere: vi.fn(() => ({ /* drizzle SQL stub — proxy db ignores it */ })),
@@ -153,10 +159,10 @@ describe('get_todays_menu', () => {
 
   it('returns the day matching the dayIndex param, reading dishes[]', async () => {
     const menu = { id: 'm-1', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
-    const db = makeDb([menu])
+    const db = makeDb([menu], /* diners */ [], /* recipe times */ [])
     const r = await skill.handler({ dayIndex: 2 }, ctx(db))
     expect(r.summary).toContain('miércoles')
-    expect(r.summary).toContain('comida: Plato 2')
+    expect(r.summary).toContain('comida · 2 raciones: Plato 2')
     expect(r.data?.dayIndex).toBe(2)
   })
 
@@ -177,10 +183,10 @@ describe('get_todays_menu', () => {
     }
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-14T10:00:00Z'))
-    const db = makeDb([{ id: 'm-1', days: [day] }])
+    const db = makeDb([{ id: 'm-1', days: [day] }], /* diners */ [], /* recipe times */ [])
     const r = await skill.handler({ dayIndex: 0 }, ctx(db)).finally(() => vi.useRealTimers())
     expect(r.summary).toBe(
-      'Menu del lunes 12 de octubre: comida: Lentejas estofadas + Ensalada verde, cena: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
+      'Menu del lunes 12 de octubre: comida · 2 raciones: Lentejas estofadas + Ensalada verde; cena · 2 raciones: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
     )
   })
 
@@ -191,11 +197,11 @@ describe('get_todays_menu', () => {
 
   it('falls back to today when dayIndex is omitted', async () => {
     const menu = { id: 'm-1', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
-    const db = makeDb([menu])
+    const db = makeDb([menu], /* diners */ [], /* recipe times */ [])
     const r = await skill.handler({}, ctx(db))
     // Without overriding Date, just check shape — any of the 7 day names.
     expect(r.summary).toMatch(/lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo/)
-    expect(r.summary).toContain('comida: Plato')
+    expect(r.summary).toContain('comida · 2 raciones: Plato')
   })
 })
 
@@ -296,17 +302,17 @@ describe('get_weekly_menu', () => {
       { dinner: { dishes: [{ kind: 'note', text: 'Cenamos fuera' }] } },
       {}, {}, {}, {},
     ]
-    const db = makeDb([{ id: 'm-7', days, skippedDays: [1] }])
+    const db = makeDb([{ id: 'm-7', days, skippedDays: [1] }], /* diners */ [], /* recipe times */ [])
     const r = await at(() => skill.handler({}, ctx(db)))
     expect(r.uiHint).toBe('menu')
     expect(r.data).toMatchObject({ menuId: 'm-7', weekStart: '2026-10-12', skippedDays: [1] })
     expect(r.summary).toBe(
-      'Menu de la semana del lunes 12 de octubre:\nlunes 12 de octubre: comida: Lentejas\nmartes 13 de octubre: sin cocinar\nmiércoles 14 de octubre: cena: Cenamos fuera',
+      'Menu de la semana del lunes 12 de octubre:\nlunes 12 de octubre: comida · 2 raciones: Lentejas\nmartes 13 de octubre: sin cocinar\nmiércoles 14 de octubre: cena: Cenamos fuera',
     )
   })
 
   it('nextWeek reads next week', async () => {
-    const db = makeDb([{ id: 'm-8', days: [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Paella' }] } }], skippedDays: [] }])
+    const db = makeDb([{ id: 'm-8', days: [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Paella' }] } }], skippedDays: [] }], /* diners */ [], /* recipe times */ [])
     const r = await at(() => skill.handler({ nextWeek: true }, ctx(db)))
     expect(r.data).toMatchObject({ menuId: 'm-8', weekStart: '2026-10-19' })
   })
@@ -1524,7 +1530,9 @@ describe('skill export coverage', () => {
     // seven ficha tools (PRO-319, fichaMimo.test.ts).
     // and 91 with list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
     // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
-    expect(skills.length).toBe(92)
+    // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
+    // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
+    expect(skills.length).toBe(95)
   })
 
   it('every skill has a unique name', () => {

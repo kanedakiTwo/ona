@@ -64,6 +64,7 @@ import {
   type IngredientCatalogEntry,
 } from './nutrition/aggregate.js'
 import { allergenUnion } from './nutrition/allergens.js'
+import { refreshRecipeDishTypes } from './dishTypes.js'
 import { carryIngredientMarks, ingredientMarksOf, type IngredientMarks } from './ingredientRoles.js'
 import type {
   Difficulty,
@@ -621,6 +622,9 @@ export async function persistRecipe(
 
     return id
   })
+
+  // «Semana tipo» (D-182): its dish types, from the name, tags and main ingredients.
+  await refreshRecipeDishTypes(db, recipeId)
 
   return {
     ok: true,

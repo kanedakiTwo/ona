@@ -80,7 +80,7 @@ One test (D-163, D-167.3): the test households and twins of the real households 
 
 ## La línea de por qué en cada plato (PRO-259)
 
-- A recipe dish may carry `why` (`RecipeDish.why`, in the menu's JSONB). `mergeWithGenerator` sets it on the planner's dishes (never on the generator's); nothing else writes it. A new dish (swap, «Cambiar al azar», «Elegir otra receta») is built without it; leftovers cloned from a dish keep it
+- A recipe dish may carry `why` (`RecipeDish.why`, in the menu's JSONB). `mergeWithGenerator` sets it on the planner's dishes (never on the generator's); nothing else writes it. A new dish (swap, «Que elija Mimoia», «Cambiar plato») is built without it; leftovers cloned from a dish keep it
 - **Web:** the meal sheet (`MealOptions`) shows a «Por qué te lo propongo» card above the actions when the slot's first recipe dish has a `why` (`data-testid="dish-why"`)
 - **Mimo (web and WhatsApp):** `mealLinesForDay` adds `(por qué: «…»)` after the slot's dishes — the menu block of its context and the menu tools (`get_todays_menu`, `get_weekly_menu`) read it, so it can answer «¿por qué me has puesto esto?». Each why is clipped at 200 characters
 - Tests: `menuDishWhy.test.ts` (Mimo's lines with and without a why), `menuPlanner.test.ts` (the merge sets it only on the planner's dishes), e2e `menu-dish-why.spec.ts` (no card for a generator menu; the card with the why injected into GET /menu, 390 px)

@@ -15,7 +15,6 @@ import type {
   Unit,
 } from '@ona/shared'
 import { isNotBought, isTaperDish, leftoverShares, recipeDishesOf, resolveBuyRule, shoppingGroupOf, slotServingsOverride } from '@ona/shared'
-import { randomUUID } from 'crypto'
 
 /**
  * Shopping list aggregator (Task 15).

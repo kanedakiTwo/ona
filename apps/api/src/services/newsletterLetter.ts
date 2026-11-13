@@ -16,20 +16,24 @@
  *             semana pasada. Nunca su salud (D-064, D-110): ni alergias, ni
  *             dietas, ni restricciones; un plato cocinado cuyo nombre las
  *             delata («sin gluten», «para diabéticos»…) no se nombra.
+ *   {numeros} lo que su casa ha resuelto con Mimoia esta semana (o este mes),
+ *             en una frase (PRO-1199, `newsletterNumbers.ts`); sin números o
+ *             en la lista de espera, el hueco se va.
  *
  * Todo puro: lo de la base de datos lo trae `createDbNewsletterLetterRepo`
  * (newsletter.ts lo usa al componer), y aquí solo se decide el texto.
  */
-import { and, eq, gte, inArray, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray } from 'drizzle-orm'
 import { detectSeason, type Season } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { cookLogs, recipes, users, waitlistEntries } from '../db/schema.js'
 import { loadUserRestrictions } from './withWhatIHave.js'
 import { madridParts } from './madridTime.js'
+import { loadHouseholdNumbers, type HouseholdNumbers } from './newsletterNumbers.js'
 
 type Db = typeof defaultDb
 
-export const LETTER_PLACEHOLDERS = ['{nombre}', '{receta}', '{porque}'] as const
+export const LETTER_PLACEHOLDERS = ['{nombre}', '{receta}', '{porque}', '{numeros}'] as const
 
 /** Lo que el producto sabe de la casa de una persona para escribirle. Ningún dato de salud. */
 export interface LetterFacts {
@@ -123,6 +127,8 @@ export interface LetterVars {
   name: string | null
   recipe: string
   reason: string
+  /** PRO-1199: «Tu semana con Mimoia: …» (`numbersSentence`); vacío = el hueco se va. */
+  numbers?: string
 }
 
 /**
@@ -141,7 +147,19 @@ export function fillLetter(text: string, v: LetterVars): string {
       // Lo que quedó al principio de una frase, en mayúscula.
       .replace(/(^|[.!?¡¿:]\s+|\n\s*)(\p{Ll})/gu, (_m, pre: string, c: string) => `${pre}${c.toLocaleUpperCase('es-ES')}`)
   }
-  return out.split('{receta}').join(v.recipe).split('{porque}').join(v.reason).replace(/[ \t]{2,}/g, ' ')
+  return (
+    out
+      .split('{receta}')
+      .join(v.recipe)
+      .split('{porque}')
+      .join(v.reason)
+      .split('{numeros}')
+      .join(v.numbers ?? '')
+      .replace(/[ \t]{2,}/g, ' ')
+      // Un párrafo que solo era un hueco vacío no deja un hueco en blanco.
+      .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
+      .trim()
+  )
 }
 
 /** ¿Lleva algún hueco? (el editor lo avisa si no: la carta saldría igual para todos). */
@@ -156,6 +174,8 @@ export interface NewsletterLetterRepo {
   accountFacts(userIds: string[], now: Date): Promise<Map<string, LetterFacts>>
   /** Las temporadas de estas recetas. */
   recipeSeasons(recipeIds: string[]): Promise<Map<string, string[]>>
+  /** PRO-1199: lo que la casa de cada cuenta ha hecho con Mimoia (solo cifras). Sin él, no hay números. */
+  numbers?(userIds: string[], now: Date): Promise<Map<string, HouseholdNumbers>>
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -218,6 +238,7 @@ export function createDbNewsletterLetterRepo(db: Db = defaultDb): NewsletterLett
       for (const r of rows) out.set(r.id, r.seasons ?? [])
       return out
     },
+    numbers: (userIds, now) => loadHouseholdNumbers(userIds, now, db),
   }
 }
 

@@ -39,7 +39,7 @@ import { recordServiceMessageCost } from './serviceCost.js'
 import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
-import { isAccountPaused } from '../accountAccess.js'
+import { isOnFreePlan } from '../accountAccess.js'
 import { logEntriesFor, noticePriority, planMoment, countsAgainstBudget, type DeliveryResult } from '../notifications/budget.js'
 import { budgetKeyFor, loadFullBudgetState, recentNoticeKinds, recordNotices } from '../notifications/budgetStore.js'
 import { isAwakeTime } from '../notifications/hours.js'
@@ -391,8 +391,8 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
   const household = await householdNoticeRecipients(links)
   for (const link of links) {
     try {
-      // PRO-135: a paused account gets no proactive message (never before launch day).
-      if (await isAccountPaused(link.userId, now)) continue
+      // PRO-385 (D-158): Mimo writing first isn't in the Gratis plan (never before launch day).
+      if (await isOnFreePlan(link.userId, now)) continue
       const times = await loadMealTimes(link.userId)
       // Only touch the DB for cooldowns inside a window that could fire.
       if (!anyProactiveWindow(parts, times.breakfast, times.dinner)) continue

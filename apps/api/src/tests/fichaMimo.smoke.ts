@@ -62,12 +62,19 @@ describe.skipIf(!reachable)('Mimo and the ficha (PRO-319)', () => {
     const [added] = await db.select().from(profileChanges).where(and(eq(profileChanges.factId, pf.id), eq(profileChanges.action, 'fact_added')))
     expect(added).toMatchObject({ origin: 'user', actorUserId: a.id })
 
-    // A fixed dish of the household, from the web.
+    // A fixed dish with its day and meal goes into the household's «semana tipo» (D-182), not the ficha.
     const pizza = await call('POST', '/household/profile/facts', a.token, { type: 'fixed_dish', value: { dish: 'pizza', days: ['viernes'], meal: 'dinner' }, about: 'household' }, 'web')
     expect(pizza.status).toBe(201)
+    expect(pizza.json).toMatchObject({ weekType: true, action: 'added' })
     expect(pizza.json.sentence).toMatch(/pizza/i)
+    const weekType = await call('GET', '/households/me/week-type', b.token)
+    expect(weekType.json.days[4].dinner.options).toHaveLength(1)
+    expect(weekType.json.days[4].dinner.options[0].kind).toMatch(/^(recipe|type|fixed)$/)
+    // Without day nor meal it stays a taste in the ficha.
+    const taste = await call('POST', '/household/profile/facts', a.token, { type: 'fixed_dish', value: { dish: 'pizza' }, about: 'household' }, 'web')
+    expect(taste.status).toBe(201)
     const view = await call('GET', '/household/profile', b.token)
-    expect(view.json.facts.some((f: any) => f.id === pizza.json.factId)).toBe(true)
+    expect(view.json.facts.some((f: any) => f.id === taste.json.factId)).toBe(true)
 
     // Lists add up, and the memory mirror follows.
     expect((await call('POST', '/household/profile/facts', a.token, { type: 'dislikes', value: ['cilantro'], about: 'me' }, 'web')).status).toBe(201)

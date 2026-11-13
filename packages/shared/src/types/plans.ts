@@ -8,11 +8,20 @@
  * yearly choice (Esencial anual 49,99 €), and set the closed beta to run
  * with everything (Plus) until launch day. Prices include VAT and are per
  * household. No struck-through prices, no fake quotas (constitution §8.3).
+ * D-158 (2026-11-03, changes D-021's «no freemium»): a third plan, **Gratis**
+ * «lo haces tú», with no price and no Stripe: what a household has when its
+ * trial ends without a plan, or when its cancelled plan runs out (PRO-385).
  */
 import { z } from 'zod'
 
+/** The paid plans (Stripe, checkout). */
 export const PLAN_KEYS = ['esencial', 'plus'] as const
 export type PlanKey = (typeof PLAN_KEYS)[number]
+
+/** The free plan (D-158): no price, no Stripe. */
+export const FREE_PLAN_KEY = 'gratis' as const
+/** Any plan a household can be on: `gratis` or a paid one. */
+export type PlanTier = typeof FREE_PLAN_KEY | PlanKey
 
 export const BILLING_PERIODS = ['mensual', 'anual'] as const
 export type BillingPeriod = (typeof BILLING_PERIODS)[number]
@@ -62,19 +71,47 @@ export interface PlanPrice {
   perMonth?: string
 }
 
-export interface Plan {
-  key: PlanKey
+interface PlanBase {
   name: string
   /** The plan we recommend and show first. */
   featured: boolean
   /** One line under the name. */
   tagline: string
-  prices: Record<BillingPeriod, PlanPrice>
   /** The 3–4 lines on the plan card. */
   highlights: string[]
 }
 
-export const PLANS: readonly Plan[] = [
+export interface PaidPlan extends PlanBase {
+  key: PlanKey
+  prices: Record<BillingPeriod, PlanPrice>
+}
+
+export interface FreePlan extends PlanBase {
+  key: typeof FREE_PLAN_KEY
+  prices: null
+  /** What it leaves out, in one line under the highlights. */
+  leavesOut: string
+}
+
+export type Plan = PaidPlan | FreePlan
+
+/** Gratis «lo haces tú» (D-158, PRO-385): the week and the list on the web; no Mimo, autopilot, alerts or shop orders. */
+export const FREE_PLAN: FreePlan = {
+  key: FREE_PLAN_KEY,
+  name: 'Gratis',
+  featured: false,
+  tagline: 'Lo haces tú: tu menú de la semana y la lista, en la web.',
+  prices: null,
+  highlights: [
+    'Menú de la semana: lo generas y lo cambias en la web',
+    'Lista de la compra, y mandarla a quien compra',
+    'Tus recetas, el catálogo y el modo cocina',
+  ],
+  leavesOut: 'Sin Mimo (chat y voz), sin piloto automático, sin avisos, sin importar recetas ni pedidos a tiendas.',
+}
+
+/** The plans you pay for, Esencial first (checkout, Stripe, the founder reservation). */
+export const PAID_PLANS: readonly PaidPlan[] = [
   {
     key: 'esencial',
     name: 'Esencial',
@@ -109,6 +146,9 @@ export const PLANS: readonly Plan[] = [
   },
 ]
 
+/** The three plans as `/precios` shows them: Gratis, Esencial (recommended), Plus. */
+export const PLANS: readonly Plan[] = [FREE_PLAN, ...PAID_PLANS]
+
 export const PLAN_HOUSEHOLD = 'para todo tu hogar'
 /** Shared fine print about usage caps (figures land with PRO-15, 2026-11-24). */
 export const PLAN_CAPS_NOTE =
@@ -120,6 +160,7 @@ export interface PlanFeature {
   label: string
   /** Optional one-line explanation under the label. */
   detail?: string
+  gratis: FeatureValue
   esencial: FeatureValue
   plus: FeatureValue
 }
@@ -134,47 +175,48 @@ export const PLAN_FEATURE_GROUPS: readonly PlanFeatureGroup[] = [
   {
     title: 'Planificar',
     features: [
-      { label: 'Menú semanal a tu medida', detail: 'Según cuántos sois, vuestros gustos, alergias y el tiempo que tenéis.', esencial: true, plus: true },
-      { label: 'Cambiar, fijar y mover platos', esencial: true, plus: true },
-      { label: 'Catálogo de recetas de Mimoia', esencial: true, plus: true },
-      { label: 'Tus recetas y tus libros de recetas', esencial: true, plus: true },
-      { label: 'Importar recetas', detail: 'De una foto, una web, YouTube, Instagram o TikTok.', esencial: 'Con tope mensual', plus: 'Tope más alto' },
+      { label: 'Menú semanal a tu medida', detail: 'Según cuántos sois, vuestros gustos, alergias y el tiempo que tenéis.', gratis: 'En la web', esencial: true, plus: true },
+      { label: 'Cambiar, fijar y mover platos', gratis: true, esencial: true, plus: true },
+      { label: 'Catálogo de recetas de Mimoia', gratis: true, esencial: true, plus: true },
+      { label: 'Tus recetas y tus libros de recetas', gratis: true, esencial: true, plus: true },
+      { label: 'Importar recetas', detail: 'De una foto, una web, YouTube, Instagram o TikTok.', gratis: false, esencial: 'Con tope mensual', plus: 'Tope más alto' },
     ],
   },
   {
     title: 'Comprar',
     features: [
-      { label: 'Lista de la compra automática', detail: 'Sale del menú, ordenada y descontando lo que ya tienes.', esencial: true, plus: true },
-      { label: 'Despensa', esencial: true, plus: true },
-      { label: 'Pedidos a tus tiendas de barrio', detail: 'Mimo escribe el pedido para tu frutería, carnicería o súper.', esencial: true, plus: true },
+      { label: 'Lista de la compra automática', detail: 'Sale del menú, ordenada y descontando lo que ya tienes.', gratis: true, esencial: true, plus: true },
+      { label: 'Mandar la lista', detail: 'A quien hace la compra, por WhatsApp o como prefieras.', gratis: true, esencial: true, plus: true },
+      { label: 'Despensa', gratis: true, esencial: true, plus: true },
+      { label: 'Pedidos a tus tiendas de barrio', detail: 'Mimo escribe el pedido para tu frutería, carnicería o súper.', gratis: false, esencial: true, plus: true },
     ],
   },
   {
     title: 'Cocinar',
     features: [
-      { label: 'Modo cocina paso a paso', esencial: true, plus: true },
-      { label: 'Recordatorios en el móvil', detail: 'Notificaciones de la app: qué toca hoy y qué sacar del congelador.', esencial: true, plus: true },
+      { label: 'Modo cocina paso a paso', gratis: true, esencial: true, plus: true },
+      { label: 'Recordatorios en el móvil', detail: 'Notificaciones de la app: qué toca hoy y qué sacar del congelador.', gratis: false, esencial: true, plus: true },
     ],
   },
   {
     title: 'Mimo, tu asistente',
     features: [
-      { label: 'Chat con Mimo en la app', esencial: 'Con tope mensual', plus: 'Tope más alto' },
-      { label: 'Chat con Mimo por WhatsApp', esencial: 'Con tope mensual', plus: 'Tope más alto' },
-      { label: 'Hablar con Mimo por voz', detail: 'Le hablas y te contesta en voz alta.', esencial: false, plus: true },
-      { label: 'Mimo te escribe por WhatsApp', detail: 'El menú de hoy, qué descongelar, la lista antes de comprar.', esencial: false, plus: true },
+      { label: 'Chat con Mimo en la app', gratis: false, esencial: 'Con tope mensual', plus: 'Tope más alto' },
+      { label: 'Chat con Mimo por WhatsApp', gratis: false, esencial: 'Con tope mensual', plus: 'Tope más alto' },
+      { label: 'Hablar con Mimo por voz', detail: 'Le hablas y te contesta en voz alta.', gratis: false, esencial: false, plus: true },
+      { label: 'Mimo te escribe por WhatsApp', detail: 'El menú de hoy, qué descongelar, la lista antes de comprar.', gratis: false, esencial: false, plus: true },
     ],
   },
   {
     title: 'Tu hogar',
     features: [
-      { label: 'Para todo el hogar', detail: 'Un solo pago; cada uno con su cuenta, hasta 6 personas.', esencial: true, plus: true },
+      { label: 'Para todo el hogar', detail: 'Cada uno con su cuenta, hasta 6 personas; si es de pago, un solo pago.', gratis: true, esencial: true, plus: true },
     ],
   },
 ]
 
-export function planByKey(key: PlanKey): Plan {
-  return PLANS.find((p) => p.key === key)!
+export function planByKey(key: PlanKey): PaidPlan {
+  return PAID_PLANS.find((p) => p.key === key)!
 }
 
 /** «Esencial · 4,99 €/mes». */
@@ -206,14 +248,29 @@ export type SubscriptionStatus =
   | 'paused'
 
 /**
- * The 14-day trial and the paused account (PRO-135, D-056/D-057). Only from
- * launch day: before it, everybody is in the beta (`beta`) and nobody is
- * paused. From launch day a household has `TRIAL_DAYS` with everything from
- * when it was created (beta households: from launch day); after that, without
- * a plan, it is **paused**: it still sees its menu, recipes and list, but it
- * can't generate new menus or use Mimo. Nothing is ever deleted.
+ * The 14-day trial and the Gratis plan (PRO-135, D-056/D-057; PRO-385,
+ * D-158). Only from launch day: before it, everybody is in the beta (`beta`).
+ * From launch day a household has `TRIAL_DAYS` with everything from when it
+ * was created (beta households: from launch day); after that, without a
+ * plan, it is on **Gratis** (`gratis`; until D-158 the account was paused):
+ * it generates and changes its week and its list on the web, but has no
+ * Mimo, no autopilot, no alerts and no shop orders. Nothing is ever deleted.
  */
-export type AccessState = 'beta' | 'trial' | 'paused' | 'subscribed'
+export type AccessState = 'beta' | 'trial' | 'gratis' | 'subscribed'
+
+/**
+ * What Gratis leaves out (D-158, PRO-385): Mimo (chat, voice, the advisor,
+ * WhatsApp), the autopilot, the alerts, shop orders and recipe imports (AI,
+ * like Mimo). The week, the list and sending it stay, and so does the Friday
+ * newsletter (it's opt-in).
+ */
+export const GRATIS_EXCLUDED = ['mimo', 'autopilot', 'alerts', 'shop_orders', 'recipe_imports'] as const
+export type PlanFeatureKey = (typeof GRATIS_EXCLUDED)[number] | 'menu' | 'shopping' | 'newsletter'
+
+/** Can a household in this access state use this? Beta, trial and a paid plan: everything. */
+export function planAllows(state: AccessState, what: PlanFeatureKey): boolean {
+  return state !== 'gratis' || !(GRATIS_EXCLUDED as readonly string[]).includes(what)
+}
 
 export interface AccountAccess {
   state: AccessState
@@ -242,7 +299,7 @@ export const FOUNDER_OFFER_FALLBACK_DAY = 10
 /** «Te quedan 2 días»: the in-app notice and the email go from this many days before the last day (day 12). */
 export const TRIAL_ENDING_NOTICE_DAYS = 2
 
-/** Stripe statuses that give the plan (and so keep the account out of the pause). */
+/** Stripe statuses that give the plan (and so keep the household off Gratis). */
 export const PAID_ACCESS_STATUSES: readonly SubscriptionStatus[] = ['trialing', 'active', 'past_due']
 
 /** PRO-386 (D-158): days a failed payment (`past_due`) keeps the plan; then the household loses it until it pays. */
@@ -331,7 +388,7 @@ export function accountAccess(i: {
     const today = madridIsoDate(now)
     return { state: 'trial', ...base, daysLeft: daysBetween(today, lastDay), trialDay: daysBetween(firstDay, today) }
   }
-  return { state: 'paused', ...base }
+  return { state: 'gratis', ...base }
 }
 
 /** «el 28 de diciembre» → the last day of the trial, for copy. */
@@ -345,9 +402,17 @@ export function trialDaysLeftLabel(daysLeft: number): string {
   return daysLeft === 1 ? 'Te queda 1 día de prueba' : `Te quedan ${daysLeft} días de prueba`
 }
 
-/** What a paused account is told when it tries to generate a menu or talk to Mimo (API 402 `ACCOUNT_PAUSED`). */
-export const ACCOUNT_PAUSED_MESSAGE =
-  'Tu prueba ha terminado y tu cuenta está en pausa. Elige un plan en Perfil → Suscripción para volver a generar menús y hablar con Mimo. No se ha borrado nada.'
+/**
+ * What Gratis hears when it tries Mimo (API 402 `PLAN_GRATIS`, Mimo's panel
+ * on the web, Mimo on WhatsApp once a day). Legal reviews it.
+ */
+export const PLAN_GRATIS_MESSAGE = 'En el plan Gratis, Mimo descansa. Con Esencial vuelve a haceros la semana él solo.'
+/** Recipe imports on Gratis (402 `PLAN_GRATIS`). */
+export const PLAN_GRATIS_IMPORTS_MESSAGE =
+  'Importar recetas de fotos, webs y vídeos no entra en el plan Gratis. Con Esencial, Mimo te las pasa a tu recetario.'
+/** Shop orders on Gratis (402 `PLAN_GRATIS`). */
+export const PLAN_GRATIS_ORDERS_MESSAGE =
+  'Los pedidos a tiendas no entran en el plan Gratis. Con Esencial, Mimo os escribe el pedido para cada tienda.'
 
 /** What `GET /billing` answers (specs/billing.md). */
 export interface BillingState {
@@ -360,7 +425,7 @@ export interface BillingState {
   canManage: boolean
   /** If the owner subscribed now, the first charge would be on this day (ISO). */
   firstChargeAt: string
-  /** Trial / paused / subscribed, from launch day (PRO-135). */
+  /** Trial / Gratis / subscribed, from launch day (PRO-135, PRO-385). */
   access: AccountAccess
   /** Founder price (PRO-136, D-056/D-066). */
   founder: {
@@ -408,7 +473,7 @@ export function isFoundingHousehold(createdAt: Date | string, launchDate: string
 /**
  * Does a subscription started now keep the founder price? (D-056, D-066):
  * a founding household always; from launch day, anyone who leaves the card
- * before their trial ends. A paused household subscribing doesn't.
+ * before their trial ends. A household on Gratis subscribing doesn't.
  */
 export function founderPriceIfSubscribing(
   householdCreatedAt: Date | string | null,
@@ -445,7 +510,7 @@ export function founderOfferFires(i: { access: AccountAccess; weekResolved: bool
  * 59,99 € al año». The offer goes out before a plan is chosen, so both plans.
  */
 export function founderPriceAmounts(): string {
-  return PLANS.map((p) => `${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`).join('; ')
+  return PAID_PLANS.map((p) => `${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`).join('; ')
 }
 
 /**

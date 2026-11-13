@@ -1,5 +1,5 @@
 import type { DayTimeBudget, FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
-import { FIT_WEIGHT, FREQUENCY_WEIGHT, fitsTimeBudget, isInSeason } from '@ona/shared'
+import { FIT_WEIGHT, FREQUENCY_WEIGHT, appliancesIn, classifyEquipment, fitsTimeBudget, isInSeason } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
 import type { DietCategory } from './stepDietMentions.js'
 
@@ -51,8 +51,15 @@ export interface RecipeWithIngredients {
    * them as ingredients.
    */
   stepMentions?: ReadonlyArray<{ term: string; category: DietCategory }>
+  /**
+   * PRO-1142: dislike terms a later «Me apetece» beats for this recipe's
+   * name. Computed by `loadMatchableRecipes` (`dishDislikes.ts`).
+   */
+  dislikesOverridden?: readonly string[]
   /** Internal tags (`tipo:<slug>`, `proteina:<slug>`), for the week rules (PRO-254). */
   internalTags?: string[] | null
+  /** «Semana tipo» (D-182): `DISH_TYPES` keys (`recipes.dish_types`, else `dishTypesOf`). */
+  dishTypes?: string[] | null
   /** Cached per-serving nutrition; only `kcal` is read here (the planner's day floor). */
   nutritionPerServing?: { kcal?: number | null } | null
   ingredients: Array<{
@@ -70,6 +77,13 @@ export interface RecipeWithIngredients {
     edibleFraction?: number | null
     note?: string | null
     aisle?: string | null
+    /** Row id + «Cocinar ahora» marks (specs/cook-now.md). */
+    rowId?: string
+    optional?: boolean
+    displayUnit?: string | null
+    category?: string | null
+    role?: 'essential' | 'secondary' | null
+    substituteIngredientIds?: string[]
   }>
   /** Servings the quantities are for (recipes.servings), for the week rules (PRO-280). */
   servings?: number | null
@@ -93,12 +107,6 @@ export interface MatcherOptions {
    */
   bannedRecipeIds?: Set<string>
   /**
-   * When set, the matcher only returns recipes whose `tags` include this
-   * value. Used by the "Pin meal type to a day" UI (cremas, legumbres,
-   * pizza…). Null / absent means no constraint.
-   */
-  pinnedType?: string | null
-  /**
    * Day index (0-6, Mon-Sun) for this slot. Used by the
    * `weekends_only` frequency filter — recipes with that hint are
    * excluded when `dayIndex < 5`. Optional so legacy callers (the
@@ -115,9 +123,12 @@ export interface MatcherOptions {
   dislikes?: string[]
   /**
    * Kitchen equipment the user owns (lowercased; from user_memories
-   * `equipment`). A recipe is filtered out only when it lists at least
-   * one piece of equipment that's NOT in this set. Empty / absent = no
-   * filter — useful when the user hasn't completed onboarding yet.
+   * `equipment`). Only its appliances count (PRO-1140, the equipment
+   * vocabulary in `@ona/shared`): a recipe is filtered out only when it
+   * needs an appliance (horno, freidora de aire…) that's NOT in this set.
+   * Utensils (sartén, cazuela, bol…) and unknown words never filter.
+   * Empty / absent = no filter — useful when the user hasn't completed
+   * onboarding yet.
    */
   availableEquipment?: Set<string>
   /**
@@ -158,7 +169,6 @@ export function matchRecipes(
     usedRecipeIds,
     restrictions,
     bannedRecipeIds,
-    pinnedType,
     dislikes,
     availableEquipment,
     unavailableEquipment,
@@ -175,13 +185,11 @@ export function matchRecipes(
   // (dietaryRestrictions.ts). Before 2026-10-07 this was an exact-name
   // match, so "sin gluten" or "vegetariano" excluded nothing.
   const rules = compileRestrictions(restrictions, dislikes ?? [])
+  const ownedAppliances = availableEquipment && availableEquipment.size > 0 ? new Set(appliancesIn([...availableEquipment])) : null
 
   return recipes.filter((recipe) => {
     // 0. Veto wins over everything else — a banned favourite is still out.
     if (bannedRecipeIds?.has(recipe.id)) return false
-
-    // 0b. Pinned meal type — when set, recipe must carry the tag.
-    if (pinnedType && !recipe.tags.includes(pinnedType)) return false
 
     // 0b'. Catalogue quality gate (PRO-73): a system recipe the audit flags
     //      (no steps, too few ingredients, quantities out of range) is
@@ -205,22 +213,18 @@ export function matchRecipes(
     if (usedRecipeIds.has(recipe.id)) return false
 
     // 4. Restrictions + dislikes: allergen tags (recipe union, ingredient
-    //    catalogue tags, name inference) and ingredient terms.
+    //    catalogue tags, name inference) and ingredient terms; dislikes also
+    //    against the recipe's name (PRO-1142).
     if (violatesRestrictions(recipe, rules)) return false
 
-    // 5. Equipment check — every piece of equipment the recipe needs must
-    //    be present in the user's owned set. Recipes with no equipment array
-    //    (= no requirement) pass freely. Comparison is case-insensitive and
-    //    accent-insensitive so "freidora de aire" matches "Freidora de Aire".
-    if (availableEquipment && availableEquipment.size > 0) {
-      const required = recipe.equipment ?? []
-      const ok = required.every((e) => availableEquipment.has(normaliseEquipment(e)))
-      if (!ok) return false
-    }
+    // 5. Equipment check (PRO-1140) — every appliance the recipe needs must
+    //    be among the user's. Utensils (sartén, cazuela, bol, olla…) are
+    //    taken as owned and unknown words don't filter; before, any word
+    //    not in the user's list took the recipe out, so a household with 5
+    //    appliances kept 17 recipes. Case- and accent-insensitive.
+    if (ownedAppliances && needsMissingAppliance(recipe.equipment, ownedAppliances)) return false
     // 5b. Equipment missing right now (the ficha, PRO-253).
-    if (unavailableEquipment && unavailableEquipment.size > 0) {
-      if ((recipe.equipment ?? []).some((e) => unavailableEquipment.has(normaliseEquipment(e)))) return false
-    }
+    if (needsUnavailableEquipment(recipe.equipment, unavailableEquipment)) return false
 
     // 6. Time budget (PRO-138): a «total» day compares totalTime (else
     //    prep + cook), a «trabajo» day activeTime (else prepTime). With a
@@ -332,6 +336,29 @@ export function normaliseEquipment(s: string): string {
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     .trim()
+}
+
+/**
+ * Pure (PRO-1140): does the recipe need an appliance outside `owned`
+ * (canonical appliance names, `appliancesIn`)? Utensils and unknown
+ * equipment words never count.
+ */
+export function needsMissingAppliance(equipment: readonly string[] | null | undefined, owned: ReadonlySet<string>): boolean {
+  return appliancesIn(equipment ?? []).some((a) => !owned.has(a))
+}
+
+/**
+ * Pure: does the recipe need something the household lacks right now
+ * (normalised names from the ficha, «sin horno», PRO-253)? An appliance is
+ * compared by its canonical name («Horno precalentado» → «horno»), any
+ * other line as written.
+ */
+export function needsUnavailableEquipment(equipment: readonly string[] | null | undefined, unavailable: ReadonlySet<string> | undefined): boolean {
+  if (!unavailable || unavailable.size === 0) return false
+  return (equipment ?? []).some((e) => {
+    const k = classifyEquipment(e)
+    return unavailable.has(k.kind === 'appliance' ? k.name : normaliseEquipment(e))
+  })
 }
 
 export function findRecipeForSlot(

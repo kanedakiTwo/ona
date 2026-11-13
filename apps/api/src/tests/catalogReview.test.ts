@@ -82,6 +82,7 @@ function fakeDeps(over: Partial<CatalogImportDeps> = {}): CatalogImportDeps {
       allergenDoubt: false,
     }),
     matchIngredients: async (_n, ings) => ings.map((i, k) => ({ ingredientId: `ing-${k}`, name: i.name, quantity: i.quantity, unit: i.unit as any })),
+    findIngredientIds: async (names) => names.map(() => null),
     persistDraft: async () => ({ ok: true, recipeId: `r${++n}` }),
     ...over,
   }

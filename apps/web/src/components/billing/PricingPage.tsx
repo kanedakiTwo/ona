@@ -7,7 +7,8 @@ import { Check, Minus } from "lucide-react"
 import {
   BETA_FIRST_CHARGE_LABEL,
   LAUNCH_DATE_LABEL,
-  PLANS,
+  FREE_PLAN,
+  PAID_PLANS,
   PLAN_CAPS_NOTE,
   PLAN_FEATURE_GROUPS,
   type BillingPeriod,
@@ -38,6 +39,10 @@ const FAQS: { q: string; a: string }[] = [
     a: "Cuando quieras, desde Perfil → Suscripción. Si cancelas, sigues con tu plan hasta el final de lo que ya has pagado y no se renueva.",
   },
   {
+    q: "¿Qué pasa si al acabar la prueba no elijo plan?",
+    a: "Pasas al plan Gratis y no se te cobra nada. Sigues generando y cambiando tu menú de la semana en la web, y haciendo y mandando tu lista. Lo que no tiene es Mimo (ni chat ni voz), el piloto automático, los avisos, importar recetas ni los pedidos a tiendas. No se borra nada, y puedes elegir un plan cuando quieras.",
+  },
+  {
     q: "¿Qué diferencia hay entre Esencial y Plus?",
     a: "Esencial tiene todo para planificar, comprar y cocinar, y Mimo por chat en la app y por WhatsApp. Plus añade hablar con Mimo por voz, que Mimo te escriba él solo por WhatsApp (el menú de hoy, qué sacar del congelador) y más uso de Mimo al mes.",
   },
@@ -47,7 +52,7 @@ const FAQS: { q: string; a: string }[] = [
   },
 ]
 
-/** `/precios`: the two plans, what each includes, and how to get one. */
+/** `/precios`: the three plans (Gratis, Esencial, Plus), what each includes, and how to get one. */
 export function PricingPage() {
   const [period, setPeriod] = useState<BillingPeriod>("mensual")
   const { user } = useAuth()
@@ -71,6 +76,14 @@ export function PricingPage() {
       )
     }
     const state = billing.data
+    if (!plan.prices) {
+      // PRO-385: Gratis isn't bought; it's what's left after the trial without a plan.
+      return (
+        <p className="text-center text-[13px] text-[#7A7066]" data-testid={`cta-${plan.key}`}>
+          {state?.access?.state === "gratis" ? "Es tu plan ahora." : "Es lo que te queda si al acabar la prueba no eliges plan."}
+        </p>
+      )
+    }
     if (state?.subscription) {
       const mine = state.subscription.plan === plan.key
       return (
@@ -115,8 +128,9 @@ export function PricingPage() {
             Un precio para <span className="font-italic italic">todo tu hogar</span>.
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-[#4A4239] md:text-lg">
-            Dos planes. <strong className="font-semibold text-[#1A1612]">Esencial</strong> es el que recomendamos: con él tienes
-            todo para comer bien cada semana. Plus añade la voz y que Mimo se adelante por WhatsApp.
+            Tres planes. <strong className="font-semibold text-[#1A1612]">Esencial</strong> es el que recomendamos: con él tienes
+            todo para comer bien cada semana. Plus añade la voz y que Mimo se adelante por WhatsApp. Y con Gratis lo haces tú:
+            tu menú de la semana y la lista, en la web.
           </p>
           <p className="mt-4 max-w-2xl text-[14px] leading-relaxed text-[#7A7066]">
             Abrimos el {LAUNCH_DATE_LABEL}, con 14 días gratis con todo y sin tarjeta. Si ya estás en la beta, la tienes
@@ -138,7 +152,7 @@ export function PricingPage() {
             </p>
           )}
 
-          <PlanCards className="mt-10" period={period} onPeriodChange={setPeriod} cta={cta} testIdPrefix="pricing" />
+          <PlanCards className="mt-10" period={period} onPeriodChange={setPeriod} cta={cta} withFree testIdPrefix="pricing" />
           <p className="mt-4 text-[12px] leading-relaxed text-[#7A7066]">
             Precios con IVA incluido. {PLAN_CAPS_NOTE}
           </p>
@@ -182,25 +196,29 @@ function Cell({ value, plan }: { value: FeatureValue; plan: string }) {
 }
 
 function ComparisonTable() {
-  const [esencial, plus] = PLANS
+  const [esencial, plus] = PAID_PLANS
   return (
     <div className="mt-6 overflow-hidden rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]">
       <table className="w-full table-fixed border-collapse text-left" data-testid="pricing-comparison">
         <colgroup>
           <col />
-          <col className="w-[84px] md:w-[160px]" />
-          <col className="w-[84px] md:w-[160px]" />
+          <col className="w-[64px] md:w-[140px]" />
+          <col className="w-[72px] md:w-[150px]" />
+          <col className="w-[64px] md:w-[140px]" />
         </colgroup>
         <thead>
           <tr className="border-b border-[#DDD6C5]">
             <th scope="col" className="p-3 text-[12px] font-normal text-[#7A7066] md:p-4">
               <span className="sr-only">Función</span>
             </th>
-            <th scope="col" className="bg-[#C65D38]/[0.06] p-3 text-center text-[14px] font-semibold text-[#1A1612] md:p-4">
+            <th scope="col" className="p-2 text-center text-[13px] font-semibold text-[#1A1612] md:p-4 md:text-[14px]">
+              {FREE_PLAN.name}
+            </th>
+            <th scope="col" className="bg-[#C65D38]/[0.06] p-2 text-center text-[13px] font-semibold text-[#1A1612] md:p-4 md:text-[14px]">
               {esencial.name}
               <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C65D38]">Recomendado</span>
             </th>
-            <th scope="col" className="p-3 text-center text-[14px] font-semibold text-[#1A1612] md:p-4">
+            <th scope="col" className="p-2 text-center text-[13px] font-semibold text-[#1A1612] md:p-4 md:text-[14px]">
               {plus.name}
             </th>
           </tr>
@@ -208,7 +226,7 @@ function ComparisonTable() {
         {PLAN_FEATURE_GROUPS.map((g) => (
           <tbody key={g.title}>
             <tr>
-              <th colSpan={3} scope="colgroup" className="bg-[#F5EFE3] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7A7066] md:px-4">
+              <th colSpan={4} scope="colgroup" className="bg-[#F5EFE3] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7A7066] md:px-4">
                 {g.title}
               </th>
             </tr>
@@ -218,6 +236,9 @@ function ComparisonTable() {
                   <span className="block text-[14px] text-[#1A1612]">{f.label}</span>
                   {f.detail && <span className="mt-0.5 block text-[12px] leading-snug text-[#7A7066]">{f.detail}</span>}
                 </th>
+                <td className="p-2 text-center align-middle md:p-4">
+                  <Cell value={f.gratis} plan={FREE_PLAN.name} />
+                </td>
                 <td className="bg-[#C65D38]/[0.06] p-2 text-center align-middle md:p-4">
                   <Cell value={f.esencial} plan={esencial.name} />
                 </td>
@@ -233,6 +254,10 @@ function ComparisonTable() {
             <th scope="row" className="p-3 text-[13px] font-normal text-[#4A4239] md:p-4">
               Precio, para todo el hogar
             </th>
+            <td className="p-2 text-center text-[12px] font-semibold text-[#1A1612] md:p-4 md:text-[14px]">
+              0 €
+              <span className="block font-normal text-[#7A7066]">sin tarjeta</span>
+            </td>
             <td className="bg-[#C65D38]/[0.06] p-2 text-center text-[12px] font-semibold text-[#1A1612] md:p-4 md:text-[14px]">
               {esencial.prices.mensual.label}
               <span className="block font-normal text-[#7A7066]">o {esencial.prices.anual.label}</span>

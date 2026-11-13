@@ -12,8 +12,8 @@ The same plumbing is reused by:
 
 ## User Capabilities
 
-- Users typing in the ingredient picker on `/recipes/new` see the existing catalog filtered as they type (debounced search against `GET /ingredients?search=`)
-- When the search returns 0 results AND the user has typed ≥ 2 chars, a "Crear nuevo ingrediente '<nombre>'" option appears
+- Users typing in the ingredient picker on `/recipes/new` see the existing catalog filtered as they type (debounced search against `GET /ingredients?search=`). The search ignores case, accents and extra spaces («Tomate», «TOMATE» and «tomáte» find «tomate»; «brocoli» finds «brócoli»), and shows the exact name first, then names that start with what was typed, then names with a word that starts with it, then the rest (`services/ingredientSearch.ts`, one fold rule with `foldIngredientName` in `@ona/shared`). Until 2026-11-10 it compared the raw text, so «Tomate» found nothing and the form offered to create it.
+- When the user has typed ≥ 2 chars and no result has the same name once folded (`hasSameIngredientName`), a "Crear nuevo ingrediente '<nombre>'" option appears below the results
 - Clicking it opens a modal that shows up to 5 USDA candidates: each card shows the USDA description, the data type (Foundation / SR Legacy / FNDDS — Branded entries are filtered out), and the per-100 g nutrition (kcal + macros)
 - The user picks one ("Crear con USDA") or "Crear sin nutrición" if no candidate is right
 - The new ingredient row is persisted, slotted into the recipe form's ingredient list, and the modal closes
@@ -161,4 +161,6 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 - [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — picker + modal (manual search, translations, BEDCA, estimate button)
 - [apps/web/src/components/recipes/IngredientCandidateCard.tsx](../apps/web/src/components/recipes/IngredientCandidateCard.tsx) — shared candidate card for both modals
 - [apps/web/src/app/admin/sections/RemapModal.tsx](../apps/web/src/app/admin/sections/RemapModal.tsx) — re-map modal mirroring the auto-create UX
+- [apps/api/src/services/ingredientSearch.ts](../apps/api/src/services/ingredientSearch.ts) — the folded `GET /ingredients?search=` filter and ranking
+- [packages/shared/src/utils/ingredientSearch.ts](../packages/shared/src/utils/ingredientSearch.ts) — `foldIngredientName`, `hasSameIngredientName`
 - [apps/web/src/hooks/useIngredients.ts](../apps/web/src/hooks/useIngredients.ts) — `useSearchIngredients`, `useSuggestIngredient`, `useAutoCreateIngredient`, `useEstimateNutrition`, `useEstimateNutritionPreview`

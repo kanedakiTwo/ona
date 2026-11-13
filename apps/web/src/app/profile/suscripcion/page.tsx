@@ -71,16 +71,17 @@ function Suscripcion() {
       intro={
         state?.beta ? (
           `Durante la beta tienes Plus gratis hasta el ${LAUNCH_DATE_LABEL}.`
-        ) : state?.access?.state === 'paused' && paymentPending ? (
-          // PRO-386: 7 days after a failed payment.
-          <span data-testid="subscription-payment-paused">
-            El último pago no ha pasado y tu plan está en pausa hasta que se pague. Cambia la tarjeta y vuelve todo. No se ha borrado nada.
-          </span>
-        ) : state?.access?.state === 'paused' ? (
-          // PRO-135: texts for Legal to review.
-          <span data-testid="subscription-paused">
-            Tu prueba ha terminado y tu cuenta está en pausa. Elige un plan para volver a generar menús y hablar con Mimo. No se ha
+        ) : state?.access?.state === 'gratis' && paymentPending ? (
+          // PRO-386: 7 days after a failed payment, Gratis until it pays.
+          <span data-testid="subscription-payment-gratis">
+            El último pago no ha pasado y estás en el plan Gratis hasta que se pague. Cambia la tarjeta y vuelve tu plan. No se ha
             borrado nada.
+          </span>
+        ) : state?.access?.state === 'gratis' ? (
+          // PRO-385: texts for Legal to review.
+          <span data-testid="subscription-gratis">
+            Estás en el plan Gratis: haces tu menú de la semana y tu lista en la web. Elige Esencial o Plus para que Mimo vuelva a
+            haceros la semana él solo y a hablar con vosotros. No se ha borrado nada.
           </span>
         ) : state?.access?.state === 'trial' ? (
           <span data-testid="subscription-trial">Estás en tu prueba de {state.access.trialDays ?? TRIAL_DAYS} días: dura hasta el {trialLastDayLabel(state.access)}, incluido.</span>

@@ -2,6 +2,7 @@ import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveJwtSecret } from './jwtSecret.js'
+import { resolveMimoRemoto } from './mimoRemoto.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Load .env from monorepo root
@@ -21,6 +22,14 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '90d',
   PORT: parseInt(process.env.API_PORT || '8000', 10),
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+  /**
+   * «Mimo remoto» (PRO-1102, D-157), staging only: Mimo's rounds wait in
+   * `mimo_turnos_remotos` for the office to answer them instead of going to
+   * Anthropic. Throws (no boot) when on in production. The office's routes
+   * (`/agent/mimo-remoto/…`) take MIMO_REMOTO_TOKEN as a Bearer token.
+   */
+  MIMO_REMOTO: resolveMimoRemoto(),
+  MIMO_REMOTO_TOKEN: (process.env.MIMO_REMOTO_TOKEN || '').trim(),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   /**
    * Mimo's voice (D-023): replies read aloud in the companion, instead of the
@@ -130,6 +139,13 @@ export const env = {
    * Empty → token auth disabled (admin JWT still works).
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
+  /**
+   * Write token for the two routes Cocina (the office) uses to mark catalogue
+   * ingredients as essential/secondary (routes/ingredientRoles.ts, header
+   * `x-cocina-token`, specs/cook-now.md). Grants those two routes only.
+   * Empty → token auth disabled (admin JWT still works).
+   */
+  COCINA_WRITE_TOKEN: process.env.COCINA_WRITE_TOKEN || '',
   /**
    * Extra `?ref=` labels the read token may name in GET /admin/waitlist
    * (`sources.bySource`), for campaign links that live outside the code:

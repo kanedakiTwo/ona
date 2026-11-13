@@ -77,7 +77,7 @@ test('«Elegir otra receta» finds a recipe beyond the first 100', async ({ page
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
   await hero.getByRole('button', { name: /más opciones/i }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
 
   const picker = page.getByRole('dialog').filter({ hasText: 'Cambiar plato' })
   await expect(picker.locator('ul li').first()).toBeVisible({ timeout: 15_000 })

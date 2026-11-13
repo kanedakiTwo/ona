@@ -5,7 +5,7 @@ import type { WeekPlan } from "@ona/shared"
  * collected → the `weekPlan` body of `POST /menu/generate`. `out` holds
  * "<day>:<meal>" keys of meals eaten out; `guests` maps a day (0 = lunes) to
  * how many eat at home that day. Undefined when nothing was answered, so
- * skipping the questions sends exactly what «Generar mi menú» always sent.
+ * skipping the questions sends exactly what «Llenar con mi semana tipo» always sent.
  */
 export function buildWeekPlan(out: Iterable<string>, guests: Record<number, number>, fridgeText: string = ""): WeekPlan | undefined {
   const mealsOut = [...out]

@@ -5,7 +5,7 @@
  */
 
 import { householdToDiners } from "@ona/shared"
-import type { Recipe, RecipeIngredient, Unit, HouseholdSize, Meal, Difficulty } from "@ona/shared"
+import type { RecipeIngredient, Unit, HouseholdSize, Meal, Difficulty } from "@ona/shared"
 import { DIFFICULTY_LABELS, MEAL_LABELS } from "./labels"
 
 // ─── Tag visibility ────────────────────────────────────────────────

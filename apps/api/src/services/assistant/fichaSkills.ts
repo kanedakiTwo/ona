@@ -36,6 +36,10 @@ const text = (summary: string, data: unknown = null): SkillResult => ({ data, su
 const onWhatsApp = (ctx: SkillContext) => ctx.channel === 'whatsapp'
 const CHILD_REPLY = 'No he cambiado nada: la ficha la ven y la cambian los adultos de la casa.'
 const NO_HOUSEHOLD_REPLY = 'No he encontrado la ficha: esta cuenta todavía no tiene hogar.'
+/** «Semana tipo» (D-182 fase 3): what Mimo no longer writes as a fact of the ficha. */
+const WEEK_TYPE_FACT_TYPES: ReadonlySet<string> = new Set(['skipped_meal'])
+const WEEK_TYPE_INSTEAD =
+  'No he guardado nada en la ficha: una comida que no se hace unos días va a la semana tipo. Usa set_week_type_slot con esos días, esa comida y off=true.'
 
 /** Common API errors as guidance for the model; anything else is a real error. */
 function fichaError(err: unknown): SkillResult {
@@ -147,11 +151,11 @@ export const explainFichaFactSkill: SkillDefinition = {
 export const noteFichaFactSkill: SkillDefinition = {
   name: 'note_ficha_fact',
   description:
-    '«Apunta que…», «recuerda que en casa…», «quiero proteína en cada plato»: escribe en la ficha del hogar algo que la persona cuenta de sí misma, de la casa o de alguien que vive sin cuenta (por su apodo, «el abuelo», «la pequeña»). Úsalo para lo que no es memoria personal: plato fijo (fixed_dish {dish, days?, meal?}), comida que no se cocina (skipped_meal {days, meal, reason?}), cada cuánto un plato (dish_frequency {dish, minWeeks, maxWeeks}), afinidad (affinity {kind: ingredient|style, target, score -2..2}), esfuerzo (effort {days, meal, activeMinutes, totalMinutes}), situación temporal (temporary_situation {description} con valid_until: «sin horno hasta el 2 de noviembre»), compra (shopping {places?, days?, note?}), batch (batch_cooking {batches, days?, lunchboxes?}), gusto por lo nuevo (novelty {score -2..2}), notas (notes [texto]) y «proteína en cada plato» (protein_minimum {scope: "every_dish"}, siempre de quien lo pide: 80 g de carne, pescado o huevo por ración en todos los platos, entrantes y arroces o legumbres incluidos). Para los gustos, el equipo y los horarios propios sigue valiendo update_memory. Días: lunes…domingo sin tildes; comidas: breakfast, lunch, snack, dinner. Una lista (notes, dislikes) se suma a lo que ya hay. Por WhatsApp nunca se apunta nada de salud.',
+    '«Apunta que…», «recuerda que en casa…», «quiero proteína en cada plato»: escribe en la ficha del hogar algo que la persona cuenta de sí misma, de la casa o de alguien que vive sin cuenta (por su apodo, «el abuelo», «la pequeña»). Úsalo para lo que no es memoria personal: un plato que les gusta, sin día ni comida (fixed_dish {dish}), cada cuánto un plato sin día fijo (dish_frequency {dish, minWeeks, maxWeeks}), afinidad (affinity {kind: ingredient|style, target, score -2..2}), esfuerzo (effort {days, meal, activeMinutes, totalMinutes}), situación temporal (temporary_situation {description} con valid_until: «sin horno hasta el 2 de noviembre»), compra (shopping {places?, days?, note?}), batch (batch_cooking {batches, days?, lunchboxes?}), gusto por lo nuevo (novelty {score -2..2}), notas (notes [texto]) y «proteína en cada plato» (protein_minimum {scope: "every_dish"}, siempre de quien lo pide: 80 g de carne, pescado o huevo por ración en todos los platos, entrantes y arroces o legumbres incluidos). Para los gustos, el equipo y los horarios propios sigue valiendo update_memory. Días: lunes…domingo sin tildes; comidas: breakfast, lunch, snack, dinner. Una lista (notes, dislikes) se suma a lo que ya hay. Por WhatsApp nunca se apunta nada de salud. Lo que se come o no se hace un día y una comida concretos («los viernes por la noche, pizza», «legumbres el sábado cada dos semanas», «el domingo no desayunamos») no va aquí: va a la semana tipo con set_week_type_slot.',
   parameters: {
     type: 'object',
     properties: {
-      type: { type: 'string', enum: [...PROFILE_FACT_TYPES], description: 'Tipo de dato de la ficha.' },
+      type: { type: 'string', enum: PROFILE_FACT_TYPES.filter((t) => !WEEK_TYPE_FACT_TYPES.has(t)), description: 'Tipo de dato de la ficha.' },
       value: { description: 'El valor con la forma de su tipo (ver la descripción).' },
       about: { type: 'string', enum: ['me', 'household', 'person'], description: 'De quién es: me = quien habla, household = la casa entera, person = alguien sin cuenta (con person).' },
       person: { type: 'string', description: 'Solo con about=person: el apodo de esa persona tal como sale en get_ficha («el abuelo», «la pequeña»).' },
@@ -162,6 +166,8 @@ export const noteFichaFactSkill: SkillDefinition = {
   async handler(p: { type?: string; value?: unknown; about?: string; person?: string; valid_until?: string }, ctx: SkillContext): Promise<SkillResult> {
     const type = String(p?.type ?? '')
     if (!(PROFILE_FACT_TYPES as readonly string[]).includes(type)) return text(`No he guardado nada: type tiene que ser uno de ${PROFILE_FACT_TYPES.join(', ')}.`)
+    // «Semana tipo» (D-182 fase 3): a meal that isn't made on some days is a «no hay» of the week type, never a fact.
+    if (WEEK_TYPE_FACT_TYPES.has(type)) return text(WEEK_TYPE_INSTEAD)
     // Never health from WhatsApp (LEG-03): neither a health type nor a note that talks about it.
     if (onWhatsApp(ctx) && (isHealthProfileFactType(type) || mentionsHealth(JSON.stringify(p.value ?? '')))) return text(WHATSAPP_HEALTH_DATA_REPLY)
     const about = p.about === 'household' || p.about === 'person' ? p.about : 'me'
@@ -178,10 +184,20 @@ export const noteFichaFactSkill: SkillDefinition = {
         }
         personId = person.key.slice(2)
       }
-      const out = await api(ctx)<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null }>('POST', FICHA_FACTS_PATH, {
+      const out = await api(ctx)<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null; weekType?: boolean }>('POST', FICHA_FACTS_PATH, {
         type, value: p.value, about, personId, validUntil: p.valid_until ? endOfMadridDay(p.valid_until) : undefined,
       })
       const what = out.sentence ? `«${out.sentence}»` : 'el dato'
+      // «Semana tipo» (D-182): a dish with its day and meal goes there, not to the ficha.
+      if (out.weekType) {
+        return {
+          data: out,
+          summary: out.action === 'unchanged'
+            ? `Ya estaba así en su semana tipo: ${what}. No he cambiado nada.`
+            : `Apuntado en la semana tipo del hogar: ${what}. Sale así en los menús que se generen desde ahora.`,
+          uiHint: 'confirmation',
+        }
+      }
       return {
         data: out,
         summary: out.action === 'unchanged'

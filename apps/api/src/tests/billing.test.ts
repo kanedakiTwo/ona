@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import type Stripe from 'stripe'
 import { afterAll, describe, expect, it } from 'vitest'
-import { FOUNDER_PLANS, PLANS, founderPriceIfSubscribing, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey, subscriptionSummary } from '@ona/shared'
+import { FOUNDER_PLANS, PAID_PLANS, founderPriceIfSubscribing, PLAN_FEATURE_GROUPS, checkoutRequestSchema, stripeLookupKey, subscriptionSummary } from '@ona/shared'
 import { createBillingRouter, createBillingWebhookRouter, type Payer } from '../routes/billing.js'
 import {
   billingStateFor,
@@ -31,15 +31,15 @@ const BETA_FIRST = new Date('2026-12-29T11:00:00Z')
 
 describe('plans (2026-10-15: Esencial featured, monthly or yearly)', () => {
   it('Esencial first and featured; Plus second', () => {
-    expect(PLANS.map((p) => [p.key, p.featured])).toEqual([['esencial', true], ['plus', false]])
+    expect(PAID_PLANS.map((p) => [p.key, p.featured])).toEqual([['esencial', true], ['plus', false]])
   })
 
   it('prices, VAT included', () => {
-    expect(PLANS.map((p) => [p.key, p.prices.mensual.cents, p.prices.anual.cents])).toEqual([
+    expect(PAID_PLANS.map((p) => [p.key, p.prices.mensual.cents, p.prices.anual.cents])).toEqual([
       ['esencial', 499, 4999],
       ['plus', 899, 5999],
     ])
-    expect(PLANS.map((p) => [p.prices.mensual.label, p.prices.anual.label])).toEqual([
+    expect(PAID_PLANS.map((p) => [p.prices.mensual.label, p.prices.anual.label])).toEqual([
       ['4,99 €/mes', '49,99 €/año'],
       ['8,99 €/mes', '59,99 €/año'],
     ])
@@ -331,7 +331,15 @@ const PAYERS: Record<string, Payer> = {
   newOwner: { householdId: 'h2', email: 'eva@example.com', isOwner: true, createdAt: new Date('2027-01-10T14:00:00Z'), householdCreatedAt: new Date('2027-01-10T14:00:00Z') },
 }
 
-async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRepo>; gateway?: ReturnType<typeof fakeGateway>; now?: Date } = {}) {
+async function app(
+  opts: {
+    enabled?: boolean
+    repo?: ReturnType<typeof memoryRepo>
+    gateway?: ReturnType<typeof fakeGateway>
+    now?: Date
+    offerSignals?: { weekResolved: boolean; founderOfferAt: Date | null }
+  } = {},
+) {
   const repo = opts.repo ?? memoryRepo()
   const gateway = opts.gateway ?? fakeGateway()
   const enabled = () => opts.enabled ?? true
@@ -347,6 +355,7 @@ async function app(opts: { enabled?: boolean; repo?: ReturnType<typeof memoryRep
       now: () => opts.now ?? BETA_NOW,
       webUrl: 'https://mimoia.com',
       auth: fakeAuth,
+      offerSignals: async () => opts.offerSignals ?? { weekResolved: false, founderOfferAt: null },
     }),
   )
   const base = await serve(a)
@@ -416,10 +425,10 @@ describe('routes', () => {
     expect(repo.rows[0]).toMatchObject({ householdId: 'h1', plan: 'plus', period: 'anual', status: 'trialing' })
   })
 
-  it('PRO-135: after the trial the household is paused; paying (the webhook) takes it out of the pause', async () => {
+  it('PRO-385: after the trial the household is on Gratis; paying (the webhook) takes it to its plan', async () => {
     // The owner's household (created 2026-10-21, beta) after its trial: 2027-02-01.
     const { call } = await app({ now: AFTER_LAUNCH })
-    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'paused', trialLastDay: '2026-12-28' })
+    expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'gratis', trialLastDay: '2026-12-28' })
     const event = { type: 'customer.subscription.created', data: { object: { id: 'sub_1' } } }
     expect((await call('POST', '/billing/webhook', undefined, event, { 'stripe-signature': 'good' })).status).toBe(200)
     expect((await (await call('GET', '/billing', 'owner')).json()).access).toMatchObject({ state: 'subscribed' })
@@ -487,13 +496,18 @@ describe('PRO-136: founder price, the Stripe trial and the cancel link', () => {
     expect(c.gateway.checkouts[0].subscription_data?.metadata?.founder_price).toBe('true')
   })
 
-  it('GET /billing: the day-7 offer from day 7 and not before; not with a plan', async () => {
-    const at = async (n: number, repo = memoryRepo()) => (await (await (await app({ now: day(n), repo })).call('GET', '/billing', 'newOwner')).json()).founder
-    expect((await at(6)).offer).toBe(false)
-    expect((await at(7)).offer).toBe(true)
+  it('GET /billing: the offer once the week is resolved or from day 10 (PRO-384); not with a plan', async () => {
+    const at = async (n: number, repo = memoryRepo(), offerSignals?: { weekResolved: boolean; founderOfferAt: Date | null }) =>
+      (await (await (await app({ now: day(n), repo, offerSignals })).call('GET', '/billing', 'newOwner')).json()).founder
+    expect((await at(7)).offer).toBe(false)
+    expect((await at(9)).offer).toBe(false)
+    expect((await at(10)).offer).toBe(true)
     expect((await at(13)).offer).toBe(true)
     expect((await at(15)).offer).toBe(false)
-    expect((await at(8, memoryRepo([row({ householdId: 'h2' })]))).offer).toBe(false)
+    expect((await at(4, memoryRepo(), { weekResolved: true, founderOfferAt: null })).offer).toBe(true)
+    // Already sent (e.g. the week resolved, then a quiet day): it keeps standing.
+    expect((await at(5, memoryRepo(), { weekResolved: false, founderOfferAt: day(4) })).offer).toBe(true)
+    expect((await at(4, memoryRepo([row({ householdId: 'h2' })]), { weekResolved: true, founderOfferAt: null })).offer).toBe(false)
   })
 
   it('billingStateFor: the legal notice in the app from 15 days before the first charge, with the amount', () => {

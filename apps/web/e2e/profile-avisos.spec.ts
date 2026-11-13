@@ -2,7 +2,8 @@
  * Perfil → Avisos (PRO-237, D-080; specs/notifications.md), against the real
  * API at 390×844. A fresh account has no WhatsApp and no phone notification:
  * every kind is on except the morning menu (opt-in, PRO-215), the prep alerts
- * say how to get them and the rest «Solo llega por WhatsApp». The switch saves (survives a reload) and the API
+ * say how to get them, the Thursday week (PRO-381) is in the app, the Sunday
+ * question isn't needed with it and the rest «Solo llega por WhatsApp». The switch saves (survives a reload) and the API
  * reports the same as the screen (what Mimo's get_alerts reads).
  */
 
@@ -24,9 +25,9 @@ test('profile → Avisos: each alert, where it arrives, and a switch that saves'
   await expect(page.getByRole('heading', { name: /Qué te llega y por dónde/ })).toBeVisible()
 
   const list = page.getByTestId('alerts-list')
-  await expect(list.getByRole('button')).toHaveCount(7)
+  await expect(list.getByRole('button')).toHaveCount(8)
   await expect(page.getByTestId('alert-prep_alerts-channel')).toHaveText('Conecta WhatsApp o activa las notificaciones del móvil.')
-  await expect(page.getByTestId('alert-weekly_nudge-channel')).toHaveText('Solo llega por WhatsApp.')
+  await expect(page.getByTestId('alert-shopping_reminder-channel')).toHaveText('Solo llega por WhatsApp.')
   // PRO-215: the morning menu only for whoever asks for it.
   await expect(page.getByTestId('alert-daily_brief')).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByTestId('alerts-channels')).toContainText('WhatsApp: sin conectar.')
@@ -48,4 +49,31 @@ test('profile → Avisos: each alert, where it arrives, and a switch that saves'
   const body = await r.json()
   expect(body.kinds.find((k: { kind: string }) => k.kind === 'weekly_nudge')).toMatchObject({ on: false, channel: 'off' })
   expect(body.kinds.find((k: { kind: string }) => k.kind === 'prep_alerts')).toMatchObject({ on: true })
+})
+
+// PRO-381 (D-158): «La semana, hecha cada jueves», on for everyone; switching it
+// off saves, and the Sunday question comes back for whoever switched it off.
+test('profile → Avisos: the Thursday week is on, in the app, and its switch saves', async ({ page }) => {
+  test.setTimeout(60_000)
+  await registerFreshUser(page)
+  if (page.url().includes('/onboarding')) await completeOnboarding(page)
+
+  await page.goto('/profile/avisos')
+  const autoplan = page.getByTestId('alert-weekly_autoplan')
+  await expect(autoplan).toContainText('La semana, hecha cada jueves')
+  await expect(autoplan).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('alert-weekly_autoplan-channel')).toHaveText('En tu menú, en la app')
+  await expect(page.getByTestId('alert-weekly_nudge-channel')).toHaveText('No hace falta: Mimo os deja hecha la semana cada jueves.')
+
+  await autoplan.click()
+  await expect(autoplan).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByTestId('alert-weekly_autoplan-channel')).toHaveText('Apagado')
+  await expect(page.getByTestId('alert-weekly_nudge-channel')).toHaveText('Solo llega por WhatsApp.')
+
+  await page.reload()
+  await expect(page.getByTestId('alert-weekly_autoplan')).toHaveAttribute('aria-pressed', 'false')
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const r = await page.request.get(`${API_URL}/notifications/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+  const body = await r.json()
+  expect(body.kinds.find((k: { kind: string }) => k.kind === 'weekly_autoplan')).toMatchObject({ on: false, channel: 'off' })
 })

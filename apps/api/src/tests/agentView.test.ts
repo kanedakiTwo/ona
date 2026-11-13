@@ -83,7 +83,7 @@ function collectTemplates(): { api: string[]; web: string[] } {
 /** `?ref=` labels in the code: links, `openRef` props and the share footers. */
 function collectRefSources(): string[] {
   const out = new Set<string>()
-  const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*\)/g]
+  const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*(?:[\w.?]+,?\s*)?\)/g]
   // The product's own links only: tests and e2e use labels of their own.
   for (const dir of ['apps/web/src', 'apps/web/content', 'packages/shared/src', 'apps/api/src']) {
     walk(join(REPO, dir), (p, isDir) => {
@@ -171,7 +171,19 @@ describe('errorType', () => {
     expect(stored('{"isTrusted":true}')).toBe('EventRejection')
     expect(stored('Object Not Found Matching Id:3, MethodName:update, ParamCount:4')).toBe('ObjectNotFoundMatchingId')
     expect(stored('Error sin mensaje')).toBe('NoMessage')
+    // PRO-354: what an iPhone in-app browser injects, and a page without storage (Safari wordings).
+    expect(stored("ReferenceError: Can't find variable: _AutofillCallbackHandler")).toBe('InAppBrowserError')
+    expect(stored("ReferenceError: Can't find variable: _pcmBridgeCallbackHandler")).toBe('InAppBrowserError')
+    expect(stored("TypeError: undefined is not an object (evaluating 'window.webkit.messageHandlers.fbJS')")).toBe('InAppBrowserError')
+    expect(stored("TypeError: undefined is not an object (evaluating '__gCrWeb.autofill.extractForms')")).toBe('InAppBrowserError')
+    expect(stored("Unhandled rejection: ReferenceError: Can't find variable: instantSearchSDKJSBridgeClearHighlight")).toBe('InAppBrowserError')
+    expect(stored("Unhandled rejection: ReferenceError: Can't find variable: indexedDB")).toBe('StorageUnavailable')
+    expect(stored("TypeError: null is not an object (evaluating 'indexedDB.open')")).toBe('StorageUnavailable')
+    expect(stored('UnknownError: Connection to Indexed Database server lost. Refresh the page to try again')).toBe('StorageUnavailable')
+    expect(stored("TypeError: null is not an object (evaluating 'window.localStorage.getItem')")).toBe('StorageUnavailable')
     // What stays as before.
+    expect(stored("ReferenceError: Can't find variable: menuWeek")).toBe('ReferenceError')
+    expect(stored("TypeError: undefined is not an object (evaluating 'e.days.map')")).toBe('TypeError')
     expect(stored("TypeError: Cannot read properties of undefined (reading 'map')")).toBe('TypeError')
     expect(stored("NotFoundError: Failed to execute 'removeChild' on 'Node'")).toBe('NotFoundError')
     expect(stored('algo raro con ana@example.com')).toBe('other')

@@ -89,6 +89,16 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
       expect.objectContaining({ prepared: expect.any(Number), sent: expect.any(Number), accepted: expect.any(Number) }),
     )
     expect(after.body.familyInvites.goal.withTwoPlusAdults).toEqual(expect.any(Number))
+    // PRO-379: the growth line (real SQL on usage_events, menus, subscriptions): the new household
+    // is in this week's cohort with its first menu inside the open window.
+    const cohort = after.body.growth.at(-1)
+    expect(cohort.signups).toBeGreaterThanOrEqual(1)
+    expect(cohort.firstMenu.reachedInOpenWindow + cohort.firstMenu.reached).toBeGreaterThanOrEqual(1)
+    expect(cohort.paid).toEqual({ eligible: expect.any(Number), reached: expect.any(Number), reachedInOpenWindow: 0 })
+    expect(after.body.timeToFirstMenu.at(-1).withMenu).toBeGreaterThanOrEqual(1)
+    const t = after.body.trial
+    expect(t.beta + t.inTrial + t.withCard + t.paying + t.paused + t.free + t.pastDue).toBeGreaterThanOrEqual(1)
+    expect(t.cancellations.byReason).toEqual(expect.any(Object))
     // Counts only: no ids, usernames or emails anywhere in the payload.
     const raw = JSON.stringify(after.body)
     expect(raw).not.toContain(userId)
@@ -145,6 +155,48 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     expect(s.android + s.ios + s.desktop + s.unknown).toBe(s.total)
     expect(JSON.stringify(after.body)).not.toMatch(/iPhone OS|Mozilla/)
   }, 30_000)
+
+  it('desglosa meal_swapped por how y cuenta las hojas del menú por sheet y action (PRO-1174)', async () => {
+    const t = `${tag}h`
+    const reg = await call('POST', '/register', { username: t, email: `${t}@test.local`, password: 'e2epass123', ageConfirmed: true })
+    expect(reg.status).toBe(201)
+    const auth = { Authorization: `Bearer ${reg.body.token}` }
+    const userId = reg.body.user.id
+    expect((await call('POST', `/user/${userId}/onboarding`, { adults: 2, kidsCount: 0, cookingFreq: 'daily', restrictions: [], favoriteDishes: [], priority: 'varied' }, auth)).status).toBe(200)
+    const now = new Date()
+    const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)))
+    const gen = await call('POST', '/menu/generate', { userId, weekStart: monday.toISOString().slice(0, 10) }, auth)
+    expect([200, 201]).toContain(gen.status)
+    const days: any[] = gen.body.days ?? []
+    const d = days.findIndex((day) => day && Object.values(day).some((s: any) => s?.dishes?.length))
+    expect(d, 'a day with a meal').toBeGreaterThanOrEqual(0)
+    const meal = Object.keys(days[d]).find((m) => days[d][m]?.dishes?.length)!
+
+    const before = await call('GET', '/admin/usage?days=1', undefined, metrics)
+    const auto = (r: any) => Number(r.body.breakdown.meal_swapped?.how?.auto ?? 0)
+    const verReceta = (r: any) => Number(r.body.menuSheetActions.comida.actions.ver_receta ?? 0)
+    expect(Object.keys(before.body.menuSheetActions)).toEqual(['comida', 'comida_varios', 'plato', 'vacio', 'no_hay', 'dia', 'semana', 'semana_fila'])
+
+    // «Cambiar al azar»: PUT sin receta.
+    expect((await call('PUT', `/menu/${gen.body.id}/day/${d}/meal/${meal}`, {}, auth)).status).toBe(200)
+    const ok = await call('POST', '/usage/event', { name: 'menu_sheet_action', props: { sheet: 'comida', action: 'ver_receta' } }, auth)
+    expect(ok.body).toEqual({ counted: true })
+    // Fuera de la lista: no se guarda.
+    const bad = await call('POST', '/usage/event', { name: 'menu_sheet_action', props: { sheet: 'comida', action: 'borrar_todo' } }, auth)
+    expect(bad.body).toEqual({ counted: false })
+
+    let after: any = null
+    for (let i = 0; i < 20; i++) {
+      after = await call('GET', '/admin/usage?days=1', undefined, metrics)
+      if (auto(after) > auto(before)) break
+      await new Promise((r) => setTimeout(r, 250))
+    }
+    expect(auto(after) - auto(before)).toBe(1)
+    expect(verReceta(after) - verReceta(before)).toBe(1)
+    expect(after.body.menuSheetActions.comida.actions.borrar_todo).toBeUndefined()
+    expect(after.body.breakdown.menu_sheet_action?.action?.borrar_todo).toBeUndefined()
+    expect(JSON.stringify(after.body)).not.toContain(userId)
+  }, 60_000)
 
   it('serves the conversation flags to the token: categories and severity, no reply or note', async () => {
     const r = await call('GET', '/admin/assistant-reviews/flags?days=3', undefined, metrics)

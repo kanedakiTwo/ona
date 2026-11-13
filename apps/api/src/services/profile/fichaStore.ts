@@ -37,11 +37,12 @@ import {
 } from '../../db/schema.js'
 import { hasHealthConsent, healthConsentCoversReligion, religiousDietsIn, RELIGION_CONSENT_MESSAGE } from '../healthConsent.js'
 import { syncHouseholdCounts } from '../userMemoryStore.js'
-import { factsInForce } from './reader.js'
+import { factsInForce, fixedDishOf } from './reader.js'
 import { SERVICE_WINDOW_MS } from '../whatsapp/proactive.js'
 import { mentionsHealth } from './healthText.js'
 import { changeView, confidenceFor, factSentence, factView, howIUse, peopleView, type ChangeRow, type FactRow } from './view.js'
-import { madridDate, retireProfileFacts, signalEvidence, upsertProfileFact } from './writer.js'
+import { madridDate, signalEvidence, upsertProfileFact } from './writer.js'
+import { ensureErasureLog, recordErasure } from '../erasureLog.js'
 
 type Db = typeof defaultDb
 
@@ -449,8 +450,11 @@ export async function removePerson(userId: string, personId: string, opts: { db?
   if (reader.role === 'child') throw new FichaError(403, 'CHILD', 'Las personas de la casa las cambian los adultos')
   const [before] = await db.select().from(householdPersons).where(and(eq(householdPersons.id, personId), eq(householdPersons.householdId, reader.householdId))).limit(1)
   if (!before) throw new FichaError(404, 'NOT_FOUND', 'No está en tu casa')
+  await ensureErasureLog(db)
   await db.transaction(async (tx) => {
     await tx.delete(householdPersons).where(eq(householdPersons.id, personId))
+    // For a restored backup (PRO-1122): the id and the date, never the person.
+    await recordErasure(tx, 'person', personId)
     await tx.insert(profileChanges).values({ householdId: reader.householdId, action: 'person_removed', before: { alias: before.alias, ageBand: before.ageBand }, after: null, reason: 'Lo quitó de su ficha', origin: 'user', actorUserId: userId })
   })
 }
@@ -572,6 +576,9 @@ export function fichaSubjectFor(
   return { subjectUserId: readerId, subjectPersonId: null }
 }
 
+const WEEKDAY_LABELS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+const MEAL_LABELS: Record<string, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
+
 /**
  * «Apunta que…» (Mimo, web chat and WhatsApp): the reader says something
  * about themselves, the household or a person without an account. Origin
@@ -583,7 +590,7 @@ export async function writeProfileFact(
   userId: string,
   input: { type: string; value: unknown; about: FichaAbout; personId?: string | null; validUntil?: Date | null; channel: 'web' | 'whatsapp' },
   opts: { db?: Db; now?: Date } = {},
-): Promise<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null }> {
+): Promise<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null; weekType?: boolean }> {
   const db = opts.db ?? defaultDb
   const now = opts.now ?? new Date()
   const reader = await fichaReader(userId, db)
@@ -612,6 +619,20 @@ export async function writeProfileFact(
       : []
     if (!p) throw new FichaError(404, 'NO_PERSON', 'Esa persona no está en tu casa')
     personId = p.id
+  }
+  // «Semana tipo» (D-182): «pizza los viernes por la noche» goes into the
+  // household's week type (those slots, from this week on), not into a fact.
+  const placed = input.type === 'fixed_dish' ? fixedDishOf(input.value) : null
+  if (placed) {
+    const { setWeekTypeDish } = await import('../weekType.js')
+    const { weekTypeOptionLabel } = await import('@ona/shared')
+    const out = await setWeekTypeDish(reader.householdId, placed, { userId, db, now })
+    return {
+      factId: '',
+      action: out.changes.length ? 'added' : 'unchanged',
+      sentence: `Semana tipo: ${weekTypeOptionLabel(out.option)}, ${placed.days.map((d) => WEEKDAY_LABELS[d]).join(', ')} (${MEAL_LABELS[placed.meal]})`,
+      weekType: true,
+    }
   }
   const subject = fichaSubjectFor(input.type, input.about, userId, personId)
   const signal = input.channel === 'whatsapp' ? 'whatsapp' : 'chat'

@@ -31,7 +31,8 @@ export function RatingPromptSheet({
   async function answer(rating: number) {
     if (!recipeId) return
     try {
-      await api.put(`/recipes/${recipeId}/notes`, { rating })
+      // `from` only tells the usage event where the stars came from (PRO-1024).
+      await api.put(`/recipes/${recipeId}/notes`, { rating, from: "que_tal" })
       qc.invalidateQueries({ queryKey: ["recipe-notes", recipeId] })
     } catch {
       // A lost answer is not worth an error: it will be asked again.

@@ -13,11 +13,13 @@ import { Check, Copy, Send } from "lucide-react"
 import { inviteHouseholdShareText, whatsappShareHref } from "@ona/shared"
 import { api } from "@/lib/api"
 
-export function useReferralLink() {
+/** The account's own code and link; `enabled` false (signed out) asks nothing. */
+export function useReferralLink(enabled = true) {
   return useQuery<{ code: string; link: string }>({
     queryKey: ["referrals", "me"],
     queryFn: () => api.get("/referrals/me"),
     staleTime: Infinity,
+    enabled,
   })
 }
 

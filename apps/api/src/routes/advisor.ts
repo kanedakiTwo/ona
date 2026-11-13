@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { db } from '../db/connection.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { requireActiveAccount } from '../services/accountAccess.js'
+import { requirePaidPlan } from '../services/accountAccess.js'
 import { getSummary, askAdvisor } from '../services/advisor.js'
 
 const router = Router()
@@ -29,7 +29,7 @@ router.get('/advisor/:userId/summary', async (req: AuthRequest, res) => {
 })
 
 // POST /advisor/:userId/ask
-router.post('/advisor/:userId/ask', requireActiveAccount(), async (req: AuthRequest, res) => {
+router.post('/advisor/:userId/ask', requirePaidPlan(), async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
     if (userId !== req.userId) {

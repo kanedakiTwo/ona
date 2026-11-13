@@ -8,7 +8,17 @@
  * favourite dishes went away: «Me encanta» replaces them; the weekday time
  * question is PRO-138). Since 2026-11-03 (Miguel: they overlapped) there is no
  * «¿Cuántas veces a la semana cocinas?» (it comes from how they cook) and no
- * «¿Qué quieres que Mimoia priorice?» (it barely changed the menu).
+ * «¿Qué quieres que Mimoia priorice?» (it barely changed the menu). With 2
+ * adults or more, «¿Quién hace la compra?» follows the household and, when
+ * someone else buys or they take turns, «Invítale y le llegará la lista cada
+ * semana» (PRO-383, D-158), which replaced the «Familia en el mismo hogar»
+ * card of step 1.
+ *
+ * «Semana tipo» fase 4 (D-182 §4): «¿Algo más? Cuéntanos tu caso» gives
+ * examples of habits («pasta los miércoles»…) and, when the AI read some into
+ * the household's week type, «Así lo he entendido» comes before the first
+ * menu: one row per slot, «Está bien» (on to the menu) or «Corregir» (the
+ * slots go back as they were and the text opens again).
  *
  * The questions ("D · Luz y foto", PRO-37): one question per
  * screen with a compact header (eyebrow + Fraunces h1 with a terracotta
@@ -30,11 +40,16 @@ import {
   FREEZE_ANSWERS,
   FREEZE_ANSWER_LABELS,
   FREEZE_QUESTION,
+  SHOPPERS,
+  SHOPPER_LABELS,
+  asksShopper,
   cookingStyleParts,
   firstMenuWeeks,
+  shopperInviteText,
   type CookingStyle,
   type FreezeAnswer,
   type OnboardingDraft,
+  type Shopper,
   type WeekdayCookingChoice,
 } from "@ona/shared"
 import { RestrictionsPicker } from "./RestrictionsPicker"
@@ -46,8 +61,10 @@ import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
 import { postTasteOffer, useTasteStatus } from "@/hooks/useTaste"
 import { TasteSwiper } from "@/components/taste/TasteSwiper"
 import { onboardingStepKey, trackUsage, type OnboardingStep } from "@/lib/usageEvents"
-import { RESTRICTIONS_STEP, onboardingOrder, resumeStep } from "@/lib/onboardingSteps"
-import { FamilyInviteOffer, useFamilyOfferOnce } from "@/components/household/FamilyInviteOffer"
+import { RESTRICTIONS_STEP, SHOPPER_INVITE_STEP, SHOPPER_STEP, onboardingOrder, resumeStep } from "@/lib/onboardingSteps"
+import { useFamilyOfferOnce, useFamilyOfferStatus } from "@/components/household/FamilyInviteOffer"
+import { FamilyInviteShare, familyInviteUrl } from "@/components/household/FamilyInviteShare"
+import { DishTypeIcon } from "@/components/weekType/DishTypeIcon"
 
 const PHOTO = "/images/recipes/lentejas-estofadas.jpg"
 
@@ -58,10 +75,23 @@ interface OnboardingData {
   cookingStyle: CookingStyle | null
   /** PRO-221 «¿Congeláis la carne o el pescado cuando compráis?» (optional) */
   freezesMeatFish: FreezeAnswer | null
+  /** PRO-383 «¿Quién hace la compra?» (only with 2 adults or more) */
+  shopper: Shopper | null
   restrictions: string[]
   weekdayCooking: WeekdayCookingChoice | null
   cookingNote: string
 }
+
+/** D-182 fase 4: what `POST /user/:id/onboarding` says it put in the week type. */
+interface WeekTypeUnderstood {
+  /** `icon`: a `DishTypeIcon` key (a dish type, `any`, `fixed`, `recipe`, `taper`, `off`, `diners`). */
+  rows: Array<{ icon: string; what: string; when: string }>
+  /** The slots as they were, for «Corregir» (`PUT /households/me/week-type/:day/:meal`). */
+  undo: Array<{ day: number; meal: string; slot: Record<string, unknown> }>
+}
+
+/** The step with «¿Algo más? Cuéntanos tu caso». */
+const NOTE_STEP = 4
 
 /** PRO-138: «Entre semana, ¿cómo te gusta cocinar?» — the weekend is «sin prisa». */
 const WEEKDAY_COOKING_OPTIONS: Array<{ value: WeekdayCookingChoice; label: string; desc: string }> = [
@@ -160,12 +190,25 @@ export function onboardingDraftPayload(step: number, data: OnboardingData): Onbo
     kidsCount: data.kidsCount,
     cookingStyle: data.cookingStyle,
     freezesMeatFish: data.freezesMeatFish,
+    shopper: data.shopper,
     weekdayCooking: data.weekdayCooking,
     cookingNote: data.cookingNote.slice(0, 500),
   }
 }
 
-export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDraft | null } = {}) {
+/**
+ * PRO-1042: what the account already says before the sign-up (Mimo by
+ * WhatsApp, an API sign-up): the questions open with it filled in, and with
+ * a menu already made the end doesn't generate another on top.
+ */
+export interface OnboardingKnown {
+  adults?: number | null
+  kidsCount?: number | null
+  restrictions?: string[] | null
+  hasMenu?: boolean
+}
+
+export default function OnboardingFlow({ draft = null, known = {} }: { draft?: OnboardingDraft | null; known?: OnboardingKnown } = {}) {
   const { user, updateUser } = useAuth()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -173,12 +216,16 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [preparingMenu, setPreparingMenu] = useState(false)
   const [error, setError] = useState("")
+  // D-182 fase 4: «Así lo he entendido», with the saved sign-up waiting for «Está bien».
+  const [understood, setUnderstood] = useState<{ view: WeekTypeUnderstood; result: any } | null>(null)
+  const [correcting, setCorrecting] = useState(false)
 
   const [data, setData] = useState<OnboardingData>(() => ({
-    adults: draft?.adults ?? 2,
-    kidsCount: draft?.kidsCount ?? 0,
+    adults: draft?.adults ?? (known.adults && known.adults >= 1 ? known.adults : 2),
+    kidsCount: draft?.kidsCount ?? known.kidsCount ?? 0,
     cookingStyle: draft?.cookingStyle ?? null,
     freezesMeatFish: draft?.freezesMeatFish ?? null,
+    shopper: draft?.shopper ?? null,
     restrictions: [],
     weekdayCooking: draft?.weekdayCooking ?? null,
     cookingNote: draft?.cookingNote ?? "",
@@ -198,7 +245,22 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
   /** Typed in the allergies box and not added yet: it counts as added (2026-10-22). */
   const [typedRestriction, setTypedRestriction] = useState("")
   const restrictionsWithTyped = withTyped(data.restrictions, typedRestriction)
-  const order = onboardingOrder(allergiesAnswered)
+
+  // PRO-383: «Invítale…» replaces the sign-up's «Familia en el mismo hogar»
+  // card, so it follows the same «once» (PRO-261). Read once: stamping it as
+  // shown doesn't take the screen away halfway through.
+  const familyOfferStatus = useFamilyOfferStatus()
+  const [inviteOffer, setInviteOffer] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (inviteOffer !== null) return
+    if (familyOfferStatus.isError) setInviteOffer(false)
+    else if (familyOfferStatus.data) setInviteOffer(familyOfferStatus.data.alta)
+  }, [inviteOffer, familyOfferStatus.data, familyOfferStatus.isError])
+  const [shopperInvite, setShopperInvite] = useState<{ id: string; token: string } | null>(null)
+  const [preparingInvite, setPreparingInvite] = useState(false)
+  const [inviteError, setInviteError] = useState(false)
+
+  const order = onboardingOrder({ allergiesAnswered, adults: data.adults, shopper: data.shopper, inviteOffer: inviteOffer === true })
   const position = (s: number) => order.indexOf(s) + 1
   const visibleTotal = order.length
   const isLastStep = order.indexOf(step) === order.length - 1
@@ -232,9 +294,8 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     }
   }, [tasteStep, tasteStatus.data, tasteStatus.isError])
 
-  // «Familia en el mismo hogar» (PRO-261): with 2 adults or more, step 1
-  // offers once to prepare the message for the other person.
-  const familyOffer = useFamilyOfferOnce("alta", channel === "web" && tasteStep === "done" && step === 1 && data.adults >= 2)
+  // The invitation screen on screen = the sign-up's offer shown (never again).
+  useFamilyOfferOnce("alta", channel === "web" && tasteStep === "done" && step === SHOPPER_INVITE_STEP)
 
   // PRO-120: each step seen and passed, for the sign-up funnel (the API keeps one per person, step and day).
   const shownStep: OnboardingStep | null =
@@ -297,6 +358,19 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
     setStep((s) => (s === RESTRICTIONS_STEP ? 4 : s))
   }
 
+  /** PRO-383 «Mandar invitación»: the household invitation (`source: alta`), then «Enviar por WhatsApp» / «Copiar». */
+  async function prepareShopperInvite() {
+    setPreparingInvite(true)
+    setInviteError(false)
+    try {
+      setShopperInvite(await api.post<{ id: string; token: string }>("/households/me/invites", { role: "member", source: "alta" }))
+    } catch {
+      setInviteError(true)
+    } finally {
+      setPreparingInvite(false)
+    }
+  }
+
   async function handleComplete() {
     if (!user) return
     setIsSubmitting(true)
@@ -307,39 +381,81 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
       const payload = {
         adults: data.adults,
         kidsCount: data.kidsCount,
-        restrictions: healthConsent ? restrictionsWithTyped : [],
+        // Without the box ticked, what Mimo already saved stays (PRO-1042).
+        restrictions: healthConsent ? restrictionsWithTyped : known.restrictions ?? [],
         healthConsent,
         weekdayCooking: data.weekdayCooking ?? undefined,
         cookingNote: data.cookingNote.trim() || undefined,
         cookingStyle: data.cookingStyle ?? undefined,
         freezesMeatFish: data.freezesMeatFish ?? undefined,
+        shopper: asksShopper(data.adults) ? (data.shopper ?? undefined) : undefined,
       }
-      const result = await api.post<any>(`/user/${user.id}/onboarding`, payload)
-
-      // Land on a real first menu built from these answers, not an empty
-      // week. If generation fails, /menu still offers "Generar mi menú".
-      // Friday to Sunday (Madrid) the week is nearly over: build the next
-      // one too and open it (PRO-65). One after the other, so the second
-      // week's variety sees the first. The first menu starts today: the
-      // days already gone are not generated (PRO-244, `fromDate`).
-      setPreparingMenu(true)
-      const { weeks, open, today } = firstMenuWeeks()
-      for (const weekStart of weeks) {
-        await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today }).catch(() => undefined)
+      const { weekTypeUnderstood, ...result } = await api.post<any>(`/user/${user.id}/onboarding`, payload)
+      // D-182 fase 4: what «tu caso» put in the week type, before the menu is made with it.
+      if (weekTypeUnderstood?.rows?.length) {
+        setUnderstood({ view: weekTypeUnderstood, result })
+        setIsSubmitting(false)
+        return
       }
-
-      // Only now mark the user as onboarded (auth context + localStorage).
-      // Doing it before the generate let the onboarding page's own
-      // "already onboarded" redirect reach /menu first; /menu then found no
-      // week (404) and auto-created an empty one on top of the real menu.
-      updateUser(result)
-      markOnboardedInCache(queryClient, user.id)
-      router.push(weeks.length > 1 ? `/menu?week=${open}` : "/menu")
+      await finishOnboarding(result)
     } catch (err: any) {
       setError(err.message || "Error al guardar")
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  /** The first menu, then /menu (after the sign-up is saved, and «Así lo he entendido» if it showed). */
+  async function finishOnboarding(result: any) {
+    if (!user) return
+    // Land on a real first menu built from these answers, not an empty
+    // week. If generation fails, /menu still offers "Llenar con mi semana tipo".
+    // Friday to Sunday (Madrid) the week is nearly over: build the next
+    // one too and open it (PRO-65). One after the other, so the second
+    // week's variety sees the first. The first menu starts today: the
+    // days already gone are not generated (PRO-244, `fromDate`).
+    // With a menu already made by Mimo (PRO-1042), that one stays: /menu.
+    const { weeks, open, today } = known.hasMenu ? { weeks: [], open: "", today: "" } : firstMenuWeeks()
+    if (weeks.length) setPreparingMenu(true)
+    for (const weekStart of weeks) {
+      await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today }).catch(() => undefined)
+    }
+
+    // Only now mark the user as onboarded (auth context + localStorage).
+    // Doing it before the generate let the onboarding page's own
+    // "already onboarded" redirect reach /menu first; /menu then found no
+    // week (404) and auto-created an empty one on top of the real menu.
+    updateUser(result)
+    markOnboardedInCache(queryClient, user.id)
+    router.push(weeks.length > 1 ? `/menu?week=${open}` : "/menu")
+  }
+
+  /** «Está bien»: on to the first menu, with the week type as understood. */
+  async function acceptUnderstood() {
+    if (!understood) return
+    setIsSubmitting(true)
+    setError("")
+    try {
+      await finishOnboarding(understood.result)
+    } catch (err: any) {
+      setError(err.message || "Error al preparar el menú")
+      setIsSubmitting(false)
+    }
+  }
+
+  /** «Corregir»: the week type as it was, and back to the text (sending it again reads it again). */
+  async function correctUnderstood() {
+    if (!understood) return
+    setCorrecting(true)
+    setError("")
+    try {
+      for (const u of understood.view.undo) await api.put(`/households/me/week-type/${u.day}/${u.meal}`, u.slot)
+    } catch {
+      // The text is what matters: they can still fix the week in Perfil.
+    }
+    setCorrecting(false)
+    setUnderstood(null)
+    setStep(NOTE_STEP)
   }
 
   const canAdvance = () => {
@@ -350,6 +466,9 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
         return data.cookingStyle !== null
       case 4:
         return data.weekdayCooking !== null
+      case SHOPPER_STEP:
+        return data.shopper !== null
+      case SHOPPER_INVITE_STEP:
       case RESTRICTIONS_STEP:
         return true
       default:
@@ -412,6 +531,54 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                 }}
               />
             )}
+          </div>
+        </OnboardingShell>
+      </div>
+    )
+  }
+
+  if (understood) {
+    return (
+      <div className="min-h-[100dvh] bg-cream lg:py-8">
+        <OnboardingShell photo={PHOTO}>
+          <div data-testid="onboarding-understood" className="flex min-h-[100dvh] flex-col px-4 pt-[calc(var(--safe-top)+12px)] lg:min-h-[calc(100dvh-4rem)] lg:px-0 lg:pt-0">
+            <div className="flex-1 pb-8 pt-6 lg:pt-10">
+              {error && (
+                <div role="alert" className="mb-4 rounded-2xl bg-warn-bg p-3 text-[14px] text-terracotta-deep">
+                  {error}
+                </div>
+              )}
+              <OnboardingHeader eyebrow="Tu semana tipo">
+                Así lo he <Accent>entendido</Accent>
+              </OnboardingHeader>
+              <Lead>Con esto hago tu menú cada semana. Lo demás lo elijo yo, y lo cambias cuando quieras en Perfil.</Lead>
+              <ul className="mt-6 space-y-3">
+                {understood.view.rows.map((row, i) => (
+                  <li key={i} data-testid="understood-row" className="flex items-center gap-3 rounded-[20px] border border-border-soft bg-paper p-4">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cream-deep text-ink">
+                      <DishTypeIcon type={row.icon} size={24} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-serif-text text-[17px] font-[650] leading-tight text-ink">{row.what}</span>
+                      <span className="mt-0.5 block text-[13px] leading-snug text-ink-muted">{row.when}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">
+              <button type="button" onClick={() => void acceptUnderstood()} disabled={isSubmitting || correcting} className={pill}>
+                {preparingMenu ? "Preparando tu menú..." : "Está bien"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void correctUnderstood()}
+                disabled={isSubmitting || correcting}
+                className="mt-1 flex h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-ink-muted transition-colors hover:text-ink disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+              >
+                {correcting ? "Volviendo…" : "Corregir"}
+              </button>
+            </div>
           </div>
         </OnboardingShell>
       </div>
@@ -517,7 +684,49 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                 <p className="mt-3 text-[13px] italic text-ink-muted">
                   Cada niño cuenta como media ración para la lista de la compra.
                 </p>
-                {familyOffer.show && <FamilyInviteOffer moment="alta" onDismiss={familyOffer.dismiss} className="mt-5" />}
+              </section>
+            )}
+
+            {/* Step 7: Who does the shopping (PRO-383), 2 adults or more */}
+            {step === SHOPPER_STEP && (
+              <section data-testid="onboarding-shopper">
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(SHOPPER_STEP)} de ${visibleTotal}`}>
+                  ¿Quién hace <Accent>la compra</Accent>?
+                </OnboardingHeader>
+                <Lead>Así sé a quién tiene que llegarle la lista.</Lead>
+                <div className="mt-6 space-y-3">
+                  {SHOPPERS.map((who) => (
+                    <OptionCard
+                      key={who}
+                      selected={data.shopper === who}
+                      onClick={() => setData({ ...data, shopper: who })}
+                      label={SHOPPER_LABELS[who]}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Step 8: Invite whoever buys (PRO-383) */}
+            {step === SHOPPER_INVITE_STEP && (
+              <section data-testid="onboarding-shopper-invite">
+                <OnboardingHeader eyebrow={`Primeros pasos · ${position(SHOPPER_INVITE_STEP)} de ${visibleTotal}`}>
+                  Invítale y le llegará <Accent>la lista</Accent> cada semana
+                </OnboardingHeader>
+                <Lead>Entrará en tu casa de Mimoia con un enlace: verá el menú y la lista de la compra de cada semana.</Lead>
+                {shopperInvite && (
+                  <div className="mt-6 rounded-[20px] border border-border-soft bg-paper p-4">
+                    <p data-testid="shopper-invite-message" className="break-words text-[14px] leading-relaxed text-ink">
+                      {shopperInviteText(familyInviteUrl(shopperInvite.token))}
+                    </p>
+                    <FamilyInviteShare inviteId={shopperInvite.id} token={shopperInvite.token} text={shopperInviteText} className="mt-4" />
+                  </div>
+                )}
+                {inviteError && (
+                  <p role="alert" className="mt-4 text-[13px] text-terracotta-deep">
+                    No he podido preparar la invitación. Puedes hacerlo luego desde Perfil → Mi casa.
+                  </p>
+                )}
               </section>
             )}
 
@@ -597,7 +806,7 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
                   onChange={(e) => setData({ ...data, cookingNote: e.target.value })}
                   maxLength={500}
                   rows={3}
-                  placeholder="P. ej. «los lunes ceno tarde», «a mediodía como fuera», «teletrabajo y puedo dejar algo al fuego»"
+                  placeholder="P. ej. «pasta los miércoles», «pescado una semana sí y otra no», «el domingo por la noche, sándwich mixto»"
                   className="mt-2 w-full rounded-2xl border border-border bg-paper px-4 py-3 text-[15px] leading-snug text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none"
                 />
               </section>
@@ -624,7 +833,20 @@ export default function OnboardingFlow({ draft = null }: { draft?: OnboardingDra
 
           {/* Ink pill pinned to the bottom of the column */}
           <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-soft bg-cream/95 px-4 pt-3 pb-[calc(var(--safe-bottom)+12px)] backdrop-blur-sm lg:mx-0 lg:border-t-0 lg:px-0 lg:pb-4">
-            {!isLastStep ? (
+            {step === SHOPPER_INVITE_STEP && !shopperInvite ? (
+              <>
+                <button type="button" onClick={() => void prepareShopperInvite()} disabled={preparingInvite} className={pill}>
+                  {preparingInvite ? "Preparando…" : "Mandar invitación"}
+                </button>
+                <button
+                  type="button"
+                  onClick={next}
+                  className="mt-1 flex h-11 w-full items-center justify-center rounded-full text-[15px] font-medium text-ink-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                >
+                  Ahora no
+                </button>
+              </>
+            ) : !isLastStep ? (
               <button type="button" onClick={next} disabled={!canAdvance()} className={pill}>
                 Siguiente
               </button>

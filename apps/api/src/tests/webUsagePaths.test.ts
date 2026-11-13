@@ -14,6 +14,7 @@ describe('web usage paths', () => {
     expect(screenOfPath('/recipes/0b1c')).toBe('receta')
     expect(screenOfPath('/recipes/new')).toBeNull()
     expect(screenOfPath('/recipes/0b1c/cook')).toBeNull()
+    expect(screenOfPath('/cocinar')).toBe('cocinar')
     expect(screenOfPath('/profile/pantry')).toBe('despensa')
     expect(screenOfPath('/profile/avisos')).toBe('avisos')
     expect(screenOfPath('/profile/casa')).toBe('casa')
@@ -22,7 +23,8 @@ describe('web usage paths', () => {
   })
 
   it('every screen and origin the web sends is one the API accepts', () => {
-    for (const p of ['/menu', '/shopping', '/compra', '/recipes', '/recipes/x', '/profile', '/profile/pantry', '/profile/avisos', '/profile/casa']) {
+    expect(USAGE_SCREENS).toContain('cocinar')
+    for (const p of ['/menu', '/cocinar', '/shopping', '/compra', '/recipes', '/recipes/x', '/profile', '/profile/pantry', '/profile/avisos', '/profile/casa']) {
       expect(USAGE_SCREENS).toContain(screenOfPath(p))
     }
     for (const prev of ['/menu?day=2', '/recipes', '/cookbooks/1', '/shopping', null, '/']) {
@@ -33,10 +35,10 @@ describe('web usage paths', () => {
     expect(recipeFromPath(null)).toBe('otro')
   })
 
-  it('numbers the six sign-up steps like the API lists them', () => {
-    const keys = [1, 2, 3, 4, 5, 6].map(onboardingStepKey)
-    expect(keys).toEqual(['hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'])
+  it('numbers the sign-up steps like the API lists them (7 and 8: PRO-383)', () => {
+    const keys = [1, 2, 3, 4, 5, 6, 7, 8].map(onboardingStepKey)
+    expect(keys).toEqual(['hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad', 'quien_compra', 'invitar'])
     for (const k of keys) expect(ONBOARDING_STEPS).toContain(k)
-    expect(onboardingStepKey(7)).toBeNull()
+    expect(onboardingStepKey(9)).toBeNull()
   })
 })

@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from '../services/costLedger.js'
-import { eq, like, count, asc, desc, sql } from 'drizzle-orm'
+import { eq, count, asc, desc, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ingredients, recipeIngredients } from '../db/schema.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
@@ -19,6 +19,7 @@ import {
   levenshtein,
   normalizeForDedupe,
 } from '../services/ingredientAutoCreate.js'
+import { ingredientSearch } from '../services/ingredientSearch.js'
 import { createUsdaClient } from '../services/nutrition/usdaClient.js'
 import { fetchBedcaNutrition } from '../services/nutrition/bedcaClient.js'
 import { inferAllergenTagsFromName } from '../services/nutrition/allergens.js'
@@ -79,10 +80,11 @@ router.get('/ingredients', async (req, res) => {
     // the lookup-by-id missed.
     const perPage = Math.min(500, Math.max(1, parseInt(req.query.perPage as string) || 20))
     const sort = (req.query.sort as string) || 'name'
-    const search = req.query.search as string | undefined
+    const search = typeof req.query.search === 'string' ? ingredientSearch(req.query.search) : null
     const offset = (page - 1) * perPage
 
-    const where = search ? like(ingredients.name, `%${search}%`) : undefined
+    // Without case or accents ("Tomate" → "tomate", "brocoli" → "brócoli"), exact name first
+    const where = search?.where
 
     // Total count
     const [{ total }] = await db
@@ -102,7 +104,7 @@ router.get('/ingredients', async (req, res) => {
       .select()
       .from(ingredients)
       .where(where)
-      .orderBy(orderFn)
+      .orderBy(...(search ? [asc(search.rank), orderFn] : [orderFn]))
       .limit(perPage)
       .offset(offset)
 

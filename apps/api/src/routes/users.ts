@@ -9,14 +9,14 @@ import {
 } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { updateProfileSchema, onboardingSchema, onboardingDraftSchema, fixedMealsFromTemplate } from '@ona/shared'
+import { updateProfileSchema, onboardingSchema, onboardingDraftSchema } from '@ona/shared'
 import { env } from '../config/env.js'
 import bcrypt from 'bcryptjs'
 import { AdminAccountDeletionError, deleteAccount } from '../services/accountDeletion.js'
 import { cancelSubscriptionsPaidBy } from '../services/billing.js'
 import { onboardingStatus, saveOnboarding } from '../services/onboarding.js'
 import { alignHouseholdMemory } from '../services/userMemoryStore.js'
-import { analyzeOnboardingIntoMemory, trackOnboardingAnalysis } from '../services/onboardingMemoryAnalysis.js'
+import { analyzeOnboardingIntoMemory, FIRST_MENU_WAIT_MS, trackOnboardingAnalysis, type OnboardingAnalysisResult } from '../services/onboardingMemoryAnalysis.js'
 import { refineHouseholdSoon } from '../services/profile/refiner.js'
 import { householdRestrictionsBefore, reviewHouseholdMenusSafely } from '../services/menuRestrictionsReview.js'
 import { readRestrictionTexts } from '../services/restrictionReader.js'
@@ -134,6 +134,9 @@ router.get('/user/:id', async (req: AuthRequest, res) => {
     res.json({
       ...rest,
       onboardingRequired: status?.onboardingRequired ?? !user.onboardingDone,
+      // PRO-1042: the sign-up still to do, offered apart when a menu is already there.
+      onboardingPending: status?.onboardingPending ?? !user.onboardingDone,
+      hasMenu: status?.hasMenu ?? false,
       onboardingDraft: status?.onboardingDraft ?? null,
       imageGenQuota: { used, limit: env.IMAGE_GEN_MONTHLY_LIMIT, monthKey },
     })
@@ -234,6 +237,19 @@ router.put('/user/:id/onboarding-draft', validate(onboardingDraftSchema), async 
   }
 })
 
+/** The analysis's result when it ends within `ms`; null when late or failed. */
+async function settleWithin(work: Promise<OnboardingAnalysisResult>, ms: number): Promise<OnboardingAnalysisResult | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms)
+  })
+  try {
+    return await Promise.race([work.catch(() => null), late])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 // POST /user/:id/onboarding
 router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: AuthRequest, res) => {
   try {
@@ -242,11 +258,11 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
       return
     }
 
-    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish } = req.body
+    const { adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish, shopper } = req.body
     // Allergies / restrictions are health data: stored only with the
     // separate consent box ticked (RGPD art. 9, PRO-21) — see saveOnboarding.
     const updated = await saveOnboarding(req.params.id, {
-      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish,
+      adults, kidsCount, cookingFreq, favoriteDishes, priority, healthConsent, restrictions, weekdayCooking, cookingNote, cookingStyle, freezesMeatFish, shopper, via: 'web',
     })
 
     if (!updated) {
@@ -269,7 +285,12 @@ router.post('/user/:id/onboarding', validate(onboardingSchema), async (req: Auth
     // registered the same way so the first menu waits for it too (≤ 15 s).
     void trackOnboardingAnalysis(userId, refineHouseholdSoon(userId, 'onboarding', analysis))
 
-    res.json(updated)
+    // «Semana tipo» fase 4 (D-182): with «tu caso» written, the answer waits
+    // for that read (at most FIRST_MENU_WAIT_MS, which the first menu waited
+    // anyway) and brings what went into the week type, for «Así lo he
+    // entendido». Late or failed → the sign-up goes on as before.
+    const understood = typeof cookingNote === 'string' && cookingNote.trim() ? await settleWithin(analysis, FIRST_MENU_WAIT_MS) : null
+    res.json(understood?.weekType ? { ...updated, weekTypeUnderstood: understood.weekType } : updated)
   } catch (err) {
     console.error('Onboarding error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -419,6 +440,9 @@ router.get('/user/:id/settings', async (req: AuthRequest, res) => {
   }
 })
 
+/** The old plantilla's keys of `user_settings.template` (D-182: now in the week type). */
+const LEGACY_PLANTILLA_KEYS = ['mealTemplate', 'meal_template', 'mealDishCounts', 'fixedMeals', 'taperDays'] as const
+
 // PUT /user/:id/settings
 router.put('/user/:id/settings', async (req: AuthRequest, res) => {
   try {
@@ -430,16 +454,22 @@ router.put('/user/:id/settings', async (req: AuthRequest, res) => {
     const template = (await hasHealthConsent(req.params.id))
       ? withoutUncoveredReligiousDiets(req.body.template, await healthConsentCoversReligion(req.params.id))
       : stripHealthFromTemplate(req.body.template)
-    // Comidas fijas (PRO-218): keep only well-formed ones.
-    if (template && typeof template === 'object' && !Array.isArray(template) && 'fixedMeals' in template) {
-      ;(template as { fixedMeals?: unknown }).fixedMeals = fixedMealsFromTemplate(template)
-    }
-
     const [existing] = await db
-      .select({ id: userSettings.id })
+      .select({ id: userSettings.id, template: userSettings.template })
       .from(userSettings)
       .where(eq(userSettings.userId, req.params.id))
       .limit(1)
+    // «Semana tipo» (D-182): meals, diners, dishes, fixed meals and tápers
+    // live in the household's week type (PUT /households/me/week-type/…). The
+    // old keys are kept as they were stored (they only feed its migration),
+    // whatever this save sends, so saving the profile never changes the week.
+    if (template && typeof template === 'object' && !Array.isArray(template)) {
+      const stored = existing?.template && typeof existing.template === 'object' && !Array.isArray(existing.template) ? (existing.template as Record<string, unknown>) : {}
+      for (const key of LEGACY_PLANTILLA_KEYS) {
+        if (key in stored) (template as Record<string, unknown>)[key] = stored[key]
+        else delete (template as Record<string, unknown>)[key]
+      }
+    }
 
     let result
     if (existing) {

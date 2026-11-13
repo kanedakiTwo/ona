@@ -667,7 +667,7 @@ function NewRecipePageInner() {
                     )
                   }}
                 />
-                <AddRowButton onClick={addIngredientRow}>Anadir ingrediente</AddRowButton>
+                <AddRowButton onClick={addIngredientRow}>Añadir ingrediente</AddRowButton>
                 <FieldError>{errors.ingredients}</FieldError>
               </FormCard>
 
@@ -685,7 +685,7 @@ function NewRecipePageInner() {
                     )?.[1] ?? null
                   }
                 />
-                <AddRowButton onClick={addStep}>Anadir paso</AddRowButton>
+                <AddRowButton onClick={addStep}>Añadir paso</AddRowButton>
               </FormCard>
             </div>
           </div>

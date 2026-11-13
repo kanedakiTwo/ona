@@ -2,6 +2,7 @@ import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveJwtSecret } from './jwtSecret.js'
+import { resolveMimoRemoto } from './mimoRemoto.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Load .env from monorepo root
@@ -21,6 +22,14 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '90d',
   PORT: parseInt(process.env.API_PORT || '8000', 10),
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+  /**
+   * «Mimo remoto» (PRO-1102, D-157), staging only: Mimo's rounds wait in
+   * `mimo_turnos_remotos` for the office to answer them instead of going to
+   * Anthropic. Throws (no boot) when on in production. The office's routes
+   * (`/agent/mimo-remoto/…`) take MIMO_REMOTO_TOKEN as a Bearer token.
+   */
+  MIMO_REMOTO: resolveMimoRemoto(),
+  MIMO_REMOTO_TOKEN: (process.env.MIMO_REMOTO_TOKEN || '').trim(),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   /**
    * Mimo's voice (D-023): replies read aloud in the companion, instead of the
@@ -130,6 +139,13 @@ export const env = {
    * Empty → token auth disabled (admin JWT still works).
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
+  /**
+   * Write token for the two routes Cocina (the office) uses to mark catalogue
+   * ingredients as essential/secondary (routes/ingredientRoles.ts, header
+   * `x-cocina-token`, specs/cook-now.md). Grants those two routes only.
+   * Empty → token auth disabled (admin JWT still works).
+   */
+  COCINA_WRITE_TOKEN: process.env.COCINA_WRITE_TOKEN || '',
   /**
    * Extra `?ref=` labels the read token may name in GET /admin/waitlist
    * (`sources.bySource`), for campaign links that live outside the code:
@@ -279,23 +295,16 @@ export const env = {
   TELEGRAM_BOT_USERNAME: (process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, ''),
   /**
    * Speech-to-text (WhatsApp voice notes, Mimo's voice in the app, the voice
-   * onboarding) is a chain: Groq → AiKit → OpenAI, the first one configured
+   * onboarding) is a chain: Groq → OpenAI, the first one configured
    * first; when it fails or hears nothing, the next one tries (services/stt.ts).
    *
    * Groq: Whisper through its OpenAI-compatible API. Free plan with no card
    * (about 2,000 requests and 8 h of audio a day; the org's Limits page in
    * console.groq.com says the exact figures); list price $0.04 / hour of audio.
-   * Without the key the chain starts at AiKit.
+   * Without the key the chain starts at OpenAI.
    */
   GROQ_API_KEY: process.env.GROQ_API_KEY || '',
   GROQ_TRANSCRIBE_MODEL: process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
-  /**
-   * AiKit's chat model used as the transcription reserve (same AIKIT_API_KEY as
-   * the images). Gemini hears the audio well but, given only background noise,
-   * writes a plausible sentence nobody said: reserve only. Empty string turns
-   * AiKit off for transcription (images are unaffected).
-   */
-  AIKIT_TRANSCRIBE_MODEL: process.env.AIKIT_TRANSCRIBE_MODEL ?? 'google/gemini-3.8-flash',
   /**
    * OpenAI speech-to-text model, last in the chain above. Full gpt-4o-transcribe
    * (≈$0.006/min): the mini model mis-heard short Spanish notes as Galician.

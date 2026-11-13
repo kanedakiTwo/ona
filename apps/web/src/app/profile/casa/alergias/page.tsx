@@ -23,7 +23,7 @@
  *
  * If the household's current week already has dishes and something was
  * added, it offers to remake the week (locked meals stay) before the menu.
- * Also opened from the warning above «Generar mi menú» (`?next=/menu`).
+ * Also opened from the warning above «Llenar con mi semana tipo» (`?next=/menu`).
  */
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"

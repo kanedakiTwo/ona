@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   index,
   check,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { UNITS, type MenuFit, type NutritionPerServing } from '@ona/shared'
@@ -300,6 +301,12 @@ export const recipes = pgTable('recipes', {
   seasonFit: jsonb('season_fit'),
 
   equipment: text('equipment').array().default([]),
+  /**
+   * «Semana tipo» (D-182): the dish types of the recipe (`DISH_TYPES` keys:
+   * pizza, legumbres, pescado…), set by `dishTypesOf` on save and import and
+   * filled on boot for rows still null (`dishTypes.ts`).
+   */
+  dishTypes: text('dish_types').array(),
   /** Auto-aggregated from ingredients on save */
   allergens: text('allergens').array().default([]),
 
@@ -379,11 +386,18 @@ export const recipes = pgTable('recipes', {
   catalogSource: jsonb('catalog_source').$type<CatalogSourceInfo>(),
   /** Batch id of the catalogue import (PRO-154); null otherwise. */
   importBatch: text('import_batch'),
+  /**
+   * PRO-1099 (specs/recipe-of-the-day.md): the day (Madrid, YYYY-MM-DD) this
+   * catalogue recipe is «la receta del día». One recipe per day (unique);
+   * null for every other recipe. Set by the batch import (`featuredOn`).
+   */
+  featuredOn: date('featured_on'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (t) => [
   index('idx_recipes_import_batch').on(t.importBatch),
+  uniqueIndex('uq_recipes_featured_on').on(t.featuredOn),
   check('recipes_status_check', sql.raw("status IN ('draft','published')")),
 ])
 
@@ -433,6 +447,14 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
   displayQuantity: real('display_quantity'),
   /** Human-readable unit as the recipe originally stated it (e.g. "taza", "cucharada"). */
   displayUnit: text('display_unit'),
+  /**
+   * «Cocinar ahora»: essential | secondary, marked by Cocina for catalogue
+   * recipes (services/ingredientRoles.ts). Null = not marked: the automatic
+   * rule decides. Survives edits (persistRecipe) and copies.
+   */
+  role: text('role'),
+  /** Catalogue ingredients that can stand in for this one (nata → leche). */
+  substituteIngredientIds: uuid('substitute_ingredient_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
 }, (table) => [
   index('idx_recipe_ingredients_recipe').on(table.recipeId),
   index('idx_recipe_ingredients_ingredient').on(table.ingredientId),
@@ -442,6 +464,7 @@ export const recipeIngredients = pgTable('recipe_ingredients', {
     'recipe_ingredients_unit_check',
     sql.raw(`unit IN (${UNITS.map((u) => `'${u}'`).join(', ')})`),
   ),
+  check('recipe_ingredients_role_check', sql`role IS NULL OR role IN ('essential', 'secondary')`),
 ])
 
 // ─── 6. recipe_steps ────────────────────────────────────────
@@ -459,6 +482,22 @@ export const recipeSteps = pgTable('recipe_steps', {
 }, (table) => [
   index('idx_recipe_steps_recipe').on(table.recipeId),
   uniqueIndex('uq_recipe_step_order').on(table.recipeId, table.index),
+])
+
+// ─── 6b. recipe_bases (PRO-373) ─────────────────────────────
+// A dish that uses a base cooked another day (sofrito, legumbre aliñada,
+// verduras asadas…): `servings_used` servings of the base for one batch of the
+// dish (its `servings`). Deleting the dish drops the link; a base in use can't
+// be deleted. The shopping list adds the base's ingredients through it.
+export const recipeBases = pgTable('recipe_bases', {
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  baseRecipeId: uuid('base_recipe_id').notNull().references(() => recipes.id, { onDelete: 'restrict' }),
+  servingsUsed: real('servings_used').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.recipeId, table.baseRecipeId] }),
+  index('idx_recipe_bases_base').on(table.baseRecipeId),
+  check('recipe_bases_servings_check', sql.raw('servings_used > 0')),
+  check('recipe_bases_not_self_check', sql.raw('recipe_id <> base_recipe_id')),
 ])
 
 // ─── 7. user_favorites ──────────────────────────────────────
@@ -691,6 +730,17 @@ export const cookOfDay = pgTable('cook_of_day', {
   assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('uq_cook_of_day').on(t.householdId, t.day)])
+
+// «Semana tipo» (D-182): what the household usually eats each day, one row
+// per household. `slots` is `WeekTypeDays` (@ona/shared types/weekType.ts):
+// 7 days × meal → slot. Written one slot at a time (PUT
+// /households/me/week-type/:day/:meal), read by the menu generator.
+export const householdWeekTypes = pgTable('household_week_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }).unique(),
+  slots: jsonb('slots').notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 // ─── 18. household_invites ──────────────────────────────────
 // One-time tokens the owner generates and shares manually (mirrors the
@@ -1323,6 +1373,24 @@ export const capHits = pgTable('cap_hits', {
   check('cap_hits_channel_check', sql.raw("channel IN ('app','whatsapp')")),
 ])
 
+// ─── «Mimo remoto» en staging (PRO-1102, D-157) ─────────────────────
+// With MIMO_REMOTO=1 each round Mimo would send to Anthropic waits here for
+// the office to answer it (services/assistant/mimoRemoto.ts). Never used in
+// production: the API refuses to boot there with the mode on.
+export const mimoTurnosRemotos = pgTable('mimo_turnos_remotos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  creado: timestamp('creado', { withTimezone: true }).notNull().defaultNow(),
+  /** 'pendiente' | 'cogido' | 'respondido' | 'caducado'. */
+  estado: text('estado').notNull().default('pendiente'),
+  /** The Messages request as it would go to Anthropic: model, system, messages, tools… */
+  peticion: jsonb('peticion').notNull(),
+  /** `{ content, stop_reason }` in the Messages API format, once answered. */
+  respuesta: jsonb('respuesta'),
+}, (t) => [
+  index('idx_mimo_turnos_remotos_estado').on(t.estado, t.creado),
+  check('mimo_turnos_remotos_estado_check', sql.raw("estado IN ('pendiente','cogido','respondido','caducado')")),
+])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and
@@ -1612,6 +1680,38 @@ export const newsletterTipLog = pgTable('newsletter_tip_log', {
 }, (t) => [
   uniqueIndex('uq_newsletter_tip_log_issue_user').on(t.issueId, t.userId),
   index('idx_newsletter_tip_log_user').on(t.userId),
+])
+
+/**
+ * PRO-1123 (D-176): one row per newsletter issue, for the Admin «Newsletter»
+ * editor. Marketing's recommendation, the template Miguel corrects and saves
+ * (the letter with its `{nombre}`, `{receta}` and `{porque}`), when he got its
+ * proof, and the Friday 9:00 it is scheduled for. A new save clears the proof
+ * and the schedule: nothing goes out without the proof of what goes out.
+ */
+export const newsletterDrafts = pgTable('newsletter_drafts', {
+  issueId: text('issue_id').primaryKey(),
+  /** `{ subject, preheader?, content }` as Marketing proposed it. */
+  recommendation: jsonb('recommendation'),
+  recommendedAt: timestamp('recommended_at', { withTimezone: true }),
+  /** `{ subject, preheader?, content }` as the admin saved it. */
+  template: jsonb('template'),
+  savedBy: uuid('saved_by').references(() => users.id, { onDelete: 'set null' }),
+  savedAt: timestamp('saved_at', { withTimezone: true }),
+  /** The last proof of the saved template, to the admin's own account email. */
+  proofSentAt: timestamp('proof_sent_at', { withTimezone: true }),
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+  scheduledBy: uuid('scheduled_by').references(() => users.id, { onDelete: 'set null' }),
+  /** The API origin for the one-click opt-out, taken from the scheduling call. */
+  apiUrl: text('api_url'),
+  /** Claimed by the scheduler (or a send) — set once. */
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  /** `{ sent, failed, skipped, alreadySent }`, counts only. */
+  sendResult: jsonb('send_result'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_newsletter_drafts_scheduled').on(t.scheduledFor),
 ])
 
 /**

@@ -61,16 +61,26 @@ test('/shopping: ‹ › move the dates a week; progress counts each row once', 
   await expect(done).toHaveText('0')
   await page.getByRole('button', { name: 'Marcar como comprado' }).first().click()
   await expect(done).toHaveText('1')
+  const stocked = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/stock'))
   await page.getByRole('button', { name: 'Marcar en casa' }).first().click()
+  // `menu:<ingredientId>:<unit>`: "en casa" is kept per product (item_state).
+  const ingredientId = decodeURIComponent((await stocked).url()).split('/item/')[1]?.split(':')[1]
   await expect(done).toHaveText('1')
 
   // What was marked survives a look at another week (item_state, 2026-10-10:
   // the next week has other products and the "en casa" used to be lost).
   const atHome = page.getByTestId('shopping-athome')
   await expect(atHome).toHaveText('1')
+  const nextList = page.waitForResponse((r) => r.url().includes('/shopping-list?') && r.ok())
   await page.getByRole('button', { name: 'Semana siguiente' }).click()
   await expect(range).not.toHaveText(thisWeek)
+  await nextList
+  const rebuilt = page.waitForResponse((r) => r.url().includes('/shopping-list?') && r.ok())
   await page.getByRole('button', { name: 'Semana anterior' }).click()
   await expect(range).toHaveText(thisWeek)
-  await expect(atHome).toHaveText('1', { timeout: 10_000 })
+  // A product the menu asks for in two units (aceite in g and ml) is two rows,
+  // both "en casa" once the list is rebuilt: one per row of that product.
+  const body = await (await rebuilt).json()
+  const rows = ((body.items ?? []) as Array<{ ingredientId?: string }>).filter((i) => i.ingredientId === ingredientId).length
+  await expect(atHome).toHaveText(String(Math.max(rows, 1)), { timeout: 10_000 })
 })

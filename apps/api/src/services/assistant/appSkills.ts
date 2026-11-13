@@ -13,9 +13,14 @@ import {
   inviteHouseholdShareText,
   isAlertKind,
   isReligiousDiet,
+  householdToDiners,
+  plantillaEdits,
+  plantillaFromWeekType,
   prettyName,
   whatsappShareHref,
   type AlertKind,
+  type PlantillaView,
+  type WeekTypeDays,
   type AlertsOverview,
   type ShoppingItem,
 } from '@ona/shared'
@@ -139,7 +144,12 @@ const changed = (t: MenuDay, meal?: string, extra: Record<string, unknown> = {})
 interface MenuDoc {
   id: string
   days: Array<Record<string, { dishes?: Array<{ kind: string; recipeId?: string; recipeName?: string; text?: string }>; servings?: number | null } | undefined>>
+  skippedDays?: number[] | null
 }
+
+/** PRO-349: a dish on a «sin cocinar» day reactivates it (the route does it); the summary says so. */
+const reactivatedNote = (menu: MenuDoc, t: MenuDay) =>
+  menu.skippedDays?.includes(t.dayIndex) ? ` El ${t.label} estaba marcado sin cocinar: ya vuelve a estar activo.` : ''
 
 /** The menu of the week starting `weekStart` (default: this Madrid week). */
 async function loadMenu(ctx: SkillContext, weekStart: string = madridWeekStart()): Promise<MenuDoc | null> {
@@ -238,7 +248,7 @@ const setMealNote: SkillDefinition = {
     if (!p.keepDishes && had) await api(ctx)('DELETE', path)
     await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: String(p.text).slice(0, 120) })
     return menuDone(
-      `Hecho: ${where(t, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ' (he quitado los platos que había)' : ''}.`,
+      `Hecho: ${where(t, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ' (he quitado los platos que había)' : ''}.${reactivatedNote(menu, t)}`,
       changed(t, p.meal, { menuId: menu.id, note: String(p.text).slice(0, 120) }),
     )
   },
@@ -309,7 +319,7 @@ const addDish: SkillDefinition = {
     const path = slotPath(menu.id, t.dayIndex, p.meal)
     if (!p.recipeId && !p.recipeName) {
       await api(ctx)('POST', `${path}/dish/random`)
-      return menuDone(`Hecho: he añadido un plato aleatorio a ${where(t, p.meal)}.`, changed(t, p.meal))
+      return menuDone(`Hecho: he añadido un plato aleatorio a ${where(t, p.meal)}.${reactivatedNote(menu, t)}`, changed(t, p.meal))
     }
     const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
     if (!p.recipeId && (!recipe || ('approximate' in recipe && recipe.approximate))) {
@@ -322,7 +332,7 @@ const addDish: SkillDefinition = {
         if (notePos >= 0) await api(ctx)('DELETE', `${path}/dish/${notePos}`)
         await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: created.id })
         return menuDone(
-          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })}`,
+          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })}`,
           changed(t, p.meal, { recipeId: created.id, recipeName: created.name }),
         )
       }
@@ -330,14 +340,14 @@ const addDish: SkillDefinition = {
       await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
       const closest = recipe ? ` Lo mas parecido que si hay es "${recipe.name}".` : ''
       return menuDone(
-        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
+        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
         changed(t, p.meal, { note }),
       )
     }
     if (!recipe) return text(`No encontre la receta "${p.recipeId}"; no he añadido nada.`)
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id })
     return menuDone(
-      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })}`,
+      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })}`,
       changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }),
     )
   },
@@ -463,7 +473,7 @@ const moveMeal: SkillDefinition = {
  * «Vetar esta receta» on the web (PRO-72). Each appearance from today on (all
  * of them for a future week) is regenerated by the matcher, which already
  * skips the vetoed recipe; a táper of it follows its source as sobras of the
- * new dish. Left as they are: locked meals, freezer tápers, leftovers of a
+ * new dish (a locked meal too, PRO-1175). Left as they are: freezer tápers, leftovers of a
  * dish already cooked, and meals with no other recipe that fits. Before, it
  * only blocked the recipe for regenerations and Mimo said «vetado de toda la
  * semana» while it stayed on the menu (reviewer, 2026-10-10).
@@ -519,7 +529,6 @@ async function replaceBannedDishes(
 ): Promise<{ changes: { date: string; dayIndex: number; meal: string; label: string; recipeName: string; leftover?: boolean }[]; kept: string[] }> {
   const thisWeek = madridWeekStart()
   const firstDay = weekStart === thisWeek ? madridParts(new Date()).weekday : weekStart < thisWeek ? 7 : 0
-  const locked = ((menu as { locked?: Record<string, Record<string, boolean>> }).locked ?? {}) as Record<string, Record<string, boolean>>
   const changes: { date: string; dayIndex: number; meal: string; label: string; recipeName: string; leftover?: boolean }[] = []
   const kept: string[] = []
   const replaced = new Map<string, string>() // `${day}|${meal}` of a regenerated source → its new recipe name
@@ -556,7 +565,7 @@ async function replaceBannedDishes(
       if (dish.variant === 'freezer') { kept.push(`${label(d, meal)} (es un taper del congelador)`); continue }
       if (dish.variant === 'fridge') { kept.push(`${label(d, meal)} (es un taper de la nevera)`); continue }
       if (dish.variant === 'cooked') { kept.push(`${label(d, meal)} (son sobras de otro dia)`); continue }
-      if (locked[String(d)]?.[meal]) { kept.push(`${label(d, meal)} (esta fijada)`); continue }
+      // A locked meal is changed too (PRO-1175): the lock only keeps it when the week is redone.
       const name = await regenerate(d, meal, pos)
       if (!name) { kept.push(`${label(d, meal)} (no hay otra receta que encaje)`); continue }
       replaced.set(`${d}|${meal}`, name)
@@ -571,7 +580,7 @@ async function replaceBannedDishes(
       const src = dish.leftoverOf
       const newSource = src ? replaced.get(`${src.day}|${src.meal}`) : undefined
       if (!src || !newSource) { kept.push(`${label(d, meal)} (son sobras ya cocinadas)`); continue }
-      if (dishes.length === 1 && !locked[String(d)]?.[meal]) {
+      if (dishes.length === 1) {
         await api(ctx)('DELETE', slotPath(menu.id, d, meal))
         await api(ctx)('POST', `/menu/${menu.id}/day/${d}/leftover`, { sourceDay: src.day, sourceMeal: src.meal, targetMeal: meal })
         if (typeof servings === 'number') await api(ctx)('PATCH', slotPath(menu.id, d, meal), { servings })
@@ -708,7 +717,7 @@ const addFreezerDish: SkillDefinition = {
         ? 'No hay una receta que se llame igual, asi que va como nota.'
         : 'No esta en sus recetas ni en el catalogo, asi que va como nota.'
       return menuDone(
-        `Hecho: ${where(t, p.meal)} queda como "${note}"${removed}; no suma nada a la compra. ${why}`,
+        `Hecho: ${where(t, p.meal)} queda como "${note}"${removed}; no suma nada a la compra. ${why}${reactivatedNote(menu, t)}`,
         changed(t, p.meal, { menuId: menu.id, note }),
       )
     }
@@ -717,7 +726,7 @@ const addFreezerDish: SkillDefinition = {
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant })
     const approx = 'approximate' in recipe && recipe.approximate ? ` Es la receta mas parecida a "${p.recipeName}" que hay.` : ''
     return menuDone(
-      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${PLACE_LABEL[variant]}${removed}; no suma nada a la lista de la compra.${approx}`,
+      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${PLACE_LABEL[variant]}${removed}; no suma nada a la lista de la compra.${approx}${reactivatedNote(menu, t)}`,
       changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant }),
     )
   },
@@ -779,7 +788,7 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:
-    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista".',
+    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista", "hazme la lista de la compra", "mandame la lista".',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const list = await currentList(ctx)
@@ -802,6 +811,8 @@ const getShoppingList: SkillDefinition = {
     }
     const shown = missing.slice(0, 60).map(itemLabel)
     const more = missing.length > shown.length ? ` y ${missing.length - shown.length} más` : ''
+    // PRO-380: Mimo handing out the whole list counts like «Mandar la lista» (a resolved week).
+    await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
     return {
       data,
       summary: `Te faltan ${missing.length} cosas: ${shown.join(', ')}${more}. ${extra}`.trim(),
@@ -1388,7 +1399,7 @@ export function applyTemplateChange(
 const updateWeeklyTemplate: SkillDefinition = {
   name: 'update_weekly_template',
   description:
-    'Cambia la plantilla semanal fija del perfil (afecta a los proximos menus): cuantos comensales hay en una comida ciertos dias (diners; 0 = esa comida no se planifica, ej. "entre semana no comemos en casa") y/o cuantos platos lleva esa comida (dishes 1-3, ej. "quiero primero y segundo en la comida").',
+    'Cambia en la semana tipo del hogar los comensales de una comida en varios dias a la vez (diners; 0 = esa comida no se planifica, ej. "entre semana no comemos en casa") y/o cuantos platos lleva esa comida (dishes 1-3, ej. "quiero primero y segundo en la comida"). Afecta a los proximos menus. Para lo que se come un dia y una comida (un plato, un tipo, turnos, "cada dos semanas") o para quitar una comida de un dia ("quita el desayuno del domingo"), usa set_week_type_slot.',
   parameters: {
     type: 'object',
     properties: {
@@ -1403,9 +1414,15 @@ const updateWeeklyTemplate: SkillDefinition = {
     if (!MEALS.includes(p.meal)) return text('meal debe ser breakfast, lunch, snack o dinner.')
     if (p.diners === undefined && p.dishes === undefined) return text('Dime comensales (diners) o numero de platos (dishes).')
     const days: number[] = Array.isArray(p.days) && p.days.length ? p.days.filter((d: number) => d >= 0 && d <= 6) : [0, 1, 2, 3, 4, 5, 6]
-    const settings = await api(ctx)<{ template?: Record<string, any> } | null>('GET', `/user/${ctx.userId}/settings`).catch(() => null)
-    const template = applyTemplateChange(settings?.template, { days, meal: p.meal, diners: p.diners, dishes: p.dishes })
-    await api(ctx)('PUT', `/user/${ctx.userId}/settings`, { template })
+    // «Semana tipo» (D-182): the household's usual week, only the slots that change.
+    const weekType = await api(ctx)<{ days: WeekTypeDays }>('GET', '/households/me/week-type')
+    // A slot without its own diners is for the whole household (not a fixed 2).
+    const me = await api(ctx)<{ adults?: number; kidsCount?: number }>('GET', `/user/${ctx.userId}`).catch(() => null)
+    const before = plantillaFromWeekType(weekType.days, householdToDiners(me?.adults ?? 2, me?.kidsCount ?? 0))
+    const after = { ...before, ...applyTemplateChange(before, { days, meal: p.meal, diners: p.diners, dishes: p.dishes }) } as PlantillaView
+    for (const e of plantillaEdits(weekType.days, before, after, madridWeekStart())) {
+      await api(ctx)('PUT', `/households/me/week-type/${e.day}/${e.meal}`, e.slot)
+    }
     const dayLabel = days.length === 7 ? 'todos los dias' : days.map((d) => DAY_NAMES[d]).join(', ')
     const parts = [
       p.diners !== undefined ? (p.diners === 0 ? `sin ${MEAL_ES[p.meal]} (${dayLabel})` : `${p.diners} comensales en la ${MEAL_ES[p.meal]} (${dayLabel})`) : null,
@@ -1482,7 +1499,7 @@ const setWhatsappNotifications: SkillDefinition = {
 
 /** The «Avisos» list as Mimo reads it (PRO-237): one line per kind. */
 export function describeAlerts(o: AlertsOverview): string {
-  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', off: 'no llega' }
+  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', app: 'en su menú de la app', off: 'no llega' }
   const lines = o.kinds.map((k) => {
     if (!k.on) return `- ${k.title} (${k.kind}): apagado`
     const tail = k.channel === 'off' ? `no llega${k.note ? ` (${k.note})` : ''}` : `${where[k.channel]}${k.fallback ? ' (si WhatsApp falla, notificación del móvil)' : ''}`
@@ -1496,7 +1513,7 @@ export function describeAlerts(o: AlertsOverview): string {
 const getAlerts: SkillDefinition = {
   name: 'get_alerts',
   description:
-    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
+    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, la semana hecha cada jueves, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil, en el menu de la app o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const o = await api(ctx)<AlertsOverview>('GET', '/notifications/prefs')
@@ -1507,7 +1524,7 @@ const getAlerts: SkillDefinition = {
 const setAlerts: SkillDefinition = {
   name: 'set_alerts',
   description:
-    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
+    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), weekly_autoplan (los jueves Mimo deja lista la semana proxima; "no me hagas la semana tu" lo apaga, y entonces vuelve la pregunta del domingo), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
   parameters: {
     type: 'object',
     properties: {

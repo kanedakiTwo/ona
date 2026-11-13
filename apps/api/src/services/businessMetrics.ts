@@ -57,6 +57,12 @@ export interface MetricsInput {
   menus: Array<HouseholdWeek & { firstCreatedAt?: string | null }>
   /** Days a household interacted with its shopping list. */
   shoppingDays: HouseholdDay[]
+  /**
+   * Days a household sent the list out (PRO-380): «Mandar la lista» or Mimo
+   * handing it out (`shopping_list_shared`), or an order sent to a shop or
+   * the súper (`shop_orders.sent_at`). Count like `shoppingDays`. Absent = none.
+   */
+  listSentDays?: HouseholdDay[]
   /** Household creation day. */
   signups: HouseholdDay[]
   costs: CostRow[]
@@ -176,7 +182,7 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
   const active = groupSets(input.activity)
   const menus = groupSets(input.menus)
   const shopped = groupSets(
-    input.shoppingDays.flatMap((s) => shoppingWeeksFor(s.day).map((week) => ({ householdId: s.householdId, week }))),
+    [...input.shoppingDays, ...(input.listSentDays ?? [])].flatMap((s) => shoppingWeeksFor(s.day).map((week) => ({ householdId: s.householdId, week }))),
   )
   const signups = groupSets(signupWeeks(input.signups))
 
@@ -332,7 +338,7 @@ export const DEFINITIONS = {
   activeHouseholds:
     'Distinct households with at least one meaningful action in the week: generated a menu, logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to Mimo, changed something in their ficha (confirm, correct, forget), or triggered a paid AI feature (talking to Mimo typed or spoken, recipe import, image). Calls Mimoia makes by itself do not count, even when billed to the household (PRO-1069): the ficha refiner\'s nightly and weekly passes (`ficha`), the messages Mimo sends on its own (`whatsapp_guided`, `whatsapp_template`, `whatsapp_service`) and any other night job. Weeks before 2026-10-09 also count OpenAI Realtime voice sessions (retired, D-023). Opening a screen is not tracked.',
   resolvedWeekHouseholds:
-    'Households that (a) have a menu whose week_start is that week AND (b) used the shopping list (checked an item, toggled in-stock, or added an item — web or assistant) during that week or the Saturday/Sunday right before it. Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
+    'Households that (a) have a menu whose week_start is that week AND (b) used or sent the shopping list during that week or the Saturday/Sunday right before it: checked an item, toggled in-stock or added an item (web or assistant); sent the list («Mandar la lista» on the web, or Mimo handing out the whole list in the chat or on WhatsApp: shopping_list_shared, PRO-380); or sent an order to a shop or the súper (an undone send does not count). Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
   menuHouseholds:
     'Households with a menu whose week_start is that week (generated, regenerated or emptied — any menu row for the week). Counts only.',
   menuReadyByMondayHouseholds:
@@ -377,8 +383,8 @@ export const FEATURE_DEFINITIONS: Record<string, string> = {
   whatsapp_service: 'One free-form WhatsApp message sent by Mimo (reply or proactive inside the 24 h window); 0 € for the first 1,000 of the month.',
   whatsapp_template: 'One template message sent by Mimo outside the 24 h window (Meta utility template).',
   whatsapp_review: 'One call of the daily conversation reviewer (system cost; an admin re-run is another row).',
-  voice_note_transcription: 'One WhatsApp voice note transcribed by one provider (Groq, AiKit or OpenAI; the provider says which). When one hears nothing and the next one tries, each is a row.',
-  mimo_voice_transcription: "One recording of the user's voice in the app transcribed by one provider (POST /stt; Groq, AiKit or OpenAI, as voice_note_transcription).",
+  voice_note_transcription: 'One WhatsApp voice note transcribed by one provider (Groq or OpenAI; the provider says which; AiKit until PRO-1122). When one hears nothing and the next one tries, each is a row.',
+  mimo_voice_transcription: "One recording of the user's voice in the app transcribed by one provider (POST /stt; Groq or OpenAI, as voice_note_transcription).",
   chat_tts: "One of Mimo's replies read aloud (POST /tts).",
   voice_realtime: 'Historical: one OpenAI Realtime voice session (retired 2026-10-09).',
   recipe_extract_photo: 'One recipe read from a photo (web or WhatsApp).',
@@ -488,11 +494,30 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
   `)
 
   // From the Saturday before the window so a weekend shop counts for week 1.
+  const shoppingFrom = madridMidnightUtc(addDays(fromDay, -2))
   const shoppingQ = db.execute(sql`
     SELECT COALESCE(a.household_id, u.primary_household_id)::text AS household_id, ${dayOf(sql`a.created_at`)} AS day
       FROM activity_events a JOIN users u ON u.id = a.user_id
-      WHERE a.kind LIKE 'shopping_%' AND a.created_at >= ${madridMidnightUtc(addDays(fromDay, -2))} AND ${counted}
+      WHERE a.kind LIKE 'shopping_%' AND a.created_at >= ${shoppingFrom} AND ${counted}
         AND COALESCE(a.household_id, u.primary_household_id) IS NOT NULL
+      GROUP BY 1, 2
+  `)
+
+  // PRO-380: sending the list out, or an order to a shop / the súper, also resolves the week.
+  // An undone send goes back to draft with sent_at NULL, so it drops out by itself.
+  const listSentQ = db.execute(sql`
+    WITH sent AS (
+      SELECT COALESCE(e.household_id, u.primary_household_id) AS hh, e.created_at AS at
+        FROM usage_events e JOIN users u ON u.id = e.user_id
+        WHERE e.name = 'shopping_list_shared' AND e.created_at >= ${shoppingFrom} AND ${counted}
+      UNION ALL
+      SELECT o.household_id, o.sent_at
+        FROM shop_orders o JOIN users u ON u.id = o.user_id
+        WHERE o.sent_at IS NOT NULL AND o.status <> 'cancelled' AND o.sent_at >= ${shoppingFrom} AND ${counted}
+    )
+    SELECT sent.hh::text AS household_id, ${dayOf(sql`sent.at`)} AS day
+      FROM sent
+      WHERE sent.hh IS NOT NULL
       GROUP BY 1, 2
   `)
 
@@ -531,8 +556,8 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor, circleCodes] = await Promise.all([
-    activityQ, menusQ, shoppingQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
+  const [activity, menuRows, shopping, listSent, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor, circleCodes] = await Promise.all([
+    activityQ, menusQ, shoppingQ, listSentQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
     campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
     loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
     loadKFactor(weeks, inc, db),
@@ -549,6 +574,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
       firstCreatedAt: r.first_created_at ? new Date(r.first_created_at).toISOString() : null,
     })),
     shoppingDays: (shopping.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
+    listSentDays: (listSent.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     signups: (signups.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     costs: (costs.rows as any[]).map((r) => ({
       week: r.week,

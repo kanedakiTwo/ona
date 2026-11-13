@@ -11,7 +11,7 @@
  * Reads are cheap (one indexed lookup per user); the advisor caches the
  * digest per session so we don't fetch on every skill invocation.
  */
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { userMemories, users } from '../db/schema.js'
 import { HealthConsentRequiredError, ReligionConsentRequiredError, assertReligionConsent, hasHealthConsent } from './healthConsent.js'

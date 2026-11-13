@@ -21,6 +21,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'invite_campaign.create': 'Enlace de invitación creado',
   'invite_campaign.delete': 'Enlace de invitación eliminado',
   'newsletter.send': 'Newsletter enviada',
+  'newsletter.recommendation': 'Recomendación de la newsletter guardada',
   'newsletter.template_save': 'Plantilla de la newsletter guardada',
   'newsletter.preview': 'Vista previa de la newsletter',
   'newsletter.proof': 'Prueba de la newsletter enviada',

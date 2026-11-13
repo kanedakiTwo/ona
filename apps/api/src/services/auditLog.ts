@@ -39,6 +39,7 @@ export type AdminAction =
   | 'invite_campaign.delete'
   | 'newsletter.send'
   // Admin «Newsletter» editor (PRO-1123)
+  | 'newsletter.recommendation'
   | 'newsletter.template_save'
   | 'newsletter.preview'
   | 'newsletter.proof'

@@ -77,6 +77,11 @@ export const users = pgTable('users', {
    * 2026-11-07): stamped when it goes at the end of a reply, so it never repeats.
    */
   leftoversQuestionAt: timestamp('leftovers_question_at', { withTimezone: true }),
+  /**
+   * The Sean Ellis survey (PRO-334, beta): stamped when Mimo asks it on
+   * WhatsApp, the /menu card is closed or it is answered, so it never repeats.
+   */
+  seanEllisAt: timestamp('sean_ellis_at', { withTimezone: true }),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -1813,6 +1818,8 @@ export const userFeedback = pgTable('user_feedback', {
   page: text('page'),
   /** What it answers, when it answers one of Mimo's questions: 'sobras' (PRO-285). */
   tag: text('tag'),
+  /** The option picked, for a question with options: 'muy' | 'algo' | 'nada' | 'ya_no' (tag 'sean_ellis', PRO-334). */
+  answer: text('answer'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),

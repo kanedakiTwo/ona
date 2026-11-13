@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import Link from "next/link"
 import { SignupCtaLink, WaitlistOnly } from "@/components/shared/SignupCta"
+import { euros, planByKey, type PlanKey } from "@ona/shared"
 import { motion, useScroll, useTransform, useInView } from "motion/react"
 import { ArrowUpRight, Plus, Minus } from "lucide-react"
 
@@ -12,6 +13,12 @@ const STEP1_IMG = "/landing/step-01.jpg"
 const STEP2_IMG = "/landing/step-02.jpg"
 const STEP3_IMG = "/landing/step-03.jpg"
 
+/** «4,99 € al mes (o 49,99 € al año)», from `PLANS` (PRO-394: never by hand). */
+function priceLine(key: PlanKey): string {
+  const { mensual, anual } = planByKey(key).prices
+  return `${euros(mensual.cents)} al mes (o ${euros(anual.cents)} al año)`
+}
+
 const FAQS = [
   {
     q: "¿Puedo añadir mis propias recetas?",
@@ -19,7 +26,7 @@ const FAQS = [
   },
   {
     q: "¿Cuánto cuesta?",
-    a: "Esencial, 4,99 € al mes (o 49,99 € al año), para todo tu hogar; Plus, 8,99 € al mes (o 59,99 € al año), añade la voz y los avisos de Mimo por WhatsApp. Empiezas con 14 días gratis con todo, sin tarjeta. Lo tienes todo en Precios.",
+    a: `Esencial, ${priceLine("esencial")}, para todo tu hogar; Plus, ${priceLine("plus")}, añade la voz y los avisos de Mimo por WhatsApp. Empiezas con 14 días gratis con todo, sin tarjeta. Lo tienes todo en Precios.`,
   },
   {
     q: "¿Puedo cambiar platos del menú generado?",

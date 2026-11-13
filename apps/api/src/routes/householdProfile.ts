@@ -48,6 +48,7 @@ import {
   updatePerson,
   writeProfileFact,
 } from '../services/profile/fichaStore.js'
+import { groupOfAgeBand, personBefore, readerHouseholdId, syncHouseholdSizeSafely } from '../services/householdPeople.js'
 
 const router = Router()
 
@@ -161,7 +162,10 @@ router.put('/household/profile/learning', authMiddleware, validate(learningSchem
 
 router.post('/household/profile/persons', authMiddleware, validate(personSchema), async (req: AuthRequest, res) => {
   try {
-    res.status(201).json(await addPerson(req.userId!, req.body))
+    const person = await addPerson(req.userId!, req.body)
+    // PRO-1203: the size of the house comes from its people.
+    await syncHouseholdSizeSafely(await readerHouseholdId(req.userId!), { added: groupOfAgeBand(person.ageBand) })
+    res.status(201).json(person)
   } catch (err) {
     fail(res, err, 'add person')
   }
@@ -169,7 +173,11 @@ router.post('/household/profile/persons', authMiddleware, validate(personSchema)
 
 router.patch('/household/profile/persons/:id', authMiddleware, validate(personSchema), async (req: AuthRequest, res) => {
   try {
-    res.json(await updatePerson(req.userId!, String(req.params.id), req.body))
+    const before = await personBefore(req.userId!, String(req.params.id))
+    const person = await updatePerson(req.userId!, String(req.params.id), req.body)
+    const after = groupOfAgeBand(person.ageBand)
+    if (before && before.group !== after) await syncHouseholdSizeSafely(before.householdId, { removed: before.group, added: after })
+    res.json(person)
   } catch (err) {
     fail(res, err, 'update person')
   }
@@ -177,7 +185,9 @@ router.patch('/household/profile/persons/:id', authMiddleware, validate(personSc
 
 router.delete('/household/profile/persons/:id', authMiddleware, async (req: AuthRequest, res) => {
   try {
+    const before = await personBefore(req.userId!, String(req.params.id))
     await removePerson(req.userId!, String(req.params.id))
+    if (before) await syncHouseholdSizeSafely(before.householdId, { removed: before.group })
     res.status(204).end()
   } catch (err) {
     fail(res, err, 'remove person')

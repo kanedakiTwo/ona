@@ -8,6 +8,9 @@
  *   POST   /households/me/invites/:inviteId/revoke   — owner revokes a pending invite
  *   POST   /households/me/invites/:inviteId/shared   — owner tapped «Enviar por WhatsApp» / «Copiar» (PRO-260)
  *   GET    /households/me/allergies                    — who has told us their allergies and diet (PRO-271)
+ *   GET    /households/me/people                       — «Quién come»: one row per person of the house (PRO-1203)
+ *   PUT    /households/me/people/:personId/:list { values } — allergies and diet / dislikes of a person without an account
+ *   POST   /households/me/people/undescribed/remove { group } — «No está»: one fewer adult / child the counter had
  *   GET    /households/me/week-type                    — the household's «semana tipo» (D-182)
  *   PUT    /households/me/week-type/:day/:meal { slot } — change that one slot (the rest as they are)
  *   GET    /households/me/family-offer                — show the invitation offer in the sign-up / list? (PRO-261)
@@ -23,6 +26,15 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { assignCookToday, dbCookTodayDeps } from '../services/cookToday.js'
 import { isHouseholdInviteSource } from '@ona/shared'
 import { loadHouseholdAllergiesStatus } from '../services/householdAllergies.js'
+import { FichaError } from '../services/profile/fichaStore.js'
+import {
+  groupOfRole,
+  loadHouseholdPeople,
+  readerHouseholdId,
+  removeUndescribed,
+  setPersonList,
+  syncHouseholdSizeSafely,
+} from '../services/householdPeople.js'
 import { and, inArray } from 'drizzle-orm'
 import { MEALS, stableSlotJson, weekTypeSlotError, weekTypeSlotSchema, type Meal, type WeekTypeSlot } from '@ona/shared'
 import { db } from '../db/connection.js'
@@ -118,6 +130,59 @@ router.get('/households/me/allergies', async (req: AuthRequest, res) => {
   } catch (err) {
     console.error('GET /households/me/allergies error:', err)
     res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+function fichaFail(res: any, err: unknown, what: string) {
+  if (err instanceof FichaError) {
+    res.status(err.status).json({ error: err.message, code: err.code })
+    return
+  }
+  console.error(`${what} error:`, err)
+  res.status(500).json({ error: 'Internal server error' })
+}
+
+// PRO-1203 · «Quién come»: the people of the house, each with their allergies
+// and diet (only the reader's own and those of people without an account:
+// another member's are theirs) and what they don't like.
+router.get('/households/me/people', async (req: AuthRequest, res) => {
+  try {
+    res.json(await loadHouseholdPeople(req.userId!))
+  } catch (err) {
+    fichaFail(res, err, 'GET /households/me/people')
+  }
+})
+
+const personListSchema = z.object({ values: z.array(z.string().trim().min(1).max(80)).max(40) })
+
+router.put('/households/me/people/:personId/:list', async (req: AuthRequest, res) => {
+  const list = String(req.params.list)
+  if (list !== 'restrictions' && list !== 'dislikes') {
+    res.status(404).json({ error: 'Not found' })
+    return
+  }
+  const body = personListSchema.safeParse(req.body)
+  if (!body.success) {
+    res.status(400).json({ error: 'Validation failed' })
+    return
+  }
+  try {
+    res.json({ values: await setPersonList(req.userId!, String(req.params.personId), list, body.data.values) })
+  } catch (err) {
+    fichaFail(res, err, 'PUT /households/me/people/:personId/:list')
+  }
+})
+
+router.post('/households/me/people/undescribed/remove', async (req: AuthRequest, res) => {
+  const group = req.body?.group
+  if (group !== 'adult' && group !== 'kid') {
+    res.status(400).json({ error: 'Validation failed' })
+    return
+  }
+  try {
+    res.json(await removeUndescribed(req.userId!, group))
+  } catch (err) {
+    fichaFail(res, err, 'POST /households/me/people/undescribed/remove')
   }
 })
 
@@ -321,7 +386,10 @@ router.post('/households/me/members/:userId/remove', async (req: AuthRequest, re
       res.status(404).json({ error: 'No household' })
       return
     }
+    const removed = current.members.find((m) => m.userId === String(req.params.userId))
     const updated = await removeMember(req.userId!, current.id, String(req.params.userId))
+    // PRO-1203: the size of the house comes from its people.
+    if (removed) await syncHouseholdSizeSafely(current.id, { removed: groupOfRole(removed.role) })
     res.json(updated)
   } catch (err) {
     if (err instanceof NotHouseholdOwnerError) {
@@ -363,6 +431,9 @@ router.post('/households/me/leave', async (req: AuthRequest, res) => {
 router.post('/invites/:token/accept', async (req: AuthRequest, res) => {
   try {
     const next = await acceptInvite(req.userId!, String(req.params.token))
+    // PRO-1203: whoever joins eats there too (raises the counts only up to the people listed).
+    const joined = next.members?.find((m) => m.userId === req.userId)
+    await syncHouseholdSizeSafely(await readerHouseholdId(req.userId!), { added: groupOfRole(joined?.role) })
     res.json(next)
   } catch (err) {
     if (err instanceof HouseholdNotFoundError) {

@@ -220,6 +220,8 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     // Dish type / main protein (`tipo:`, `proteina:`) and kcal per serving,
     // for the week rules and the planner (PRO-254/255).
     internalTags: r.internalTags ?? [],
+    // The cook's level weighs hard recipes (PRO-1201).
+    difficulty: r.difficulty ?? null,
     // «Semana tipo» (D-182): saved on save/import and on boot; a row not yet
     // filled gets them computed here.
     dishTypes: r.dishTypes ?? dishTypesOf({ name: r.name, tags: r.tags, ingredients: ingredientsByRecipe.get(r.id) ?? [] }),

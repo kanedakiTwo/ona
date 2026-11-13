@@ -33,6 +33,7 @@ import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
+import { memoryTastes, type MenuTastes } from './menuTastes.js'
 import { compileRestrictions } from './dietaryRestrictions.js'
 import { applyWeekTypeTapers, writtenDishBreaks, dishTypeNote, markWeekTypeConflicts, missingDishTypes, planWeekType, presetRecipeIds, presetSlots, slotKey, weekTypeFromTemplate, type DishSpec } from './weekTypePlan.js'
 import { loadWeekTypeForUser } from './weekType.js'
@@ -122,6 +123,8 @@ export function buildRandomMenu(
    * recipe, something fixed) or free. Slots without one draw as before.
    */
   slotSpecs?: Record<string, DishSpec[]>,
+  /** PRO-1201: the ficha's cuisines and cooking level, weights of every draw. */
+  tastes?: MenuTastes,
 ): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
   // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
   // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
@@ -182,7 +185,7 @@ export function buildRandomMenu(
       // Only recipes of that type, with every filter as usual (the school menu too).
       const typed = slotPool.filter((r) => r.dishTypes?.includes(spec.type))
       const tries = onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id)), typed] : [typed]
-      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
+      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
       let picked: RecipeWithCourse | undefined
       for (const p of tries) if ((picked = findForCourse(p, null, opts) as RecipeWithCourse | undefined)) break
       if (picked) {
@@ -288,6 +291,7 @@ export function buildRandomMenu(
           dislikes,
           availableEquipment,
           unavailableEquipment,
+          tastes,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
         }
         // Favourites first (PRO-377), even over the protein rule, which only
@@ -476,14 +480,16 @@ export async function generateMenu(
   const dislikesValue = memory?.dislikes?.value
   const equipmentValue = memory?.equipment?.value
   // The household's ficha on top (PRO-253): every member's dislikes and
-  // equipment missing right now («sin horno hasta nuevo aviso»).
+  // equipment missing right now («sin horno hasta nuevo aviso»); the
+  // cuisines they like and the cook's level weigh the draw (PRO-1201).
   const ficha = await loadFichaMenuConstraints(userId, { db })
-  const { dislikes, availableEquipment, unavailableEquipment } = withFichaFilters(
+  const { dislikes, availableEquipment, unavailableEquipment, tastes } = withFichaFilters(
     {
       dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
       availableEquipment: Array.isArray(equipmentValue)
         ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
         : undefined,
+      tastes: memoryTastes(memory),
     },
     ficha,
   )
@@ -569,6 +575,7 @@ export async function generateMenu(
       unavailableEquipment,
       onlyFavoriteIds,
       plan.specs,
+      tastes,
     )
 
     // Verify the menu has at least some recipes
@@ -612,6 +619,7 @@ export async function generateMenu(
           dayIndex,
           dislikes,
           availableEquipment,
+          tastes,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
         }),
       fridgeLocks,
@@ -662,6 +670,7 @@ export async function generateMenu(
     unavailableEquipment,
     onlyFavoriteIds,
     plan.specs,
+    tastes,
   )
   wishes(fallback.warnings)
   return withShort({ days: finish(fallback.days), warnings: [...plan.warnings, ...fallback.warnings] })

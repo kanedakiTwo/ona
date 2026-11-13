@@ -147,6 +147,14 @@ export const env = {
    */
   COCINA_WRITE_TOKEN: process.env.COCINA_WRITE_TOKEN || '',
   /**
+   * Write token for Marketing's newsletter recommendation, and only that:
+   * `PUT /admin/newsletter/drafts/:issueId/recommendation` (header
+   * `x-newsletter-token`, middleware/newsletterAuth.ts, PRO-1198). Never the
+   * template, the proof or the schedule.
+   * Empty → token auth disabled (admin JWT still works).
+   */
+  NEWSLETTER_RECOMMENDATION_TOKEN: process.env.NEWSLETTER_RECOMMENDATION_TOKEN || '',
+  /**
    * Extra `?ref=` labels the read token may name in GET /admin/waitlist
    * (`sources.bySource`), for campaign links that live outside the code:
    * comma-separated exact values, each `^[a-z0-9-]{1,32}$`, at most 50

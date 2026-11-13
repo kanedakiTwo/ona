@@ -25,7 +25,11 @@ import { householdPersons, householdProfiles, profileFacts, users } from '../../
 import { madridParts } from '../madridTime.js'
 import { mentionsHealth, stripHealthFromWhatsAppText } from './healthText.js'
 import { normaliseEquipment } from '../recipeMatcher.js'
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
 import { cookingSkillOf, cuisineBiasOf, mergeCuisineBias, type CookingSkill, type MenuTastes } from '../menuTastes.js'
+=======
+import { hasBabyAtHome } from '../undercookedRecipes.js'
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
 
 type Db = typeof defaultDb
 
@@ -187,10 +191,15 @@ export interface FichaMenuConstraints {
    * dishes too (the menu is the household's, so one person is enough).
    */
   strictProteinMinimum: boolean
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
   /** Every member's `cuisine_bias`, as the household's (`mergeCuisineBias`, PRO-1201). */
   cuisineBias: Record<string, number>
   /** `cooking_skill` of the member who generates, else the household's (PRO-1201). */
   cookingSkill: CookingSkill | null
+=======
+  /** Someone aged 0 to 2 lives here (PRO-1181: no runny yolk nor pink mince). */
+  babyAtHome: boolean
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
 }
 
 export interface FichaFixedDish {
@@ -241,6 +250,7 @@ export function equipmentMissingIn(text: string): string[] {
   return out
 }
 
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
 /**
  * Pure: the menu's fixed filters from the ficha (health types are never read
  * here: restrictions keep their own path). `forUserId`: who generates, whose
@@ -250,6 +260,13 @@ export function fichaMenuConstraints(ficha: HouseholdFicha | null, forUserId?: s
   const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false, cuisineBias: {}, cookingSkill: null }
   if (!ficha) return out
   let householdSkill: CookingSkill | null = null
+=======
+/** Pure: the menu's fixed filters from the ficha (health types are never read here: restrictions keep their own path). */
+export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuConstraints {
+  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false, babyAtHome: false }
+  if (!ficha) return out
+  out.babyAtHome = hasBabyAtHome(ficha.persons)
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
   const addDislike = (s: string) => {
     const t = s.trim().toLowerCase()
     if (t && !out.dislikes.includes(t)) out.dislikes.push(t)

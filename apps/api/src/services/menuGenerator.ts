@@ -45,6 +45,7 @@ import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
 import type { MealDishCounts, Dish, RecipeDish, Course, FoodGroup } from '@ona/shared'
 import { dishTypeInfo } from '@ona/shared'
 import { loadSchoolDinnerAvoidGroups, withoutFoodGroup } from './schoolMenu.js'
+import { everydayPolicy, everydayTries, isDiscovery, loadIsStarting, type EverydayPolicy } from './everydayMenu.js'
 
 export { defaultTemplate, normalizeMealTemplate, extractMealDiners, extractMealDishCounts } from './legacyPlantilla.js'
 
@@ -123,8 +124,17 @@ export function buildRandomMenu(
    * recipe, something fixed) or free. Slots without one draw as before.
    */
   slotSpecs?: Record<string, DishSpec[]>,
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
   /** PRO-1201: the ficha's cuisines and cooking level, weights of every draw. */
   tastes?: MenuTastes,
+=======
+  /**
+   * PRO-1200 (`everydayMenu.ts`): while the household is starting, every
+   * drawn dish comes from the `diario` recipes when one fits; afterwards, at
+   * most `discoveries` from outside. Absent = draw as before.
+   */
+  everyday?: EverydayPolicy | null,
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
 ): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
   // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
   // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
@@ -133,6 +143,8 @@ export function buildRandomMenu(
   const days: DayMenu[] = []
   const warnings: string[] = []
   let favoritesShort = 0
+  let discoveriesLeft = everyday?.discoveries ?? 0
+  const notePick = (id: string) => { if (isDiscovery(everyday, id)) discoveriesLeft-- }
   const proteinById = new Map<string, string | null>()
   let recipeById: Map<string, RecipeWithCourse> | null = null
   const proteinOfId = (id: string): string | null => {
@@ -184,13 +196,19 @@ export function buildRandomMenu(
       if (spec.kind !== 'type') return undefined
       // Only recipes of that type, with every filter as usual (the school menu too).
       const typed = slotPool.filter((r) => r.dishTypes?.includes(spec.type))
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
       const tries = onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id)), typed] : [typed]
       const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
+=======
+      const tries = [...(onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id))] : []), ...everydayTries([typed], everyday, discoveriesLeft)]
+      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
       let picked: RecipeWithCourse | undefined
       for (const p of tries) if ((picked = findForCourse(p, null, opts) as RecipeWithCourse | undefined)) break
       if (picked) {
         if (onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
         usedRecipeIds.add(picked.id)
+        notePick(picked.id)
         return { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null, fromWeekType: { type: spec.type } } as RecipeDish
       }
       warnings.push(`dish_type_missing_${spec.type}_${meal}_d${dayIndex}`)
@@ -295,9 +313,10 @@ export function buildRandomMenu(
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
         }
         // Favourites first (PRO-377), even over the protein rule, which only
-        // asks for another protein when there is one.
+        // asks for another protein when there is one. «De diario» (PRO-1200)
+        // also goes before the protein rule.
         const pools = pool !== slotPool ? [pool, slotPool] : [slotPool]
-        const tries = onlyFavoriteIds ? [...pools.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))), ...pools] : pools
+        const tries = [...(onlyFavoriteIds ? pools.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))) : []), ...everydayTries(pools, everyday, discoveriesLeft)]
         let picked: RecipeWithCourse | undefined
         for (const p of tries) if ((picked = findForCourse(p, course, opts) as RecipeWithCourse | undefined)) break
         if (picked && onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
@@ -306,6 +325,7 @@ export function buildRandomMenu(
           continue
         }
         usedRecipeIds.add(picked.id)
+        notePick(picked.id)
         const missing = missingType.get(slotKey(dayIndex, meal))?.get(k)
         dishes.push({
           kind: 'recipe',
@@ -506,13 +526,20 @@ export async function generateMenu(
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // time limits come from weekTimeBudgets (onboardingPreferences.ts).
   for (const id of recipesMatchingDishes(allRecipes, user.favoriteDishes)) favoriteRecipeIds.add(id)
+  // PRO-1200: what the household chose never counts as outside «de diario» (the fridge does).
+  const chosenIds = new Set(favoriteRecipeIds)
   for (const id of fridgeRecipeIds) favoriteRecipeIds.add(id)
 
   // 5c. «¿Qué tal?» (PRO-111): 5 stars weigh like a favourite, 1 star never
   // comes out on its own. «Afina tu menú» (PRO-146): «Me encanta» weighs like
   // a favourite, «No para mí» of anyone in the household never comes out,
   // «Me apetece» gets a small extra. Matcher-only sets: the week's vetoes stay as they are.
-  const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>(), like: new Set<string>() })))
+  const ratingSets = await loadHouseholdRatingSets(userId, db).catch(() => ({ boost: new Set<string>(), exclude: new Set<string>(), like: new Set<string>() }))
+  const rated = withHouseholdRatings(favoriteRecipeIds, bannedRecipeIds, ratingSets)
+  for (const id of [...ratingSets.boost, ...(ratingSets.like ?? [])]) chosenIds.add(id)
+
+  // PRO-1200: «de diario» while the household is starting, at most 2 from outside after.
+  const everyday = everydayPolicy(allRecipes, await loadIsStarting(userId, weekStart, db), chosenIds)
 
   // «Semana tipo» (D-182): the household's usual week, whoever generates
   // (before, each person's own plantilla). `customTemplate` (tests, tools)
@@ -575,7 +602,11 @@ export async function generateMenu(
       unavailableEquipment,
       onlyFavoriteIds,
       plan.specs,
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
       tastes,
+=======
+      everyday,
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
     )
 
     // Verify the menu has at least some recipes
@@ -621,6 +652,8 @@ export async function generateMenu(
           availableEquipment,
           tastes,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
+          // PRO-1200: while starting, a fridge recipe «de diario» if one fits.
+          everyday: everyday?.discoveries === 0 ? everyday.ids : undefined,
         }),
       fridgeLocks,
       skippedDays,
@@ -670,7 +703,11 @@ export async function generateMenu(
     unavailableEquipment,
     onlyFavoriteIds,
     plan.specs,
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
     tastes,
+=======
+    everyday,
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
   )
   wishes(fallback.warnings)
   return withShort({ days: finish(fallback.days), warnings: [...plan.warnings, ...fallback.warnings] })

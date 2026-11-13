@@ -151,10 +151,18 @@ export interface MatcherOptions {
   /** Legacy shape of `timeBudget`: N minutes in total. */
   maxPrepMinutes?: number | null
   /**
+<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
    * PRO-1201: the ficha's cuisines and the cook's level, as weights of the
    * draw (`menuTastes.ts`); they never filter. Absent = as before.
    */
   tastes?: MenuTastes
+=======
+   * PRO-1200 (`everydayMenu.ts`): the `diario` recipes plus what the
+   * household chose. When any candidate is in it, the draw keeps to those;
+   * when none is, it draws from every candidate. Absent = no-op.
+   */
+  everyday?: ReadonlySet<string>
+>>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
 }
 
 /**
@@ -376,7 +384,9 @@ export function findRecipeForSlot(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,
 ): RecipeWithIngredients | undefined {
-  const candidates = matchRecipes(recipes, options)
+  let candidates = matchRecipes(recipes, options)
+  const everyday = options.everyday
+  if (everyday && candidates.some((r) => everyday.has(r.id))) candidates = candidates.filter((r) => everyday.has(r.id))
   return pickRandom(candidates, options.favoriteRecipeIds, {
     meal: options.meal,
     season: options.season,

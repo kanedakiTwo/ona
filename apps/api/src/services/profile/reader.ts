@@ -12,13 +12,14 @@
  * - `fichaMenuConstraints(ficha)`: lo que el menú respeta como filtro fijo —
  *   equipo que no hay («sin horno hasta nuevo aviso»), disgustos de todo el
  *   hogar, afinidades muy negativas con un ingrediente y si alguien quiere
- *   proteína en cada plato (`protein_minimum`).
+ *   proteína en cada plato (`protein_minimum`). Los platos fijos con día y
+ *   comida (`fixed_dish`) viven desde D-182 en la semana tipo del hogar.
  *
  * `user_memories` sigue siendo lo que Mimo escribe; la ficha se suma a lo
  * que lee. Ver specs/household-profile.md → «Quién lee la ficha».
  */
 import { and, eq } from 'drizzle-orm'
-import { isHealthProfileFactType } from '@ona/shared'
+import { COOKING_WEEKDAYS, isHealthProfileFactType, NEW_PROFILE_FACT_VALUE_SCHEMAS, type Meal } from '@ona/shared'
 import { db as defaultDb } from '../../db/connection.js'
 import { householdPersons, householdProfiles, profileFacts, users } from '../../db/schema.js'
 import { madridParts } from '../madridTime.js'
@@ -185,6 +186,26 @@ export interface FichaMenuConstraints {
    * dishes too (the menu is the household's, so one person is enough).
    */
   strictProteinMinimum: boolean
+}
+
+export interface FichaFixedDish {
+  dish: string
+  days: number[]
+  meal: Meal
+}
+
+/**
+ * Pure: a `fixed_dish` value with its days and meal, or null. Since the
+ * «semana tipo» (D-182) the menu no longer reads these facts: the migration
+ * (`weekType.ts`) and the writers turn them into week type slots.
+ */
+export function fixedDishOf(value: unknown): FichaFixedDish | null {
+  const parsed = NEW_PROFILE_FACT_VALUE_SCHEMAS.fixed_dish.safeParse(value)
+  if (!parsed.success || !parsed.data.days?.length || !parsed.data.meal) return null
+  const days = [...new Set((parsed.data.days as string[]).map((d) => (COOKING_WEEKDAYS as readonly string[]).indexOf(d)))]
+    .filter((i) => i >= 0)
+    .sort((a, b) => a - b)
+  return days.length ? { dish: parsed.data.dish, days, meal: parsed.data.meal } : null
 }
 
 /** Every equipment word a temporary situation can mention, with its canonical name. */

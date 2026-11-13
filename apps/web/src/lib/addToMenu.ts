@@ -15,9 +15,11 @@ export type AddToMenuMeal = (typeof ADD_TO_MENU_MEALS)[number]
  * - `add`: the day has no such slot → `POST …/meal/:meal { recipeId }`
  * - `replace`: the slot exists (empty or with a dish) → `PUT …/meal/:meal { recipeId }`
  * - `already`: the slot already holds this recipe (nothing to do)
- * - `locked`: the slot is fixed ("Fijada"); it can't change from here
+ *
+ * A locked meal can be replaced too (PRO-1175): the lock only keeps it when
+ * the week is redone.
  */
-export type AddToMenuAction = "add" | "replace" | "already" | "locked"
+export type AddToMenuAction = "add" | "replace" | "already"
 
 export interface AddToMenuSlot {
   day: number
@@ -35,8 +37,7 @@ export function addToMenuSlots(menu: Menu, recipeId: string): AddToMenuSlot[] {
       const dish = firstRecipeDish(slot)
       const current = dish?.recipeName ?? null
       let action: AddToMenuAction
-      if (menu.locked?.[String(day)]?.[meal]) action = "locked"
-      else if (!slot) action = "add"
+      if (!slot) action = "add"
       else if (dish?.recipeId === recipeId) action = "already"
       else action = "replace"
       out.push({ day, meal, action, current })

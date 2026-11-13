@@ -8,7 +8,7 @@ This is separate from the legacy `inStock` boolean inside `shopping_lists.items`
 
 ## User Capabilities
 
-- A logged-in user can open `/profile/pantry` and see every item in the household pantry with current quantity + unit + (optional) expiry.
+- A logged-in user can open the pantry in the «Cocinar» tab (`/cocinar#despensa`, PRO-1107; `/profile/pantry` redirects there and Perfil's «Despensa» links there) and see every item in the household pantry with current quantity + unit + (optional) expiry.
 - Add a manual item via the inline form (name + qty/unit + optional expiry).
 - Add a catalog-linked item by providing `ingredientId` — the second add for the same (household, ingredient) **adds to the existing quantity** instead of duplicating the row (real upsert via manual SELECT-then-UPDATE because Postgres `ON CONFLICT` won't bind to a partial unique index).
 - Edit qty inline in the row (blur to save, Enter to commit). Expiry is edited from the row's "···" sheet (date field, saved on blur or when the sheet closes).
@@ -102,5 +102,6 @@ Numeric rounding uses `Math.round(x * 1000) / 1000` to dodge 0.999… artefacts 
 - `apps/api/src/routes/cookLogs.ts` — calls `decrementPantryForRecipe` post-insert
 - `apps/api/src/tests/pantryDeduct.test.ts` — 6 cases for the pure helper
 - `apps/web/src/hooks/usePantry.ts` — TanStack hooks
-- `apps/web/src/app/profile/pantry/page.tsx` — management UI
+- `apps/web/src/components/pantry/PantryManager.tsx` — management UI, shown in `apps/web/src/app/cocinar/page.tsx`
+- `apps/web/src/app/profile/pantry/page.tsx` — redirect to `/cocinar#despensa`
 - `apps/web/src/app/profile/page.tsx` — link button

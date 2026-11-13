@@ -9,10 +9,11 @@ export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 
 import { buildQueryString, type RecipeFilters } from "@/lib/recipeQuery"
 
-export function useRecipes(filters?: RecipeFilters, opts?: { keepPrevious?: boolean }) {
+export function useRecipes(filters?: RecipeFilters, opts?: { keepPrevious?: boolean; enabled?: boolean }) {
   return useQuery<Recipe[]>({
     queryKey: ["recipes", filters],
     queryFn: () => api.get(`/recipes${buildQueryString(filters)}`),
+    enabled: opts?.enabled ?? true,
     // Search-as-you-type: keep the last list on screen while the next loads.
     ...(opts?.keepPrevious ? { placeholderData: keepPreviousData } : {}),
   })

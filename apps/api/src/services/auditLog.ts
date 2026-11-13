@@ -40,6 +40,11 @@ export type AdminAction =
   | 'invite_campaign.create'
   | 'invite_campaign.delete'
   | 'newsletter.send'
+  // Admin «Newsletter» editor (PRO-1123)
+  | 'newsletter.template_save'
+  | 'newsletter.preview'
+  | 'newsletter.proof'
+  | 'newsletter.schedule'
   // Admin «Recetas pendientes» (specs/catalog-import.md)
   | 'catalog_draft.publish'
   | 'catalog_draft.discard'

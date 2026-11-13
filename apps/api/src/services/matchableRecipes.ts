@@ -1,5 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
-import type { Course } from '@ona/shared'
+import { isBaseRecipe, type Course } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { recipes, recipeIngredients, recipeSteps, ingredients } from '../db/schema.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
@@ -8,8 +8,63 @@ import { catalogAuditIssuesFor } from './catalogRecipeAudit.js'
 import { isRetiredRecipe } from './recipeCatalogOrder.js'
 import { loadFichaMenuConstraints } from './profile/reader.js'
 import { unlistedDietMentions } from './stepDietMentions.js'
+import { loadDishDislikeOverrides } from './dishDislikes.js'
+import { dishTypesOf } from './dishTypes.js'
 
-export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
+/**
+ * The two CPU-heavy reads of every recipe — what its steps name that the
+ * ingredients don't (PRO-346) and the catalogue audit (PRO-73) — kept per
+ * recipe and reused while their inputs don't change (2026-11-10). They took
+ * ~250 ms of CPU per call over 400 recipes on a laptop (seconds on the
+ * server), on every `GET /recipes?fitsMe=1`, `/taste/status`, «al azar» and
+ * menu generation; Node runs one thing at a time, so a menu change sent
+ * meanwhile waited for them (Miguel, 2026-11-10: «tardan mucho en
+ * mostrarse»). The key is the inputs themselves, so an edited recipe is read
+ * again; one entry per recipe id.
+ */
+const mentionsMemo = new Map<string, { key: string; value: RecipeWithIngredients['stepMentions'] }>()
+const auditMemo = new Map<string, { key: string; value: ReturnType<typeof catalogAuditIssuesFor> }>()
+
+/**
+ * Two memos (2026-11-10): the step mentions per recipe id (they don't depend
+ * on the household), the audit per `id|strictProteinMinimum` — so households
+ * with and without «proteína en cada plato» don't throw each other's out.
+ */
+export function derivedRecipeReads(
+  id: string,
+  authorId: string | null,
+  steps: string[],
+  ingredientNames: string[],
+  audit: Parameters<typeof catalogAuditIssuesFor>[1],
+  auditOptions: Parameters<typeof catalogAuditIssuesFor>[2],
+) {
+  const mentionsKey = JSON.stringify([steps, ingredientNames])
+  let mentions = mentionsMemo.get(id)
+  if (!mentions || mentions.key !== mentionsKey) {
+    mentions = {
+      key: mentionsKey,
+      value: unlistedDietMentions(steps, ingredientNames).map(({ term, category }) => ({ term, category })),
+    }
+    mentionsMemo.set(id, mentions)
+  }
+  const auditId = `${id}|${auditOptions?.strictProteinMinimum ? 1 : 0}`
+  const auditKey = JSON.stringify([authorId, audit, auditOptions ?? {}])
+  let checked = auditMemo.get(auditId)
+  if (!checked || checked.key !== auditKey) {
+    checked = { key: auditKey, value: catalogAuditIssuesFor(authorId, audit, auditOptions) }
+    auditMemo.set(auditId, checked)
+  }
+  return { stepMentions: mentions.value, audit: checked.value }
+}
+
+/** Tests only. */
+export function _clearDerivedRecipeMemo(): void {
+  mentionsMemo.clear()
+  auditMemo.clear()
+}
+
+/** `authorId`: null for the catalogue, the household member's id for their own recipes (PRO-1141 looks there first). */
+export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null; authorId?: string | null }
 
 /**
  * Every recipe the user may be served, shaped for the matcher: the weekly
@@ -24,11 +79,13 @@ export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null }
  * never other users' private recipes (specs/recipes.md).
  * Allergens: the recipe's union plus each ingredient's catalogue tags, so
  * the restriction check doesn't depend on a stale recipe-level union.
- * Retired catalogue recipes (PRO-140) are never picked or suggested.
+ * Retired catalogue recipes (PRO-140) are never picked or suggested, nor are
+ * bases (PRO-373: sofrito, verduras asadas… are cooked for the dishes that
+ * use them, never served as a dish).
  */
 export async function loadMatchableRecipes(userId: string, db: any = defaultDb): Promise<RecipeWithCourse[]> {
   const allRecipes = (await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))).filter(
-    (r: any) => !isRetiredRecipe(r),
+    (r: any) => !isRetiredRecipe(r) && !isBaseRecipe(r),
   )
 
   const recipeIds = allRecipes.map((r: any) => r.id)
@@ -54,6 +111,12 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       density: ingredients.density,
       edibleFraction: ingredients.edibleFraction,
       aisle: ingredients.aisle,
+      rowId: recipeIngredients.id,
+      optional: recipeIngredients.optional,
+      displayUnit: recipeIngredients.displayUnit,
+      category: ingredients.category,
+      role: recipeIngredients.role,
+      substituteIngredientIds: recipeIngredients.substituteIngredientIds,
     })
     .from(recipeIngredients)
     .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
@@ -72,6 +135,11 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     stepsByRecipe.set(s.recipeId, list)
   }
   const stepTexts = (recipeId: string) => [...(stepsByRecipe.get(recipeId) ?? [])].sort((a, b) => a.index - b.index).map((s) => s.text)
+
+  // PRO-1142: a dislike that names the dish keeps it out unless the household
+  // said «Me apetece» (or «Me encanta», or 5 stars) after it. A read error
+  // keeps every dislike.
+  const dislikesOverridden = await loadDishDislikeOverrides(userId, allRecipes, db).catch(() => new Map<string, string[]>())
 
   const auditLinesByRecipe = new Map<string, Array<{ name: string; quantity: number; unit: string; unitWeight: number | null; density: number | null; edibleFraction: number | null; note: string | null }>>()
   const ingredientsByRecipe = new Map<string, RecipeWithIngredients['ingredients']>()
@@ -93,13 +161,45 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
       edibleFraction: row.edibleFraction ?? null,
       note: row.note ?? null,
       aisle: row.aisle ?? null,
+      // «Cocinar ahora» (specs/cook-now.md).
+      rowId: row.rowId,
+      optional: row.optional ?? false,
+      displayUnit: row.displayUnit ?? null,
+      category: row.category ?? null,
+      role: row.role === 'essential' || row.role === 'secondary' ? row.role : null,
+      substituteIngredientIds: row.substituteIngredientIds ?? [],
     })
     ingredientsByRecipe.set(row.recipeId, list)
+  }
+
+  const derivedOf = new Map<string, ReturnType<typeof derivedRecipeReads>>()
+  const derived = (r: any) => {
+    let d = derivedOf.get(r.id)
+    if (!d) {
+      d = derivedRecipeReads(
+        r.id,
+        r.authorId ?? null,
+        stepTexts(r.id),
+        (ingredientsByRecipe.get(r.id) ?? []).map((i) => i.ingredientName),
+        {
+          name: r.name,
+          servings: r.servings ?? 4,
+          course: (r.course as string | null | undefined) ?? null,
+          meals: r.meals ?? [],
+          stepCount: stepsByRecipe.get(r.id)?.length ?? 0,
+          ingredients: auditLinesByRecipe.get(r.id) ?? [],
+        },
+        auditOptions,
+      )
+      derivedOf.set(r.id, d)
+    }
+    return d
   }
 
   return allRecipes.map((r: any) => ({
     id: r.id,
     name: r.name,
+    authorId: r.authorId ?? null,
     meals: r.meals ?? [],
     seasons: r.seasons ?? [],
     // Three-state fit maps (migration 0024); legacy rows have null and the
@@ -120,6 +220,9 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     // Dish type / main protein (`tipo:`, `proteina:`) and kcal per serving,
     // for the week rules and the planner (PRO-254/255).
     internalTags: r.internalTags ?? [],
+    // «Semana tipo» (D-182): saved on save/import and on boot; a row not yet
+    // filled gets them computed here.
+    dishTypes: r.dishTypes ?? dishTypesOf({ name: r.name, tags: r.tags, ingredients: ingredientsByRecipe.get(r.id) ?? [] }),
     nutritionPerServing: r.nutritionPerServing ?? null,
     servings: r.servings ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],
@@ -127,23 +230,11 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     // don't (PRO-268's list for Cocina). The diet filter counts them as
     // ingredients until the recipe is fixed: «Lentejas guisadas» with
     // «añadir chorizo y morcilla» isn't vegetarian.
-    stepMentions: unlistedDietMentions(stepTexts(r.id), (ingredientsByRecipe.get(r.id) ?? []).map((i) => i.ingredientName)).map(
-      ({ term, category }) => ({ term, category }),
-    ),
+    stepMentions: derived(r).stepMentions,
+    dislikesOverridden: dislikesOverridden.get(r.id) ?? [],
     // PRO-73: catalogue recipes with no steps, too few ingredients or
     // quantities out of range are skipped by the matcher. Computed here, on
     // read; nothing is written. Users' own recipes are never audited.
-    catalogAuditIssues: catalogAuditIssuesFor(
-      r.authorId,
-      {
-        name: r.name,
-        servings: r.servings ?? 4,
-        course: (r.course as string | null | undefined) ?? null,
-        meals: r.meals ?? [],
-        stepCount: stepsByRecipe.get(r.id)?.length ?? 0,
-        ingredients: auditLinesByRecipe.get(r.id) ?? [],
-      },
-      auditOptions,
-    ),
+    catalogAuditIssues: derived(r).audit,
   }))
 }

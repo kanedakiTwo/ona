@@ -7,7 +7,9 @@
  * It never writes: the corrections are prepared by Cocina, for Miguel's OK.
  * Against a database it also lists the ingredient data that makes the cached
  * nutrition come out short (0 kcal, no unit weight, no density); that part is
- * report only, the menu generator doesn't use it.
+ * report only, the menu generator doesn't use it. It also counts the
+ * equipment words that are neither an appliance nor a basic utensil
+ * (PRO-1140): they don't filter the menu until someone files them.
  *
  *   DATABASE_URL=… pnpm --filter @ona/api exec tsx scripts/auditCatalogRecipes.ts [--json] [--all]
  *   pnpm --filter @ona/api exec tsx scripts/auditCatalogRecipes.ts --seed [--json] [--all]
@@ -19,6 +21,7 @@
  *   --json       print JSON instead of text
  */
 import { readFileSync } from 'node:fs'
+import { unknownEquipmentCounts } from '@ona/shared'
 import { AUDIT_ISSUE_LABEL, auditCatalogRecipe, type AuditableRecipe, type CatalogAuditResult } from '../src/services/catalogRecipeAudit.js'
 import { NUTRITION_GAP_LABEL, nutritionDataGaps, type NutritionGapLine } from '../src/services/catalogNutritionGaps.js'
 
@@ -28,6 +31,8 @@ const listAll = argv.includes('--all')
 const fixture = argv.find((a) => a.startsWith('--fixture='))?.slice('--fixture='.length)
 /** Filled by fromDatabase: one line per recipe ingredient, with its catalogue data. */
 let gapLines: NutritionGapLine[] = []
+/** Filled by fromDatabase: each recipe's equipment, for the unknown-equipment count (PRO-1140). */
+let equipmentLists: Array<{ equipment: string[] | null }> = []
 
 async function fromDatabase(): Promise<AuditableRecipe[]> {
   const { db, pool } = await import('../src/db/connection.js')
@@ -35,9 +40,10 @@ async function fromDatabase(): Promise<AuditableRecipe[]> {
   const { count, eq, inArray, isNull } = await import('drizzle-orm')
   try {
     const rows = await db
-      .select({ id: recipes.id, name: recipes.name, servings: recipes.servings, course: recipes.course, meals: recipes.meals })
+      .select({ id: recipes.id, name: recipes.name, servings: recipes.servings, course: recipes.course, meals: recipes.meals, equipment: recipes.equipment })
       .from(recipes)
       .where(isNull(recipes.authorId))
+    equipmentLists = rows.map((r) => ({ equipment: (r.equipment as string[] | null) ?? null }))
     const ids = rows.map((r) => r.id)
     if (ids.length === 0) return []
     const lines = await db
@@ -98,9 +104,10 @@ const results: Array<{ name: string } & CatalogAuditResult> = recipes
   .sort((a, b) => a.name.localeCompare(b.name, 'es'))
 const flagged = results.filter((r) => r.issues.length > 0)
 const gaps = nutritionDataGaps(gapLines)
+const unknownEquipment = unknownEquipmentCounts(equipmentLists)
 
 if (asJson) {
-  console.log(JSON.stringify({ total: results.length, flagged: flagged.length, recipes: listAll ? results : flagged, ingredientGaps: gaps }, null, 2))
+  console.log(JSON.stringify({ total: results.length, flagged: flagged.length, recipes: listAll ? results : flagged, ingredientGaps: gaps, unknownEquipment }, null, 2))
 } else {
   console.log(`Recetas del catálogo: ${results.length}. Marcadas: ${flagged.length} (el generador de menús las salta).`)
   for (const r of listAll ? results : flagged) {
@@ -118,5 +125,9 @@ if (asJson) {
       const where = g.recipes.length > 3 ? `${g.recipes.slice(0, 3).join(', ')}… (${g.recipes.length})` : g.recipes.join(', ')
       console.log(`- ${g.ingredient}: ${g.kinds.map((k) => NUTRITION_GAP_LABEL[k]).join('; ')} — ${where}`)
     }
+  }
+  if (unknownEquipment.length > 0) {
+    console.log(`\nEquipo que no es aparato ni utensilio de la lista (no filtra el menú): ${unknownEquipment.length}.`)
+    for (const u of unknownEquipment) console.log(`- ${u.name}: ${u.recipes} ${u.recipes === 1 ? 'receta' : 'recetas'}`)
   }
 }

@@ -214,7 +214,6 @@ export function replaceStaleDishes(
           recipeId: picked.id,
           recipeName: picked.name,
           course: picked.course ?? null,
-          ...(dish.pinnedType ? { pinnedType: dish.pinnedType } : {}),
           replaced: { recipeName: s.recipeName, reason: s.reason },
         }
       } else {

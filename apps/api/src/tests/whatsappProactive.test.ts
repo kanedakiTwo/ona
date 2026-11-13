@@ -173,8 +173,14 @@ describe('planProactive', () => {
     expect(await planProactive({ ...base, pendingShopping: async () => ['leche'], parts: sat })).toEqual([])
   })
 
-  it('nudges on Sunday evening with reply buttons when next week has no menu', async () => {
-    const r = await planProactive({ ...base, dinnerTime: '23:59', parts: parts({ weekday: 6, hour: 19 }) })
+  it('PRO-381: with the Thursday autopilot on (missing = on) the Sunday nudge does not go', async () => {
+    const sun = parts({ weekday: 6, hour: 19 })
+    expect(await planProactive({ ...base, dinnerTime: '23:59', parts: sun })).toEqual([])
+    expect(await planProactive({ ...base, prefs: { weekly_autoplan: true }, dinnerTime: '23:59', parts: sun })).toEqual([])
+  })
+
+  it('nudges on Sunday evening with reply buttons when next week has no menu (autopilot off)', async () => {
+    const r = await planProactive({ ...base, prefs: { weekly_autoplan: false }, dinnerTime: '23:59', parts: parts({ weekday: 6, hour: 19 }) })
     expect(r).toEqual([
       {
         kind: 'weekly_nudge',
@@ -186,7 +192,7 @@ describe('planProactive', () => {
 
   it('skips the nudge when next week is planned or it was already sent', async () => {
     const sun = parts({ weekday: 6, hour: 19 })
-    const quiet = { ...base, dinnerTime: '23:59' }
+    const quiet = { ...base, prefs: { weekly_autoplan: false }, dinnerTime: '23:59' }
     expect(await planProactive({ ...quiet, hasNextWeekMenu: vi.fn(async () => true), parts: sun })).toEqual([])
     expect(await planProactive({ ...quiet, sentRecently: { weekly_nudge: true }, parts: sun })).toEqual([])
   })

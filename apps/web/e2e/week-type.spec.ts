@@ -46,7 +46,8 @@ test('«Tu semana tipo», end to end: a type, «cada 2», turns, together, remov
   const weekType = async () => (await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).days
   const loaded = page.waitForResponse((r) => r.url().includes('/households/me/week-type') && r.request().method() === 'GET')
   await page.goto('/profile')
-  await page.getByRole('link', { name: /Tu semana tipo/ }).click()
+  // PRO-1204: «Vuestra semana» heads the profile; «Editar» opens the week type.
+  await page.getByTestId('week-type-head').getByRole('link', { name: 'Editar', exact: true }).click()
   await loaded
   await expect(page.getByRole('heading', { name: /Tu semana tipo/ })).toBeVisible()
 

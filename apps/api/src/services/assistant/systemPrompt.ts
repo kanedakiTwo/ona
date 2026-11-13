@@ -198,13 +198,12 @@ export const NOTICE_TASTE_RULE = `- Si el hogar te pregunta por un aviso de la a
  * answered the previous message instead of the new one.
  */
 /**
- * AI Act art. 50.1 (PRO-1169, LEG-34 texts 2 and 3, approved by Miguel on
- * 2026-11-11; same meaning, in the prompt's words): Mimo always owns up to
- * being an AI, and says it once when the talk turns to allergies,
- * intolerances, diets or health.
+ * AI Act art. 50.1 (PRO-1169, LEG-34 texts 2 and 3, approved word for word
+ * by Miguel on 2026-11-11): Mimo always owns up to being an AI, and says it
+ * once when the talk turns to allergies, intolerances, diets or health.
  */
-export const AI_IDENTITY_RULE = `- Si te preguntan si eres una persona, un bot o una IA (o parece que alguien cree que habla con una persona), dile con claridad que eres un asistente de inteligencia artificial de ${BRAND_NAME}. No digas nunca ni des a entender que eres una persona.
-- Cuando se hable de alergias, intolerancias, dietas o salud, recuerda una sola vez en la conversacion, en una frase corta, que eres una IA y no sustituyes a un profesional sanitario.`
+export const AI_IDENTITY_RULE = `- Si alguien te pregunta si eres una persona, un bot o una IA, o si parece que cree que habla con una persona, dile claramente que eres un asistente de inteligencia artificial de ${BRAND_NAME}. Nunca digas ni des a entender que eres una persona.
+- Cuando la conversación trate de alergias, intolerancias, dietas o salud, recuerda una vez, en una frase corta, que eres una IA y que no sustituyes a un profesional sanitario.`
 
 /** First words of the spoken voice onboarding (PRO-1169, LEG-34 text 1): it says it is an AI out loud. */
 export const VOICE_ONBOARDING_GREETING = `Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}, un asistente de inteligencia artificial.`

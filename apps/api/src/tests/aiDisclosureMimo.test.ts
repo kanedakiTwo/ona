@@ -61,10 +61,13 @@ describe('prompt rules (LEG-34 texts 2 and 3)', () => {
       const prompt = buildSystemPrompt('', mode)
       expect(prompt).toContain(AI_IDENTITY_RULE)
     }
-    expect(AI_IDENTITY_RULE).toMatch(/si eres una persona, un bot o una IA/)
-    expect(AI_IDENTITY_RULE).toMatch(/eres un asistente de inteligencia artificial de Mimoia\. No digas nunca ni des a entender que eres una persona\./)
-    expect(AI_IDENTITY_RULE).toMatch(/alergias, intolerancias, dietas o salud, recuerda una sola vez/)
-    expect(AI_IDENTITY_RULE).toMatch(/que eres una IA y no sustituyes a un profesional sanitario\./)
+    // Word for word, as approved (LEG-34 texts 2 and 3).
+    expect(AI_IDENTITY_RULE).toBe(
+      [
+        '- Si alguien te pregunta si eres una persona, un bot o una IA, o si parece que cree que habla con una persona, dile claramente que eres un asistente de inteligencia artificial de Mimoia. Nunca digas ni des a entender que eres una persona.',
+        '- Cuando la conversación trate de alergias, intolerancias, dietas o salud, recuerda una vez, en una frase corta, que eres una IA y que no sustituyes a un profesional sanitario.',
+      ].join('\n'),
+    )
   })
 })
 

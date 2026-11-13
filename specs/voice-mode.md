@@ -56,7 +56,7 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 - Library ElevenLabs voices need a paid plan (free → 402, so the browser voice is used).
 - No voice-minutes quota: spoken turns cost one transcription + one chat turn (+ TTS characters), all under the monthly € cap (`USER_MONTHLY_SPEND_CAP_EUR`) and the chat budget ([Advisor](./advisor.md) → Cost guardrail).
 - All prompts and speech are Spanish (`es-ES`).
-- **AI disclosure (EU AI Act art. 50):** the panel caption (`AI_DISCLOSURE`, `data-testid="ai-disclosure"`) is visible before and during every spoken turn.
+- **AI disclosure (EU AI Act art. 50):** the panel caption (`AI_DISCLOSURE`, `data-testid="ai-disclosure"`) is visible before and during every spoken turn. In the voice onboarding Mimo also says it out loud: its first words are «Hola, soy Mimo, de Mimoia, un asistente de inteligencia artificial.» (PRO-1169, `VOICE_ONBOARDING_GREETING`).
 - **History:** the old full-screen voice mode (until 2026-10-09) left only records: `voice_realtime` rows in the cost ledger and their `openai/gpt-realtime*` prices in `config/pricing.ts`, kept so past costs stay priced. No route, env var or UI of it remains.
 
 ## Related specs

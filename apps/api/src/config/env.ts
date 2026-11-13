@@ -76,7 +76,9 @@ export const env = {
   // …and, when the vision check turns that photo down, the second try with this model
   // (target: about 1 photo in 5). Empty: the second try repeats the first model.
   AIKIT_IMAGE_RETRY_MODEL: process.env.AIKIT_IMAGE_RETRY_MODEL ?? 'nano-banana-pro',
-  OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+  // The OpenAI reserve (only when AiKit fails). PRO-1149: gpt-image-1 was switched off on 2026-10-23;
+  // gpt-image-2 is the model AiKit serves (D-117). Test: recipeImageAikit.test.ts (retired models).
+  OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2',
   /**
    * Where generated recipe images are written.
    *   - prod (Railway): mount the volume at `/data` and set this to
@@ -146,6 +148,14 @@ export const env = {
    * Empty → token auth disabled (admin JWT still works).
    */
   COCINA_WRITE_TOKEN: process.env.COCINA_WRITE_TOKEN || '',
+  /**
+   * Write token for Marketing's newsletter recommendation, and only that:
+   * `PUT /admin/newsletter/drafts/:issueId/recommendation` (header
+   * `x-newsletter-token`, middleware/newsletterAuth.ts, PRO-1198). Never the
+   * template, the proof or the schedule.
+   * Empty → token auth disabled (admin JWT still works).
+   */
+  NEWSLETTER_RECOMMENDATION_TOKEN: process.env.NEWSLETTER_RECOMMENDATION_TOKEN || '',
   /**
    * Extra `?ref=` labels the read token may name in GET /admin/waitlist
    * (`sources.bySource`), for campaign links that live outside the code:

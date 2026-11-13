@@ -15,10 +15,12 @@ import {
   handleBillingEvent,
   isBillingConfigured,
   type BillingGateway,
+  type PaymentFailure,
   type SubscriptionRepo,
 } from '../services/billing.js'
 import { creatorRefsSql } from '../services/creatorTrial.js'
 import { householdWeekResolved, trialFirstDay } from '../services/founderOffer.js'
+import { createPaymentFailedNotifier } from '../services/paymentFailures.js'
 
 /**
  * Subscriptions (specs/billing.md).
@@ -26,7 +28,7 @@ import { householdWeekResolved, trialFirstDay } from '../services/founderOffer.j
  *   GET  /billing            auth: plan state of the caller's household
  *   POST /billing/checkout   auth, household owner: Stripe Checkout URL for a plan + period
  *   POST /billing/portal     auth, household owner: Stripe customer portal URL (change card, cancel); { cancel: true } → cancel flow
- *   POST /billing/webhook    Stripe → us, signed; mounted BEFORE express.json() (raw body)
+ *   POST /billing/webhook    Stripe → us, signed; mounted BEFORE express.json() (raw body); subscriptions + invoice.payment_failed (PRO-386)
  */
 
 export interface Payer {
@@ -209,8 +211,11 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
 }
 
 /** Mounted in index.ts BEFORE `express.json()`: Stripe signs the raw bytes. */
-export function createBillingWebhookRouter(overrides: Partial<Pick<BillingDeps, 'repo' | 'gateway' | 'enabled'>> = {}): Router {
-  const d = { ...defaults(), ...overrides }
+export function createBillingWebhookRouter(
+  overrides: Partial<Pick<BillingDeps, 'repo' | 'gateway' | 'enabled'>> & { onPaymentFailed?: (f: PaymentFailure) => Promise<unknown> } = {},
+): Router {
+  // PRO-386: `invoice.payment_failed` → one notice per invoice (services/paymentFailures.ts).
+  const d = { ...defaults(), onPaymentFailed: overrides.onPaymentFailed ?? createPaymentFailedNotifier(), ...overrides }
   const router = Router()
   router.post('/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
     if (!d.enabled()) {

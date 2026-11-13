@@ -4,12 +4,13 @@
  * /profile — "D · Luz y foto" (PRO-39): compact header with the household's
  * name, «Tu ficha» first and full width (PRO-318), then paper cards per
  * section (Casa, Afina tu menú, Creencias, Despensa, Fijos, Recetarios,
- * Suscripción, Voz, WhatsApp) with an icon and a status line, then the menu
- * settings the generator reads (one "Guardar cambios") and the account card.
+ * Suscripción, Voz, WhatsApp) with an icon and a status line, «Quién come»
+ * (PRO-1203: one row per person, with their allergies, dislikes, health and
+ * goal inside), the menu settings and the account card. Each screen saves
+ * its own: there is no «Guardar cambios» any more.
  * Secondary actions sit behind "···" sheets (`MenuSheet`). 2–3 columns at lg+.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { motion } from 'motion/react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import {
@@ -17,7 +18,6 @@ import {
   Bell,
   BellOff,
   BookOpen,
-  CalendarDays,
   ChefHat,
   ChevronRight,
   CreditCard,
@@ -27,17 +27,12 @@ import {
   LogOut,
   MessageCircle,
   Mic,
-  Minus,
   Plus,
   Repeat,
-  Ruler,
   Send,
   Shield,
-  ShieldAlert,
-  SlidersHorizontal,
   UserRound,
   Wrench,
-  X,
 } from 'lucide-react'
 import Link from 'next/link'
 import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
@@ -52,18 +47,19 @@ import { FoundingBadge } from '@/components/profile/FoundingBadge'
 import { FichaHubCard } from '@/components/ficha/FichaHubCard'
 import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
 import { useAuth } from '@/lib/auth'
-import { allergiesStatus } from '@/lib/profileStatus'
-import { useUser } from '@/hooks/useUser'
 import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
 import { MyRecipesSection } from './sections/MyRecipesSection'
+import { WeekTypeHead } from '@/components/weekType/WeekTypeHead'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
+import { WhoEatsSection } from '@/components/profile/WhoEatsSection'
 import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
 import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
 import { BasketConsentsCard } from '@/components/profile/BasketConsentsCard'
 import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
+<<<<<<< 38f191f03ce192417044ab77842241e80101251b
 import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
 import type { HealthConsentState } from '@ona/shared'
 import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
@@ -118,198 +114,16 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
   active: 1.725,
   very_active: 1.9,
 }
+=======
+import { subscriptionSummary } from '@ona/shared'
+>>>>>>> 1fab2a54ae96b105e192c592b63248aca517c523
 
 export default function ProfilePage() {
   const { user, logout, updateUser, isLoading: authLoading } = useAuth()
   const whatsapp = useWhatsAppStatus()
   const mimo = useMimo()
 
-  // «Datos físicos, en Perfil» from Tu ficha (`/profile#datos-fisicos`): the
-  // cards only render once the session is read, after Next's own hash scroll.
-  const userReady = !!user
-  useEffect(() => {
-    if (!userReady || !window.location.hash) return
-    document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: 'start' })
-  }, [userReady])
-
-  const [physical, setPhysical] = useState<PhysicalData>({
-    sex: '', age: '', weight: '', height: '', activity_level: 'moderate',
-  })
-  const [preferences, setPreferences] = useState<Preferences>({
-    restrictions: [], priority: 'balanced',
-  })
-  const [household, setHousehold] = useState<Household>({ adults: 2, kidsCount: 0 })
-  const [restrictionInput, setRestrictionInput] = useState('')
-  // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
-  const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
-  const [consentBusy, setConsentBusy] = useState(false)
-  const healthActive = healthConsent?.active === true
-  // Halal under a v1 consent: the current text first (Legal, E-19).
-  const needsReligion = healthActive && !consentCoversReligiousDiet(healthConsent?.version)
-  const [religionDropped, setReligionDropped] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-
-  useEffect(() => {
-    if (!user) return
-    api.get<HealthConsentState>(`/user/${user.id}/health-consent`).then(setHealthConsent).catch(() => {})
-  }, [user])
-
-  async function handleHealthConsent(next: boolean) {
-    if (!user || consentBusy) return
-    if (!next && !window.confirm('Si retiras el consentimiento, borramos tus alergias, restricciones y datos físicos. ¿Seguro?')) return
-    setConsentBusy(true)
-    try {
-      const state = await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: next })
-      setHealthConsent(state)
-      if (!next) {
-        setPhysical({ sex: '', age: '', weight: '', height: '', activity_level: 'moderate' })
-        setPreferences((p) => ({ ...p, restrictions: [] }))
-      }
-    } catch (e) { console.error(e) }
-    finally { setConsentBusy(false) }
-  }
-
-  async function handleReligionConsent(next: boolean) {
-    if (!user || !next || consentBusy) return
-    setConsentBusy(true)
-    try {
-      setHealthConsent(await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: true }))
-      setReligionDropped(false)
-    } catch (e) { console.error(e) }
-    finally { setConsentBusy(false) }
-  }
-
-  useEffect(() => {
-    if (!user) return
-    // Restrictions live in two places: the account (`users.restrictions`,
-    // written by onboarding and read by the menu generator) and the settings
-    // blob. Show the union so nothing picked in onboarding looks lost (PRO-64).
-    Promise.all([
-      api.get<any>(`/user/${user.id}/settings`).catch(() => null),
-      api.get<{ restrictions?: string[]; adults?: number; kidsCount?: number }>(`/user/${user.id}`).catch(() => null),
-    ]).then(([data, account]) => {
-      // The account, not the copy kept in this browser: Mimo may have noted
-      // the kids since (2026-10-22: a tester's profile said 0 niños).
-      if (typeof account?.adults === 'number' && account.adults > 0) {
-        setHousehold({ adults: account.adults, kidsCount: account.kidsCount ?? 0 })
-      }
-      const blob = data?.template && !Array.isArray(data.template) ? data.template : data
-      if (blob?.physical) setPhysical(blob.physical)
-      const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
-      setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
-    }).catch(() => {})
-  }, [user])
-
-  // Hydrate household sizing from the user object (already includes
-  // adults + kidsCount after the 0005 migration). Falls back to the
-  // legacy enum until the user re-saves their profile.
-  useEffect(() => {
-    if (!user) return
-    if (typeof user.adults === 'number' && user.adults > 0) {
-      setHousehold({ adults: user.adults, kidsCount: user.kidsCount ?? 0 })
-      return
-    }
-    switch (user.householdSize) {
-      case 'solo':
-        setHousehold({ adults: 1, kidsCount: 0 })
-        break
-      case 'couple':
-        setHousehold({ adults: 2, kidsCount: 0 })
-        break
-      case 'family_no_kids':
-        setHousehold({ adults: 3, kidsCount: 0 })
-        break
-      case 'family_with_kids':
-        setHousehold({ adults: 2, kidsCount: 2 })
-        break
-    }
-  }, [user])
-
-  const bmr = useMemo(() => {
-    if (!physical.sex || !physical.weight || !physical.height || !physical.age) return null
-    return Math.round(calculateBMR(physical.sex, Number(physical.weight), Number(physical.height), Number(physical.age)))
-  }, [physical])
-
-  const tdee = useMemo(() => {
-    if (!bmr) return null
-    return Math.round(bmr * (ACTIVITY_MULTIPLIERS[physical.activity_level] ?? 1.55))
-  }, [bmr, physical.activity_level])
-
-  function addRestriction(value: string) {
-    const t = value.trim().toLowerCase()
-    if (t && !preferences.restrictions.includes(t)) {
-      setPreferences((p) => ({ ...p, restrictions: [...p.restrictions, t] }))
-    }
-    setRestrictionInput('')
-  }
-
-  function removeRestriction(value: string) {
-    setPreferences((p) => ({ ...p, restrictions: p.restrictions.filter((r) => r !== value) }))
-  }
-
-  const handleSave = useCallback(async () => {
-    if (!user) return
-    setSaving(true); setSaved(false)
-    // Without the current text a v1 consent doesn't cover halal: the rest is saved, halal isn't.
-    const restrictionsToSave = needsReligion ? preferences.restrictions.filter((r) => !isReligiousDiet(r)) : preferences.restrictions
-    setReligionDropped(restrictionsToSave.length < preferences.restrictions.length)
-    try {
-      const ACTIVITY_MAP: Record<string, 'none' | 'light' | 'moderate' | 'high'> = {
-        sedentary: 'none',
-        light: 'light',
-        moderate: 'moderate',
-        active: 'moderate',
-        very_active: 'high',
-      }
-      const userPayload: Record<string, unknown> = {}
-      if (healthActive) {
-      if (physical.sex) userPayload.sex = physical.sex
-      if (physical.age !== '' && physical.age != null) userPayload.age = Number(physical.age)
-      if (physical.weight !== '' && physical.weight != null) userPayload.weight = Number(physical.weight)
-      if (physical.height !== '' && physical.height != null) userPayload.height = Number(physical.height)
-      if (physical.activity_level) userPayload.activityLevel = ACTIVITY_MAP[physical.activity_level] ?? 'moderate'
-      // Same list to the account and to the settings blob (PRO-64): the
-      // screen shows the union of both, so this never drops either side.
-      userPayload.restrictions = restrictionsToSave
-      }
-      const PRIORITY_MAP: Record<string, 'quick' | 'varied' | 'healthy' | 'cheap'> = {
-        balanced: 'varied',
-        muscle: 'healthy',
-        weight_loss: 'healthy',
-        energy: 'quick',
-      }
-      if (preferences.priority) userPayload.priority = PRIORITY_MAP[preferences.priority] ?? 'varied'
-      // Household sizing — required by the shopping-list scaler.
-      if (Number.isFinite(household.adults) && household.adults >= 1) {
-        userPayload.adults = Math.floor(household.adults)
-      }
-      if (Number.isFinite(household.kidsCount) && household.kidsCount >= 0) {
-        userPayload.kidsCount = Math.floor(household.kidsCount)
-      }
-
-      const calls: Promise<unknown>[] = []
-      if (Object.keys(userPayload).length > 0) {
-        // Keep this browser's copy in step, or the next visit starts from the old counts.
-        calls.push(api.put<{ adults?: number; kidsCount?: number }>(`/user/${user.id}`, userPayload).then((saved) => {
-          if (saved.adults !== user.adults || saved.kidsCount !== user.kidsCount) {
-            updateUser({ adults: saved.adults, kidsCount: saved.kidsCount })
-          }
-        }))
-      }
-      calls.push(api.put(`/user/${user.id}/settings`, {
-        template: healthActive
-          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave } }
-          : { preferences: { ...preferences, restrictions: [] } },
-      }))
-      await Promise.all(calls)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) { console.error(e) }
-    finally { setSaving(false) }
-  }, [user, updateUser, physical, preferences, household, healthActive, needsReligion])
-
 
   if (authLoading || !user) {
     return (
@@ -330,12 +144,22 @@ export default function ProfilePage() {
           onMore={() => setMoreOpen(true)}
         />
 
+        {/* PRO-1204: the semana tipo heads the profile — the menu comes out of it. */}
+        <div className="mt-5 lg:mt-6">
+          <WeekTypeHead />
+        </div>
+
         {/* Casa y Mimo: one paper card per sub-page, with a status line. */}
         <div className="mt-6 px-5 lg:mt-8 lg:px-0">
           <GroupLabel>Tu casa y Mimo</GroupLabel>
           <ProfileHub />
           {/* PRO-163: another household, not someone of this one (that's «Invitar a alguien» in Casa). */}
           <InviteHouseholdButton place="perfil" className="mt-3 lg:mt-4" />
+        </div>
+
+        {/* «Quién come» (PRO-1203): one row per person; allergies, dislikes, health and goal inside each. */}
+        <div className="mt-8 px-5 lg:mt-10 lg:max-w-[720px] lg:px-0">
+          <WhoEatsSection />
         </div>
 
         <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
@@ -399,10 +223,11 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Ajustes del menú: what the generator reads. One save button below. */}
+        {/* Ajustes del menú: what the generator reads. */}
         <div className="mt-8 px-5 lg:mt-10 lg:px-0">
           <GroupLabel>Ajustes del menú</GroupLabel>
         </div>
+<<<<<<< 38f191f03ce192417044ab77842241e80101251b
         <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
           <div className="grid gap-3 lg:gap-4">
             {/* Datos físicos (RGPD art. 9: only with the health-data consent) */}
@@ -643,6 +468,10 @@ export default function ProfilePage() {
               status="Lo que soléis comer cada día: el menú sale de ahí"
             />
 
+=======
+        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:items-start lg:gap-4 lg:px-0">
+          <div className="grid gap-3 lg:grid-cols-2 lg:items-start lg:gap-4">
+>>>>>>> 1fab2a54ae96b105e192c592b63248aca517c523
             {/* Recordatorios */}
             <ProfileCard
               icon={Bell}
@@ -691,6 +520,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
+<<<<<<< 38f191f03ce192417044ab77842241e80101251b
         {/* Save bar */}
         <div className="mt-6 px-5 lg:flex lg:items-center lg:justify-end lg:gap-4 lg:px-0">
           <RequiredNote className="mb-2 lg:mb-0" />
@@ -704,6 +534,8 @@ export default function ProfilePage() {
           </button>
         </div>
 
+=======
+>>>>>>> 1fab2a54ae96b105e192c592b63248aca517c523
         {/* Tu cuenta — session, privacy + right to erasure */}
         <div className="mt-8 px-5 mb-24 lg:mt-10 lg:px-0">
           <GroupLabel>Tu cuenta</GroupLabel>
@@ -751,28 +583,6 @@ export default function ProfilePage() {
           )}
         </div>
       </MenuSheet>
-
-      <style jsx>{`
-        :global(.input-line) {
-          width: 100%;
-          min-height: 44px;
-          background: transparent;
-          border: none;
-          border-bottom: 1px solid var(--color-border);
-          padding: 0.5rem 0;
-          font-family: inherit;
-          font-size: 15px;
-          color: var(--color-ink);
-          outline: none;
-          transition: border-color 200ms;
-        }
-        :global(.input-line:focus) {
-          border-bottom-color: var(--color-ink);
-        }
-        :global(.input-line::placeholder) {
-          color: var(--color-ink-light);
-        }
-      `}</style>
     </div>
   )
 }
@@ -820,8 +630,6 @@ function plural(n: number, one: string, many: string) {
  * sub-page cards, each with a one-line status from its own data.
  */
 function ProfileHub() {
-  const { user } = useAuth()
-  const account = useUser(user?.id)
   const household = useQuery<{ members: unknown[]; pendingInvites?: unknown[] }>({
     queryKey: ['household', 'me'],
     queryFn: () => api.get('/households/me'),
@@ -849,13 +657,6 @@ function ProfileHub() {
           icon={Home}
           title="Casa"
           status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
-        />
-        {/* 2026-10-22: a tester couldn't find where to add «intolerancia al pimiento» after the sign-up. */}
-        <ProfileHubLink
-          href="/profile/casa/alergias?next=/profile"
-          icon={ShieldAlert}
-          title="Alergias e intolerancias"
-          status={allergiesStatus(account.data?.restrictions, account.isError)}
         />
         <ProfileHubLink
           href="/afinar"
@@ -1031,6 +832,7 @@ function PushNotificationsCard() {
   )
 }
 
+<<<<<<< 38f191f03ce192417044ab77842241e80101251b
 /** A labelled body-data field: all of them are optional (PRO-1103). */
 function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
   return (
@@ -1132,6 +934,8 @@ function SexPill({
   )
 }
 
+=======
+>>>>>>> 1fab2a54ae96b105e192c592b63248aca517c523
 function ToggleRow({ title, subtitle, on, onToggle }: { title: string; subtitle: string; on: boolean; onToggle: () => void }) {
   return (
     <button

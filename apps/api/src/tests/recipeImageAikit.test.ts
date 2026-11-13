@@ -33,6 +33,7 @@ const saved = {
   AIKIT_IMAGE_MODEL: env.AIKIT_IMAGE_MODEL,
   AIKIT_IMAGE_QUALITY: env.AIKIT_IMAGE_QUALITY,
   AIKIT_IMAGE_RETRY_MODEL: env.AIKIT_IMAGE_RETRY_MODEL,
+  OPENAI_IMAGE_MODEL: env.OPENAI_IMAGE_MODEL,
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -44,6 +45,7 @@ beforeEach(() => {
   env.AIKIT_IMAGE_MODEL = 'gpt-image-2'
   env.AIKIT_IMAGE_QUALITY = ''
   env.AIKIT_IMAGE_RETRY_MODEL = 'nano-banana-pro'
+  env.OPENAI_IMAGE_MODEL = 'gpt-image-2'
   recordCost.mockReset()
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
@@ -146,6 +148,16 @@ describe("'auto' falls back to OpenAI", () => {
     expect(recordCost).toHaveBeenCalledWith(expect.objectContaining({ provider: 'openai' }))
   })
 
+  it('the reserve asks OpenAI for gpt-image-2 and is priced as such', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(503, { error: 'unavailable' }))
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ b64_json: await pngB64(1536, 1024) }] }))
+    await generateRecipeImage('Croquetas.')
+    expect(JSON.parse((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string)).toMatchObject({ model: 'gpt-image-2', quality: 'medium' })
+    expect(recordCost).toHaveBeenCalledWith({ feature: 'recipe_image', provider: 'openai', model: 'gpt-image-2', units: { images: 1 } })
+    expect(computeCostMicros('openai', 'gpt-image-2', { images: 1 }, { eurPerUsd: 1, table: PRICES })).toBe(41000)
+  })
+
   it("'aikit' pins AiKit: a 403 is thrown, no OpenAI call", async () => {
     env.RECIPE_IMAGE_PROVIDER = 'aikit'
     fetchMock.mockResolvedValueOnce(jsonResponse(403, { error: 'no' }))
@@ -200,3 +212,27 @@ describe('D-117: gpt-image-2 in high quality first, nano-banana-pro when the che
   })
 })
 
+
+/**
+ * PRO-1149: OpenAI switched gpt-image-1 off on 2026-10-23 and the reserve kept asking for it, so
+ * every fallback failed. Add a model here the day its provider retires it.
+ */
+const RETIRED_IMAGE_MODELS = ['gpt-image-1', 'dall-e-2', 'dall-e-3']
+
+describe('default image models are not retired (PRO-1149)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('without variables, neither OpenAI nor AiKit is asked for a retired model', async () => {
+    for (const name of ['OPENAI_IMAGE_MODEL', 'AIKIT_IMAGE_MODEL', 'AIKIT_IMAGE_RETRY_MODEL']) vi.stubEnv(name, '')
+    vi.resetModules()
+    const { env: fresh } = await import('../config/env.js')
+    expect(fresh.OPENAI_IMAGE_MODEL).toBe('gpt-image-2')
+    for (const model of [fresh.OPENAI_IMAGE_MODEL, fresh.AIKIT_IMAGE_MODEL, fresh.AIKIT_IMAGE_RETRY_MODEL]) {
+      expect(RETIRED_IMAGE_MODELS, model).not.toContain(model)
+    }
+    expect(PRICES[`openai/${fresh.OPENAI_IMAGE_MODEL}`], 'the reserve has a price').toBeDefined()
+  })
+})

@@ -22,7 +22,7 @@ Unit conversion + quantity comparison are deferred. v1's question is "do we have
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/recipes/match-pantry?limit=N` | auth-only. `limit` default 3, max 20. Sorted by `coverage desc`, ties broken by `matchedCount desc`, then `totalRequired desc`. Recipes with `matchedCount = 0` are filtered out. **Must be registered before `/recipes/:id`** so the more-specific path matches |
+| GET | `/recipes/match-pantry?limit=N` (retired) | auth-only. `limit` default 3, max 20. Sorted by `coverage desc`, ties broken by `matchedCount desc`, then `totalRequired desc`. Recipes with `matchedCount = 0` are filtered out. **Must be registered before `/recipes/:id`** so the more-specific path matches |
 
 Response shape:
 
@@ -38,7 +38,7 @@ type PantryMatchHit = {
 
 ## Pure Helper
 
-`scoreRecipeAgainstPantry(ings, pantry)` — exported from `services/pantryMatcher.ts`, unit-tested (6 cases). Same code path used by the route, so a scoring regression trips a unit failure before the UI shows wrong numbers.
+`scoreRecipeAgainstPantry(ings, pantry)` — exported from `services/pantryMatcher.ts` (retired), unit-tested (6 cases). Same code path used by the route, so a scoring regression trips a unit failure before the UI shows wrong numbers.
 
 ## Constraints
 

@@ -266,7 +266,9 @@ function AuditRow({
   first: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const initials = (entry.adminUsername || entry.adminEmail || "?")
+  // PRO-1198: Marketing's recommendation, by token, hangs from the oldest admin account.
+  const who = (entry.payload as { actor?: unknown } | null)?.actor === "marketing" ? "Marketing" : entry.adminUsername
+  const initials = (who || entry.adminEmail || "?")
     .charAt(0)
     .toUpperCase()
   const pretty = useMemo(() => {
@@ -288,7 +290,7 @@ function AuditRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="text-[12px] font-medium text-ink truncate">
-              {entry.adminUsername ?? "(admin desconocido)"}
+              {who ?? "(admin desconocido)"}
             </span>
             <span className="text-[10px] uppercase tracking-[0.1em] text-ink-light">
               {formatTimestamp(entry.createdAt)}

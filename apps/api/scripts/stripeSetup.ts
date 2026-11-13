@@ -36,6 +36,8 @@ const WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
   'customer.subscription.deleted',
   'customer.subscription.paused',
   'customer.subscription.resumed',
+  // PRO-386: the failed-payment notice and the 7 days.
+  'invoice.payment_failed',
 ]
 
 async function product(plan: (typeof PAID_PLANS)[number]): Promise<Stripe.Product> {

@@ -1531,7 +1531,8 @@ describe('skill export coverage', () => {
     // and 91 with list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
     // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
     // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
-    expect(skills.length).toBe(94)
+    // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
+    expect(skills.length).toBe(95)
   })
 
   it('every skill has a unique name', () => {

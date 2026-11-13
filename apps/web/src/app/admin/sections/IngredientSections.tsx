@@ -238,6 +238,57 @@ export function AllergenSection({
 }
 
 /**
+ * PRO-1118: recipes whose stored allergens (what the ficha and Mimo read)
+ * don't match the union of their ingredients. Saving an ingredient's
+ * allergens recomputes its recipes; these are the ones left from before.
+ * Catalogue recipes by name, household ones only as a count.
+ */
+export function AllergenMismatchSection({
+  data,
+}: {
+  data:
+    | {
+        total: number
+        householdRecipes: number
+        recipes: Array<{ id: string; name: string; stored: string[]; expected: string[] }>
+      }
+    | undefined
+}) {
+  if (!data || data.total === 0) return null
+  return (
+    <section
+      aria-label="Alérgenos descuadrados"
+      className="mb-6 rounded-xl border border-terracotta-deep bg-paper p-3"
+    >
+      <h2 className="text-[13px] font-medium text-terracotta-deep">
+        Alérgenos descuadrados: {data.total} {data.total === 1 ? "receta" : "recetas"}
+      </h2>
+      <p className="mt-1 text-[11px] text-ink-muted">
+        Su ficha no dice los mismos alérgenos que sus ingredientes. Se arreglan al volver a guardar la receta.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {data.recipes.map((r) => (
+          <li key={r.id} className="text-[12px]">
+            <a href={`/recipes/${r.id}`} className="font-medium text-ink underline hover:text-ink-mid">
+              {r.name}
+            </a>
+            <div className="text-ink-muted">
+              Ficha: {r.stored.length > 0 ? r.stored.join(", ") : "sin alérgenos"} · Ingredientes:{" "}
+              {r.expected.length > 0 ? r.expected.join(", ") : "sin alérgenos"}
+            </div>
+          </li>
+        ))}
+        {data.householdRecipes > 0 && (
+          <li className="text-[12px] text-ink-mid">
+            {data.householdRecipes} {data.householdRecipes === 1 ? "receta" : "recetas"} de hogares
+          </li>
+        )}
+      </ul>
+    </section>
+  )
+}
+
+/**
  * PRO-1096: ingredients named za'atar, dukkah, gomasio, halva… whose stored
  * tags lack «sesamo», with the published recipes that use them. A list to fix
  * by hand (the «Aceptar» of the suggestions below adds the tag).

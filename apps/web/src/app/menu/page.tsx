@@ -17,6 +17,7 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { SeanEllisCard } from "@/components/menu/SeanEllisCard"
 import { AutoplanCard } from "@/components/menu/AutoplanCard"
 import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
@@ -78,6 +79,7 @@ import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealth
 import { FridgeHealthQuestion } from "@/components/menu/FridgeHealthQuestion"
 import { ApiError } from "@/lib/api"
 import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
+import { WeekTypeDayLine } from "@/components/menu/WeekTypeDayLine"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
 /** Local-time Monday of `d` as `YYYY-MM-DD`. */
@@ -778,6 +780,7 @@ export default function MenuPage() {
                 <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
+                <SeanEllisCard />
                 {favoritesNotice}
                 {statusCard}
               </>
@@ -823,6 +826,7 @@ export default function MenuPage() {
             <AfinaNoticeCard />
             <TasteMenuCard />
             <WhatsAppNudgeCard />
+            <SeanEllisCard />
             {statusCard}
           </div>
         )}
@@ -859,6 +863,7 @@ export default function MenuPage() {
       <AfinaNoticeCard />
       <TasteMenuCard />
       <WhatsAppNudgeCard />
+      <SeanEllisCard />
 
       {!showWeekGrid && (
         <WeekStrip
@@ -950,6 +955,7 @@ export default function MenuPage() {
           />
         ) : (
           <>
+            <WeekTypeDayLine weekStart={weekStart} day={selectedDay} className="mx-5 -mt-1 mb-1" />
             <DayMeals
               featured={featured}
               rest={rest}

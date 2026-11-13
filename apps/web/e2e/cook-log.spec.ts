@@ -8,7 +8,9 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { registerFreshUser, completeOnboarding } from './_helpers'
+import { registerFreshUser, completeOnboarding, menuWithRecipesOn } from './_helpers'
+
+const API = process.env.API_URL ?? 'http://localhost:8765'
 
 test.beforeEach(async ({ page }) => {
   await registerFreshUser(page)
@@ -46,4 +48,40 @@ test('recipe detail: marking cooked increments the count', async ({ page }) => {
   // Click it. The button text should switch to "Cocinada 1×".
   await cookedBtn.click()
   await expect(cookedBtn).toHaveText(/^cocinada 1×$/i, { timeout: 10_000 })
+})
+
+test('«Cocinar» tab: «Empezar a cocinar» on the meal of now → «Terminar» logs it with its slot and leaves it «✓ Comido» (PRO-1109)', async ({ page }) => {
+  test.setTimeout(150_000)
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('ona_user') ?? '{}').id as string)
+  const headers = { Authorization: `Bearer ${token}` }
+  // The API's meal of now, with a recipe planned in it.
+  const { weekStart, day, meal } = await (await page.request.get(`${API}/cook-now/today`, { headers })).json()
+  expect(meal, 'a fresh household has a meal of now').not.toBeNull()
+  const gen = await page.request.post(`${API}/menu/generate`, { headers, data: { userId, weekStart, force: true } })
+  expect(gen.ok(), `generate: ${gen.status()}`).toBeTruthy()
+  const menu = await menuWithRecipesOn(page, headers, userId, weekStart, [[day, meal]])
+
+  await page.goto('/cocinar')
+  await page.getByTestId('cook-now-today').getByRole('link', { name: /empezar a cocinar/i }).click()
+  await page.waitForURL((u) => u.pathname.endsWith('/cook') && u.searchParams.get('menu') === menu.id, { timeout: 20_000 })
+
+  const next = page.getByRole('button', { name: 'Paso siguiente' })
+  const finish = page.getByRole('button', { name: /^terminar$/i })
+  await expect(next.or(finish)).toBeVisible({ timeout: 15_000 })
+  for (let i = 0; i < 40 && !(await finish.isVisible()); i++) await next.click()
+  const logged = page.waitForRequest((r) => r.url().endsWith('/cook-logs') && r.method() === 'POST')
+  await finish.click()
+  expect((await logged).postDataJSON()).toMatchObject({ menuId: menu.id, dayIndex: day, meal })
+  const prompt = page.getByTestId('rating-prompt')
+  await expect(prompt.or(page.getByTestId('menu-hero'))).toBeVisible({ timeout: 15_000 })
+  if (await prompt.isVisible()) await prompt.getByRole('button', { name: 'Bien' }).click()
+  await page.waitForURL((u) => u.pathname === '/menu', { timeout: 15_000 })
+
+  await expect
+    .poll(async () => {
+      const m = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
+      return m.days[day]?.[meal]?.eaten ?? false
+    }, { timeout: 10_000 })
+    .toBe(true)
 })

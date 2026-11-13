@@ -46,6 +46,61 @@ export type IngredientCatalogEntry = {
   unitWeight?: number | null
   /** PRO-194: edible share of the weight as bought (bone-in cuts < 1). */
   edibleFraction?: number | null
+  /**
+   * PRO-1125: the row has no nutrition yet (a household's «Añadir», see
+   * `lacksNutrition`). Its lines are skipped and the recipe is incomplete.
+   */
+  missingNutrition?: boolean
+}
+
+/**
+ * PRO-1125: an ingredient with no nutrition yet — no USDA id and every
+ * per-100 g value at zero (the row «Añadir» creates, or a stub saved when
+ * USDA was down). Water and salt from USDA keep their id; BEDCA and
+ * estimated rows have values.
+ */
+export function lacksNutrition(row: {
+  fdcId?: number | null
+  calories?: number | null
+  protein?: number | null
+  carbs?: number | null
+  fat?: number | null
+  fiber?: number | null
+  salt?: number | null
+}): boolean {
+  if (row.fdcId != null) return false
+  return [row.calories, row.protein, row.carbs, row.fat, row.fiber, row.salt].every((v) => !v)
+}
+
+/** The aggregator's entry for an `ingredients` row (null values as 0). */
+export function catalogEntryFromRow(r: {
+  id: string
+  name: string
+  fdcId?: number | null
+  calories: number | null
+  protein: number | null
+  carbs: number | null
+  fat: number | null
+  fiber: number | null
+  salt: number | null
+  density?: number | null
+  unitWeight?: number | null
+  edibleFraction?: number | null
+}): IngredientCatalogEntry {
+  return {
+    id: r.id,
+    name: r.name,
+    calories: r.calories ?? 0,
+    protein: r.protein ?? 0,
+    carbs: r.carbs ?? 0,
+    fat: r.fat ?? 0,
+    fiber: r.fiber ?? 0,
+    salt: r.salt ?? 0,
+    density: r.density,
+    unitWeight: r.unitWeight,
+    edibleFraction: r.edibleFraction,
+    missingNutrition: lacksNutrition(r),
+  }
 }
 
 export type AggregateInput = {
@@ -60,6 +115,7 @@ export type SkippedReason =
   | 'no-unit-weight'
   | 'unmapped'
   | 'unsupported-unit'
+  | 'no-nutrition'
 
 export type SkippedIngredient = {
   ingredientId: string
@@ -180,6 +236,8 @@ function round1(n: number): number {
  *   the absorbed share (`cookingMedium.ts`).
  * - kcal is rounded to integer; macros to 1 decimal.
  * - Bone-in cuts count only their `edibleFraction` (PRO-194).
+ * - An ingredient with no nutrition yet (`missingNutrition`, PRO-1125) is
+ *   skipped with reason `no-nutrition`.
  * - `incomplete` (PRO-176): some skipped line matters (not salt, water,
  *   spices/herbs or «al gusto», see `negligible.ts`).
  *
@@ -213,6 +271,14 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
     if (!entry) {
       skipped.push({ ingredientId: ing.ingredientId, reason: 'unmapped' })
       if (!isNegligibleForNutrition(ing.ingredientName, ing.note)) incomplete = true
+      continue
+    }
+
+    if (entry.missingNutrition) {
+      // PRO-1125: counted as nothing would hide the gap (burekas: 299 kcal
+      // instead of 870 while the puff pastry had no values).
+      skipped.push({ ingredientId: ing.ingredientId, reason: 'no-nutrition' })
+      if (!isNegligibleForNutrition(entry.name, ing.note)) incomplete = true
       continue
     }
 

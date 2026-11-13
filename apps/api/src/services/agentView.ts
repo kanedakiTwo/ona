@@ -218,6 +218,93 @@ function pickNumbers(o: unknown, keys: readonly string[]): Record<string, number
   return out
 }
 
+/** A line of a V8 (`at …`) or Firefox/Safari (`fn@url:line:col`) stack. */
+const FRAME_LINE = /^at\s|@.*:\d+(?::\d+)?$/
+/** Places that are not a file: the frame is skipped. */
+const NO_FILE = /^(?:<anonymous>|native|\[native code\]|unknown location|index \d+|eval at .*|)$/
+/** The files an App Router folder can give a chunk of (`app/(app)/menu/page-<hash>.js`). */
+const APP_FILES = new Set(['page', 'layout', 'template', 'error', 'global-error', 'loading', 'not-found', 'default', 'route'])
+/** Next.js's own chunks, by name. */
+const NEXT_RUNTIME = new Set(['framework', 'main', 'main-app', 'webpack', 'polyfills', 'react-refresh'])
+const HASH_SUFFIX = /-[0-9a-f]{6,}$/
+const SOURCE_SEGMENT = /^[A-Za-z][A-Za-z0-9_-]{0,60}$/
+const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]{0,50}\/)?[a-z0-9][a-z0-9._-]{0,50}$/
+
+/** Where a frame points (`url:line:col`), or null. */
+function frameLocation(line: string): string | null {
+  // `at name (place)`, or `at place` (an anonymous function; the place may hold `(group)` folders).
+  const v8 = /^at\s+(?:[^(]*\((.+)\)|(.*))$/.exec(line)
+  const at = line.lastIndexOf('@')
+  const loc = v8 ? (v8[1] ?? v8[2]) : at >= 0 ? line.slice(at + 1) : null
+  return loc === null ? null : loc.trim().replace(/:\d+(?::\d+)?$/, '')
+}
+
+/** A web chunk (`app/(app)/recipes/%5Bid%5D/page-<hash>`) as a closed shape: `app/recipes/:x/page`, `chunks/2117`… */
+function webChunk(name: string): string {
+  const decoded = name.replace(/%28/gi, '(').replace(/%29/gi, ')').replace(/%5B/gi, '[').replace(/%5D/gi, ']')
+  const app = /^app\/(.*)$/.exec(decoded)
+  if (app) {
+    const parts = app[1].split('/')
+    const file = parts.pop()!.replace(HASH_SUFFIX, '')
+    if (!APP_FILES.has(file)) return 'app/otra'
+    const segments = parts
+      .filter((s) => !/^\(.*\)$/.test(s))
+      .map((s) => (/^\[.*\]$/.test(s) ? ':x' : s.toLowerCase()))
+    // A folder matches its own template only: a `:x` here never stands for a fixed word.
+    const template = segments.length <= MAX_SEGMENTS ? matchTemplate(segments, WEB_TEMPLATES) : null
+    return template === '/' ? `app/${file}` : template ? `app${template}/${file}` : `app/otra/${file}`
+  }
+  if (decoded === 'pages/_app' || decoded === 'pages/_error' || /^pages\/_(?:app|error)-[0-9a-f]{6,}$/.test(decoded)) {
+    return decoded.replace(HASH_SUFFIX, '')
+  }
+  const bare = decoded.replace(HASH_SUFFIX, '')
+  if (NEXT_RUNTIME.has(bare)) return `chunks/${bare}`
+  // Shared chunks are named by webpack's id (`2117-<hash>`, `4bd1b696-<hash>`): digits and hex only.
+  if (/^[0-9a-f]{1,16}$/.test(bare)) return `chunks/${bare}`
+  return 'chunks/otro'
+}
+
+/**
+ * The file of the first stack frame that names one (PRO-1150), so groups with no type can still be
+ * told apart by where they broke, never by what they said: a chunk of the web in a closed shape
+ * (`app/menu/page`, `app/recipes/:x/layout`, `chunks/main-app`, `chunks/2117`, `pages/_app`), the page
+ * itself (`pagina`, an inline script), for server groups our own source (`api/services/menuGenerator`),
+ * `node_modules/<package>` or `node`; `anonimo` if no frame names a file, `otro` for any other place
+ * (another site's script, an extension), null without a stack. No origin, query, line or hash.
+ */
+export function stackFile(stack: unknown, kind: unknown): string | null {
+  if (typeof stack !== 'string') return null
+  let frames = 0
+  for (const raw of stack.split('\n').slice(0, 200)) {
+    const line = raw.trim()
+    if (!FRAME_LINE.test(line)) continue
+    frames++
+    const loc = frameLocation(line)
+    if (loc === null || NO_FILE.test(loc)) continue
+    if (/^node:/.test(loc)) return kind === 'server' ? 'node' : 'otro'
+    const path = loc.replace(/^[a-z][\w+.-]*:\/\/[^/]*/i, '').split(/[?#]/)[0]
+    const chunk = /\/_next\/static\/chunks\/(.+)\.js$/.exec(path)
+    if (chunk) return webChunk(chunk[1])
+    if (path.includes('/_next/')) return 'next/otro'
+    if (kind === 'server') {
+      const nm = path.lastIndexOf('/node_modules/')
+      if (nm >= 0) {
+        const rest = path.slice(nm + '/node_modules/'.length).split('/')
+        const pkg = rest[0].startsWith('@') ? rest.slice(0, 2).join('/') : rest[0]
+        return NPM_NAME.test(pkg) ? `node_modules/${pkg}` : 'otro'
+      }
+      const own = /\/apps\/api\/(?:dist|src)\/(.+)\.[cm]?[jt]s$/.exec(path)
+      if (own) {
+        const parts = own[1].split('/')
+        return parts.length <= 5 && parts.every((p) => SOURCE_SEGMENT.test(p)) ? `api/${parts.join('/')}` : 'otro'
+      }
+      return 'otro'
+    }
+    return path.startsWith('/') && normalisePage(path) !== 'otra' ? 'pagina' : 'otro'
+  }
+  return frames > 0 ? 'anonimo' : null
+}
+
 const ERROR_TOTALS = ['groups', 'newGroups', 'clientGroups', 'serverGroups', 'events'] as const
 
 export function errorsForAgents(report: object) {
@@ -234,6 +321,8 @@ export function errorsForAgents(report: object) {
         id: typeof g.id === 'string' && /^[0-9A-Za-z-]{1,64}$/.test(g.id) ? g.id : null,
         kind: oneOf(g.kind, ['client', 'server'] as const),
         type: errorType(g.message),
+        // Where it broke, never what it said (PRO-1150): the file of the first frame, in a closed shape.
+        file: stackFile(g.sampleStack, g.kind),
         // Client groups carry the page; server groups, `METHOD /route`.
         path: g.kind === 'server' ? normaliseApiRoute(g.path) : g.kind === 'client' ? normalisePage(g.path) : normalisePath(g.path),
         release: releaseForAgents(g.kind, g.release),
@@ -275,13 +364,28 @@ export interface FeedbackLike {
   page: string | null
   text: string
   createdAt: Date
-  /** What it answers ('sobras', PRO-285; 'pregunta_unica', PRO-1091), or null. */
+  /** What it answers ('sobras', PRO-285; 'pregunta_unica', PRO-1091; 'sean_ellis', PRO-334), or null. */
   tag?: string | null
+  /** The option picked ('sean_ellis': muy | algo | nada | ya_no), or null. */
+  answer?: string | null
 }
 
 const FEEDBACK_CHANNELS = ['app', 'chat', 'whatsapp'] as const
 /** Tags the counts may name (anything else counts as 'otra'). */
-export const FEEDBACK_TAGS = ['sobras', 'pregunta_unica'] as const
+export const FEEDBACK_TAGS = ['sobras', 'pregunta_unica', 'sean_ellis'] as const
+/** services/seanEllisSurvey.ts SEAN_ELLIS_ANSWERS (a test keeps them equal). */
+export const SEAN_ELLIS_ANSWER_LIST = ['muy', 'algo', 'nada', 'ya_no'] as const
+
+/** Counts by option of the Sean Ellis answers (PRO-334), no text; 'sin_opcion' when none was recognised. */
+export function seanEllisCounts(rows: ReadonlyArray<Pick<FeedbackLike, 'tag' | 'answer'>>): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const r of rows) {
+    if (r.tag !== 'sean_ellis') continue
+    const key = oneOf(r.answer, SEAN_ELLIS_ANSWER_LIST) ?? 'sin_opcion'
+    out[key] = (out[key] ?? 0) + 1
+  }
+  return out
+}
 
 /** Counts by tag (PRO-285: the answers to Mimo's leftovers question); untagged rows aren't counted. */
 export function feedbackTagCounts(rows: ReadonlyArray<Pick<FeedbackLike, 'tag'>>): Record<string, number> {
@@ -305,7 +409,7 @@ export function feedbackForAgents(days: number, rows: ReadonlyArray<FeedbackLike
     byPage[page] = (byPage[page] ?? 0) + 1
     if (possibleAllergy(r.text)) possibleAllergies.push({ date: madridParts(r.createdAt).isoDate, channel })
   }
-  return { days, count: rows.length, byChannel, byPage, byTag: feedbackTagCounts(rows), possibleAllergies }
+  return { days, count: rows.length, byChannel, byPage, byTag: feedbackTagCounts(rows), seanEllis: seanEllisCounts(rows), possibleAllergies }
 }
 
 // ─── Mimo's conversation flags ───────────────────────────────────

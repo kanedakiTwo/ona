@@ -5,6 +5,7 @@
  *   POST /menu/:menuId/a-ciegas      { choice: 'A' | 'B' | 'igual', reason? } — the household's pick
  *   GET  /admin/menu-planner/comparison   admin JWT or x-metrics-token: one line per test household
  *                                         (the token: no household id and no reasons, only their count)
+ *   GET  /admin/menu-planner/gemelos      admin JWT or x-metrics-token: the twins of the real households (PRO-390)
  */
 import { Router } from 'express'
 import { and, desc, eq, gte, inArray, like } from 'drizzle-orm'
@@ -15,6 +16,7 @@ import { menuBlindVotes, menuPlans, menus, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { comparisonForAgents } from '../services/agentView.js'
+import { buildTwins, loadTwinSources } from '../services/menuTwins.js'
 import { BLIND_TEST_EMAIL_SUFFIX, blindPair, isBlindTestAccount, preferredSource, summarizeComparison } from '../services/blindComparison.js'
 import { canAccessRow, resolveScope } from '../services/scopeResolver.js'
 
@@ -102,6 +104,17 @@ router.get('/admin/menu-planner/comparison', metricsAuth, async (req, res) => {
     res.json({ from: from.toISOString().slice(0, 10), households: viaMetricsToken(req) ? comparisonForAgents(households) : households })
   } catch (err) {
     console.error('[a-ciegas] report failed:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// PRO-390: the twins of the real households (services/menuTwins.ts). No AI, no text, no ids.
+router.get('/admin/menu-planner/gemelos', metricsAuth, async (_req, res) => {
+  try {
+    const sources = await loadTwinSources()
+    res.json({ households: sources.length, twins: buildTwins(sources) })
+  } catch (err) {
+    console.error('[gemelos] failed:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

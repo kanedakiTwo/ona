@@ -61,6 +61,58 @@ describe('buildGrowth: first hit', () => {
   })
 })
 
+describe('buildGrowth: the two halves of the first hit (PRO-1148)', () => {
+  // Signup Monday 2026-10-05; today 2026-11-04 → every window is over.
+  const signups = ['cooks', 'ticks', 'both', 'neither'].map((householdId) => ({ householdId, at: '2026-10-05T09:00:00Z' }))
+  const events = [
+    ev('cooks', 'meal_cooked', '2026-10-06'),
+    ev('ticks', 'shopping_item_checked', '2026-10-07'),
+    ev('both', 'cook_mode_started', '2026-10-06'),
+    ev('both', 'shopping_list_shared', '2026-10-08'),
+    ev('neither', 'menu_generated', '2026-10-05'),
+  ]
+  const [c] = buildGrowth(input({ signups, events }))
+
+  it('one that only cooks counts in firstHitCooked, not in firstHit', () => {
+    const [only] = buildGrowth(input({ signups: signups.slice(0, 1), events }))
+    expect(only.firstHitCooked).toEqual({ eligible: 1, reached: 1, reachedInOpenWindow: 0 })
+    expect(only.firstHitList).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+    expect(only.firstHit).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+  })
+
+  it('one that only ticks the list counts in firstHitList, not in firstHit', () => {
+    const [only] = buildGrowth(input({ signups: signups.slice(1, 2), events }))
+    expect(only.firstHitList).toEqual({ eligible: 1, reached: 1, reachedInOpenWindow: 0 })
+    expect(only.firstHitCooked).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+    expect(only.firstHit).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+  })
+
+  it('one that does both counts in all three', () => {
+    const [only] = buildGrowth(input({ signups: signups.slice(2, 3), events }))
+    expect(only.firstHit.reached).toBe(1)
+    expect(only.firstHitCooked.reached).toBe(1)
+    expect(only.firstHitList.reached).toBe(1)
+  })
+
+  it('same eligible households as firstHit', () => {
+    expect(c.signups).toBe(4)
+    expect(c.firstHit).toEqual({ eligible: 4, reached: 1, reachedInOpenWindow: 0 })
+    expect(c.firstHitCooked).toEqual({ eligible: 4, reached: 2, reachedInOpenWindow: 0 })
+    expect(c.firstHitList).toEqual({ eligible: 4, reached: 2, reachedInOpenWindow: 0 })
+  })
+
+  it('inside an open window they go to reachedInOpenWindow', () => {
+    const [open] = buildGrowth(input({ signups: signups.slice(2, 3), events, now: new Date('2026-10-09T11:00:00Z') }))
+    expect(open.firstHitCooked).toEqual({ eligible: 0, reached: 0, reachedInOpenWindow: 1 })
+    expect(open.firstHitList).toEqual({ eligible: 0, reached: 0, reachedInOpenWindow: 1 })
+  })
+
+  it('their definition is in GROWTH_DEFINITIONS', () => {
+    expect(GROWTH_DEFINITIONS.growth).toContain('firstHitCooked')
+    expect(GROWTH_DEFINITIONS.growth).toContain('firstHitList')
+  })
+})
+
 describe('buildGrowth: windows not over yet', () => {
   // Signup on 2026-11-02 (Monday): day 2 today.
   const signups = [{ householdId: 'new', at: '2026-11-02T09:00:00Z' }]

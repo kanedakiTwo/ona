@@ -341,7 +341,7 @@ test('portrait, the question, what Mimo deduced, another member and the reader�
   await expect(health).toContainText('Solo lo ves tú')
   await expect(health.getByRole('button', { name: /^Sin lactosa/ })).toBeVisible()
   await expect(health.getByText('Edad: 42 años')).toHaveCount(0)
-  await expect(health.getByRole('link', { name: /Datos físicos/ })).toHaveAttribute('href', '/profile#datos-fisicos')
+  await expect(health.getByRole('link', { name: /Datos físicos/ })).toHaveAttribute('href', '/profile/quien/me#datos-fisicos')
 
   // Another member's fact: readable, changed only by them.
   await chip(page, 'Marta').click()

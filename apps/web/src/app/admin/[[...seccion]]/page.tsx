@@ -11,6 +11,7 @@
  *   4. Ingredients missing unitWeight (produce items that ship per-unit)
  *   5. Allergen tag suggestions (heuristic > current), with the za'atar &
  *      co. stored without sesame and their published recipes on top (PRO-1096)
+ *      and the recipes whose allergens don't match their ingredients (PRO-1118)
  *   6. Recipes with incomplete nutrition (kcal == 0 / null)
  *   7. Recent regen output (failed/skipped JSONL)
  *   8. Usuarios — search + suspend + reset-link generator
@@ -57,6 +58,7 @@ import {
   UnitWeightSection,
   AllergenSection,
   SesameMissingSection,
+  AllergenMismatchSection,
 } from "../sections/IngredientSections"
 import { RecipesSection, RegenSection } from "../sections/RecipeSections"
 import { RemapModal } from "../sections/RemapModal"
@@ -70,6 +72,7 @@ import { WaitlistAdminSection } from "../sections/WaitlistAdminSection"
 import { PendingRecipesSection } from "../sections/PendingRecipesSection"
 import { FeatureUsageSection } from "../sections/FeatureUsageSection"
 import { WhatsAppQuestionSection } from "../sections/WhatsAppQuestionSection"
+import { EmailQuestionSection } from "../sections/EmailQuestionSection"
 import { NewsletterSection } from "../sections/NewsletterSection"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 
@@ -91,6 +94,7 @@ type SectionKey =
   | "drafts"
   | "features"
   | "question"
+  | "emailQuestion"
   | "newsletter"
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
@@ -111,6 +115,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: "newsletter", label: "Newsletter" },
   { key: "feedback", label: "Opiniones" },
   { key: "question", label: "Pregunta por WhatsApp" },
+  { key: "emailQuestion", label: "Pregunta por correo" },
   { key: "features", label: "Uso de funciones" },
 ]
 
@@ -122,6 +127,7 @@ const AREA_SECTION: Record<Exclude<AdminArea, "catalogo">, SectionKey> = {
   newsletter: "newsletter",
   opiniones: "feedback",
   "pregunta-whatsapp": "question",
+  "pregunta-correo": "emailQuestion",
   funciones: "features",
   auditoria: "audit",
   voz: "voice",
@@ -136,6 +142,7 @@ const AREA_HEADER: Record<AdminArea, { title: string; intro: string }> = {
   newsletter: { title: "Newsletter", intro: "La carta de los viernes: parte de la recomendación de Marketing, corrígela y guárdala como plantilla. Cada persona recibe la suya. Nada sale sin que veas la prueba en tu correo." },
   opiniones: { title: "Opiniones", intro: "Lo que nos cuentan los hogares de la beta, desde el botón «Opinión», el chat o WhatsApp." },
   "pregunta-whatsapp": { title: "Pregunta por WhatsApp", intro: "Una pregunta única a un grupo de hogares, con la plantilla aprobada en Meta. Ves cuántos la recibirán antes de enviar; cada hogar, una sola vez. Las respuestas llegan a Opiniones." },
+  "pregunta-correo": { title: "Pregunta por correo", intro: "Un solo correo de Miguel a los hogares que lo dejaron: qué les faltó. Ves el recuento exacto y el correo antes de enviar; cada hogar lo recibe una sola vez. Las respuestas llegan a hola@." },
   funciones: { title: "Uso de funciones", intro: "Cuántos hogares usan cada función de Mimoia y a quién proponerle cada truco en la newsletter. Solo cifras; los grupos de menos de 5 no llevan número." },
   auditoria: { title: "Auditoría", intro: "Lo que ha hecho cada admin y cuándo. Cada acción queda registrada." },
   voz: { title: "Voz", intro: "Histórico del antiguo modo de voz (retirado el 2026-10-09). Ya no entran conversaciones nuevas." },
@@ -149,6 +156,7 @@ const SECTION_AREA_HREF: Partial<Record<SectionKey, string>> = {
   newsletter: "/admin/newsletter",
   feedback: "/admin/opiniones",
   question: "/admin/pregunta-whatsapp",
+  emailQuestion: "/admin/pregunta-correo",
   features: "/admin/funciones",
   audit: "/admin/auditoria",
   voice: "/admin/voz",
@@ -229,6 +237,7 @@ export default function AdminPage() {
     drafts: 0,
     features: 0,
     question: 0,
+    emailQuestion: 0,
     newsletter: 0,
   }
 
@@ -344,6 +353,7 @@ export default function AdminPage() {
         {!isLoading && active === "allergens" && (
           <>
             <SesameMissingSection rows={ingredientGaps.data?.sesameMissing ?? []} />
+            <AllergenMismatchSection data={ingredientGaps.data?.allergenMismatch} />
             <AllergenSection rows={ingredientGaps.data?.allergenSuggestions ?? []} />
           </>
         )}
@@ -363,6 +373,7 @@ export default function AdminPage() {
         {active === "drafts" && <PendingRecipesSection />}
         {active === "features" && <FeatureUsageSection />}
         {active === "question" && <WhatsAppQuestionSection />}
+        {active === "emailQuestion" && <EmailQuestionSection />}
         {active === "newsletter" && <NewsletterSection />}
       </main>
 

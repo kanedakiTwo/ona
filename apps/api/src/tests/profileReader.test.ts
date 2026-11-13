@@ -154,6 +154,21 @@ describe('the menu respects the ficha', () => {
 
   it('without a ficha nothing changes', () => {
     const filters = withFichaFilters({ dislikes: ['hígado'], availableEquipment: new Set(['horno']) }, fichaMenuConstraints(null))
-    expect(filters).toEqual({ dislikes: ['hígado'], availableEquipment: new Set(['horno']), unavailableEquipment: undefined })
+    expect(filters).toEqual({ dislikes: ['hígado'], availableEquipment: new Set(['horno']), unavailableEquipment: undefined, tastes: {} })
+  })
+
+  it('PRO-1201: every member\'s cuisines (a low one wins), the level of whoever generates, else the household\'s', () => {
+    const c = fichaMenuConstraints(ficha([
+      fact({ type: 'cuisine_bias', subjectUserId: ME, value: { Asiática: 90, mexicana: 85 } }),
+      fact({ type: 'cuisine_bias', subjectUserId: OTHER, value: { asiatica: 20, india: 70 } }),
+      fact({ type: 'cooking_skill', subjectUserId: OTHER, value: 'advanced' }),
+      fact({ type: 'cooking_skill', value: 'medium' }),
+    ]), ME)
+    expect(c.cuisineBias).toEqual({ asiatica: 20, mexicana: 85, india: 70 })
+    expect(c.cookingSkill).toBe('medium')
+    expect(fichaMenuConstraints(ficha([fact({ type: 'cooking_skill', subjectUserId: ME, value: 'easy' })]), ME).cookingSkill).toBe('easy')
+    // The memory's level wins; its cuisines join the ficha's.
+    const filters = withFichaFilters({ dislikes: [], availableEquipment: undefined, tastes: { cuisineBias: { italiana: 95 }, cookingSkill: 'easy' } }, c)
+    expect(filters.tastes).toEqual({ cuisineBias: { italiana: 95, asiatica: 20, mexicana: 85, india: 70 }, cookingSkill: 'easy' })
   })
 })

@@ -94,6 +94,10 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     const cohort = after.body.growth.at(-1)
     expect(cohort.signups).toBeGreaterThanOrEqual(1)
     expect(cohort.firstMenu.reachedInOpenWindow + cohort.firstMenu.reached).toBeGreaterThanOrEqual(1)
+    // PRO-1148: the two halves of the first hit, same step shape.
+    for (const half of [cohort.firstHitCooked, cohort.firstHitList]) {
+      expect(half).toEqual({ eligible: expect.any(Number), reached: expect.any(Number), reachedInOpenWindow: expect.any(Number) })
+    }
     expect(cohort.paid).toEqual({ eligible: expect.any(Number), reached: expect.any(Number), reachedInOpenWindow: 0 })
     expect(after.body.timeToFirstMenu.at(-1).withMenu).toBeGreaterThanOrEqual(1)
     const t = after.body.trial

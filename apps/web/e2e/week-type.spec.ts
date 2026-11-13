@@ -34,9 +34,14 @@ test('saving the profile never changes the week type', async ({ page }) => {
   const { headers } = await auth(page)
   expect((await page.request.put(`${API_URL}/households/me/week-type/4/dinner`, { headers, data: { options: [{ kind: 'type', type: 'pizza' }] } })).ok()).toBe(true)
   const before = await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()
-  await page.goto('/profile')
-  await page.getByRole('button', { name: /guardar cambios/i }).click()
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  // Since PRO-1203 the profile's settings blob is saved from «Salud y objetivo», in your row of «Quién come».
+  await page.goto('/profile/quien/me')
+  const card = page.getByTestId('health-and-goal')
+  const consent = card.getByRole('checkbox', { name: /datos de salud/i })
+  await consent.click()
+  await expect(consent).toBeChecked({ timeout: 10_000 })
+  await card.getByRole('button', { name: /^guardar$/i }).click()
+  await expect(card.getByText(/guardado/i)).toBeVisible({ timeout: 10_000 })
   expect(await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).toEqual(before)
 })
 
@@ -46,7 +51,8 @@ test('«Tu semana tipo», end to end: a type, «cada 2», turns, together, remov
   const weekType = async () => (await (await page.request.get(`${API_URL}/households/me/week-type`, { headers })).json()).days
   const loaded = page.waitForResponse((r) => r.url().includes('/households/me/week-type') && r.request().method() === 'GET')
   await page.goto('/profile')
-  await page.getByRole('link', { name: /Tu semana tipo/ }).click()
+  // PRO-1204: «Vuestra semana» heads the profile; «Editar» opens the week type.
+  await page.getByTestId('week-type-head').getByRole('link', { name: 'Editar', exact: true }).click()
   await loaded
   await expect(page.getByRole('heading', { name: /Tu semana tipo/ })).toBeVisible()
 

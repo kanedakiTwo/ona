@@ -18,7 +18,6 @@ import {
   Bell,
   BellOff,
   BookOpen,
-  CalendarDays,
   ChefHat,
   ChevronRight,
   CreditCard,
@@ -52,6 +51,7 @@ import { api } from '@/lib/api'
 import { useWebPush } from '@/hooks/useWebPush'
 import { useMimo } from '@/components/mimo/MimoProvider'
 import { MyRecipesSection } from './sections/MyRecipesSection'
+import { WeekTypeHead } from '@/components/weekType/WeekTypeHead'
 import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
 import { WhoEatsSection } from '@/components/profile/WhoEatsSection'
@@ -86,6 +86,11 @@ export default function ProfilePage() {
           email={user.email}
           onMore={() => setMoreOpen(true)}
         />
+
+        {/* PRO-1204: the semana tipo heads the profile — the menu comes out of it. */}
+        <div className="mt-5 lg:mt-6">
+          <WeekTypeHead />
+        </div>
 
         {/* Casa y Mimo: one paper card per sub-page, with a status line. */}
         <div className="mt-6 px-5 lg:mt-8 lg:px-0">
@@ -167,14 +172,6 @@ export default function ProfilePage() {
         </div>
         <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:items-start lg:gap-4 lg:px-0">
           <div className="grid gap-3 lg:grid-cols-2 lg:items-start lg:gap-4">
-            {/* «Tu semana tipo» (D-182): its own page. */}
-            <ProfileHubLink
-              href="/profile/semana-tipo"
-              icon={CalendarDays}
-              title="Tu semana tipo"
-              status="Lo que soléis comer cada día: el menú sale de ahí"
-            />
-
             {/* Recordatorios */}
             <ProfileCard
               icon={Bell}

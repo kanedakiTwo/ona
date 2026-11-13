@@ -6,7 +6,7 @@
  * slot opens its panel (a sheet on mobile, the right column on desktop).
  * Every change writes that one slot.
  */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Plus } from "lucide-react"
 import { MEALS, householdToDiners, type Meal } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
@@ -27,6 +27,12 @@ export default function WeekTypePage() {
   const desktop = useIsDesktop()
   const [selected, setSelected] = useState<{ day: number; meal: Meal } | null>(null)
   const [extraMeals, setExtraMeals] = useState<Meal[]>([])
+  // PRO-1204: «Según tu semana» in the menu links here with `?dia=N` (0 = lunes): that day, marked.
+  const [highlightDay, setHighlightDay] = useState<number | null>(null)
+  useEffect(() => {
+    const d = Number(new URLSearchParams(window.location.search).get("dia"))
+    if (Number.isInteger(d) && d >= 0 && d <= 6 && window.location.search.includes("dia=")) setHighlightDay(d)
+  }, [])
   const defaultDiners = householdToDiners(user?.adults ?? 2, user?.kidsCount ?? 0)
 
   const meals = weekTypeMeals(days, extraMeals)
@@ -53,7 +59,7 @@ export default function WeekTypePage() {
       {days && (
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8">
           <section aria-label="La semana">
-            <WeekTypeGrid days={days} meals={meals} selected={selected} onSelect={(day, meal) => setSelected({ day, meal })} />
+            <WeekTypeGrid days={days} meals={meals} selected={selected} highlightDay={highlightDay} onSelect={(day, meal) => setSelected({ day, meal })} />
             {hidden.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {hidden.map((m) => (

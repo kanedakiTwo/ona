@@ -124,17 +124,14 @@ export function buildRandomMenu(
    * recipe, something fixed) or free. Slots without one draw as before.
    */
   slotSpecs?: Record<string, DishSpec[]>,
-<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
   /** PRO-1201: the ficha's cuisines and cooking level, weights of every draw. */
   tastes?: MenuTastes,
-=======
   /**
    * PRO-1200 (`everydayMenu.ts`): while the household is starting, every
    * drawn dish comes from the `diario` recipes when one fits; afterwards, at
    * most `discoveries` from outside. Absent = draw as before.
    */
   everyday?: EverydayPolicy | null,
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
 ): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
   // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
   // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
@@ -196,13 +193,8 @@ export function buildRandomMenu(
       if (spec.kind !== 'type') return undefined
       // Only recipes of that type, with every filter as usual (the school menu too).
       const typed = slotPool.filter((r) => r.dishTypes?.includes(spec.type))
-<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
-      const tries = onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id)), typed] : [typed]
-      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
-=======
       const tries = [...(onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id))] : []), ...everydayTries([typed], everyday, discoveriesLeft)]
-      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
+      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
       let picked: RecipeWithCourse | undefined
       for (const p of tries) if ((picked = findForCourse(p, null, opts) as RecipeWithCourse | undefined)) break
       if (picked) {
@@ -602,11 +594,8 @@ export async function generateMenu(
       unavailableEquipment,
       onlyFavoriteIds,
       plan.specs,
-<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
       tastes,
-=======
       everyday,
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
     )
 
     // Verify the menu has at least some recipes
@@ -703,11 +692,8 @@ export async function generateMenu(
     unavailableEquipment,
     onlyFavoriteIds,
     plan.specs,
-<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
     tastes,
-=======
     everyday,
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
   )
   wishes(fallback.warnings)
   return withShort({ days: finish(fallback.days), warnings: [...plan.warnings, ...fallback.warnings] })

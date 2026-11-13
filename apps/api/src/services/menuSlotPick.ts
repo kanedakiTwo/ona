@@ -82,14 +82,10 @@ export async function loadSlotPickContext(menu: SlotPickMenu, requesterId: strin
   // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
   const recipes = await loadMatchableRecipes(requesterId)
 
-<<<<<<< 905dc0a7bf406c52289b081ef034b8801303e29d
-  return { memory, restrictions, dislikes, availableEquipment, unavailableEquipment, tastes, rated, recipes, season: detectSeason() }
-=======
   // PRO-1200: «de diario» while starting, at most 2 from outside a week after.
   const everyday = everydayPolicy(recipes, await loadIsStarting(menu.userId, menu.weekStart), [...rated.favoriteRecipeIds, ...rated.likedRecipeIds])
 
-  return { memory, restrictions, dislikes, availableEquipment, unavailableEquipment, rated, recipes, everyday, season: detectSeason() }
->>>>>>> 89f69be5d338cf5ffa9233b1973064253d162921
+  return { memory, restrictions, dislikes, availableEquipment, unavailableEquipment, tastes, rated, recipes, everyday, season: detectSeason() }
 }
 
 /** The pool and the matcher options for one slot. */

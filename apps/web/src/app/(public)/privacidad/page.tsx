@@ -157,6 +157,12 @@ export default function PrivacidadPage() {
             sin vincularlos a ti. Si pagas una suscripción, se cancela en ese momento; Stripe y Link conservan los
             recibos el tiempo que exige la ley fiscal.
           </p>
+          <p data-testid="privacy-backups-retention">
+            Las copias de seguridad, cifradas, se guardan 14 días y después se borran solas. Si borras la cuenta o
+            retiras el permiso de los datos de salud, desaparecen de la base al momento y de las copias en 14 días como
+            mucho. Las copias solo se usan para recuperar el servicio si algo falla, y si un día hay que usar una, antes
+            se vuelve a borrar lo que habías borrado.
+          </p>
 
           <H2>7. Tus derechos</H2>
           <p>

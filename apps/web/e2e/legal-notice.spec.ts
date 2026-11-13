@@ -93,6 +93,9 @@ test('/privacidad: Groq and OpenAI transcribe the voice, Oracle keeps the copies
   await expect(page.getByTestId('privacy-processor-oracle')).toHaveText(
     'Oracle Cloud: guarda cada noche una copia de seguridad de la base de datos, cifrada con una clave que solo tiene Mimoia, en su centro de datos de Madrid (Unión Europea). Oracle no puede leerla.',
   )
+  await expect(page.getByTestId('privacy-backups-retention')).toHaveText(
+    'Las copias de seguridad, cifradas, se guardan 14 días y después se borran solas. Si borras la cuenta o retiras el permiso de los datos de salud, desaparecen de la base al momento y de las copias en 14 días como mucho. Las copias solo se usan para recuperar el servicio si algo falla, y si un día hay que usar una, antes se vuelve a borrar lo que habías borrado.',
+  )
   await expect(page.getByTestId('reading-column')).not.toContainText('se borran todas las copias')
 })
 

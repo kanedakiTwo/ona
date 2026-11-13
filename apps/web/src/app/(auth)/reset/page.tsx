@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { Accent, AUTH_PILL, AuthError, AuthField, AuthFooterLink, AuthHeading, AuthShell } from "@/components/auth/AuthShell"
+import { RequiredNote } from "@/components/FieldLabel"
 
 const HERO_IMG = "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1200&q=85&auto=format&fit=crop"
 
@@ -131,7 +132,9 @@ function ResetPageInner() {
             autoComplete="new-password"
           />
 
-          <button type="submit" disabled={isSubmitting || !password || !confirm} className={`mt-2 ${AUTH_PILL}`}>
+          <RequiredNote className="-mt-2" />
+
+          <button type="submit" disabled={isSubmitting || !password || !confirm} className={AUTH_PILL}>
             {isSubmitting ? "Guardando..." : "Guardar contraseña"}
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" aria-hidden />
           </button>

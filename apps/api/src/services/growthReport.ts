@@ -85,6 +85,10 @@ export interface GrowthCohort {
   signups: number
   firstMenu: GrowthStep
   firstHit: GrowthStep
+  /** PRO-1148: the cooking half of firstHit alone (same window, same eligible). */
+  firstHitCooked: GrowthStep
+  /** PRO-1148: the list half of firstHit alone (same window, same eligible). */
+  firstHitList: GrowthStep
   twoWeeks: GrowthStep
   paid: GrowthStep
 }
@@ -169,16 +173,21 @@ export function buildGrowth(input: GrowthInput): GrowthCohort[] {
     const day0 = madridDay(at)
     const week = weekOfDay(day0)
     if (!cohorts.has(week)) {
-      cohorts.set(week, { week, isoWeek: isoWeekLabel(week), signups: 0, firstMenu: zeroStep(), firstHit: zeroStep(), twoWeeks: zeroStep(), paid: zeroStep() })
+      cohorts.set(week, { week, isoWeek: isoWeekLabel(week), signups: 0, firstMenu: zeroStep(), firstHit: zeroStep(), firstHitCooked: zeroStep(), firstHitList: zeroStep(), twoWeeks: zeroStep(), paid: zeroStep() })
     }
     const c = cohorts.get(week)!
     const evs = events.get(hh) ?? []
     const inFirstWeek = (names: ReadonlySet<string>) =>
       evs.some((e) => names.has(e.name) && dayDiff(day0, e.day) >= 0 && dayDiff(day0, e.day) < GROWTH_FIRST_WEEK_DAYS)
     const elapsed = dayDiff(day0, today)
+    const firstWeekOver = elapsed >= GROWTH_FIRST_WEEK_DAYS
+    const cooked = inFirstWeek(COOKED)
+    const list = inFirstWeek(LIST)
     c.signups += 1
-    tally(c.firstMenu, elapsed >= GROWTH_FIRST_WEEK_DAYS, inFirstWeek(new Set(['menu_generated'])))
-    tally(c.firstHit, elapsed >= GROWTH_FIRST_WEEK_DAYS, inFirstWeek(COOKED) && inFirstWeek(LIST))
+    tally(c.firstMenu, firstWeekOver, inFirstWeek(new Set(['menu_generated'])))
+    tally(c.firstHit, firstWeekOver, cooked && list)
+    tally(c.firstHitCooked, firstWeekOver, cooked)
+    tally(c.firstHitList, firstWeekOver, list)
     tally(c.twoWeeks, elapsed >= GROWTH_TWO_WEEKS_DAYS, hasTwoWeeksInARow(day0, menus.get(hh) ?? []))
     tally(c.paid, true, PAID_GROWTH.has(status.get(hh) ?? ''))
   }
@@ -284,7 +293,7 @@ export function buildTrialReport(rows: readonly TrialHouseholdRow[], now: Date):
 
 export const GROWTH_DEFINITIONS = {
   growth:
-    'PRO-379, D-158: the growth line by signup cohort (ISO week of the household’s first signup_completed, Europe/Madrid), every signup kept (180 days), not the window. Steps are not nested. firstMenu = menu_generated on days 0–6 from signup; firstHit = on days 0–6, cooked (meal_cooked or cook_mode_started) and used or sent the list (shopping_item_checked, shopping_list_shared, shop_order_prepared, carrefour_click or basket_extension_sent); twoWeeks = two consecutive ISO weeks whose Mondays fall on days 0–20 from signup, each with its first menu created before 00:00 of its Monday (as menuReadyByMondayHouseholds in /admin/metrics); paid = the household’s latest subscription is active or trialing (a plan with the card left) today. eligible = households whose window is over (day 7 for firstMenu and firstHit, day 21 for twoWeeks; paid has no window: every signup); reached counts only among eligible; reachedInOpenWindow = already made it inside an open window. Counts only.',
+    'PRO-379, D-158: the growth line by signup cohort (ISO week of the household’s first signup_completed, Europe/Madrid), every signup kept (180 days), not the window. Steps are not nested. firstMenu = menu_generated on days 0–6 from signup; firstHit = on days 0–6, cooked (meal_cooked or cook_mode_started) and used or sent the list (shopping_item_checked, shopping_list_shared, shop_order_prepared, carrefour_click or basket_extension_sent); firstHitCooked and firstHitList (PRO-1148) = each half of firstHit on its own, same days 0–6 and same eligible: cooked, or used or sent the list (firstHit is both; its definition does not change); twoWeeks = two consecutive ISO weeks whose Mondays fall on days 0–20 from signup, each with its first menu created before 00:00 of its Monday (as menuReadyByMondayHouseholds in /admin/metrics); paid = the household’s latest subscription is active or trialing (a plan with the card left) today. eligible = households whose window is over (day 7 for firstMenu, firstHit, firstHitCooked and firstHitList, day 21 for twoWeeks; paid has no window: every signup); reached counts only among eligible; reachedInOpenWindow = already made it inside an open window. Counts only.',
   trial:
     'PRO-379: every household with a counted member, today, by its latest subscription and the trial rule (accountAccess): beta (before launch day, no plan), inTrial (trial without card), withCard (trialing: card left, not charged yet), paying (active), paused (trial over without a plan), free (plan Gratis, PRO-385: 0 until it ships), pastDue (past_due or unpaid). Those seven add up to the households. cancelScheduled = of withCard and paying, cancelling at the end of the period; cancellations = households whose latest subscription is canceled, byReason (PRO-386: until then all unknown). Counts only.',
   timeToFirstMenu:

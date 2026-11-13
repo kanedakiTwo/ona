@@ -1,6 +1,6 @@
 /**
  * PRO-225 · «Antes de planificar» on /menu: two optional taps above
- * «Generar mi menú». Skipped, the week is generated as always; answered
+ * «Llenar con mi semana tipo». Skipped, the week is generated as always; answered
  * («Jue · Cena fuera», «Mar: somos 6»), that week has no Thursday dinner and
  * 6 diners on Tuesday, and the saved plantilla is untouched. PRO-229: what's
  * left in the fridge goes in the same step and lands in the despensa (nevera),
@@ -23,7 +23,7 @@ async function auth(page: Page) {
 
 async function openBlankWeek(page: Page, weekStart: string) {
   await page.goto(`/menu?week=${weekStart}`)
-  await expect(page.getByRole('button', { name: 'Generar mi menú' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Llenar con mi semana tipo' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('week-plan-questions')).toBeVisible()
 }
 
@@ -36,10 +36,10 @@ test('skipping the questions generates the week as always', async ({ page }) => 
 
   const [req] = await Promise.all([
     page.waitForRequest((r) => r.url().endsWith('/menu/generate') && r.method() === 'POST' && !r.postDataJSON()?.empty),
-    page.getByRole('button', { name: 'Generar mi menú' }).click(),
+    page.getByRole('button', { name: 'Llenar con mi semana tipo' }).click(),
   ])
   expect(req.postDataJSON().weekPlan).toBeUndefined()
-  await expect(page.getByRole('button', { name: 'Generar mi menú' })).toHaveCount(0, { timeout: 30_000 })
+  await expect(page.getByRole('button', { name: 'Llenar con mi semana tipo' })).toHaveCount(0, { timeout: 30_000 })
 })
 
 test('answering them: no Thursday dinner, 6 on Tuesday, plantilla untouched', async ({ page }) => {
@@ -71,7 +71,7 @@ test('answering them: no Thursday dinner, 6 on Tuesday, plantilla untouched', as
 
   const [res] = await Promise.all([
     page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST' && !!r.request().postDataJSON()?.weekPlan),
-    page.getByRole('button', { name: 'Generar mi menú' }).click(),
+    page.getByRole('button', { name: 'Llenar con mi semana tipo' }).click(),
   ])
   expect(res.request().postDataJSON().weekPlan).toEqual({
     mealsOut: [{ day: 3, meal: 'dinner' }],
@@ -106,12 +106,12 @@ test('PRO-295: an intolerance in the fridge asks before generating', async ({ pa
   await page.getByLabel('Lo que queda en la nevera').fill('Pues mira, dos yogures (ojo: no tomo nada de lactosa, me sienta fatal)')
   const [first] = await Promise.all([
     page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST' && !!r.request().postDataJSON()?.weekPlan),
-    page.getByRole('button', { name: 'Generar mi menú' }).click(),
+    page.getByRole('button', { name: 'Llenar con mi semana tipo' }).click(),
   ])
   expect(first.status()).toBe(409)
   const question = page.getByTestId('fridge-health-question')
   await expect(question).toContainText('sin lactosa')
-  await expect(page.getByRole('button', { name: 'Generar mi menú' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Llenar con mi semana tipo' })).toHaveCount(0)
 
   const [second] = await Promise.all([
     page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST' && !!r.request().postDataJSON()?.weekPlan?.fridgeAnswer),

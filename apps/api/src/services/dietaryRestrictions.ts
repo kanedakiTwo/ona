@@ -304,6 +304,11 @@ export interface CompiledRestrictions {
   alcohol: boolean
   /** Halal: nothing `nameIsHaram` finds in the ingredients. */
   halal: boolean
+  /**
+   * PRO-1142: the dislikes' terms, also read against the recipe's name
+   * («Oreja a la plancha» never matched «oreja de cerdo»).
+   */
+  dishTerms?: string[]
 }
 
 /**
@@ -339,11 +344,14 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
     }
     terms.add(key) // free text: "cilantro", "picante"…
   }
+  const dishTerms = new Set<string>()
   for (const raw of dislikes) {
     const key = restrictionKey(raw)
-    if (key) terms.add(key)
+    if (!key) continue
+    terms.add(key)
+    dishTerms.add(key)
   }
-  return { allergens, terms: [...terms], alcohol, halal }
+  return { allergens, terms: [...terms], alcohol, halal, dishTerms: [...dishTerms] }
 }
 
 // nameHasTerm lives in nutrition/allergens.ts (PRO-160: the peanut rule
@@ -351,8 +359,14 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
 export { nameHasTerm }
 
 export interface RestrictableRecipe {
-  /** Recipe name: only the alcohol rule reads it («Riñones al jerez»). */
+  /** Recipe name: the alcohol rule («Riñones al jerez») and the dislikes (PRO-1142) read it. */
   name?: string | null
+  /**
+   * PRO-1142: dislike terms (`restrictionKey`) a later «Me apetece», «Me
+   * encanta» or 5 stars beats for this recipe's name (`dishDislikes.ts`).
+   * Its ingredients still count.
+   */
+  dislikesOverridden?: readonly string[] | null
   /** Recipe-level allergen union (recipes.allergens). */
   allergens?: readonly string[] | null
   ingredients: ReadonlyArray<{
@@ -401,8 +415,14 @@ function stepMentionIngredients(recipe: RestrictableRecipe): RestrictableRecipe[
 
 /** True when the recipe contains something the compiled restrictions exclude. */
 export function violatesRestrictions(recipe: RestrictableRecipe, rules: CompiledRestrictions): boolean {
-  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal) return false
+  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal && !rules.dishTerms?.length) return false
   if (rules.alcohol && recipe.name && nameHasAlcohol(normalizeText(recipe.name))) return true
+  // PRO-1142: a dislike that names the dish keeps it out, unless the household
+  // said it wants it after the dislike.
+  if (rules.dishTerms?.length && recipe.name) {
+    const name = normalizeText(recipe.name)
+    if (rules.dishTerms.some((t) => nameHasTerm(name, t) && !recipe.dislikesOverridden?.includes(t))) return true
+  }
   if (rules.allergens.size > 0) {
     if ((recipe.allergens ?? []).some((a) => rules.allergens.has(a as AllergenTag))) return true
   }

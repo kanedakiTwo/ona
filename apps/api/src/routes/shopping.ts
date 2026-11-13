@@ -23,7 +23,6 @@ import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
 import { setActivityDetail } from '../services/activityEvents.js'
 import {
   AISLES,
-  UNITS,
   householdMultiplier,
   householdSizeToCounts,
   resolveBuyRule,

@@ -65,4 +65,32 @@ describe('ingredients/auto-create smoke', () => {
     expect(typeof body.suggestedAisle).toBe('string')
     expect(Array.isArray(body.suggestedAllergens)).toBe(true)
   })
+
+  // 2026-11-10: "Tomate" found nothing in /recipes/new (case-sensitive LIKE against "tomate"). The search folds case
+  // and accents and puts the exact name first.
+  it.skipIf(!reachable || !TEST_USER_TOKEN)('GET /ingredients?search= ignores case and accents, exact name first', async () => {
+    const stamp = Date.now()
+    const name = `smoke brócoli ${stamp}`
+    const created = await fetch(`${API_URL}/ingredients/auto-create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TEST_USER_TOKEN}` },
+      body: JSON.stringify({ name }),
+    })
+    expect(created.ok).toBe(true)
+    const { ingredient } = await created.json()
+    // a longer name that also matches, to check the exact one comes first
+    await fetch(`${API_URL}/ingredients/auto-create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TEST_USER_TOKEN}` },
+      body: JSON.stringify({ name: `aaa ${name} con ajo` }),
+    })
+
+    for (const typed of [`Smoke Brocoli ${stamp}`, `SMOKE BRÓCOLI ${stamp}`, `smoke  brocoli ${stamp}`]) {
+      const r = await fetch(`${API_URL}/ingredients?search=${encodeURIComponent(typed)}&perPage=20`)
+      expect(r.ok).toBe(true)
+      const rows: Array<{ id: string; name: string }> = await r.json()
+      expect(rows.map((x) => x.id)).toContain(ingredient.id)
+      expect(rows[0].id).toBe(ingredient.id)
+    }
+  })
 })

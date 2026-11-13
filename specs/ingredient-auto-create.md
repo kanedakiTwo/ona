@@ -12,18 +12,15 @@ The same plumbing is reused by:
 
 ## User Capabilities
 
-- Users typing in the ingredient picker on `/recipes/new` see the existing catalog filtered as they type (debounced search against `GET /ingredients?search=`)
-- When the search returns 0 results AND the user has typed ≥ 2 chars, a "Crear nuevo ingrediente '<nombre>'" option appears
-- Clicking it opens a modal that shows up to 5 USDA candidates: each card shows the USDA description, the data type (Foundation / SR Legacy / FNDDS — Branded entries are filtered out), and the per-100 g nutrition (kcal + macros)
-- The user picks one ("Crear con USDA") or "Crear sin nutrición" if no candidate is right
-- The new ingredient row is persisted, slotted into the recipe form's ingredient list, and the modal closes
-- If the typed name fuzzy-matches an existing catalog ingredient (Levenshtein ≤ 2 against normalized names), the dedupe path returns the existing row instead of creating a duplicate; the modal indicates "Ya existe '<existing name>' — usaremos esa"
+- Users typing in the ingredient picker on `/recipes/new` see the existing catalog filtered as they type (debounced search against `GET /ingredients?search=`). The search ignores case, accents and extra spaces («Tomate», «TOMATE» and «tomáte» find «tomate»; «brocoli» finds «brócoli»; «Manitas» finds «manitas de cerdo»), and shows the exact name first, then names that start with what was typed, then names with a word that starts with it, then the rest (`services/ingredientSearch.ts`, one fold rule with `foldIngredientName` in `@ona/shared`). Until 2026-11-10 it compared the raw text, so «Tomate» found nothing and the form offered to create it.
+- **Since PRO-1125 the household never maps an ingredient.** When no result has the typed name once folded (`hasSameIngredientName`) AND the user has typed ≥ 2 chars: if the search found nothing, the catalogue's look-alikes first («¿Es *manitas de cerdo*?», `GET /ingredients/similar`); then «Añadir "<nombre>"», which posts `{ name }` to `/ingredients/auto-create` (stub row: allergens and aisle from the name, no nutrition) and selects it. No modal, no USDA list; the recipe shows «nutrición incompleta» until Cocina fills the values at night ([Nutrition](./nutrition.md) → Filling missing nutrition). See [Recipes](./recipes.md)
+- If the typed name fuzzy-matches an existing catalog ingredient (Levenshtein ≤ 2 against normalized names), the dedupe path returns the existing row instead of creating a duplicate, and the picker shows its name
 
 ## Manual search
 
-Curators can override the automatic es→en translation. The `/ingredients/suggest` endpoint accepts an optional `query` parameter that is forwarded to USDA verbatim, and the auto-create + remap modals expose a "Búsqueda manual" input on top of the candidate list. Typing in that input replaces the auto-generated query and re-fetches against USDA after a 300 ms debounce. The selected query is reflected back to the user as "Buscando: '<query>'" so they always see what's being asked.
+The admin re-map modal ([Admin dashboard](./admin-dashboard.md)) has a "Búsqueda manual" input. `/ingredients/suggest` takes it as `query`, and since PRO-1125 it goes **the same path as the name**: es→en for USDA (an English query passes through unchanged) and Spanish for BEDCA. Typing re-fetches after a 300 ms debounce; the modal shows the English sent to USDA («En USDA: '<query>'»).
 
-This closes the case where the small inline dictionary produces a poor English keyword (e.g. `lacón` → `lacon` because it isn't in the dictionary).
+Until PRO-1125 the query went to USDA verbatim, so «cerdo» only found entries with that Spanish word in their description — Latin dishes (pupusas, Puerto Rican stews).
 
 ## Translation
 
@@ -36,9 +33,9 @@ USDA descriptions are English-only ("Pork sausage, fresh, cooked"). To make them
 
 The UI shows the Spanish translation prominently with the English description as small italic fine-print below.
 
-## BEDCA fallback
+## BEDCA
 
-When USDA returns 0 candidates, the suggestion service falls back to BEDCA — the Spanish-government nutrition database. BEDCA covers regional/hispanic foods USDA doesn't (fabes de la granja, chorizo asturiano, morcilla, lacón, tocino, caldo de pescado, bacalao desalado).
+The admin's suggest route (`alwaysBedca`, PRO-1125) searches BEDCA in Spanish in parallel with USDA and lists its entries first. The automatic callers (photo extractor, apply and catalogue scripts) keep it as a fallback, only when USDA returns 0 candidates: BEDCA fetches each food in turn and they run once per ingredient. BEDCA is the Spanish-government nutrition database. BEDCA covers regional/hispanic foods USDA doesn't (fabes de la granja, chorizo asturiano, morcilla, lacón, tocino, caldo de pescado, bacalao desalado).
 
 The BEDCA client (`apps/api/src/services/nutrition/bedcaClient.ts`):
 
@@ -56,7 +53,9 @@ Last-resort path: when both USDA and BEDCA miss, the curator clicks "Estimar con
 Two endpoints back this:
 
 - `POST /ingredients/:id/estimate-nutrition` (auth) — for ingredients that already exist (curator dashboard re-map flow). Writes the values directly to the row and returns the updated ingredient.
-- `POST /ingredients/estimate-nutrition` (auth) — preview-only, no DB write, body `{ name }`. Used by the auto-create modal where the row doesn't yet exist; the curator confirms in the modal and the values flow into `/ingredients/auto-create` via the new `nutrition` field.
+- `POST /ingredients/estimate-nutrition` (auth) — preview-only, no DB write, body `{ name }`. Its only caller was the household's create modal, gone with PRO-1125; the route stays for now.
+
+The per-id estimate recomputes the recipes that use the ingredient (PRO-1125), like the remap.
 
 Both endpoints return 503 when `ANTHROPIC_API_KEY` is unset.
 
@@ -83,10 +82,9 @@ Returns:
 ```
 
 Behaviour:
-- Without `query`: the Spanish `name` runs through the inline es→en dictionary and a fallback to the raw Spanish word.
-- With `query`: the value is sent to USDA verbatim — the dictionary is bypassed.
-- USDA candidates rank Foundation > SR Legacy > FNDDS. Branded entries are filtered out.
-- If USDA returns 0 candidates, BEDCA is queried as a fallback.
+- `query` (or, without it, the Spanish `name`) runs through the inline es→en dictionary: the whole name, its first word, then the longest known name inside it as whole words («pechuga de pollo» → pollo), else the raw text (an English query passes through).
+- Only ingredients (PRO-1125, `isIngredientCandidate`): Foundation > SR Legacy, in USDA's relevance order; Branded, Survey (FNDDS) and SR Legacy's dish categories (Restaurant Foods, Fast Foods, «Meals, Entrees, and Side Dishes», Baby Foods — `foodCategory` of the search hit) are filtered out.
+- BEDCA in Spanish, listed first (this route); see BEDCA above.
 - USDA candidate descriptions are translated to Spanish via Claude Opus 5.5 at effort low (batched + cached); BEDCA descriptions are already Spanish.
 
 ### `POST /ingredients/auto-create` (auth)
@@ -158,7 +156,9 @@ USDA fetches are sequential to stay within the rate budget. Each extracted recip
 - [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) — auto-creates unknown extracted ingredients
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — `--auto-create-missing` flag
 - [apps/api/scripts/refillIngredientNutrition.ts](../apps/api/scripts/refillIngredientNutrition.ts) — fills ingredients saved as zero-nutrition stubs
-- [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — picker + modal (manual search, translations, BEDCA, estimate button)
-- [apps/web/src/components/recipes/IngredientCandidateCard.tsx](../apps/web/src/components/recipes/IngredientCandidateCard.tsx) — shared candidate card for both modals
-- [apps/web/src/app/admin/sections/RemapModal.tsx](../apps/web/src/app/admin/sections/RemapModal.tsx) — re-map modal mirroring the auto-create UX
+- [apps/web/src/components/recipes/IngredientAutocomplete.tsx](../apps/web/src/components/recipes/IngredientAutocomplete.tsx) — picker: search, «¿Es …?» look-alikes, «Añadir» (PRO-1125)
+- [apps/web/src/components/recipes/IngredientCandidateCard.tsx](../apps/web/src/components/recipes/IngredientCandidateCard.tsx) — candidate card of the re-map modal
+- [apps/web/src/app/admin/sections/RemapModal.tsx](../apps/web/src/app/admin/sections/RemapModal.tsx) — admin re-map modal: best entry with «Vale» / «Buscar otra», manual search, estimate
+- [apps/api/src/services/ingredientSearch.ts](../apps/api/src/services/ingredientSearch.ts) — the folded `GET /ingredients?search=` filter and ranking
+- [packages/shared/src/utils/ingredientSearch.ts](../packages/shared/src/utils/ingredientSearch.ts) — `foldIngredientName`, `hasSameIngredientName`
 - [apps/web/src/hooks/useIngredients.ts](../apps/web/src/hooks/useIngredients.ts) — `useSearchIngredients`, `useSuggestIngredient`, `useAutoCreateIngredient`, `useEstimateNutrition`, `useEstimateNutritionPreview`

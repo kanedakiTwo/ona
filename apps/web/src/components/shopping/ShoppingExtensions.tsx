@@ -16,6 +16,7 @@ import { useState } from "react"
 import { Plus, Trash2, Wallet } from "lucide-react"
 import type { Aisle, BuyableUnit } from "@ona/shared"
 import { AISLES, parseShoppingAmount } from "@ona/shared"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import {
   useAddShoppingItem,
   useDeleteShoppingItem,
@@ -156,70 +157,95 @@ export function AddManualItemForm({
 
   const field =
     "h-11 w-full rounded-xl border border-border bg-paper px-3 text-[15px] text-ink outline-none placeholder:text-ink-light focus:border-ink"
+  const fieldLabel = "mb-1 block text-[12px] font-medium text-ink-muted"
   return (
     <form
       onSubmit={handleSubmit}
       className={embedded ? "space-y-3" : "space-y-3 rounded-[20px] border border-border-soft bg-paper p-4"}
     >
       {!embedded && <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Nuevo item manual</div>}
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Ej: Pan de molde integral"
-        autoFocus
-        maxLength={80}
-        className={field}
-      />
-      <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+      <label className="block">
+        <FieldLabel as="span" required className={fieldLabel}>
+          Nombre
+        </FieldLabel>
         <input
           type="text"
-          value={qty}
-          maxLength={30}
-          placeholder="Cantidad"
-          title="Un número, o como lo dices tú: «2 paquetes»"
-          aria-label="Cantidad (opcional): un número o «2 paquetes»"
-          onChange={(e) => setQty(e.target.value)}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ej: Pan de molde integral"
+          autoFocus
+          maxLength={80}
+          required
           className={field}
         />
-        <select
-          value={unit}
-          onChange={(e) => setUnit(e.target.value as BuyableUnit)}
-          aria-label="Unidad"
-          className={field}
-        >
-          {UNIT_OPTIONS.map((u) => (
-            <option key={u.value} value={u.value}>
-              {u.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={aisle}
-          onChange={(e) => setAisle(e.target.value as Aisle)}
-          aria-label="Pasillo"
-          className={field}
-        >
-          {AISLES.map((a) => (
-            <option key={a} value={a}>
-              {AISLE_LABEL[a]}
-            </option>
-          ))}
-        </select>
+      </label>
+      <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
+        <label>
+          <FieldLabel as="span" optional className={fieldLabel}>
+            Cantidad
+          </FieldLabel>
+          <input
+            type="text"
+            value={qty}
+            maxLength={30}
+            placeholder="2 paquetes"
+            title="Un número, o como lo dices tú: «2 paquetes»"
+            aria-label="Cantidad (opcional): un número o «2 paquetes»"
+            onChange={(e) => setQty(e.target.value)}
+            className={field}
+          />
+        </label>
+        <label>
+          <FieldLabel as="span" required className={fieldLabel}>
+            Unidad
+          </FieldLabel>
+          <select
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as BuyableUnit)}
+            required
+            className={field}
+          >
+            {UNIT_OPTIONS.map((u) => (
+              <option key={u.value} value={u.value}>
+                {u.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <FieldLabel as="span" required className={fieldLabel}>
+            Pasillo
+          </FieldLabel>
+          <select
+            value={aisle}
+            onChange={(e) => setAisle(e.target.value as Aisle)}
+            required
+            className={field}
+          >
+            {AISLES.map((a) => (
+              <option key={a} value={a}>
+                {AISLE_LABEL[a]}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-      <label className="flex items-center gap-2">
-        <span className="text-[14px] text-ink-muted">€</span>
+      <label className="block">
+        <FieldLabel as="span" optional className={fieldLabel}>
+          Precio total estimado €
+        </FieldLabel>
         <input
           type="number"
           inputMode="decimal"
           min={0}
           step={0.05}
-          placeholder="precio total estimado (opcional, e.g. 1,80)"
+          placeholder="1,80"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          className={`${field} flex-1`}
+          className={field}
         />
       </label>
+      <RequiredNote />
       <div className="flex gap-2 pt-1">
         <button
           type="button"

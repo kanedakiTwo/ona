@@ -1,10 +1,12 @@
 /**
  * What «Cambiar» (`PUT /menu/:menuId/day/:day/meal/:meal`) knows before it
  * re-picks a slot: everyone's allergies and diet (PRO-305), the ficha's
- * dislikes and equipment (PRO-253), favourites and «¿Qué tal?» ratings
+ * dislikes and equipment (PRO-253), cuisines and cooking level (PRO-1201), favourites and «¿Qué tal?» ratings
  * (PRO-111), the week's vetoes and the matchable catalogue. Shared with the
  * review of saved menus when someone's restrictions change (PRO-364), so both
- * pick a replacement the same way.
+ * pick a replacement the same way. While the household is starting, or once
+ * the week has its 2 dishes from outside, it keeps to the `diario` recipes
+ * when one fits (PRO-1200, `everydayMenu.ts`).
  */
 import type { Meal } from '@ona/shared'
 import { detectSeason } from '@ona/shared'
@@ -12,12 +14,14 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { userFavorites, users } from '../db/schema.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
+import { everydayPolicy, loadIsStarting, slotEveryday } from './everydayMenu.js'
 import { withHouseholdRestrictions } from './householdAllergies.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from './householdRatings.js'
 import { loadMatchableRecipes } from './matchableRecipes.js'
 import { slotTimeBudget } from './menuHolidays.js'
 import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
 import { normaliseEquipment } from './recipeMatcher.js'
+import { memoryTastes } from './menuTastes.js'
 import { schoolDinnerPool } from './schoolMenu.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
 import { getMemoryForUser } from './userMemoryStore.js'
@@ -49,11 +53,13 @@ export async function loadSlotPickContext(menu: SlotPickMenu, requesterId: strin
   const { memory, restrictions } = await loadMenuRestrictions(menu)
   const dislikesValue = memory?.dislikes?.value
   const equipmentValue = memory?.equipment?.value
-  // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-  const { dislikes, availableEquipment, unavailableEquipment } = withFichaFilters(
+  // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now;
+  // cuisines and cooking level as weights (PRO-1201).
+  const { dislikes, availableEquipment, unavailableEquipment, tastes } = withFichaFilters(
     {
       dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
       availableEquipment: Array.isArray(equipmentValue) ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment)) : undefined,
+      tastes: memoryTastes(memory),
     },
     await loadFichaMenuConstraints(menu.userId),
   )
@@ -76,7 +82,10 @@ export async function loadSlotPickContext(menu: SlotPickMenu, requesterId: strin
   // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
   const recipes = await loadMatchableRecipes(requesterId)
 
-  return { memory, restrictions, dislikes, availableEquipment, unavailableEquipment, rated, recipes, season: detectSeason() }
+  // PRO-1200: «de diario» while starting, at most 2 from outside a week after.
+  const everyday = everydayPolicy(recipes, await loadIsStarting(menu.userId, menu.weekStart), [...rated.favoriteRecipeIds, ...rated.likedRecipeIds])
+
+  return { memory, restrictions, dislikes, availableEquipment, unavailableEquipment, tastes, rated, recipes, everyday, season: detectSeason() }
 }
 
 /** The pool and the matcher options for one slot. */
@@ -91,8 +100,11 @@ export async function slotPickOptions(ctx: SlotPickContext, menu: SlotPickMenu, 
     dislikes: ctx.dislikes,
     availableEquipment: ctx.availableEquipment,
     unavailableEquipment: ctx.unavailableEquipment,
+    tastes: ctx.tastes,
     // PRO-138: the day's limit on total or hands-on time.
     timeBudget: slotTimeBudget(ctx.memory, menu.weekStart, dayIndex),
+    // PRO-1200: the rest of the week's dishes say how many from outside are left.
+    everyday: slotEveryday(ctx.everyday, usedRecipeIds),
   }
   return { pool, options }
 }

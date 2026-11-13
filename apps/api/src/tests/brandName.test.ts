@@ -32,7 +32,7 @@ describe('assistant persona', () => {
   })
 
   it('voice onboarding introduces itself as Mimo', () => {
-    expect(buildSystemPrompt('', 'onboarding')).toContain('("Hola, soy Mimo, de Mimoia. Voy a hacerte')
+    expect(buildSystemPrompt('', 'onboarding')).toContain('("Hola, soy Mimo, de Mimoia, un asistente de inteligencia artificial. Voy a hacerte')
   })
 
   it('the shared names are the decided ones', () => {

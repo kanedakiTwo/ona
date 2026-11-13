@@ -29,6 +29,8 @@ ROUTES=(
   /reset
   /onboarding
   /menu
+  /cocinar
+  /profile/pantry
   /shopping
   /recipes
   /recipes/new
@@ -41,6 +43,7 @@ ROUTES=(
   /profile/memoria
   /profile/ficha
   /profile/ficha/historial
+  /profile/semana-tipo
   /afinar
   /whatsapp/conectar
   /advisor

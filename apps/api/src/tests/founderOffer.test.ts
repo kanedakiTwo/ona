@@ -5,7 +5,7 @@
  * notice 15 days before the first charge (once, on the right day).
  */
 import { describe, expect, it } from 'vitest'
-import { PLANS, euros, founderPriceAmounts } from '@ona/shared'
+import { PAID_PLANS, euros, founderPriceAmounts } from '@ona/shared'
 import type { EmailMessage, EmailResult } from '../services/email.js'
 import {
   founderOfferEmail,
@@ -81,7 +81,7 @@ describe('founder-price offer', () => {
 
   it('the founder price carries its amounts, read from PLANS (PRO-204, Legal)', () => {
     const amounts = founderPriceAmounts()
-    for (const p of PLANS) {
+    for (const p of PAID_PLANS) {
       expect(amounts).toContain(`${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`)
     }
     expect(amounts).toBe('Esencial, 4,99 € al mes o 49,99 € al año; Plus, 9,99 € al mes o 99,99 € al año')

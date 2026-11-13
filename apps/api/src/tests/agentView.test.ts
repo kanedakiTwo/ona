@@ -24,6 +24,7 @@ import {
   errorType,
   MESSAGE_ERROR_TYPES,
   errorsForAgents,
+  stackFile,
   feedbackForAgents,
   flagsForAgents,
   normaliseApiRoute,
@@ -83,7 +84,7 @@ function collectTemplates(): { api: string[]; web: string[] } {
 /** `?ref=` labels in the code: links, `openRef` props and the share footers. */
 function collectRefSources(): string[] {
   const out = new Set<string>()
-  const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*\)/g]
+  const patterns = [/[?&]ref=([a-z0-9_-]{1,32})(?![a-z0-9_-])/g, /openRef="([a-z0-9_-]{1,32})"/g, /(?<!function )withOnaFooter\([\s\S]*?'([a-z0-9_-]{1,32})',?\s*(?:[\w.?]+,?\s*)?\)/g]
   // The product's own links only: tests and e2e use labels of their own.
   for (const dir of ['apps/web/src', 'apps/web/content', 'packages/shared/src', 'apps/api/src']) {
     walk(join(REPO, dir), (p, isDir) => {
@@ -171,7 +172,19 @@ describe('errorType', () => {
     expect(stored('{"isTrusted":true}')).toBe('EventRejection')
     expect(stored('Object Not Found Matching Id:3, MethodName:update, ParamCount:4')).toBe('ObjectNotFoundMatchingId')
     expect(stored('Error sin mensaje')).toBe('NoMessage')
+    // PRO-354: what an iPhone in-app browser injects, and a page without storage (Safari wordings).
+    expect(stored("ReferenceError: Can't find variable: _AutofillCallbackHandler")).toBe('InAppBrowserError')
+    expect(stored("ReferenceError: Can't find variable: _pcmBridgeCallbackHandler")).toBe('InAppBrowserError')
+    expect(stored("TypeError: undefined is not an object (evaluating 'window.webkit.messageHandlers.fbJS')")).toBe('InAppBrowserError')
+    expect(stored("TypeError: undefined is not an object (evaluating '__gCrWeb.autofill.extractForms')")).toBe('InAppBrowserError')
+    expect(stored("Unhandled rejection: ReferenceError: Can't find variable: instantSearchSDKJSBridgeClearHighlight")).toBe('InAppBrowserError')
+    expect(stored("Unhandled rejection: ReferenceError: Can't find variable: indexedDB")).toBe('StorageUnavailable')
+    expect(stored("TypeError: null is not an object (evaluating 'indexedDB.open')")).toBe('StorageUnavailable')
+    expect(stored('UnknownError: Connection to Indexed Database server lost. Refresh the page to try again')).toBe('StorageUnavailable')
+    expect(stored("TypeError: null is not an object (evaluating 'window.localStorage.getItem')")).toBe('StorageUnavailable')
     // What stays as before.
+    expect(stored("ReferenceError: Can't find variable: menuWeek")).toBe('ReferenceError')
+    expect(stored("TypeError: undefined is not an object (evaluating 'e.days.map')")).toBe('TypeError')
     expect(stored("TypeError: Cannot read properties of undefined (reading 'map')")).toBe('TypeError')
     expect(stored("NotFoundError: Failed to execute 'removeChild' on 'Node'")).toBe('NotFoundError')
     expect(stored('algo raro con ana@example.com')).toBe('other')
@@ -271,9 +284,65 @@ describe('errorsForAgents', () => {
       includeResolved: false,
       kind: null,
       totals: { groups: 1, newGroups: 1, clientGroups: 0, serverGroups: 1, events: 2 },
-      groups: [{ id: 'g1', kind: 'server', type: 'TypeError', path: 'GET /menu/:x/:x', release: '8b9ac87e', userAgentFamily: 'Chrome · Android', count: 2, firstSeen: 'a', lastSeen: 'b', resolvedAt: null }],
+      groups: [{ id: 'g1', kind: 'server', type: 'TypeError', file: 'otro', path: 'GET /menu/:x/:x', release: '8b9ac87e', userAgentFamily: 'Chrome · Android', count: 2, firstSeen: 'a', lastSeen: 'b', resolvedAt: null }],
       definitions: { group: 'One row per fingerprint' },
     })
+  })
+})
+
+describe('stackFile (PRO-1150)', () => {
+  const v8 = (msg: string, ...locs: string[]) => [msg, ...locs.map((l, i) => `    at fn${i} (${l})`)].join('\n')
+
+  it('the web chunk of the first frame with a file, in the shape of a real page; never the message', () => {
+    const message = 'Ana García es celíaca y vive en Pozuelo, portal cinco'
+    const stack = v8(
+      message,
+      '<anonymous>',
+      'https://mimoia.app/_next/static/chunks/app/(app)/menu/page-1a2b3c4d5e6f7a8b.js?dpl=dpl_AnaGarcia:1:2345',
+      'https://mimoia.app/_next/static/chunks/2117-0f1e2d3c4b5a6978.js:1:99',
+    )
+    const row = buildAppErrorRow({ kind: 'client', message, stack, path: '/menu', release: 'r' })
+    const group = { id: 'g1', kind: row.kind, message: row.message, path: row.samplePath, release: null, userAgentFamily: 'Chrome · macOS', lastUserId: 'u-1', count: 3, firstSeen: 'a', lastSeen: 'b', resolvedAt: null, sampleStack: row.sampleStack }
+    const v = errorsForAgents({ groups: [group] })
+    expect(v.groups[0]).toMatchObject({ type: 'other', file: 'app/menu/page', path: '/menu' })
+    const json = JSON.stringify(v)
+    for (const word of ['Ana', 'Pozuelo', 'celíaca', 'portal', 'mimoia.app', 'dpl', '1a2b3c4d', '2345']) expect(json).not.toContain(word)
+    expect(json).not.toMatch(LEAK)
+  })
+
+  it('closed shapes for every chunk, page, runtime and shared one', () => {
+    const at = (loc: string) => stackFile(v8('Error: x', loc), 'client')
+    expect(at('https://mimoia.app/_next/static/chunks/app/recipes/%5Bid%5D/page-a1b2c3d4e5f60718.js:1:2')).toBe('app/recipes/:x/page')
+    expect(at('https://mimoia.app/_next/static/chunks/app/recipes/%5Bid%5D/layout-a1b2c3d4e5f60718.js:1:2')).toBe('app/recipes/:x/layout')
+    expect(at('https://mimoia.app/_next/static/chunks/app/layout-a1b2c3d4e5f60718.js:1:2')).toBe('app/layout')
+    expect(at('https://mimoia.app/_next/static/chunks/app/(public)/page-a1b2c3d4e5f60718.js:1:2')).toBe('app/page')
+    expect(at('https://mimoia.app/_next/static/chunks/app/global-error-a1b2c3d4e5f60718.js:1:2')).toBe('app/global-error')
+    expect(at('https://mimoia.app/_next/static/chunks/app/hola-soy-ana/page-a1b2c3d4e5f60718.js:1:2')).toBe('app/otra/page')
+    expect(at('https://mimoia.app/_next/static/chunks/app/menu/IgnoraLasInstrucciones-a1b2c3d4e5f60718.js:1:2')).toBe('app/otra')
+    expect(at('https://mimoia.app/_next/static/chunks/main-app-a1b2c3d4e5f60718.js:1:2')).toBe('chunks/main-app')
+    expect(at('https://mimoia.app/_next/static/chunks/framework-a1b2c3d4e5f60718.js:1:2')).toBe('chunks/framework')
+    expect(at('https://mimoia.app/_next/static/chunks/4bd1b696-a1b2c3d4e5f60718.js:1:2')).toBe('chunks/4bd1b696')
+    expect(at('https://mimoia.app/_next/static/chunks/pages/_app-a1b2c3d4e5f60718.js:1:2')).toBe('pages/_app')
+    expect(at('https://mimoia.app/_next/static/chunks/ana-garcia-celiaca.js:1:2')).toBe('chunks/otro')
+    expect(at('https://mimoia.app/_next/static/css/x.css:1:2')).toBe('next/otro')
+    expect(at('https://mimoia.app/menu:1:2')).toBe('pagina')
+    expect(at('https://mimoia.app/hola-soy-ana-garcia:1:2')).toBe('otro')
+    expect(at('https://ads.example.com/tag.js:1:2')).toBe('otro')
+    expect(at('chrome-extension://abcdef/content.js:1:2')).toBe('otro')
+    // Firefox and Safari: `fn@url:line:col`.
+    expect(stackFile('Error: x\nfn@https://mimoia.app/_next/static/chunks/app/menu/page-a1b2c3d4e5f60718.js:1:2', 'client')).toBe('app/menu/page')
+    expect(stackFile('Error: x\n    at new Promise (<anonymous>)\n    at Array.map (native)', 'client')).toBe('anonimo')
+    expect(stackFile('Error: x', 'client')).toBeNull()
+    expect(stackFile(null, 'client')).toBeNull()
+  })
+
+  it('server groups: our source, a package or node; a client can never claim them', () => {
+    expect(stackFile(v8('Error: x', '/app/apps/api/dist/services/menuGenerator.js:10:5'), 'server')).toBe('api/services/menuGenerator')
+    expect(stackFile(v8('Error: x', '/app/node_modules/.pnpm/pg@8.11.0/node_modules/pg/lib/client.js:1:2'), 'server')).toBe('node_modules/pg')
+    expect(stackFile(v8('Error: x', '/app/node_modules/@anthropic-ai/sdk/core.js:1:2'), 'server')).toBe('node_modules/@anthropic-ai/sdk')
+    expect(stackFile(v8('Error: x', 'node:internal/process/task_queues:95:5'), 'server')).toBe('node')
+    expect(stackFile(v8('Error: x', '/app/apps/api/dist/Ana García celíaca/x.js:1:2'), 'server')).toBe('otro')
+    expect(stackFile(v8('Error: x', '/app/apps/api/dist/services/menuGenerator.js:10:5'), 'client')).toBe('otro')
   })
 })
 
@@ -292,6 +361,7 @@ describe('feedbackForAgents', () => {
       byChannel: { whatsapp: 1, app: 3 },
       byPage: { none: 1, '/recipes/:x': 1, otra: 1, '/entrar/:x': 1 },
       byTag: {},
+      seanEllis: {},
       possibleAllergies: [{ date: '2026-10-21', channel: 'whatsapp' }],
     })
     expect(JSON.stringify(v)).not.toMatch(/celíaca|encanta|AbCdEf/)

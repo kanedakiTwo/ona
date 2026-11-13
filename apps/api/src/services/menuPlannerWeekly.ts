@@ -316,7 +316,8 @@ export function defaultWeeklyDeps(db: Db = defaultDb): WeeklyDeps {
 
 /** From the scheduler tick: on Saturday night send the batch for next week (once); on every tick, collect ended batches. */
 export async function runWeeklyPlannerIfDue(now: Date = new Date(), deps?: WeeklyDeps): Promise<{ submit: WeeklySubmitResult | null; collected: number } | null> {
-  if (!deps && (!env.ANTHROPIC_API_KEY || !shadowPlannerEnabled())) return null
+  // With «Mimo remoto» (staging, PRO-390) nothing goes to Anthropic: no batch.
+  if (!deps && (!env.ANTHROPIC_API_KEY || env.MIMO_REMOTO || !shadowPlannerEnabled())) return null
   const d = deps ?? defaultWeeklyDeps()
   const { due, weekStart } = weeklyPlanDue(now)
   const submit = due ? await submitWeeklyPlans(weekStart, now, d) : null

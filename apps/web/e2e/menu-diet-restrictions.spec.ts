@@ -84,7 +84,7 @@ test('vegetarian: no meat in the week, in the picker list or in «Elegir otra re
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
   await hero.getByRole('button', { name: /más opciones/i }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
 
   const picker = page.getByRole('dialog').filter({ hasText: 'Cambiar plato' })
   await expect(picker.getByTestId('picker-restrictions-note')).toBeVisible()

@@ -61,11 +61,15 @@ import {
 } from './recipeLint.js'
 import {
   aggregateNutrition,
+  catalogEntryFromRow,
   type IngredientCatalogEntry,
 } from './nutrition/aggregate.js'
 import { allergenUnion } from './nutrition/allergens.js'
+import { refreshRecipeDishTypes } from './dishTypes.js'
+import { carryIngredientMarks, ingredientMarksOf, type IngredientMarks } from './ingredientRoles.js'
 import type {
   Difficulty,
+  IngredientRole,
   Meal,
   NutritionPerServing,
   Season,
@@ -91,6 +95,9 @@ export interface RecipeIngredientWriteInput {
   displayQuantity?: number | null
   /** Human-readable unit label as entered/extracted (e.g. "cda"). Null/absent = no display override. */
   displayUnit?: string | null
+  /** «Cocinar ahora»: explicit marks (Cocina's batch). Absent = carry the previous ones on edit, else unmarked. */
+  role?: IngredientRole | null
+  substituteIngredientIds?: string[]
 }
 
 /** A single step row in a write payload. */
@@ -285,21 +292,7 @@ async function loadCatalog(requiredIds: readonly string[] = []): Promise<BuiltCa
   }))
 
   const nutrition = new Map<string, IngredientCatalogEntry>()
-  for (const c of full) {
-    nutrition.set(c.id, {
-      id: c.id,
-      name: c.name,
-      calories: c.calories,
-      protein: c.protein,
-      carbs: c.carbs,
-      fat: c.fat,
-      fiber: c.fiber,
-      salt: c.salt,
-      density: c.density,
-      unitWeight: c.unitWeight,
-      edibleFraction: c.edibleFraction,
-    })
-  }
+  for (const c of full) nutrition.set(c.id, catalogEntryFromRow(c))
 
   const allergens = new Map<string, { allergenTags?: string[] | null }>()
   for (const c of full) {
@@ -537,9 +530,24 @@ export async function persistRecipe(
     }
 
     let id: string
+    let carried: IngredientMarks[] | null = null
     if (opts.recipeId) {
       // UPDATE mode: wipe child rows, update recipe row.
       id = opts.recipeId
+      // «Cocinar ahora» marks survive the edit (specs/cook-now.md).
+      const previousMarks = await tx
+        .select({
+          id: recipeIngredientsTable.id,
+          ingredientId: recipeIngredientsTable.ingredientId,
+          role: recipeIngredientsTable.role,
+          substituteIngredientIds: recipeIngredientsTable.substituteIngredientIds,
+        })
+        .from(recipeIngredientsTable)
+        .where(eq(recipeIngredientsTable.recipeId, id))
+      carried = carryIngredientMarks(
+        previousMarks.map((r) => ({ ...r, ...ingredientMarksOf(r) })),
+        input.ingredients.map((ing, i) => ({ id: ingredientRowIds[i], ingredientId: ing.ingredientId })),
+      )
       await tx.delete(recipeStepsTable).where(eq(recipeStepsTable.recipeId, id))
       await tx
         .delete(recipeIngredientsTable)
@@ -579,6 +587,8 @@ export async function persistRecipe(
           displayOrder: ing.displayOrder ?? i,
           displayQuantity: ing.displayQuantity ?? null,
           displayUnit: ing.displayUnit ?? null,
+          role: ing.role !== undefined ? ing.role : carried?.[i]?.role ?? null,
+          substituteIngredientIds: ing.substituteIngredientIds ?? carried?.[i]?.substituteIngredientIds ?? [],
         })),
       )
     }
@@ -599,6 +609,9 @@ export async function persistRecipe(
 
     return id
   })
+
+  // «Semana tipo» (D-182): its dish types, from the name, tags and main ingredients.
+  await refreshRecipeDishTypes(db, recipeId)
 
   return {
     ok: true,

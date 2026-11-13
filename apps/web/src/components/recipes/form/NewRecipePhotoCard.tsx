@@ -40,6 +40,7 @@ export function NewRecipePhotoCard({
 
   return (
     <FormCard
+      mark={{ optional: true }}
       title={
         <>
           <span className="font-medium italic text-terracotta-deep">Foto</span> de la receta

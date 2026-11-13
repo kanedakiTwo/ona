@@ -20,6 +20,7 @@ import {
   type CatalogImportRequest,
 } from "@ona/shared"
 import { useCheckImport, useImportJobs, useRefreshDrafts, useStartImport } from "@/hooks/useCatalogReview"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -116,7 +117,10 @@ export function CatalogImportPanel() {
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               <div>
-                <span className="block text-[13px] font-medium text-ink">Fichero JSON</span>
+                {/* The JSON is required: from the file or pasted (the file fills the box). */}
+                <FieldLabel as="span" required className="block text-[13px] font-medium text-ink">
+                  Fichero JSON
+                </FieldLabel>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <label className="inline-flex min-h-[44px] cursor-pointer items-center rounded-full border border-border bg-cream px-4 text-[13px] font-medium text-ink focus-within:border-ink hover:border-ink">
                     Elegir fichero
@@ -133,8 +137,9 @@ export function CatalogImportPanel() {
                 </div>
               </div>
               <label className="block text-[13px] font-medium text-ink">
-                Nombre de la tanda
+                <FieldLabel as="span" required>Nombre de la tanda</FieldLabel>
                 <input
+                  aria-required="true"
                   value={batch}
                   onChange={(e) => {
                     setBatch(e.target.value)
@@ -151,8 +156,9 @@ export function CatalogImportPanel() {
               </label>
             </div>
             <label className="block text-[13px] font-medium text-ink">
-              O pega el JSON
+              <FieldLabel as="span" required>O pega el JSON</FieldLabel>
               <textarea
+                aria-required="true"
                 value={text}
                 onChange={(e) => {
                   setText(e.target.value)
@@ -165,6 +171,8 @@ export function CatalogImportPanel() {
               />
             </label>
           </div>
+
+          <RequiredNote className="mt-3" />
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button

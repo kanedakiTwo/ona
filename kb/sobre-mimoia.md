@@ -69,6 +69,7 @@ Hay tres planes: Gratis («lo haces tú»: tu menú de la semana y la lista, en 
 - Tus alergias, intolerancias y otros datos de salud solo se guardan si das tu permiso, y solo desde la web o la app; por WhatsApp no se guardan.
 - Lo que hablas con Mimo en la web se guarda 90 días, para conocer mejor los gustos y costumbres de tu hogar, y después se borra solo. Si borras la cuenta, se borra al momento.
 - Puedes borrar tu cuenta en Perfil → Borrar mi cuenta. Mimo no puede borrarla por chat.
+- Cada noche se guarda una copia de seguridad cifrada de la base de datos, en Madrid, que dura 14 días y se borra sola. Si borras la cuenta o retiras el permiso de los datos de salud, desaparecen al momento de la base y de las copias en 14 días como mucho.
 - Más detalle en mimoia.com/privacidad, mimoia.com/terminos y mimoia.com/aviso-legal.
 
 ## Independencia

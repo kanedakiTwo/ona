@@ -24,11 +24,12 @@ import { useVoice } from "@/hooks/useVoice"
 import { useUserMemory } from "@/hooks/useUserMemory"
 import { AI_DISCLOSURE, type MemoryKey } from "@ona/shared"
 import { Accent, OnboardingHeader, OnboardingShell } from "@/components/onboarding/OnboardingShell"
+import { FieldMark } from "@/components/FieldLabel"
 
 type Phase = "idle" | "thinking" | "speaking" | "listening" | "transcribing" | "done" | "error"
 type Turn = { role: "user" | "assistant"; content: string }
 
-const PROGRESS_KEYS: { key: MemoryKey; label: string }[] = [
+const PROGRESS_KEYS: { key: MemoryKey; label: string; optional?: true }[] = [
   { key: "physical.age", label: "Edad" },
   { key: "household.adults", label: "Hogar" },
   { key: "restrictions", label: "Restricciones" },
@@ -39,7 +40,7 @@ const PROGRESS_KEYS: { key: MemoryKey; label: string }[] = [
   { key: "cuisine_bias", label: "Cocinas preferidas" },
   { key: "cooking_skill", label: "Nivel de cocinero" },
   { key: "meal_times", label: "Horarios" },
-  { key: "nutrition_principles", label: "Tus creencias nutricionales (opcional)" },
+  { key: "nutrition_principles", label: "Tus creencias nutricionales", optional: true },
 ]
 
 const DONE_PHRASE = "ya te conozco"
@@ -233,7 +234,10 @@ export default function VoiceOnboardingPage() {
                     captured ? "border-ink text-ink" : "border-border-soft text-ink-muted"
                   }`}
                 >
-                  <span>{p.label}</span>
+                  <span>
+                    {p.label}
+                    {p.optional && <FieldMark optional plural />}
+                  </span>
                   {captured ? (
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-cream">
                       <Check size={12} strokeWidth={2.5} />

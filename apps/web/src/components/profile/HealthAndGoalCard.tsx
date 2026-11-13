@@ -13,6 +13,7 @@ import type { HealthConsentState } from "@ona/shared"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import { PILL_INK, SUB_CARD, SUB_EYEBROW } from "@/components/profile/SubPage"
 
 interface PhysicalData {
@@ -177,7 +178,7 @@ export function HealthAndGoalCard({ onConsentChange }: { onConsentChange?: (acti
         <div className="mt-5 space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <div className={SUB_EYEBROW}>Sexo</div>
+              <FieldLabel as="div" optional className={SUB_EYEBROW}>Sexo</FieldLabel>
               <div className="mt-2 flex gap-1.5">
                 <Pill active={physical.sex === "male"} onClick={() => setPhysical((p) => ({ ...p, sex: "male" }))}>
                   Masculino
@@ -188,7 +189,7 @@ export function HealthAndGoalCard({ onConsentChange }: { onConsentChange?: (acti
               </div>
             </div>
             <label>
-              <span className={SUB_EYEBROW}>Edad</span>
+              <FieldLabel as="span" optional className={SUB_EYEBROW}>Edad</FieldLabel>
               <input
                 type="number"
                 min={1}
@@ -200,7 +201,7 @@ export function HealthAndGoalCard({ onConsentChange }: { onConsentChange?: (acti
               />
             </label>
             <label>
-              <span className={SUB_EYEBROW}>Peso · kg</span>
+              <FieldLabel as="span" optional className={SUB_EYEBROW}>Peso · kg</FieldLabel>
               <input
                 type="number"
                 min={20}
@@ -213,7 +214,7 @@ export function HealthAndGoalCard({ onConsentChange }: { onConsentChange?: (acti
               />
             </label>
             <label>
-              <span className={SUB_EYEBROW}>Altura · cm</span>
+              <FieldLabel as="span" optional className={SUB_EYEBROW}>Altura · cm</FieldLabel>
               <input
                 type="number"
                 min={100}
@@ -226,7 +227,7 @@ export function HealthAndGoalCard({ onConsentChange }: { onConsentChange?: (acti
             </label>
           </div>
           <div>
-            <div className={SUB_EYEBROW}>Nivel de actividad</div>
+            <FieldLabel as="div" optional className={SUB_EYEBROW}>Nivel de actividad</FieldLabel>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
                 <Pill
@@ -240,7 +241,7 @@ export function HealthAndGoalCard({ onConsentChange }: { onConsentChange?: (acti
             </div>
           </div>
           <div>
-            <div className={SUB_EYEBROW}>Tu objetivo</div>
+            <FieldLabel as="div" required className={SUB_EYEBROW}>Tu objetivo</FieldLabel>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {(Object.keys(PRIORITY_LABELS) as Priority[]).map((value) => (
                 <Pill key={value} active={priority === value} onClick={() => setPriority(value)}>
@@ -267,9 +268,12 @@ export function HealthAndGoalCard({ onConsentChange }: { onConsentChange?: (acti
               </div>
             </div>
           )}
-          <button type="button" onClick={() => void save()} disabled={saving} className={PILL_INK}>
-            {saving ? "Guardando…" : saved ? "✓ Guardado" : "Guardar"}
-          </button>
+          <div className="flex items-center gap-4">
+            <button type="button" onClick={() => void save()} disabled={saving} className={PILL_INK}>
+              {saving ? "Guardando…" : saved ? "✓ Guardado" : "Guardar"}
+            </button>
+            <RequiredNote />
+          </div>
         </div>
       )}
     </section>

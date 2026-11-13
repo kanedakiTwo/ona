@@ -42,6 +42,7 @@ import { SERVICE_WINDOW_MS } from '../whatsapp/proactive.js'
 import { mentionsHealth } from './healthText.js'
 import { changeView, confidenceFor, factSentence, factView, howIUse, peopleView, type ChangeRow, type FactRow } from './view.js'
 import { madridDate, signalEvidence, upsertProfileFact } from './writer.js'
+import { ensureErasureLog, recordErasure } from '../erasureLog.js'
 
 type Db = typeof defaultDb
 
@@ -449,8 +450,11 @@ export async function removePerson(userId: string, personId: string, opts: { db?
   if (reader.role === 'child') throw new FichaError(403, 'CHILD', 'Las personas de la casa las cambian los adultos')
   const [before] = await db.select().from(householdPersons).where(and(eq(householdPersons.id, personId), eq(householdPersons.householdId, reader.householdId))).limit(1)
   if (!before) throw new FichaError(404, 'NOT_FOUND', 'No está en tu casa')
+  await ensureErasureLog(db)
   await db.transaction(async (tx) => {
     await tx.delete(householdPersons).where(eq(householdPersons.id, personId))
+    // For a restored backup (PRO-1122): the id and the date, never the person.
+    await recordErasure(tx, 'person', personId)
     await tx.insert(profileChanges).values({ householdId: reader.householdId, action: 'person_removed', before: { alias: before.alias, ageBand: before.ageBand }, after: null, reason: 'Lo quitó de su ficha', origin: 'user', actorUserId: userId })
   })
 }

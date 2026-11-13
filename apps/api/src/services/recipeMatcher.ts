@@ -147,6 +147,12 @@ export interface MatcherOptions {
   timeBudget?: DayTimeBudget | null
   /** Legacy shape of `timeBudget`: N minutes in total. */
   maxPrepMinutes?: number | null
+  /**
+   * PRO-1200 (`everydayMenu.ts`): the `diario` recipes plus what the
+   * household chose. When any candidate is in it, the draw keeps to those;
+   * when none is, it draws from every candidate. Absent = no-op.
+   */
+  everyday?: ReadonlySet<string>
 }
 
 /**
@@ -365,7 +371,9 @@ export function findRecipeForSlot(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,
 ): RecipeWithIngredients | undefined {
-  const candidates = matchRecipes(recipes, options)
+  let candidates = matchRecipes(recipes, options)
+  const everyday = options.everyday
+  if (everyday && candidates.some((r) => everyday.has(r.id))) candidates = candidates.filter((r) => everyday.has(r.id))
   return pickRandom(candidates, options.favoriteRecipeIds, {
     meal: options.meal,
     season: options.season,

@@ -4,7 +4,9 @@
  * dislikes and equipment (PRO-253), favourites and «¿Qué tal?» ratings
  * (PRO-111), the week's vetoes and the matchable catalogue. Shared with the
  * review of saved menus when someone's restrictions change (PRO-364), so both
- * pick a replacement the same way.
+ * pick a replacement the same way. While the household is starting, or once
+ * the week has its 2 dishes from outside, it keeps to the `diario` recipes
+ * when one fits (PRO-1200, `everydayMenu.ts`).
  */
 import type { Meal } from '@ona/shared'
 import { detectSeason } from '@ona/shared'
@@ -12,6 +14,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { userFavorites, users } from '../db/schema.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
+import { everydayPolicy, loadIsStarting, slotEveryday } from './everydayMenu.js'
 import { withHouseholdRestrictions } from './householdAllergies.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from './householdRatings.js'
 import { loadMatchableRecipes } from './matchableRecipes.js'
@@ -76,7 +79,10 @@ export async function loadSlotPickContext(menu: SlotPickMenu, requesterId: strin
   // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
   const recipes = await loadMatchableRecipes(requesterId)
 
-  return { memory, restrictions, dislikes, availableEquipment, unavailableEquipment, rated, recipes, season: detectSeason() }
+  // PRO-1200: «de diario» while starting, at most 2 from outside a week after.
+  const everyday = everydayPolicy(recipes, await loadIsStarting(menu.userId, menu.weekStart), [...rated.favoriteRecipeIds, ...rated.likedRecipeIds])
+
+  return { memory, restrictions, dislikes, availableEquipment, unavailableEquipment, rated, recipes, everyday, season: detectSeason() }
 }
 
 /** The pool and the matcher options for one slot. */
@@ -93,6 +99,8 @@ export async function slotPickOptions(ctx: SlotPickContext, menu: SlotPickMenu, 
     unavailableEquipment: ctx.unavailableEquipment,
     // PRO-138: the day's limit on total or hands-on time.
     timeBudget: slotTimeBudget(ctx.memory, menu.weekStart, dayIndex),
+    // PRO-1200: the rest of the week's dishes say how many from outside are left.
+    everyday: slotEveryday(ctx.everyday, usedRecipeIds),
   }
   return { pool, options }
 }

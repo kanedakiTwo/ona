@@ -76,7 +76,9 @@ export const env = {
   // …and, when the vision check turns that photo down, the second try with this model
   // (target: about 1 photo in 5). Empty: the second try repeats the first model.
   AIKIT_IMAGE_RETRY_MODEL: process.env.AIKIT_IMAGE_RETRY_MODEL ?? 'nano-banana-pro',
-  OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+  // The OpenAI reserve (only when AiKit fails). PRO-1149: gpt-image-1 was switched off on 2026-10-23;
+  // gpt-image-2 is the model AiKit serves (D-117). Test: recipeImageAikit.test.ts (retired models).
+  OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2',
   /**
    * Where generated recipe images are written.
    *   - prod (Railway): mount the volume at `/data` and set this to

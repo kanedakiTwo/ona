@@ -54,12 +54,6 @@ function useDebounced<T>(value: T, ms: number): T {
   return v
 }
 
-/** Lowercase, no accents: «Salmón» and «salmon» are the same name. */
-function sameName(a: string, b: string): boolean {
-  const n = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}+/gu, "").toLowerCase().trim()
-  return n(a) === n(b)
-}
-
 const OPTION =
   "block min-h-11 w-full px-3.5 py-2.5 text-left text-[15px] text-ink hover:bg-cream-deep"
 
@@ -94,20 +88,13 @@ export function IngredientAutocomplete({
   const results = search.data ?? []
 
   const trimmed = query.trim()
-<<<<<<< 85eda96b6c87975bc8c3c32d2423f9a3d6f69564
   // The debounced search must have caught up with what is typed.
   const settled = !search.isLoading && debounced.trim() === trimmed
-  const showCreateOption =
-    trimmed.length >= 2 && settled && !results.some((ing) => sameName(ing.name, trimmed))
-  const similar = useSimilarIngredients(trimmed, open && showCreateOption && results.length === 0)
-  const lookAlikes = results.length === 0 ? (similar.data ?? []) : []
-=======
   // Without case or accents: "Brocoli" doesn't offer to create a second "brócoli"
   const showCreateOption =
-    trimmed.length >= 2 &&
-    !search.isLoading &&
-    !hasSameIngredientName(search.data ?? [], trimmed)
->>>>>>> 0443e2e81214b822d75fb9aed0156723bc507093
+    trimmed.length >= 2 && settled && !hasSameIngredientName(results, trimmed)
+  const similar = useSimilarIngredients(trimmed, open && showCreateOption && results.length === 0)
+  const lookAlikes = results.length === 0 ? (similar.data ?? []) : []
 
   // Close dropdown on outside click.
   useEffect(() => {

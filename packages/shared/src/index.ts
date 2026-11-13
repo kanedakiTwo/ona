@@ -274,6 +274,8 @@ export {
   weekTypePreview,
 } from './types/weekType.js'
 export type { WeekTypeOption, WeekTypeSlot, WeekTypeDays, PlantillaView, WeekTypeSlotView } from './types/weekType.js'
+export { summarizeWeekType, weekTypeCell, weekTypeDayLine, schoolWeekdays, dayLettersLabel } from './types/weekTypeSummary.js'
+export type { WeekTypeCell, WeekTypeCellKind, WeekTypeSummary } from './types/weekTypeSummary.js'
 export { TARGET_MACROS, MACRO_RANGES, ACTIVITY_FACTORS, MENU_GENERATION, EMA_WEIGHTS, MINERALS_RDA, VITAMINS_RDA } from './constants/nutrition.js'
 export { ONA_PRINCIPLES } from './constants/philosophy.js'
 export { AI_DISCLOSURE, AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_SHORT, AI_SIGNATURE, AI_TEMPLATE_FOOTER } from './constants/aiDisclosure.js'

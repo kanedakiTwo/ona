@@ -319,7 +319,7 @@ test.describe('móvil 390×844', () => {
     expect(status.consents).toEqual([expect.objectContaining({ cadena: 'tienda.example', version: 'web-v1-2026-11+e2e-v1' })])
 
     // En Perfil: lo aceptado, con «Desactivar», que lo borra.
-    await page.goto('/profile')
+    await page.goto('/profile/ajustes')
     const perfil = page.getByTestId('profile-basket-consents')
     await expect(perfil).toContainText(ETIQUETA, { timeout: 15_000 })
     await perfil.getByRole('button', { name: 'Desactivar' }).click()

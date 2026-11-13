@@ -60,13 +60,13 @@ test('a household from new to known: why, correct, forget, people, pause, export
   test.setTimeout(150_000)
   const { token } = await signUp(page)
 
-  // Perfil: «Tu ficha» first, «Memoria» gone.
+  // Perfil: the strip under the name (PRO-1202) leads to «Tu ficha»; «Memoria» gone.
   await page.goto('/profile')
   const card = page.getByTestId('profile-ficha')
   await expect(card).toBeVisible({ timeout: 15_000 })
   await expect(card).toContainText('Todavía os conozco poco')
   await expect(page.getByRole('link', { name: /^memoria/i })).toHaveCount(0)
-  await card.click()
+  await card.getByRole('link', { name: /^Tu ficha/ }).click()
   await expect(page).toHaveURL(/\/profile\/ficha$/)
 
   // A new household: the short screen, no chips.
@@ -302,13 +302,13 @@ test('portrait, the question, what Mimo deduced, another member and the reader�
     return json(route, { ok: true })
   })
 
-  // Perfil: the portrait's opening, what it knows, the question waiting.
+  // Perfil (PRO-1202): the last thing it learnt, what it knows, the question waiting.
   await page.goto('/profile')
   const card = page.getByTestId('profile-ficha')
-  await expect(card).toContainText('«En tu casa se come de cuchara y sin prisas el fin de semana, y rápido entre semana…»', { timeout: 15_000 })
+  await expect(card).toContainText('Lo último que ha aprendido Mimo: Los jueves cenáis algo rápido.', { timeout: 15_000 })
   await expect(card).toContainText('4 cosas que sé')
   await expect(card).toContainText('1 pregunta para ti')
-  await card.click()
+  await card.getByRole('link', { name: /^Tu ficha/ }).click()
 
   // The portrait and the question.
   await expect(page.getByTestId('ficha-portrait')).toContainText('Os gustan las legumbres.', { timeout: 15_000 })
@@ -372,7 +372,7 @@ test('a `child` member: no «Tu ficha» in Perfil, and the page says why', async
   await signUp(page)
   await page.route(/\/household\/profile$/, (route) => json(route, { error: 'La ficha la ven los adultos de la casa', code: 'CHILD' }, 403))
   await page.goto('/profile')
-  await expect(page.getByRole('link', { name: /^casa/i })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('profile-cooking')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('profile-ficha')).toHaveCount(0)
   await page.goto('/profile/ficha')
   await expect(page.getByText('La ficha la ven los adultos de la casa')).toBeVisible({ timeout: 15_000 })

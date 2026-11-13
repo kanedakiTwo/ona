@@ -35,9 +35,9 @@ test('el perfil abre con la semana tipo y el menú dice la de cada día', async 
   await expect(head.getByTestId(`wt-head-${MONDAY}-lunch`)).toHaveText('Libre')
   await expect(head.getByTestId('week-type-head-note')).toHaveText('Así come Mimoia por defecto: cuéntale la tuya.')
   await expect(head.getByRole('button', { name: 'Ajustar con Mimo' })).toBeVisible()
-  // Arriba del todo: antes de «Tu casa y Mimo».
+  // Arriba del todo: antes de «Quién come» (PRO-1202).
   const headTop = (await head.boundingBox())!.y
-  const hubTop = (await page.getByText('Tu casa y Mimo').first().boundingBox())!.y
+  const hubTop = (await page.getByTestId('who-eats').boundingBox())!.y
   expect(headTop).toBeLessThan(hubTop)
 
   // Los lunes, legumbres a mediodía y la cena fuera.

@@ -41,7 +41,7 @@ test('link → linked → notify toggle → disconnect', async ({ page }) => {
     return route.fulfill({ status: 204 })
   })
 
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   await expect(page.getByText('WhatsApp', { exact: true })).toBeVisible({ timeout: 10_000 })
 
   await page.getByRole('button', { name: /conectar whatsapp/i }).click()
@@ -71,8 +71,8 @@ test('chapter stays hidden when the channel is not available', async ({ page }) 
   await page.route('**/whatsapp/status', (route) =>
     json(route, { available: false, linked: false, phone: null, notify: false, chatLink: null }),
   )
-  await page.goto('/profile')
-  // The hub has loaded («Tu ficha» took the place of «Memoria», PRO-318).
-  await expect(page.getByTestId('profile-ficha')).toBeVisible({ timeout: 10_000 })
+  await page.goto('/profile/ajustes')
+  // Ajustes has loaded (PRO-1202: WhatsApp lives there).
+  await expect(page.getByTestId('profile-mimo-voice')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByRole('button', { name: /conectar whatsapp/i })).toHaveCount(0)
 })

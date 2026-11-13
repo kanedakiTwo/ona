@@ -43,7 +43,7 @@ afterEach(() => vi.restoreAllMocks())
 
 const recipeIds = (days: DayMenu[]) => days.flatMap((d) => Object.values(d).flatMap((s) => (s?.dishes ?? []).flatMap((x) => (x.kind === 'recipe' ? [x.recipeId] : []))))
 const week = (template: DayTemplate[], pool: RecipeWithCourse[], policy: ReturnType<typeof everydayPolicy>, favourites = new Set<string>()) =>
-  buildRandomMenu(template, pool, 'autumn', [], favourites, {}, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, policy)
+  buildRandomMenu(template, pool, 'autumn', [], favourites, {}, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, policy)
 
 describe('starting', () => {
   it('fewer than 2 other weeks with a menu, or fewer than 5 signals', () => {

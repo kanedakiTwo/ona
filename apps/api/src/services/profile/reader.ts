@@ -25,6 +25,7 @@ import { householdPersons, householdProfiles, profileFacts, users } from '../../
 import { madridParts } from '../madridTime.js'
 import { mentionsHealth, stripHealthFromWhatsAppText } from './healthText.js'
 import { normaliseEquipment } from '../recipeMatcher.js'
+import { cookingSkillOf, cuisineBiasOf, mergeCuisineBias, type CookingSkill, type MenuTastes } from '../menuTastes.js'
 import { hasBabyAtHome } from '../undercookedRecipes.js'
 
 type Db = typeof defaultDb
@@ -187,6 +188,10 @@ export interface FichaMenuConstraints {
    * dishes too (the menu is the household's, so one person is enough).
    */
   strictProteinMinimum: boolean
+  /** Every member's `cuisine_bias`, as the household's (`mergeCuisineBias`, PRO-1201). */
+  cuisineBias: Record<string, number>
+  /** `cooking_skill` of the member who generates, else the household's (PRO-1201). */
+  cookingSkill: CookingSkill | null
   /** Someone aged 0 to 2 lives here (PRO-1181: no runny yolk nor pink mince). */
   babyAtHome: boolean
 }
@@ -239,11 +244,16 @@ export function equipmentMissingIn(text: string): string[] {
   return out
 }
 
-/** Pure: the menu's fixed filters from the ficha (health types are never read here: restrictions keep their own path). */
-export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuConstraints {
-  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false, babyAtHome: false }
+/**
+ * Pure: the menu's fixed filters from the ficha (health types are never read
+ * here: restrictions keep their own path). `forUserId`: who generates, whose
+ * cooking level counts.
+ */
+export function fichaMenuConstraints(ficha: HouseholdFicha | null, forUserId?: string): FichaMenuConstraints {
+  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false, cuisineBias: {}, cookingSkill: null, babyAtHome: false }
   if (!ficha) return out
   out.babyAtHome = hasBabyAtHome(ficha.persons)
+  let householdSkill: CookingSkill | null = null
   const addDislike = (s: string) => {
     const t = s.trim().toLowerCase()
     if (t && !out.dislikes.includes(t)) out.dislikes.push(t)
@@ -261,8 +271,15 @@ export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuCon
     } else if (f.type === 'affinity') {
       const v = f.value as { kind?: string; target?: string; score?: number }
       if (v?.kind === 'ingredient' && typeof v.target === 'string' && Number(v.score) <= -2) addDislike(v.target)
+    } else if (f.type === 'cuisine_bias') {
+      out.cuisineBias = mergeCuisineBias(out.cuisineBias, cuisineBiasOf(f.value))
+    } else if (f.type === 'cooking_skill') {
+      const skill = cookingSkillOf(f.value)
+      if (skill && forUserId && f.subjectUserId === forUserId) out.cookingSkill = skill
+      else if (skill && !f.subjectUserId && !f.subjectPersonId) householdSkill = skill
     }
   }
+  out.cookingSkill ??= householdSkill
   return out
 }
 
@@ -270,25 +287,35 @@ export interface MenuFilters {
   dislikes: string[]
   availableEquipment: Set<string> | undefined
   unavailableEquipment: Set<string> | undefined
+  /** PRO-1201: cuisines and cooking level, weights of the draw (`MatcherOptions.tastes`). */
+  tastes: MenuTastes
 }
 
 /**
  * Pure: today's memory filters with the ficha on top. Dislikes are joined;
  * the equipment list is the memory's, else the ficha's; what the ficha says
  * is missing right now is taken out of it and also goes as an exclusion,
- * so it holds even for a household without an equipment list.
+ * so it holds even for a household without an equipment list. Tastes
+ * (PRO-1201, `memoryTastes`): cuisines joined with every member's; the
+ * memory's cooking level, else the ficha's.
  */
-export function withFichaFilters(base: { dislikes: string[]; availableEquipment: Set<string> | undefined }, c: FichaMenuConstraints): MenuFilters {
+export function withFichaFilters(base: { dislikes: string[]; availableEquipment: Set<string> | undefined; tastes?: MenuTastes }, c: FichaMenuConstraints): MenuFilters {
   const dislikes = [...base.dislikes]
   for (const d of c.dislikes) if (!dislikes.some((x) => x.trim().toLowerCase() === d)) dislikes.push(d)
   const missing = new Set(c.unavailableEquipment.map(normaliseEquipment))
   let available = base.availableEquipment ?? (c.equipment ? new Set(c.equipment) : undefined)
   if (available && missing.size) available = new Set([...available].filter((e) => !missing.has(e)))
-  return { dislikes, availableEquipment: available, unavailableEquipment: missing.size ? missing : undefined }
+  const cuisineBias = mergeCuisineBias(base.tastes?.cuisineBias, c.cuisineBias ?? {})
+  const cookingSkill = base.tastes?.cookingSkill ?? c.cookingSkill ?? undefined
+  const tastes: MenuTastes = {
+    ...(Object.keys(cuisineBias).length ? { cuisineBias } : {}),
+    ...(cookingSkill ? { cookingSkill } : {}),
+  }
+  return { dislikes, availableEquipment: available, unavailableEquipment: missing.size ? missing : undefined, tastes }
 }
 
 /** The ficha's filters for a user's menu; nothing (no-op) on any error. */
 export async function loadFichaMenuConstraints(userId: string, opts: { db?: Db; now?: Date } = {}): Promise<FichaMenuConstraints> {
   const ficha = await loadHouseholdFicha(userId, opts).catch(() => null)
-  return fichaMenuConstraints(ficha)
+  return fichaMenuConstraints(ficha, userId)
 }

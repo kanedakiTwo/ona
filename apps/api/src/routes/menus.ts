@@ -27,6 +27,7 @@ import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/
 import { generateAndSaveMenu } from '../services/menuGenerate.js'
 import { autoplanNoticeFor, markAutoplanViewed, noteAutoplanChange } from '../services/weeklyAutoplan.js'
 import { loadSlotPickContext, slotPickOptions } from '../services/menuSlotPick.js'
+import { memoryTastes } from '../services/menuTastes.js'
 import {
   menuEditWho,
   recordMenuEdits,
@@ -860,10 +861,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const dislikesValue2 = memory2?.dislikes?.value
       const equipmentValue2 = memory2?.equipment?.value
       // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-      const { dislikes, availableEquipment, unavailableEquipment: unavailEquip2 } = withFichaFilters(
+      const { dislikes, availableEquipment, unavailableEquipment: unavailEquip2, tastes: tastes2 } = withFichaFilters(
         {
           dislikes: Array.isArray(dislikesValue2) ? (dislikesValue2 as string[]) : [],
           availableEquipment: Array.isArray(equipmentValue2) ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment)) : undefined,
+          tastes: memoryTastes(memory2),
         },
         await loadFichaMenuConstraints(menu.userId),
       )
@@ -891,6 +893,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         dislikes,
         availableEquipment,
         unavailableEquipment: unavailEquip2,
+        tastes: tastes2,
         timeBudget,
       })
       if (!newRecipe) {
@@ -1726,10 +1729,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const dislikesValRegen = memRegen?.dislikes?.value
     const equipValRegen = memRegen?.equipment?.value
     // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes: dislikesRegen, availableEquipment: availEquipRegen, unavailableEquipment: unavailEquip3 } = withFichaFilters(
+    const { dislikes: dislikesRegen, availableEquipment: availEquipRegen, unavailableEquipment: unavailEquip3, tastes: tastesRegen } = withFichaFilters(
       {
         dislikes: Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : [],
         availableEquipment: Array.isArray(equipValRegen) ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment)) : undefined,
+        tastes: memoryTastes(memRegen),
       },
       await loadFichaMenuConstraints(menu.userId),
     )
@@ -1758,6 +1762,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       dislikes: dislikesRegen,
       availableEquipment: availEquipRegen,
       unavailableEquipment: unavailEquip3,
+      tastes: tastesRegen,
       timeBudget: timeBudgetRegen,
     }
 
@@ -1822,10 +1827,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     const dislikesValR = memR?.dislikes?.value
     const equipValR = memR?.equipment?.value
     // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes: dislikesR, availableEquipment: availEquipR, unavailableEquipment: unavailEquip4 } = withFichaFilters(
+    const { dislikes: dislikesR, availableEquipment: availEquipR, unavailableEquipment: unavailEquip4, tastes: tastesR } = withFichaFilters(
       {
         dislikes: Array.isArray(dislikesValR) ? (dislikesValR as string[]) : [],
         availableEquipment: Array.isArray(equipValR) ? new Set<string>((equipValR as string[]).map(normaliseEquipment)) : undefined,
+        tastes: memoryTastes(memR),
       },
       await loadFichaMenuConstraints(menu.userId),
     )
@@ -1854,6 +1860,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       dislikes: dislikesR,
       availableEquipment: availEquipR,
       unavailableEquipment: unavailEquip4,
+      tastes: tastesR,
       timeBudget: timeBudgetR,
     }
 

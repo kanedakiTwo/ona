@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { PLANS, euros, planByKey } from '@ona/shared'
+import { PAID_PLANS, euros, planByKey } from '@ona/shared'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../..')
 const ROOTS = ['apps/web/src', 'apps/api/src', 'kb', 'specs', 'packages/shared/src']
@@ -33,7 +33,8 @@ const PLUS_AMOUNTS = new Set([
   ...Object.values(plus.prices).map((p) => euros(p.cents)),
   ...Object.values(plus.prices).flatMap((p) => (p.perMonth ? [amountOf(p.perMonth)] : [])),
 ])
-const PLAN_AMOUNTS = new Set(PLANS.flatMap((p) => Object.values(p.prices).map((pr) => euros(pr.cents))))
+/** Gratis (PRO-385) has no prices. */
+const PLAN_AMOUNTS = new Set(PAID_PLANS.flatMap((p) => Object.values(p.prices).map((pr) => euros(pr.cents))))
 
 describe('plan prices in text (PRO-394)', () => {
   it('reads the files', () => {

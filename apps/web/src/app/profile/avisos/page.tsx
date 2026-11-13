@@ -48,6 +48,7 @@ export default function AvisosPage() {
   return (
     <SubPage
       eyebrow="Avisos"
+      back={{ href: "/profile/ajustes", label: "Ajustes" }}
       title={
         <>
           Qué te llega y <Accent>por dónde</Accent>
@@ -115,8 +116,8 @@ export default function AvisosPage() {
                   <strong className="font-medium text-ink">Notificaciones del móvil:</strong>{" "}
                   {data.push.subscribed ? "activadas." : "sin activar."}
                 </p>
-                <Link href="/profile" className="inline-block pt-1 text-[13px] font-medium text-ink underline underline-offset-2">
-                  Cambiarlos en Perfil
+                <Link href="/profile/ajustes" className="inline-block pt-1 text-[13px] font-medium text-ink underline underline-offset-2">
+                  Cambiarlos en Ajustes
                 </Link>
               </div>
             </div>

@@ -61,6 +61,7 @@ function Suscripcion() {
   return (
     <SubPage
       eyebrow="Tu plan"
+      back={{ href: "/profile/ajustes", label: "Ajustes" }}
       title={
         <>
           <Accent>Suscripción</Accent>

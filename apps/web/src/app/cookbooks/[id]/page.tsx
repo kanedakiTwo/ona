@@ -72,7 +72,7 @@ export default function CookbookDetailPage() {
     ) {
       return
     }
-    del.mutate({ id: data.id }, { onSuccess: () => router.push("/profile/cookbooks") })
+    del.mutate({ id: data.id }, { onSuccess: () => router.push("/recipes/recetarios") })
   }
 
   if (isLoading) {
@@ -95,7 +95,7 @@ export default function CookbookDetailPage() {
       <div className="mx-auto w-full max-w-[var(--page-max)] pb-24 lg:px-12 lg:pt-8 lg:pb-10">
         <header className="px-5 pt-3 pb-5 lg:px-0 lg:pb-8">
           <Link
-            href="/profile/cookbooks"
+            href="/recipes/recetarios"
             className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-muted transition-colors hover:text-terracotta-deep"
           >
             <ChevronLeft size={16} /> Recetarios

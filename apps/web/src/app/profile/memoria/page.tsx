@@ -27,6 +27,8 @@ import { formatDayTimeBudget, isSpanishRegion, SPANISH_REGIONS, toDayTimeBudget 
 
 interface Group {
   title: string
+  /** Anchor the /profile rows jump to (PRO-1202: «Cómo cocináis», «Lo que os gusta»). */
+  id?: string
   keys: MemoryKey[]
 }
 
@@ -47,14 +49,17 @@ const GROUPS: Group[] = [
   },
   {
     title: "Restricciones y gustos",
+    id: "gustos",
     keys: ["restrictions", "dislikes"],
   },
   {
     title: "Cocina",
+    id: "cocina",
     keys: ["equipment", "cooking_skill", "weekly_budget_eur"],
   },
   {
     title: "Rutina",
+    id: "rutina",
     keys: ["time_available", "meal_times", "cuisine_bias"],
   },
   {
@@ -204,7 +209,7 @@ export default function MemoryPage() {
                 return [k, empty ? null : fact] as const
               })
               return (
-                <section key={group.title}>
+                <section key={group.title} id={group.id} className="scroll-mt-4">
                   <h2 className={SUB_EYEBROW}>{group.title}</h2>
                   <ul className={`${SUB_LIST} mt-3`}>
                     {entries.map(([key, fact]) => {

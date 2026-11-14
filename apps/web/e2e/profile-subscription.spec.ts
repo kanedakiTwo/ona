@@ -13,7 +13,7 @@ test('profile → Suscripción: beta on Plus, payments not open yet', async ({ p
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   const link = page.getByRole('link', { name: /Suscripción/ })
   await expect(link).toContainText('Beta: Plus gratis', { timeout: 10_000 })
   // A tap that lands while the page is still hydrating can be lost (it failed

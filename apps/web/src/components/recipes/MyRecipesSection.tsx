@@ -1,7 +1,8 @@
 "use client"
 
 /**
- * MyRecipesSection — "Mis recetas" card inside /profile.
+ * MyRecipesSection — "Mis recetas" (/recipes/mias, in the Recetas tab since
+ * PRO-1202; it was a card inside /profile).
  *
  * Shows every recipe the current user authored plus the status pills the
  * admin/recipes-gaps endpoint computes (sin nutrición, ingredientes
@@ -9,7 +10,7 @@
  * (D · Luz y foto, PRO-39) holds "Editar" and "Eliminar" — the latter
  * soft-checks via native confirm() before firing.
  *
- * Spec: ../../../../specs/recipes-spec.md (cascade behaviour)
+ * Spec: ../../../../../specs/my-recipes.md (cascade behaviour)
  */
 
 import Link from "next/link"
@@ -22,7 +23,7 @@ import {
 } from "@/hooks/useMyRecipes"
 import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
 import { RecipeCover } from "@/components/menu/RecipeCover"
-import { MoreButton } from "./ProfileCards"
+import { MoreButton } from "@/app/profile/sections/ProfileCards"
 
 const WARN_PILLS = new Set(["sin nutrición", "ingredientes auto-añadidos"])
 

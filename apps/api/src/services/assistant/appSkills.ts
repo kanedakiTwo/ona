@@ -1474,7 +1474,7 @@ const shareInviteLink: SkillDefinition = {
 const setWhatsappNotifications: SkillDefinition = {
   name: 'set_whatsapp_notifications',
   description:
-    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana con el menú del día: apagado salvo que lo pida, p. ej. "mándame el menú cada mañana"), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana". Cambia lo mismo que Perfil → Avisos; para ver por donde llega cada aviso usa get_alerts.',
+    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana con el menú del día: apagado salvo que lo pida, p. ej. "mándame el menú cada mañana"), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana". Cambia lo mismo que Perfil → Ajustes → Avisos; para ver por donde llega cada aviso usa get_alerts.',
   parameters: {
     type: 'object',
     properties: {
@@ -1507,7 +1507,7 @@ export function describeAlerts(o: AlertsOverview): string {
   })
   const wa = o.whatsapp.linked ? (o.whatsapp.notify ? 'WhatsApp conectado con avisos.' : 'WhatsApp conectado, avisos apagados.') : 'WhatsApp sin conectar.'
   const push = o.push.subscribed ? 'Notificaciones del móvil activadas.' : 'Notificaciones del móvil sin activar.'
-  return `${wa} ${push}\n${lines.join('\n')}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Avisos.`
+  return `${wa} ${push}\n${lines.join('\n')}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
 }
 
 const getAlerts: SkillDefinition = {
@@ -1524,7 +1524,7 @@ const getAlerts: SkillDefinition = {
 const setAlerts: SkillDefinition = {
   name: 'set_alerts',
   description:
-    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), weekly_autoplan (los jueves Mimo deja lista la semana proxima; "no me hagas la semana tu" lo apaga, y entonces vuelve la pregunta del domingo), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
+    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Ajustes → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), weekly_autoplan (los jueves Mimo deja lista la semana proxima; "no me hagas la semana tu" lo apaga, y entonces vuelve la pregunta del domingo), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
   parameters: {
     type: 'object',
     properties: {
@@ -1543,7 +1543,7 @@ const setAlerts: SkillDefinition = {
     const what = p.kind === 'all' ? 'todos los avisos' : ALERT_LABELS[p.kind as AlertKind].title
     const row = o.kinds.find((k) => k.kind === kinds[0])
     const caveat = enabled && row && row.channel === 'off' && row.note ? ` Ojo: ahora no te llegaria: ${row.note}` : ''
-    return text(`Hecho: ${what} ${enabled ? 'encendido' : 'apagado'}.${caveat} Se ve en Perfil → Avisos.`)
+    return text(`Hecho: ${what} ${enabled ? 'encendido' : 'apagado'}.${caveat} Se ve en Perfil → Ajustes → Avisos.`)
   },
 }
 

@@ -18,7 +18,7 @@ Talking to Mimo, the assistant, from the floating companion on any signed-in pag
 
 ## Profile, chapter 04 «Mimo por voz»
 
-Card «Voz» on `/profile` (`data-testid="profile-mimo-voice"`, with a status line saying whether Mimo reads replies aloud). Copy: «Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa «Manos libres» para conversar sin tocar nada mientras cocinas.»
+Card «Voz» in Ajustes → Mimo (`/profile/ajustes`, PRO-1202; `data-testid="profile-mimo-voice"`, with a status line saying whether Mimo reads replies aloud). Copy: «Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa «Manos libres» para conversar sin tocar nada mientras cocinas.»
 - Toggle «Leer las respuestas en voz alta» («Activo · también cuando escribes» / «Solo cuando le hablas»).
 - «Voz de Mimo» picker, when there are several voices.
 - There is no «Escuchar …» switch: the background listener for an activation phrase was removed (D-032). On start the app deletes its old device setting (`localStorage ona.voice.wake` + `word.enabled`) so nothing lingers.
@@ -76,7 +76,7 @@ Browsers without MediaRecorder fall back to the Web Speech API recogniser (`useV
 - [apps/web/src/lib/pendingListen.ts](../apps/web/src/lib/pendingListen.ts) — the cancellable 150 ms mic start after opening the panel (PRO-79)
 - [apps/web/src/hooks/useRecorder.ts](../apps/web/src/hooks/useRecorder.ts) — recording with silence detection
 - [apps/web/src/hooks/useVoice.ts](../apps/web/src/hooks/useVoice.ts) — read-aloud (`POST /tts`, browser fallback) and the Web Speech recogniser fallback
-- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — «Voz» card
+- [apps/web/src/app/profile/ajustes/page.tsx](../apps/web/src/app/profile/ajustes/page.tsx) — «Voz» card
 - [apps/web/src/app/onboarding/voz/page.tsx](../apps/web/src/app/onboarding/voz/page.tsx) — voice onboarding loop
 - [apps/api/src/routes/stt.ts](../apps/api/src/routes/stt.ts), [apps/api/src/services/stt.ts](../apps/api/src/services/stt.ts) — `POST /stt`
 - [apps/api/src/routes/tts.ts](../apps/api/src/routes/tts.ts), [apps/api/src/services/tts.ts](../apps/api/src/services/tts.ts) — `GET /tts/voices`, `POST /tts`

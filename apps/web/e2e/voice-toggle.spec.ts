@@ -17,7 +17,7 @@ test('the profile has no «Escuchar …» switch and the old listener setting is
   // A device that had the old listener on: the app deletes the setting on start.
   const legacyKey = 'ona.voice.wake' + 'word.enabled'
   await page.evaluate((k) => localStorage.setItem(k, '1'), legacyKey)
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   const section = page.getByTestId('profile-mimo-voice')
   await expect(section).toBeVisible({ timeout: 10_000 })
   await expect(section.getByRole('button', { name: /leer las respuestas/i })).toBeVisible()
@@ -28,7 +28,7 @@ test('the profile has no «Escuchar …» switch and the old listener setting is
 })
 
 test('«Leer las respuestas en voz alta» in the profile is the same switch as in Mimo', async ({ page }) => {
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   const section = page.getByTestId('profile-mimo-voice')
   await expect(section).toBeVisible({ timeout: 10_000 })
   const toggle = section.locator('button[aria-pressed]').filter({ hasText: /leer las respuestas/i })

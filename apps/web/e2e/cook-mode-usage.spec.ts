@@ -13,7 +13,7 @@ test('opening cook mode on the web sends one cook_mode_started ping', async ({ p
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
   await page.goto('/recipes')
-  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"])').first()
+  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])').first()
   await expect(card).toBeVisible({ timeout: 15_000 })
   const href = await card.getAttribute('href')
   const id = href!.match(/\/recipes\/([0-9a-f-]{36})/)![1]

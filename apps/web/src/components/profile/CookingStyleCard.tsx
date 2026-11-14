@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * «Cómo cocináis» on /profile (PRO-217, specs/household-profile.md): the
+ * «Estilo», inside «Cómo cocináis» on /profile (PRO-217, PRO-1202; specs/household-profile.md): the
  * same four answers as the sign-up; a tap saves it in the household's ficha
  * (no «Guardar cambios»). Mimo changes it too (`set_cooking_style`).
  */
@@ -20,7 +20,7 @@ export function CookingStyleCard() {
   return (
     <ProfileCard
       icon={CookingPot}
-      title="Cómo cocináis"
+      title="Estilo"
       status={current ? cookingStyleParts(current).title : "Sin contestar"}
       data-testid="profile-cooking-style"
     >

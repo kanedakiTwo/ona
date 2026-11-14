@@ -13,7 +13,7 @@
  *     (meal/season/difficulty/internal) never leak.
  */
 import { Router, type NextFunction, type Response } from 'express'
-import { eq, and, sql, asc, count, arrayContains, inArray, isNull, notInArray } from 'drizzle-orm'
+import { eq, and, sql, asc, arrayContains, inArray, isNull, notInArray } from 'drizzle-orm'
 import multer from 'multer'
 import crypto from 'crypto'
 import { db } from '../db/connection.js'
@@ -23,14 +23,11 @@ import {
   recipeSteps,
   ingredients,
   userFavorites,
-  users,
   recipeNotes,
   type CatalogSourceInfo,
 } from '../db/schema.js'
 import { env } from '../config/env.js'
 import {
-  buildRecipePrompt,
-  generateRecipeImage,
   imageGenerationConfigured,
   writeRecipeImage,
   AikitNotConfiguredError,

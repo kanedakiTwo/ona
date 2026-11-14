@@ -1606,6 +1606,41 @@ const leaveFeedback: SkillDefinition = {
   },
 }
 
+/**
+ * The Sean Ellis survey (PRO-334, specs/feedback.md; D-051): when the user
+ * answers «si mañana Mimoia dejara de existir, ¿cómo te sentirías?» talking
+ * to Mimo (web chat, voice, WhatsApp), the same `POST /sean-ellis` as the
+ * /menu card. Once per person; only whoever was asked.
+ */
+const answerSeanEllis: SkillDefinition = {
+  name: 'answer_sean_ellis',
+  description:
+    'Guarda la respuesta a la encuesta de Mimoia "si mañana Mimoia dejara de existir, ¿como te sentirias?" (la tarjeta del menu o la pregunta de Mimo por WhatsApp). Usala solo cuando el usuario conteste a esa pregunta: muy decepcionado/a = muy, algo = algo, nada (no le resulta tan util) = nada, ya no la uso = ya_no. Si da un motivo, va en why con sus palabras. No la uses para otras opiniones (eso es leave_feedback).',
+  parameters: {
+    type: 'object',
+    properties: {
+      answer: { type: 'string', enum: ['muy', 'algo', 'nada', 'ya_no'], description: 'Su respuesta.' },
+      why: { type: 'string', description: 'El porque, con sus palabras (opcional).' },
+    },
+    required: ['answer'],
+  },
+  async handler(p, ctx) {
+    const why = typeof p.why === 'string' ? p.why.trim().slice(0, 2000) : ''
+    const channel = ctx.channel === 'whatsapp' ? 'whatsapp' : 'chat'
+    try {
+      const r = await api(ctx)<{ saved: boolean }>('POST', '/sean-ellis', { answer: p.answer, channel, ...(why ? { why } : {}) })
+      if (!r.saved) return text('Ya estaba guardada su respuesta a esta encuesta: no se cuenta dos veces. Dale las gracias en una linea y sigue.')
+      return text('Hecho: respuesta guardada para el equipo. Dale las gracias en una linea y sigue.')
+    } catch (err) {
+      if (err instanceof AppApiError && err.status === 409) {
+        return text('No guardada: a este usuario no se le ha hecho esta encuesta. Si quiere contarnos algo, usa leave_feedback.')
+      }
+      if (err instanceof AppApiError && err.status === 400) return text('Falta la respuesta: preguntale cual de las cuatro opciones encaja.')
+      throw err
+    }
+  },
+}
+
 export const appSkills: SkillDefinition[] = [
   setMealNote,
   clearMeal,
@@ -1638,5 +1673,6 @@ export const appSkills: SkillDefinition[] = [
   getAlerts,
   setAlerts,
   leaveFeedback,
+  answerSeanEllis,
   setCookToday,
 ]

@@ -21,6 +21,9 @@ import {
 import CatalogGrid from "@/components/recipes/CatalogGrid"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
+
+const FIELD_LABEL = "mb-1 block text-[12px] font-medium text-ink-muted"
 
 const EMOJI_SUGGESTIONS = ['📖', '⭐', '🥗', '🍝', '🍰', '🥩', '🌮', '🍲', '☕']
 
@@ -103,23 +106,35 @@ export default function CookbookDetailPage() {
 
           {editing ? (
             <div className="mt-2 space-y-4 rounded-[20px] border border-border-soft bg-paper p-4 lg:max-w-[560px]">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={60}
-                aria-label="Nombre del recetario"
-                className={`${DISPLAY_UI} w-full border-b border-border bg-transparent py-1.5 text-2xl text-ink outline-none focus:border-ink`}
-              />
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                maxLength={280}
-                placeholder="Descripción (opcional)"
-                className="w-full border-b border-border bg-transparent py-2 text-[15px] text-ink outline-none placeholder:text-ink-light focus:border-ink"
-              />
-              <div className="flex flex-wrap gap-1.5">
+              <label className="block">
+                <FieldLabel as="span" required className={FIELD_LABEL}>
+                  Nombre del recetario
+                </FieldLabel>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={60}
+                  required
+                  className={`${DISPLAY_UI} w-full border-b border-border bg-transparent py-1.5 text-2xl text-ink outline-none focus:border-ink`}
+                />
+              </label>
+              <label className="block">
+                <FieldLabel as="span" optional className={FIELD_LABEL}>
+                  Descripción
+                </FieldLabel>
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={280}
+                  className="w-full border-b border-border bg-transparent py-2 text-[15px] text-ink outline-none placeholder:text-ink-light focus:border-ink"
+                />
+              </label>
+              <FieldLabel as="p" id="cookbook-edit-emoji-label" optional className={FIELD_LABEL}>
+                Emoji
+              </FieldLabel>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="cookbook-edit-emoji-label">
                 {EMOJI_SUGGESTIONS.map((e) => (
                   <button
                     key={e}
@@ -134,6 +149,7 @@ export default function CookbookDetailPage() {
                   </button>
                 ))}
               </div>
+              <RequiredNote />
               <div className="flex gap-2">
                 <button
                   type="button"

@@ -15,6 +15,7 @@ import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
+import { needsReturnDisclosure, withReturnDisclosure } from './aiNotice.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
 import {
   ASK_SOURCE_COPY,
@@ -561,7 +562,14 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     return
   }
 
+  // PRO-1169: set once the sender is known to be back after 30+ days; the
+  // first message Mimo sends then opens with the AI disclosure.
+  let returnDisclosure = false
   const send = async (userId: string | null, kind: string, messages: OutboundMessage[], meta?: ReturnType<typeof guidedMeta>) => {
+    if (returnDisclosure && messages.length > 0) {
+      messages = withReturnDisclosure(messages)
+      returnDisclosure = false
+    }
     for (const m of messages) {
       const body = outboundBody(m)
       try {
@@ -730,6 +738,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   }
 
   const userId = link.userId
+  returnDisclosure = needsReturnDisclosure(link.lastInboundAt, now)
   await store.touchInbound(msg.from, now)
 
   if (link.suspendedAt) {

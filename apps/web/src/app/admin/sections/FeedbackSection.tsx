@@ -16,7 +16,7 @@ interface FeedbackItem {
   channel: "app" | "chat" | "whatsapp"
   text: string
   page: string | null
-  /** What it answers: 'sobras' = Mimo's leftovers question (PRO-285); 'pregunta_unica' = the one from Admin (PRO-1091). */
+  /** What it answers: 'sobras' = Mimo's leftovers question (PRO-285); 'pregunta_unica' = the one from Admin (PRO-1091); 'sean_ellis' = the survey (PRO-334). */
   tag?: string | null
   createdAt: string
   username?: string
@@ -26,7 +26,17 @@ interface FeedbackItem {
 const TAG_LABEL: Record<string, string> = {
   sobras: "Pregunta de las sobras",
   pregunta_unica: "Pregunta única por WhatsApp",
+  sean_ellis: "Encuesta «si Mimoia dejara de existir»",
 }
+
+/** The Sean Ellis survey's options (PRO-334), in order. */
+const SEAN_ELLIS_LABEL: Array<[string, string]> = [
+  ["muy", "muy"],
+  ["algo", "algo"],
+  ["nada", "nada"],
+  ["ya_no", "ya no la usan"],
+  ["sin_opcion", "sin opción clara"],
+]
 
 const CHANNEL_LABEL: Record<FeedbackItem["channel"], string> = {
   app: "Botón de la app",
@@ -38,8 +48,9 @@ export function FeedbackSection() {
   const [days, setDays] = useState(30)
   const q = useQuery({
     queryKey: ["admin", "feedback", days],
-    queryFn: () => api.get<{ count: number; byTag?: Record<string, number>; items: FeedbackItem[] }>(`/admin/feedback?days=${days}`),
+    queryFn: () => api.get<{ count: number; byTag?: Record<string, number>; seanEllis?: Record<string, number>; items: FeedbackItem[] }>(`/admin/feedback?days=${days}`),
   })
+  const seanEllis = q.data?.seanEllis ?? {}
   return (
     <section data-testid="feedback-section" className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-muted">
@@ -58,6 +69,11 @@ export function FeedbackSection() {
         {q.data?.byTag?.sobras ? (
           <span className="ml-1" data-testid="feedback-tag-sobras">
             · {q.data.byTag.sobras} {q.data.byTag.sobras === 1 ? "respuesta" : "respuestas"} a la pregunta de las sobras
+          </span>
+        ) : null}
+        {q.data?.byTag?.sean_ellis ? (
+          <span className="ml-1" data-testid="feedback-sean-ellis">
+            · Encuesta: {SEAN_ELLIS_LABEL.filter(([k]) => seanEllis[k]).map(([k, l]) => `${seanEllis[k]} ${l}`).join(" · ")}
           </span>
         ) : null}
       </div>

@@ -27,6 +27,13 @@ vi.mock('../middleware/metricsAuth.js', async (importOriginal) => ({
   metricsAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
 }))
 
+// PRO-390: three real households read from the database (stubbed), one with a note in its restrictions.
+vi.mock('../services/menuTwins.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../services/menuTwins.js')>()
+  const h = (restrictions: string[]) => ({ adults: 2, kidsCount: 1, restrictions, cookingStyle: 'daily', timeAvailable: null, weeklyBudgetEur: 70, cuisineBias: { 'Cocina de Lucas': 90 }, swappedTypes: [] })
+  return { ...mod, loadTwinSources: async () => [h(['sin gluten', 'mi hijo Lucas es celíaco']), h(['huevo']), h([])] }
+})
+
 const { default: router } = await import('../routes/blindComparison.js')
 
 let server: Server
@@ -66,5 +73,21 @@ describe('GET /admin/menu-planner/comparison', () => {
       prefersPlanner: true,
     })
     expect(JSON.stringify(body)).not.toMatch(/3f2a9c1e|Lucas|celíaco/)
+  })
+})
+
+describe('GET /admin/menu-planner/gemelos (PRO-390)', () => {
+  it('one twin per real household: fixed options only, never its own allergies, no text', async () => {
+    const res = await fetch(`${base}/admin/menu-planner/gemelos`, { headers: { 'x-metrics-token': 'any' } })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.households).toBe(3)
+    expect(body.twins).toHaveLength(3)
+    for (const t of body.twins) {
+      expect(t).toMatchObject({ adults: 2, kidsCount: 1, diet: 'omnivora', cookingStyle: 'daily', budget: '60_100', cuisines: [], swapsOut: [] })
+    }
+    // The pool is the beta's (sin gluten, huevo): the gluten household never gets gluten, nor the egg one egg.
+    expect(body.twins.flatMap((t: any) => t.allergies).every((a: string) => ['sin gluten', 'huevo'].includes(a))).toBe(true)
+    expect(JSON.stringify(body)).not.toMatch(/Lucas|celíaco|householdId|email|id"/)
   })
 })

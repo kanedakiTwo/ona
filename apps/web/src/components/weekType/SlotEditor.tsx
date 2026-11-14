@@ -28,6 +28,7 @@ import {
   type WeekTypeSlotView,
 } from "@ona/shared"
 import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import { DishTypeIcon, iconOfOption } from "./DishTypeIcon"
 import { DAY_NAMES, MEAL_NAMES } from "./WeekTypeGrid"
 
@@ -348,11 +349,18 @@ function FixedForm({ onAdd }: { onAdd: (o: WeekTypeOption) => void }) {
   return (
     <div className="mt-3 space-y-3">
       <label className="block">
-        <span className={EYEBROW}>Nombre</span>
-        <input className={`${INPUT} mt-1`} value={label} maxLength={60} placeholder="Yogur con cereales" onChange={(e) => setLabel(e.target.value)} />
+        <FieldLabel as="span" required className={EYEBROW}>
+          Nombre
+        </FieldLabel>
+        <input className={`${INPUT} mt-1`} value={label} maxLength={60} placeholder="Yogur con cereales" onChange={(e) => setLabel(e.target.value)} aria-required="true" />
       </label>
-      <div>
-        <span className={EYEBROW}>Qué lleva, por persona (va a la compra)</span>
+      {/* The rows are optional: the empty ones are left out on «Poner». */}
+      <div data-field-group>
+        <span data-field-group-label>
+          <FieldLabel as="span" optional className={EYEBROW}>
+            Qué lleva por persona, para la compra
+          </FieldLabel>
+        </span>
         <ul className="mt-1 space-y-2">
           {items.map((it, i) => (
             <li key={i} className="flex items-center gap-2">
@@ -374,6 +382,7 @@ function FixedForm({ onAdd }: { onAdd: (o: WeekTypeOption) => void }) {
           </button>
         )}
       </div>
+      <RequiredNote />
       <button
         type="button"
         disabled={!valid}

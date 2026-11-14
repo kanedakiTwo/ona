@@ -38,6 +38,12 @@ export interface IngredientGapsResponse {
     recipes: Array<{ id: string; name: string }>
     householdRecipes: number
   }>
+  /** PRO-1118: recipes whose stored allergens differ from their ingredients' union. */
+  allergenMismatch?: {
+    total: number
+    householdRecipes: number
+    recipes: Array<{ id: string; name: string; stored: string[]; expected: string[] }>
+  }
 }
 
 export interface RecipeGapsResponse {
@@ -106,12 +112,18 @@ export function usePatchIngredient() {
 
 export function useRemapIngredient() {
   const qc = useQueryClient()
-  return useMutation<Ingredient, Error, { id: string; fdcId: number }>({
-    mutationFn: ({ id, fdcId }) =>
-      api.patch<Ingredient>(`/ingredients/${id}/remap`, { fdcId }),
+  // PRO-1125: a USDA or a BEDCA entry; the API recomputes the recipes that use it.
+  return useMutation<
+    Ingredient & { recipesRecomputed: number },
+    Error,
+    { id: string } & ({ fdcId: number } | { bedcaId: string })
+  >({
+    mutationFn: ({ id, ...source }) =>
+      api.patch<Ingredient & { recipesRecomputed: number }>(`/ingredients/${id}/remap`, source),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["curator"] })
       qc.invalidateQueries({ queryKey: ["ingredients"] })
+      qc.invalidateQueries({ queryKey: ["recipes"] })
     },
   })
 }

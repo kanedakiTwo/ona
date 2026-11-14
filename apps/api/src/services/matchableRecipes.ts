@@ -10,6 +10,7 @@ import { loadFichaMenuConstraints } from './profile/reader.js'
 import { unlistedDietMentions } from './stepDietMentions.js'
 import { loadDishDislikeOverrides } from './dishDislikes.js'
 import { dishTypesOf } from './dishTypes.js'
+import { notForBabies } from './undercookedRecipes.js'
 
 /**
  * The two CPU-heavy reads of every recipe — what its steps name that the
@@ -82,20 +83,24 @@ export type RecipeWithCourse = RecipeWithIngredients & { course: Course | null; 
  * Retired catalogue recipes (PRO-140) are never picked or suggested, nor are
  * bases (PRO-373: sofrito, verduras asadas… are cooked for the dishes that
  * use them, never served as a dish).
+ * PRO-1181 (D-1009): with someone aged 0 to 2 in the ficha, no recipe with a
+ * runny yolk or pink mince (`undercookedRecipes.ts`).
  */
 export async function loadMatchableRecipes(userId: string, db: any = defaultDb): Promise<RecipeWithCourse[]> {
-  const allRecipes = (await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))).filter(
+  const visible = (await db.select().from(recipes).where(visibleRecipeWhere(await visibleAuthorIds(userId, db)))).filter(
     (r: any) => !isRetiredRecipe(r) && !isBaseRecipe(r),
   )
-
-  const recipeIds = allRecipes.map((r: any) => r.id)
-  if (recipeIds.length === 0) return []
+  if (visible.length === 0) return []
 
   // The household's ficha decides how strict the audit's protein minimum is:
   // someone with «proteína en cada plato» (`protein_minimum`, Miguel
   // 2026-10-21) keeps it for starters and rice/legume dishes too.
   const ficha = await loadFichaMenuConstraints(userId, { db })
   const auditOptions = { strictProteinMinimum: ficha.strictProteinMinimum }
+  const allRecipes = ficha.babyAtHome ? visible.filter((r: any) => !notForBabies(r.internalTags)) : visible
+
+  const recipeIds = allRecipes.map((r: any) => r.id)
+  if (recipeIds.length === 0) return []
 
   const riRows = await db
     .select({
@@ -220,6 +225,8 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     // Dish type / main protein (`tipo:`, `proteina:`) and kcal per serving,
     // for the week rules and the planner (PRO-254/255).
     internalTags: r.internalTags ?? [],
+    // The cook's level weighs hard recipes (PRO-1201).
+    difficulty: r.difficulty ?? null,
     // «Semana tipo» (D-182): saved on save/import and on boot; a row not yet
     // filled gets them computed here.
     dishTypes: r.dishTypes ?? dishTypesOf({ name: r.name, tags: r.tags, ingredients: ingredientsByRecipe.get(r.id) ?? [] }),

@@ -64,9 +64,158 @@ export default function ProfilePage() {
           <Shopping />
         </div>
 
+<<<<<<< 39d7350fb2075e40dcd7195394a921ec7d232308
         {/* PRO-163: another household, not someone of this one (that's «Invitar» in «Quién come»). */}
         <div className="mt-8 px-5 mb-24 lg:mt-10 lg:max-w-[580px] lg:px-0">
           <InviteHouseholdButton place="perfil" />
+=======
+        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
+          {/* Cómo cocináis (PRO-217): saved on tap in the household's ficha. */}
+          <CookingStyleCard />
+
+          {/* Voz (D-023: one assistant, the floating button on every page) */}
+          <ProfileCard
+            icon={Mic}
+            title="Voz"
+            status={mimo.speakReplies ? 'Mimo lee sus respuestas en voz alta' : 'Mimo lee en voz alta solo cuando le hablas'}
+            data-testid="profile-mimo-voice"
+          >
+            <p className="mt-3 text-[13px] leading-snug text-ink-muted">
+              Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa
+              «Manos libres» para conversar sin tocar nada mientras cocinas.
+            </p>
+
+            <ToggleRow
+              title="Leer las respuestas en voz alta"
+              subtitle={mimo.speakReplies ? 'Activo · también cuando escribes' : 'Solo cuando le hablas'}
+              on={mimo.speakReplies}
+              onToggle={() => mimo.setSpeakReplies(!mimo.speakReplies)}
+            />
+
+            {mimo.voices.length > 1 && (
+              <label className="flex min-h-[56px] items-center justify-between gap-3 border-t border-border-soft py-2">
+                <span className="text-[14px] font-medium text-ink">Voz de Mimo</span>
+                <select
+                  value={mimo.selectedVoice ?? ''}
+                  onChange={(e) => mimo.previewVoice(e.target.value)}
+                  className="h-11 max-w-[60%] rounded-full border border-border bg-cream px-3 text-[13px] text-ink focus:border-ink focus:outline-none"
+                  aria-label="Voz de Mimo"
+                >
+                  {mimo.voices.map((v) => (
+                    <option key={v.key} value={v.key}>{v.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+          </ProfileCard>
+
+          {/* WhatsApp. Hidden unless the server has the channel configured for
+              this account (or a phone is already linked, so it can always be
+              disconnected). */}
+          {showWhatsApp && whatsapp.data && (
+            <ProfileCard
+              icon={MessageCircle}
+              title="WhatsApp"
+              status={whatsapp.data.linked ? 'Conectado' : 'Sin conectar'}
+            >
+              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
+                Todo lo que hace el asistente, desde tu WhatsApp: escríbele,
+                mándale audios o compártele recetas.
+              </p>
+              <div className="mt-3">
+                <WhatsAppCard status={whatsapp.data} />
+              </div>
+            </ProfileCard>
+          )}
+        </div>
+
+        {/* Ajustes del menú: what the generator reads. */}
+        <div className="mt-8 px-5 lg:mt-10 lg:px-0">
+          <GroupLabel>Ajustes del menú</GroupLabel>
+        </div>
+        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:items-start lg:gap-4 lg:px-0">
+          <div className="grid gap-3 lg:grid-cols-2 lg:items-start lg:gap-4">
+            {/* Recordatorios */}
+            <ProfileCard
+              icon={Bell}
+              title="Recordatorios"
+              status="Avisos de Mimo y el correo de los viernes"
+            >
+              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
+                Si tienes WhatsApp conectado, Mimo te avisa por ahí. Si no, los
+                avisos de preparación (sacar del congelador, poner en remojo) te
+                llegan como notificación del móvil.
+              </p>
+
+              {/* PRO-237: every alert, by where it arrives, with its switch. */}
+              <Link
+                href="/profile/avisos"
+                data-testid="profile-avisos-link"
+                className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
+              >
+                <div className="min-w-0 text-left">
+                  <div className="text-[14px] font-medium text-ink">Avisos</div>
+                  <div className="truncate text-[12px] text-ink-muted">Qué te llega, por dónde, y apagarlos</div>
+                </div>
+                <ChevronRight size={18} strokeWidth={1.8} aria-hidden="true" className="text-ink-light" />
+              </Link>
+
+              {/* Web Push — server-side notifications that survive a closed tab. */}
+              <PushNotificationsCard />
+
+              {/* Friday menu email (PRO-95): its own consent, saved on tap. */}
+              <NewsletterToggle />
+
+              {/* «Enviar a <cadena>» (D-154): lo aceptado por cadena, con «Desactivar». Sin nada aceptado, nada. */}
+              <BasketConsentsCard />
+            </ProfileCard>
+
+            {/* Mis recetas */}
+            <ProfileCard
+              icon={ChefHat}
+              title="Mis recetas"
+              status="Las que has creado tú. Edítalas o elimínalas si ya no las usas."
+            >
+              <div className="mt-4">
+                <MyRecipesSection />
+              </div>
+            </ProfileCard>
+          </div>
+        </div>
+
+        {/* Tu cuenta — session, privacy + right to erasure */}
+        <div className="mt-8 px-5 mb-24 lg:mt-10 lg:px-0">
+          <GroupLabel>Tu cuenta</GroupLabel>
+          <ProfileCard
+            icon={UserRound}
+            title={user.username}
+            status={user.email}
+            className="mt-3 lg:mt-4 lg:max-w-[580px]"
+          >
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border-soft pt-3">
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:bg-cream-deep"
+              >
+                <LogOut size={16} strokeWidth={1.8} />
+                Salir
+              </button>
+              <a
+                href="/privacidad"
+                className="inline-flex min-h-[44px] items-center text-[13px] text-ink-muted underline underline-offset-4 hover:text-ink"
+              >
+                Política de privacidad
+              </a>
+            </div>
+            {user.id && (
+              <div className="mt-2">
+                <DeleteAccountCard userId={user.id} />
+              </div>
+            )}
+          </ProfileCard>
+>>>>>>> 5327c384f45af36e75bd83ab81fe2609fc339da9
         </div>
       </div>
     </div>

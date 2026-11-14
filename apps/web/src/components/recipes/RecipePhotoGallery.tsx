@@ -17,6 +17,7 @@ import {
   useUseRecipePhotoAsMain,
   type RecipePhoto,
 } from "@/hooks/useRecipePhotos"
+import { FieldLabel } from "@/components/FieldLabel"
 
 interface Props {
   recipeId: string
@@ -156,14 +157,18 @@ export function RecipePhotoGallery({ recipeId, canSetMain = false }: Props) {
               <X size={11} />
             </button>
           </div>
-          <input
-            type="text"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            placeholder="Pie de foto (opcional)"
-            maxLength={280}
-            className="w-full border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
-          />
+          <label className="block">
+            <FieldLabel as="span" optional className="block text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+              Pie de foto
+            </FieldLabel>
+            <input
+              type="text"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              maxLength={280}
+              className="w-full border-b border-[#DDD6C5] bg-transparent py-1.5 text-[13px] outline-none focus:border-[#1A1612]"
+            />
+          </label>
           <button
             type="button"
             onClick={handleUpload}

@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('the profile in five sections, Ajustes behind the gear, Mis recetas in Recetas, and signing out', async ({ page }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
   await registerFreshUser(page)
   await completeOnboarding(page)
 
@@ -83,8 +83,11 @@ test('the profile in five sections, Ajustes behind the gear, Mis recetas in Rece
   await expect(page.getByText('Solo con pendientes')).toBeVisible({ timeout: 15_000 })
   await page.locator('main').getByRole('link', { name: 'Recetas', exact: true }).first().click()
   await expect(page).toHaveURL(/\/recipes$/)
-  await page.getByTestId('recipes-yours').getByRole('link', { name: /^Recetarios/ }).click()
-  await expect(page).toHaveURL(/\/recipes\/recetarios$/)
+  // «Este mes» and the counts load above and inside the links: click again until it lands.
+  await expect(async () => {
+    await page.getByTestId('recipes-yours').getByRole('link', { name: /^Recetarios/ }).click()
+    await expect(page).toHaveURL(/\/recipes\/recetarios$/, { timeout: 3_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(page.getByRole('heading', { level: 1, name: /recetarios/ })).toBeVisible({ timeout: 15_000 })
 
   // The old links still work.

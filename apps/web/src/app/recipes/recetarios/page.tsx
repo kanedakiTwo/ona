@@ -24,6 +24,9 @@ import {
   SubPage,
 } from "@/components/profile/SubPage"
 import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
+
+const FIELD_LABEL = "mb-1 block text-[12px] font-medium text-ink-muted"
 
 const EMOJI_SUGGESTIONS = ['📖', '⭐', '🥗', '🍝', '🍰', '🥩', '🌮', '🍲', '☕']
 
@@ -70,26 +73,37 @@ export default function CookbooksPage() {
         {open ? (
           <form onSubmit={handleCreate} className={`${SUB_CARD} space-y-3 p-4 lg:max-w-[560px]`}>
             <h2 className={SUB_EYEBROW}>Nuevo recetario</h2>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Favoritos de Sara"
-              autoFocus
-              maxLength={60}
-              aria-label="Nombre del recetario"
-              className={SUB_INPUT}
-            />
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descripción (opcional)"
-              maxLength={280}
-              aria-label="Descripción (opcional)"
-              className={SUB_INPUT}
-            />
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Emoji">
+            <label className="block">
+              <FieldLabel as="span" required className={FIELD_LABEL}>
+                Nombre del recetario
+              </FieldLabel>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Favoritos de Sara"
+                autoFocus
+                maxLength={60}
+                required
+                className={SUB_INPUT}
+              />
+            </label>
+            <label className="block">
+              <FieldLabel as="span" optional className={FIELD_LABEL}>
+                Descripción
+              </FieldLabel>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={280}
+                className={SUB_INPUT}
+              />
+            </label>
+            <FieldLabel as="p" id="cookbook-emoji-label" optional className={FIELD_LABEL}>
+              Emoji
+            </FieldLabel>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="cookbook-emoji-label">
               {EMOJI_SUGGESTIONS.map((e) => (
                 <button
                   key={e}
@@ -104,6 +118,7 @@ export default function CookbooksPage() {
                 </button>
               ))}
             </div>
+            <RequiredNote />
             <div className="flex gap-2">
               <button type="button" onClick={() => setOpen(false)} className={`${PILL_OUTLINE} flex-1`}>
                 Cancelar

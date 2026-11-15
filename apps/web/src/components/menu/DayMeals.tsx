@@ -47,7 +47,7 @@ export type SlotPropsFn = (meal: string, slot: MealSlot) => { ctx: SlotContext; 
 const servingsOf = slotServings
 
 /** Small state chips under a title — only rendered when there is state to show. */
-function SlotChips({
+export function SlotChips({
   ctx,
   first,
   showEatenElsewhere = false,

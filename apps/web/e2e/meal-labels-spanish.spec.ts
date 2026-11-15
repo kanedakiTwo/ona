@@ -40,7 +40,7 @@ test('«Añadir comida» says «Merienda», never «Snack»', async ({ page }) =
   await expect(sheet.getByRole('button', { name: /^merienda$/i })).toBeVisible()
   await expect(page.getByText(/snack/i)).toHaveCount(0)
 
-  // The meal once added keeps the Spanish name.
+  // Its sheet («Sin plato todavía», PRO-1177) keeps the Spanish name.
   await sheet.getByRole('button', { name: /^merienda$/i }).click()
   await expect(page.getByText(/merienda/i).first()).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText(/snack/i)).toHaveCount(0)

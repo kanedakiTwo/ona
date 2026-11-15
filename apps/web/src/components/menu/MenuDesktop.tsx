@@ -76,6 +76,7 @@ import {
   ExtraDishLines,
   MealHero,
   SkippedDay,
+  SlotChips,
   type AbsentMeals,
   type SlotPropsFn,
 } from "./DayMeals"
@@ -420,6 +421,8 @@ function SideMeal({
         <span className={`font-serif-text font-[650] leading-[1.1] text-ink ${big ? "text-[26px]" : "text-[18px]"}`}>
           {title}
         </span>
+        {/* «Del congelador · no suma a la compra», «Solo hoy: 4»… as on mobile (PRO-1177); the lock is in the eyebrow. */}
+        <SlotChips ctx={{ ...props.ctx, isLocked: false }} first={first} />
       </span>
     </>
   )

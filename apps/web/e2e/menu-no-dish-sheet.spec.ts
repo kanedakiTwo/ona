@@ -128,6 +128,7 @@ for (const [name, viewport] of [
       const confirm = page.getByRole('dialog', { name: '¿El viernes no cocinas?' })
       await expect(confirm).toBeVisible()
       await confirm.getByRole('button', { name: /^cancelar$/i }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
       await expect(page.getByText('Día marcado sin cocinar.')).toHaveCount(0)
       expect(writes).toEqual([])
 

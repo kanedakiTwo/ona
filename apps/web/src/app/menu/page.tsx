@@ -26,7 +26,7 @@ import { useTasteStatus } from "@/hooks/useTaste"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2 } from "lucide-react"
-import type { DayMenu, MealSlot } from "@ona/shared"
+import type { DayMenu, Meal, MealSlot } from "@ona/shared"
 import { menuShareText, weekTypeOptionLabel } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
 import { menuDiners } from "@/lib/menuDiners"
@@ -72,6 +72,9 @@ import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
 import { ChangeFailedNotice, showMenuNotice } from "@/components/menu/ChangeFailedNotice"
 import { WeekTypeSkeleton } from "@/components/menu/WeekTypeSkeleton"
+import { WeekTypeHintProvider } from "@/components/menu/WeekTypeHint"
+import { useWeekType } from "@/hooks/useWeekType"
+import { weekTypeHint } from "@/lib/weekTypeHint"
 import { WeekPlanQuestions } from "@/components/menu/WeekPlanQuestions"
 import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
@@ -200,6 +203,13 @@ export default function MenuPage() {
   const saveMealToWeekType = useSaveMealToWeekType()
   // PRO-1186: a real generation (not the empty scaffold of a new week, nor «Vaciar») shows the week type's skeleton.
   const generating = generateMenu.isPending && !generateMenu.variables?.empty && generateMenu.variables?.weekStart === weekStart
+  // PRO-1233: a week with no dishes yet shows, in its empty slots, what its semana tipo puts there.
+  const blankWeekType = Boolean(menu) && !isPastWeek && !weekHasDishes((menu?.days ?? []) as DayMenu[])
+  const { data: weekTypeDays } = useWeekType(blankWeekType)
+  const weekTypeHintFor = useMemo(
+    () => (blankWeekType && weekTypeDays ? (day: number, meal: Meal) => weekTypeHint(weekTypeDays, day, meal, weekStart) : null),
+    [blankWeekType, weekTypeDays, weekStart],
+  )
   const lockMeal = useLockMeal()
   const addMealSlot = useAddMealSlot()
   const deleteMealSlot = useDeleteMealSlot()
@@ -765,6 +775,7 @@ export default function MenuPage() {
       </div>
     )
     return (
+      <WeekTypeHintProvider value={weekTypeHintFor}>
       <div className="min-h-screen bg-cream">
         {menu && !loadFailed && !generating ? (
           <MenuDesktop
@@ -832,6 +843,7 @@ export default function MenuPage() {
         <TasteIntroScreen />
         <PriceSurveySheet />
       </div>
+      </WeekTypeHintProvider>
     )
   }
 
@@ -841,6 +853,7 @@ export default function MenuPage() {
   const isSkipped = skippedDays.includes(selectedDay)
 
   return (
+    <WeekTypeHintProvider value={weekTypeHintFor}>
     <div className="min-h-screen bg-cream pb-6">
       <header className="flex items-center justify-between gap-2 px-5 pt-3">
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -1002,5 +1015,6 @@ export default function MenuPage() {
       <TasteIntroScreen />
       <PriceSurveySheet />
     </div>
+    </WeekTypeHintProvider>
   )
 }

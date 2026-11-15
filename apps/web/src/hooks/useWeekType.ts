@@ -8,9 +8,10 @@ import { api } from "@/lib/api"
 
 const KEY = ["week-type"]
 
-export function useWeekType() {
+export function useWeekType(enabled = true) {
   return useQuery<WeekTypeDays>({
     queryKey: KEY,
+    enabled,
     queryFn: async () => (await api.get<{ days: WeekTypeDays }>("/households/me/week-type")).days,
     staleTime: 30_000,
   })

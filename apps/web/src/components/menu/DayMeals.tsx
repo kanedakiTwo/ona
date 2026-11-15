@@ -31,6 +31,7 @@ import { DAY_MEAL_ORDER, dishName, firstRecipeDish, mealEyebrow, slotDishParts, 
 import { RecipeCover, mealIconFor } from "./RecipeCover"
 import { ConfirmSheet, MenuSheet, SheetAction } from "./MenuSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
+import { useWeekTypeHint, WeekTypeHintLine } from "./WeekTypeHint"
 import {
   MealOptionsButton,
   MealOptionsSheets,
@@ -451,6 +452,7 @@ export function EmptyMealCard({
 }) {
   const ctl = useMealOptions()
   const label = mealLabel(ctx.meal)
+  const hint = useWeekTypeHint(ctx.day, ctx.meal)
   return (
     <div
       className={`flex items-center gap-1 rounded-2xl border border-dashed border-border bg-paper/60 p-1.5 ${compact ? "" : "mx-4"}`}
@@ -475,6 +477,8 @@ export function EmptyMealCard({
             <span className="flex min-w-0 flex-col">
               <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{label}</span>
               <span className="text-[15px] font-medium text-ink">Añadir plato</span>
+              {/* PRO-1233: a week with no dishes shows what its semana tipo puts here. */}
+              {hint && <WeekTypeHintLine hint={hint} className="mt-0.5 text-[13px]" />}
             </span>
           </button>
           <MealOptionsButton ctl={ctl} label={`Más opciones de ${label.toLowerCase()}`} className="text-ink-mid" />

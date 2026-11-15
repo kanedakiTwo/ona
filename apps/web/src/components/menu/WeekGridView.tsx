@@ -76,6 +76,7 @@ import { AddDishSheet } from "@/components/menu/AddDishSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { NoteEditor } from "@/components/menu/NoteEditor"
 import { RecipeCover } from "@/components/menu/RecipeCover"
+import { useWeekTypeHint, WeekTypeHintLine } from "@/components/menu/WeekTypeHint"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -528,6 +529,7 @@ function SlotRow({
   const [replacePickerOpen, setReplacePickerOpen] = useState(false)
   const [addDishOpen, setAddDishOpen] = useState(false)
   const [confirm, setConfirm] = useState<null | "ban" | "remove">(null)
+  const hint = useWeekTypeHint(dayIndex, meal)
 
   const dishes: Dish[] = slot?.dishes ?? []
   const recipeDishes = dishes.filter((d): d is RecipeDish => d.kind === 'recipe')
@@ -559,6 +561,8 @@ function SlotRow({
             <MealIcon size={12} strokeWidth={1.6} className="lg:hidden" />
             {mealLabel}
           </p>
+          {/* PRO-1233: a week with no dishes shows what its semana tipo puts here. */}
+          {hint && <WeekTypeHintLine hint={hint} className="mt-0.5 text-[13px] lg:mt-1 lg:text-[12px]" />}
           <p className="mt-0.5 text-[13px] italic text-[#A39A8E] lg:mt-1 lg:text-[12px]">
             + Añadir
           </p>

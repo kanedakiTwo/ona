@@ -10,7 +10,10 @@
  * - `plato`: cada plato de la lista de esa hoja (cambiar, quitar, nota…).
  * - `vacio`: la de una comida sin plato («Añadir plato» en la tarjeta).
  * - `no_hay`: «El viernes no hay cena» → «Sin plato todavía».
- * - `dia`: el pie del día («Añadir comida», «Saltar día», «Reactivar día»,
+ *   PRO-1177: `vacio` y `no_hay` son la misma hoja, «Sin plato todavía»
+ *   (`NoDishSheets`); `vacio` tiene además «Quitar <comida> de este día».
+ * - `dia`: el pie del día («Añadir comida», «Este día no cocino» —antes
+ *   «Saltar día»—, «Volver a cocinar este día» —antes «Reactivar día»—,
  *   «Levantar veto»).
  * - `semana`: la hoja «···» de la semana (`WeekActionsSheet`).
  * - `semana_fila`: el menú «···» de cada fila de la vista semana.
@@ -19,7 +22,7 @@
  */
 
 /**
- * Las opciones de la hoja de una comida: las comparten `comida`, `comida_varios` y `vacio`.
+ * Las opciones de la hoja de una comida: las comparten `comida` y `comida_varios`.
  * PRO-1175: «Cambiar plato» sigue contando como `elegir_receta` y «Que elija
  * Mimoia» (dentro del buscador) como `cambiar_azar`, para no partir la serie.
  * `mas_opciones` y `ya_hecho` abren sus subhojas.
@@ -48,13 +51,32 @@ const MEAL_SHEET_ACTIONS = [
   'semana_tipo',
 ] as const
 
+/**
+ * PRO-1177 · «Sin plato todavía», la hoja del hueco vacío y de «no hay»:
+ * «Elegir receta» (`elegir_receta`; «Que elija Mimoia», dentro, es
+ * `cambiar_azar`), «Escribir un plato», «Ya lo tengo hecho» (abre el buscador;
+ * la receta elegida cuenta como `congelador` o `taper_nevera`, según el chip),
+ * «Quitar <comida> de este día» (solo el hueco vacío) y el enlace a la semana tipo.
+ */
+const NO_DISH_SHEET_ACTIONS = [
+  'elegir_receta',
+  'cambiar_azar',
+  'escribir_plato',
+  'ya_hecho',
+  'congelador',
+  'taper_nevera',
+  'quitar_comida',
+  'semana_tipo',
+] as const
+
 export const MENU_SHEET_ACTIONS = {
   comida: MEAL_SHEET_ACTIONS,
   comida_varios: [...MEAL_SHEET_ACTIONS, 'ordenar_platos'],
   plato: ['ver_receta', 'cambiar_azar', 'quitar_plato', 'editar_nota'],
-  vacio: MEAL_SHEET_ACTIONS,
-  no_hay: ['elegir_receta', 'cambiar_azar', 'congelador', 'taper_nevera'],
-  dia: ['anadir_comida', 'congelador', 'taper_nevera', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
+  vacio: NO_DISH_SHEET_ACTIONS,
+  no_hay: NO_DISH_SHEET_ACTIONS,
+  // PRO-1177: «Añadir comida» → la comida → «Sin plato todavía» (`no_hay`); ya no lleva sus tápers sueltos.
+  dia: ['anadir_comida', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
   semana: [
     'semana_anterior',
     'semana_siguiente',

@@ -19,6 +19,9 @@
  *   - The lock never greys anything out (D-182): it only keeps the meal when
  *     the week is redone, and choosing a dish by hand sets it.
  *
+ * A slot without dishes gets «Sin plato todavía» instead (`NoDishSheets`,
+ * PRO-1177): the same sheet as a meal the day lacks, plus «Quitar».
+ *
  * `useMealOptions()` owns which sheet is open so callers can open one
  * directly: the empty-slot card's main button opens this same sheet
  * (Miguel, 2026-11-05: tapping an empty meal shows the "···" options).
@@ -75,6 +78,7 @@ import { RatingPromptSheet } from "@/components/cooking/RatingPromptSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
 import { AddDishSheet } from "./AddDishSheet"
 import { DishRow } from "./DishRow"
+import { NoDishSheets } from "./NoDishSheets"
 
 export type DishPayload =
   | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" | "fridge" }
@@ -84,6 +88,8 @@ export type DishPayload =
 export interface SlotHandlers {
   /** «Que elija Mimoia» in the picker (PRO-1175), with the type chip if one is chosen. Rejects when nothing fits. */
   regenerate: (dishType?: string | null) => Promise<unknown>
+  /** «Que elija Mimoia» in an empty slot (PRO-1177): `POST …/meal/:meal`, with the type chip if one is chosen. Rejects when nothing fits. */
+  fill: (dishType?: string | null) => Promise<unknown>
   pickRecipe: (recipeId: string) => void
   toggleLock: () => void
   remove: () => void
@@ -137,7 +143,7 @@ export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
   return menuRecipeHref(recipeId, slotServings(ctx))
 }
 
-type OpenSheet = null | "actions" | "more" | "done" | "weekType" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
+type OpenSheet = null | "actions" | "more" | "done" | "weekType" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate" | "note"
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -203,7 +209,29 @@ export function MealOptionsSheets({
   const eyebrow = `${label} · ${ctx.dayLabel}`
   const locked = ctx.isLocked
   // PRO-1174: which sheet this is, for `menu_sheet_action`.
-  const sheet = isSingleRecipe ? "comida" : dishes.length === 0 ? "vacio" : "comida_varios"
+  const sheet = isSingleRecipe ? "comida" : "comida_varios"
+
+  // PRO-1177: no dish yet → «Sin plato todavía», the same sheet as «no hay», plus «Quitar».
+  if (dishes.length === 0) {
+    return (
+      <NoDishSheets
+        open={open}
+        setOpen={setOpen}
+        where="vacio"
+        meal={ctx.meal}
+        day={ctx.day}
+        eyebrow={eyebrow}
+        pickerTitle={`${label} del ${ctx.dayLabel}`}
+        busy={ctx.isRegenerating}
+        showWeekTypeLink={Boolean(handlers.saveToWeekType)}
+        onPick={handlers.pickRecipe}
+        onPickAuto={(dishType) => handlers.fill(dishType)}
+        onNote={handlers.replaceWithNote}
+        onDone={(recipeId, place) => handlers.addDish({ kind: "recipe", recipeId, variant: place })}
+        onRemove={handlers.remove}
+      />
+    )
+  }
 
   return (
     <>
@@ -211,7 +239,7 @@ export function MealOptionsSheets({
         open={open === "actions"}
         onClose={close}
         eyebrow={eyebrow}
-        title={first?.recipeName ?? (dishes.length > 0 ? label : "Sin plato todavía")}
+        title={first?.recipeName ?? label}
         sheet={sheet}
       >
         {/* PRO-259: why Mimo chose it — only menus from the planner carry it. A grey line, not a card (PRO-1175). */}

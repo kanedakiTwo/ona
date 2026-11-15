@@ -92,6 +92,33 @@ export function mealSheetOptions({ slot, when, canTaper, feedsLeftovers = false,
   return { first: top, more, done }
 }
 
+// ─── «Sin plato todavía» (PRO-1177): el hueco vacío y «no hay» ─────────────
+
+/** Dónde se abre: una comida sin plato (`vacio`) o una que el día no tiene (`no_hay`). */
+export type NoDishWhere = "vacio" | "no_hay"
+
+export type NoDishOption = "elegir_receta" | "escribir_plato" | "ya_hecho" | "quitar_comida" | "semana_tipo"
+
+/**
+ * Puro: lo que pinta la hoja «Sin plato todavía», igual en la vista día, la
+ * vista semana y el escritorio (propuesta §1.3, §1.4 y §3): «Elegir receta»
+ * (el buscador con chips y «Que elija Mimoia»), «Escribir un plato» y «Ya lo
+ * tengo hecho» (nevera o congelador); en el hueco vacío, además, «Quitar
+ * <comida> de este día»; con la semana tipo, el enlace «¿Todos los <día>?
+ * Ponlo en tu semana tipo». Nunca «Fijar»: en un hueco sin plato no protege nada.
+ */
+export function noDishSheetOptions({ where, hasWeekType = false }: { where: NoDishWhere; hasWeekType?: boolean }): NoDishOption[] {
+  const out: NoDishOption[] = ["elegir_receta", "escribir_plato", "ya_hecho"]
+  if (where === "vacio") out.push("quitar_comida")
+  if (hasWeekType) out.push("semana_tipo")
+  return out
+}
+
+/** «¿Todos los viernes? Ponlo en tu semana tipo». */
+export function weekTypeLinkLine(day: number): string {
+  return `¿Todos ${everyWeekday(day)}? Ponlo en tu semana tipo`
+}
+
 /** Cuándo cae el día `day` (0 = lunes) de una semana: `weeksFromNow` < 0 pasada, 0 esta, > 0 futura. */
 export function mealWhen(weeksFromNow: number, day: number, todayIndex: number): MealWhen {
   if (weeksFromNow < 0) return "past"

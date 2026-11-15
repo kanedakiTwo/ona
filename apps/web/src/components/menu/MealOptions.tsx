@@ -14,8 +14,14 @@
  *     «Que no cambie si rehago la semana» (the lock) and «Guardar en mi semana
  *     tipo» (its own sheet: the meal's dish types, «Siempre esta receta» or
  *     the written dish, and every other type; PRO-1186).
- *   - Multi-dish or note slot: the dish list (drag to reorder, "Cambiar" per
- *     dish, quitar, edit notes) above the same options (PRO-1176 reworks it).
+ *   - Multi-dish or note slot (PRO-1176): the title is the meal («Comida ·
+ *     jueves 13», «2 platos · 3 comensales»); each dish is a row (a tap opens
+ *     the recipe, drag ⠿ to reorder) with its own «···», the dish's sheet:
+ *     Ver receta, Cambiar este plato (the same picker, on that dish only),
+ *     Ya está hecho / táper, No lo pongas más esta semana and Quitar este
+ *     plato (a note: Editar nota, Quitar nota). Below, what belongs to the
+ *     meal: Añadir plato, Marcar la comida como cocinada (all its recipes),
+ *     Más opciones and Quitar comida (`dishSheetOptions`, `lib/mealSheet.ts`).
  *   - The lock never greys anything out (D-182): it only keeps the meal when
  *     the week is redone, and choosing a dish by hand sets it.
  *
@@ -34,6 +40,7 @@ import {
   ChefHat,
   GripVertical,
   Lock,
+  Pencil,
   Minus,
   MoreHorizontal,
   Plus,
@@ -63,7 +70,17 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { type Dish, type MealSlot, type RecipeDish, type WeekTypeOption } from "@ona/shared"
-import { everyWeekday, mealSheetOptions, weekTypeChoices, type MealWhen } from "@/lib/mealSheet"
+import {
+  dishSheetOptions,
+  everyWeekday,
+  isMultiDishMeal,
+  mealCookRecipeIds,
+  mealSheetHeading,
+  mealSheetOptions,
+  weekTypeChoices,
+  type DishSheetOption,
+  type MealWhen,
+} from "@/lib/mealSheet"
 import { DishTypeIcon, iconOfOption } from "@/components/weekType/DishTypeIcon"
 import { DishTypeChips } from "@/components/weekType/SlotEditor"
 import { mealLabel } from "@/lib/labels"
@@ -74,7 +91,7 @@ import { trackSheetAction } from "@/lib/usageEvents"
 import { RatingPromptSheet } from "@/components/cooking/RatingPromptSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
 import { AddDishSheet } from "./AddDishSheet"
-import { DishRow } from "./DishRow"
+import { DishRow, courseLabel, dishName } from "./DishRow"
 
 export type DishPayload =
   | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" | "fridge" }
@@ -92,7 +109,12 @@ export interface SlotHandlers {
   addDish: (payload: DishPayload) => void
   addRandomDish: () => void
   removeDish: (position: number) => void
-  regenerateDish: (position: number) => void
+  /** «Que elija Mimoia» in a dish's picker (PRO-1176), with the type chip if one is chosen. Rejects when nothing fits. */
+  regenerateDish: (position: number, dishType?: string | null) => Promise<unknown>
+  /** «Cambiar este plato» (PRO-1176): the picker's recipe on that dish only. */
+  pickDishRecipe: (position: number, recipeId: string) => void
+  /** «No lo pongas más esta semana» on one dish (PRO-1176): vetoed for the week, another in its place. */
+  banDish: (position: number, recipeId: string) => void
   reorderDish: (from: number, to: number) => void
   editNote: (position: number, text: string) => void
   /** PRO-74: the slot's dishes become this written dish (a note). */
@@ -137,7 +159,21 @@ export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
   return menuRecipeHref(recipeId, slotServings(ctx))
 }
 
-type OpenSheet = null | "actions" | "more" | "done" | "weekType" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate"
+type OpenSheet =
+  | null
+  | "actions"
+  | "more"
+  | "done"
+  | "weekType"
+  | "picker"
+  | "addDish"
+  | "confirmBan"
+  | "confirmRemove"
+  | "rate"
+  // PRO-1176: the «···» of one dish of a multi-dish meal, its picker and its veto.
+  | "dish"
+  | "dishPicker"
+  | "confirmBanDish"
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -202,31 +238,42 @@ export function MealOptionsSheets({
   const label = mealLabel(ctx.meal)
   const eyebrow = `${label} · ${ctx.dayLabel}`
   const locked = ctx.isLocked
+  const multi = isMultiDishMeal(ctx.slot)
+  const heading = mealSheetHeading({ slot: ctx.slot, mealLabel: label, dayLabel: ctx.dayLabel, diners: ctx.defaultDiners })
   // PRO-1174: which sheet this is, for `menu_sheet_action`.
   const sheet = isSingleRecipe ? "comida" : dishes.length === 0 ? "vacio" : "comida_varios"
+  // PRO-1176: the dish whose «···» is open, and the recipe «¿Qué tal?» asks about.
+  const [dishAt, setDishAt] = useState<number | null>(null)
+  const dish = dishAt != null ? dishes[dishAt] ?? null : null
+  const [rateId, setRateId] = useState<string | null>(null)
+  const rateDish = dishes.find((d): d is RecipeDish => d.kind === "recipe" && d.recipeId === rateId) ?? first
+  const openDish = (position: number) => {
+    setDishAt(position)
+    setOpen("dish")
+  }
 
   return (
     <>
-      <MenuSheet
-        open={open === "actions"}
-        onClose={close}
-        eyebrow={eyebrow}
-        title={first?.recipeName ?? (dishes.length > 0 ? label : "Sin plato todavía")}
-        sheet={sheet}
-      >
+      <MenuSheet open={open === "actions"} onClose={close} eyebrow={heading.eyebrow} title={heading.title} sheet={sheet}>
+        {heading.subtitle && (
+          <p data-testid="meal-sheet-subtitle" className="-mt-1 mb-3 text-[13.5px] leading-snug text-ink-muted">
+            {heading.subtitle}
+          </p>
+        )}
         {/* PRO-259: why Mimo chose it — only menus from the planner carry it. A grey line, not a card (PRO-1175). */}
-        {first?.why && (
+        {!multi && first?.why && (
           <p data-testid="dish-why" className="-mt-1 mb-3 text-[13.5px] leading-snug text-ink-muted">
             <span className="sr-only">Por qué te lo propongo: </span>
             {first.why}
           </p>
         )}
 
-        {!isSingleRecipe && dishes.length > 0 && (
+        {multi && (
           <DishList
             dishes={dishes}
-            onOpenRecipe={(id) => router.push(menuRecipeHref(id))}
-            handlers={handlers}
+            onOpenRecipe={(id) => router.push(slotRecipeHref(id, ctx))}
+            onOptions={openDish}
+            onReorder={handlers.reorderDish}
           />
         )}
 
@@ -252,7 +299,16 @@ export function MealOptionsSheets({
             onClick={() => setOpen("addDish")}
           />
           {first && (has("cocinada") || has("desmarcar_cocinada")) && (
-            <CookedAction recipeId={first.recipeId} ctx={ctx} onAskRating={() => setOpen("rate")} onUnmarked={close} />
+            <CookedAction
+              recipeIds={multi ? mealCookRecipeIds(ctx.slot) : [first.recipeId]}
+              label={multi ? `Marcar la ${label.toLowerCase()} como cocinada` : "Marcar como cocinada"}
+              ctx={ctx}
+              onAskRating={(recipeId) => {
+                setRateId(recipeId)
+                setOpen("rate")
+              }}
+              onUnmarked={close}
+            />
           )}
           {first && has("vetar") && (
             <SheetAction
@@ -397,11 +453,47 @@ export function MealOptionsSheets({
         </div>
       </MenuSheet>
 
-      {first && (
+      {rateDish && (
         <RatingPromptSheet
-          recipeId={open === "rate" ? first.recipeId : null}
-          recipeName={first.recipeName}
+          recipeId={open === "rate" ? rateDish.recipeId : null}
+          recipeName={rateDish.recipeName}
           onDone={close}
+        />
+      )}
+
+      {/* PRO-1176: the «···» of one dish of a multi-dish meal. */}
+      <DishSheet
+        open={open === "dish"}
+        onClose={close}
+        eyebrow={eyebrow}
+        dish={dish}
+        recipeHref={dish?.kind === "recipe" ? slotRecipeHref(dish.recipeId, ctx) : undefined}
+        options={dish ? dishSheetOptions(dish, { feedsLeftovers: ctx.feedsLeftovers }) : []}
+        disabled={ctx.isRegenerating}
+        onChange={() => setOpen("dishPicker")}
+        onCooked={(on) => {
+          if (dishAt != null) handlers.setCooked(dishAt, on)
+          close()
+        }}
+        onBan={() => setOpen("confirmBanDish")}
+        onRemove={() => {
+          if (dishAt != null) handlers.removeDish(dishAt)
+          close()
+        }}
+        onSaveNote={(text) => {
+          if (dishAt != null) handlers.editNote(dishAt, text)
+          close()
+        }}
+      />
+      {dish?.kind === "recipe" && (
+        <ConfirmSheet
+          open={open === "confirmBanDish"}
+          onClose={close}
+          onConfirm={() => dishAt != null && handlers.banDish(dishAt, dish.recipeId)}
+          eyebrow={eyebrow}
+          title={`¿No poner «${dish.recipeName ?? "esta receta"}» más esta semana?`}
+          message="Pondremos otra receta en su lugar y no volverá a salir esta semana."
+          confirmLabel="No ponerla"
         />
       )}
       {first && (
@@ -445,6 +537,23 @@ export function MealOptionsSheets({
               onPickAuto={async (dishType) => {
                 trackSheetAction(sheet, "cambiar_azar")
                 await handlers.regenerate(dishType)
+                close()
+              }}
+            />
+            {/* PRO-1176: «Cambiar este plato» — the same picker, on that dish only. */}
+            <RecipePickerSheet
+              open={open === "dishPicker"}
+              onClose={close}
+              title={`${(dish && courseLabel(dish)) ?? "Plato"} · ${label.toLowerCase()} del día`}
+              subtitle={dish ? `Ahora: ${dishName(dish)}` : undefined}
+              onPick={(picked) => {
+                trackSheetAction("plato", "elegir_receta")
+                if (dishAt != null) handlers.pickDishRecipe(dishAt, picked.id)
+                close()
+              }}
+              onPickAuto={async (dishType) => {
+                trackSheetAction("plato", "cambiar_azar")
+                if (dishAt != null) await handlers.regenerateDish(dishAt, dishType)
                 close()
               }}
             />
@@ -529,21 +638,27 @@ function iconFor(type: string) {
 
 /* ── "Marcar como cocinada" — records a cook event with the slot as context
  *    and marks the slot eaten (PRO-185), so the card shows «✓ Comido». An
- *    eaten slot (also when Mimo marked it) offers «Desmarcar» instead. */
+ *    eaten slot (also when Mimo marked it) offers «Desmarcar» instead. With
+ *    several dishes, «Marcar la comida como cocinada» records every recipe of
+ *    the meal (PRO-1176); «¿Qué tal?» asks about the first the API asks for. */
 function CookedAction({
-  recipeId,
+  recipeIds,
+  label,
   ctx,
   onAskRating,
   onUnmarked,
 }: {
-  recipeId: string
+  recipeIds: string[]
+  label: string
   ctx: SlotContext
-  onAskRating: () => void
+  onAskRating: (recipeId: string) => void
   onUnmarked: () => void
 }) {
-  const { data } = useRecipeCookStats(recipeId)
+  const single = recipeIds.length === 1
+  const { data } = useRecipeCookStats(single ? recipeIds[0] : undefined)
   const record = useRecordCook()
   const setEaten = useSetSlotEaten()
+  const [saving, setSaving] = useState(false)
   const count = data?.count ?? 0
   const slotKey = { menuId: ctx.menuId, day: ctx.day, meal: ctx.meal }
   if (ctx.slot.eaten) {
@@ -561,31 +676,40 @@ function CookedAction({
   return (
     <SheetAction
       icon={ChefHat}
-      label={record.isPending ? "Guardando…" : "Marcar como cocinada"}
+      label={saving ? "Guardando…" : label}
       action="cocinada"
-      hint={count > 0 ? `La has cocinado ${count} ${count === 1 ? "vez" : "veces"}` : undefined}
-      disabled={record.isPending}
-      onClick={() => {
+      hint={single ? (count > 0 ? `La has cocinado ${count} ${count === 1 ? "vez" : "veces"}` : undefined) : `Apunta sus ${recipeIds.length} recetas`}
+      disabled={saving}
+      onClick={async () => {
         setEaten.mutate({ ...slotKey, eaten: true })
-        record.mutate(
-          { recipeId, menuId: ctx.menuId, dayIndex: ctx.day, meal: ctx.meal },
+        setSaving(true)
+        try {
+          const results = await Promise.allSettled(
+            recipeIds.map((recipeId) => record.mutateAsync({ recipeId, menuId: ctx.menuId, dayIndex: ctx.day, meal: ctx.meal })),
+          )
           // «¿Qué tal?» (PRO-110) replaces this sheet when the API asks for it.
-          { onSuccess: (res) => res.askRating && onAskRating() },
-        )
+          const ask = results.findIndex((r) => r.status === "fulfilled" && r.value.askRating)
+          if (ask >= 0) onAskRating(recipeIds[ask])
+        } finally {
+          setSaving(false)
+        }
       }}
     />
   )
 }
 
-/* ── Dishes of a multi-dish / note slot: drag to reorder, cambiar, quitar, notes. */
+/* ── Dishes of a multi-dish / note slot (PRO-1176): a row per dish, drag ⠿ to
+ *    reorder; a tap opens the recipe and its «···» opens the dish's sheet. */
 function DishList({
   dishes,
   onOpenRecipe,
-  handlers,
+  onOptions,
+  onReorder,
 }: {
   dishes: Dish[]
   onOpenRecipe: (recipeId: string) => void
-  handlers: SlotHandlers
+  onOptions: (position: number) => void
+  onReorder: (from: number, to: number) => void
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -600,22 +724,21 @@ function DishList({
     const to = ids.indexOf(String(e.over.id))
     if (from >= 0 && to >= 0) {
       track("ordenar_platos")
-      handlers.reorderDish(from, to)
+      onReorder(from, to)
     }
   }
   return (
-    <div className="mb-3">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Platos</p>
+    <div className="mb-3" data-testid="meal-dishes">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
+          <ul className="space-y-2">
             {dishes.map((dish, i) => (
               <SortableDish
                 key={ids[i]}
                 id={ids[i]}
                 dish={dish}
                 // PRO-1174: each dish's own options count as the `plato` sheet.
-                onClickThumb={
+                onOpen={
                   dish.kind === "recipe"
                     ? () => {
                         trackSheetAction("plato", "ver_receta")
@@ -623,53 +746,20 @@ function DishList({
                       }
                     : undefined
                 }
-                onRegenerate={
-                  dish.kind === "recipe"
-                    ? () => {
-                        trackSheetAction("plato", "cambiar_azar")
-                        handlers.regenerateDish(i)
-                      }
-                    : undefined
-                }
-                onRemove={() => {
-                  trackSheetAction("plato", "quitar_plato")
-                  handlers.removeDish(i)
-                }}
-                onSaveNote={
-                  dish.kind === "note"
-                    ? (text) => {
-                        trackSheetAction("plato", "editar_nota")
-                        handlers.editNote(i, text)
-                      }
-                    : undefined
-                }
+                onOptions={() => onOptions(i)}
               />
             ))}
-          </div>
+          </ul>
         </SortableContext>
       </DndContext>
     </div>
   )
 }
 
-function SortableDish({
-  id,
-  dish,
-  onClickThumb,
-  onRegenerate,
-  onRemove,
-  onSaveNote,
-}: {
-  id: string
-  dish: Dish
-  onClickThumb?: () => void
-  onRegenerate?: () => void
-  onRemove?: () => void
-  onSaveNote?: (text: string) => void
-}) {
+function SortableDish({ id, dish, onOpen, onOptions }: { id: string; dish: Dish; onOpen?: () => void; onOptions: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   return (
-    <div
+    <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
       className="flex items-center gap-1"
@@ -678,21 +768,144 @@ function SortableDish({
         type="button"
         {...attributes}
         {...listeners}
-        aria-label="Arrastrar para reordenar"
+        aria-label={`Arrastrar para ordenar: ${dishName(dish)}`}
         className="flex h-11 w-8 shrink-0 cursor-grab items-center justify-center text-ink-light touch-none"
       >
         <GripVertical size={16} />
       </button>
       <div className="min-w-0 flex-1">
-        <DishRow
-          dish={dish}
-          onClickThumb={onClickThumb}
-          onRegenerate={onRegenerate}
-          onRemove={onRemove}
-          onSaveNote={onSaveNote}
-        />
+        <DishRow dish={dish} onOpen={onOpen} onOptions={onOptions} />
       </div>
-    </div>
+    </li>
+  )
+}
+
+/* ── The dish's sheet (PRO-1176): what is of that dish only. A recipe: Ver
+ *    receta, Cambiar este plato, Ya está hecho / táper (or back to the list),
+ *    No lo pongas más esta semana, Quitar este plato. A note: editar, quitar. */
+function DishSheet({
+  open,
+  onClose,
+  eyebrow,
+  dish,
+  recipeHref,
+  options,
+  disabled,
+  onChange,
+  onCooked,
+  onBan,
+  onRemove,
+  onSaveNote,
+}: {
+  open: boolean
+  onClose: () => void
+  eyebrow: string
+  dish: Dish | null
+  recipeHref?: string
+  options: DishSheetOption[]
+  disabled?: boolean
+  onChange: () => void
+  onCooked: (on: boolean) => void
+  onBan: () => void
+  onRemove: () => void
+  onSaveNote: (text: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState("")
+  useEffect(() => {
+    if (!open) setEditing(false)
+  }, [open])
+  const has = (o: DishSheetOption) => options.includes(o)
+  const course = dish ? courseLabel(dish) : null
+  const isNote = dish?.kind === "note"
+  return (
+    <MenuSheet
+      open={open && dish != null}
+      onClose={onClose}
+      eyebrow={course ? `${course} · ${eyebrow}` : eyebrow}
+      title={dish ? dishName(dish) : ""}
+      sheet="plato"
+    >
+      <div className="flex flex-col gap-0.5" data-testid="dish-sheet">
+        {has("ver_receta") && recipeHref && <SheetAction icon={BookOpen} label="Ver receta" action="ver_receta" href={recipeHref} />}
+        {has("cambiar_plato") && (
+          <SheetAction
+            icon={Replace}
+            label="Cambiar este plato"
+            action="elegir_receta"
+            hint="Busca, filtra por tipo o deja que elija Mimoia"
+            disabled={disabled}
+            onClick={onChange}
+          />
+        )}
+        {has("ya_hecho") && (
+          <SheetAction
+            icon={Package}
+            label="Ya está hecho / táper"
+            action="sobras_si"
+            hint="Lo tengo hecho (nevera, congelador…): no suma a la compra"
+            onClick={() => onCooked(true)}
+          />
+        )}
+        {has("no_hecho") && (
+          <SheetAction icon={History} label="No lo tengo hecho" action="sobras_no" hint="Vuelve a sumar a la compra" onClick={() => onCooked(false)} />
+        )}
+        {has("vetar") && (
+          <SheetAction icon={Ban} label="No lo pongas más esta semana" action="vetar" hint="Pondremos otro en su lugar" onClick={onBan} />
+        )}
+        {has("editar_nota") && isNote && !editing && (
+          <SheetAction
+            icon={Pencil}
+            label="Editar nota"
+            hint="«Pan», «cenamos fuera»…"
+            onClick={() => {
+              setText(dish.text)
+              setEditing(true)
+            }}
+          />
+        )}
+        {editing && (
+          <form
+            className="flex items-center gap-2 px-3 py-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const t = text.trim().slice(0, 120)
+              if (t) {
+                trackSheetAction("plato", "editar_nota")
+                onSaveNote(t)
+              }
+            }}
+          >
+            <input
+              autoFocus
+              aria-label="Nota"
+              value={text}
+              maxLength={120}
+              onChange={(e) => setText(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl border border-border bg-paper px-3 py-2.5 text-[15px] text-ink focus:border-ink focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="h-11 shrink-0 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-forest"
+            >
+              Guardar
+            </button>
+          </form>
+        )}
+      </div>
+      {has("quitar_plato") && (
+        <div className="mt-1 border-t border-border-soft pt-1">
+          <SheetAction
+            icon={Trash2}
+            label={isNote ? "Quitar nota" : "Quitar este plato"}
+            action="quitar_plato"
+            hint="El resto de la comida se queda"
+            destructive
+            onClick={onRemove}
+          />
+        </div>
+      )}
+    </MenuSheet>
   )
 }
 

@@ -93,7 +93,7 @@ Para decidir qué opciones de las hojas «···» del menú se quedan a la vist
 |---|---|---|
 | `comida` | hoja de una comida con un plato (`MealOptions`, día y escritorio) | `ver_receta`, `elegir_receta` («Cambiar plato»), `cambiar_azar` («Que elija Mimoia», dentro del buscador, PRO-1175), `mas_opciones`, `ya_hecho` («Ya está hecho / táper…»), `sobras_si` / `sobras_no`, `anadir_plato`, `fijar` / `desfijar`, `vetar`, `cocinada` / `desmarcar_cocinada`, `taper_si` / `taper_no`, `comensales_menos` / `comensales_mas` / `comensales_quitar`, `quitar_comida`, `semana_tipo` («Guardar en mi semana tipo», en «Más opciones», PRO-1186; guardar es un `template_changed`) |
 | `comida_varios` | la misma hoja con varios platos o con una nota | las de `comida` y `ordenar_platos` (arrastrar) |
-| `plato` | cada plato de esa lista | `ver_receta` (la miniatura), `cambiar_azar` («Cambiar»), `quitar_plato`, `editar_nota` |
+| `plato` | el «···» de cada plato de esa lista (PRO-1176) | `ver_receta` (la fila o «Ver receta»), `elegir_receta` («Cambiar este plato»), `cambiar_azar` («Que elija Mimoia» en su buscador), `sobras_si` / `sobras_no` («Ya está hecho / táper» / «No lo tengo hecho»), `vetar`, `quitar_plato`, `editar_nota` |
 | `vacio` | la hoja de una comida sin plato | las de `comida` (se ven `anadir_plato`, `fijar`, comensales y `quitar_comida`) |
 | `no_hay` | «El viernes no hay cena» → «Sin plato todavía» | `elegir_receta`, `cambiar_azar` («Una al azar»), `congelador`, `taper_nevera` |
 | `dia` | pie del día y su hoja «Añadir comida» | `anadir_comida`, `congelador`, `taper_nevera`, `saltar_dia`, `reactivar_dia` (también en la vista semana y en escritorio), `levantar_veto` |

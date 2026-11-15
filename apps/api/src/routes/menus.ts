@@ -1700,6 +1700,27 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       res.status(400).json({ error: 'Cannot regenerate a note dish' }); return
     }
 
+    // PRO-1176: «Cambiar este plato» — the recipe chosen in the picker takes
+    // this dish only (the meal's other dishes stay) and, chosen by hand, it
+    // locks the meal like PUT /meal/:meal { recipeId }.
+    const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
+    if (manualRecipeId) {
+      const [chosen] = await db
+        .select({ id: recipes.id, name: recipes.name, course: recipes.course })
+        .from(recipes)
+        .where(and(eq(recipes.id, manualRecipeId), visibleRecipeWhere(await visibleAuthorIds(req.userId!))))
+        .limit(1)
+      if (!chosen) { res.status(404).json({ error: 'Recipe not found' }); return }
+      const next = [...slot.dishes]
+      next[position] = { kind: 'recipe', recipeId: chosen.id, recipeName: chosen.name, course: (chosen.course as RecipeDish['course']) ?? dish.course ?? null }
+      days[day][meal] = { ...slot, dishes: next }
+      await db.update(menus).set({ days: days as any, locked: withLock(menu.locked as LockedSlots, day, meal, true) }).where(eq(menus.id, menuId))
+      await recordMenuEdits(req, menu, slotDiff(day, meal, [dish], [next[position]]))
+      refreshPrepAlerts(menuId)
+      res.json({ dish: next[position] })
+      return
+    }
+
     // Build matcher options — same pattern as PUT /meal/:meal above.
     const usedRecipeIds = new Set<string>()
     for (let d = 0; d < days.length; d++) {
@@ -1762,8 +1783,17 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     }
 
     // «Semana tipo» (D-182): another recipe of the type the week type asks for there.
-    const typeRegen = await weekTypeDishTypeAt(menu.userId, menu.weekStart, day, meal, position)
-    const picked = findForCourse(poolOfDishType(recipesWithIngredientsRegen, typeRegen), typeRegen ? null : dish.course ?? null, matcherOptionsRegen)
+    // PRO-1176: «Que elija Mimoia» in that dish's picker, with its type chip: only that type (none → 409).
+    const chipRegen = isDishType(req.body?.dishType) ? (req.body.dishType as string) : null
+    const typeRegen = chipRegen ? null : await weekTypeDishTypeAt(menu.userId, menu.weekStart, day, meal, position)
+    const picked = chipRegen
+      ? findForCourse(poolOfChipType(recipesWithIngredientsRegen, chipRegen, dish.recipeId), null, matcherOptionsRegen)
+      : findForCourse(poolOfDishType(recipesWithIngredientsRegen, typeRegen), typeRegen ? null : dish.course ?? null, matcherOptionsRegen)
+    if (!picked && chipRegen) {
+      const label = dishTypeInfo(chipRegen)?.label ?? chipRegen
+      res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con este plato.`, code: 'NO_RECIPE_OF_TYPE' })
+      return
+    }
     if (!picked) {
       res.status(409).json({ error: 'No candidates for this course right now' }); return
     }

@@ -155,7 +155,9 @@ test("today's first meal is the hero; meal and week actions live in sheets; the 
   // The week's "···" holds the week actions.
   await page.getByRole('button', { name: /opciones de la semana/i }).click()
   const weekSheet = page.getByRole('dialog')
-  await expect(weekSheet.getByRole('button', { name: /^regenerar semana$/i })).toBeVisible()
+  // PRO-1179: «Regenerar semana» is now «Rehacer la semana…» → «Con mi semana tipo».
+  await expect(weekSheet.getByRole('link', { name: /^tu semana tipo$/i })).toBeVisible()
+  await expect(weekSheet.getByRole('button', { name: /^rehacer la semana…$/i })).toBeVisible()
   await expect(weekSheet.getByRole('button', { name: /^compartir$/i })).toBeVisible()
   await expect(weekSheet.getByRole('button', { name: /^vista semana$/i })).toBeVisible()
   await expect(weekSheet.getByRole('link', { name: /^historial$/i })).toHaveAttribute('href', '/menu/history')

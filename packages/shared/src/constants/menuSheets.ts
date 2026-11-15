@@ -7,7 +7,7 @@
  *
  * - `comida`: la hoja de una comida con un plato (`MealOptions`).
  * - `comida_varios`: la de una comida con varios platos o con una nota.
- * - `plato`: cada plato de la lista de esa hoja (cambiar, quitar, nota…).
+ * - `plato`: la hoja del «···» de cada plato de esa lista (PRO-1176).
  * - `vacio`: la de una comida sin plato («Añadir plato» en la tarjeta).
  * - `no_hay`: «El viernes no hay cena» → «Sin plato todavía».
  *   PRO-1177: `vacio` y `no_hay` son la misma hoja, «Sin plato todavía»
@@ -72,11 +72,19 @@ const NO_DISH_SHEET_ACTIONS = [
 export const MENU_SHEET_ACTIONS = {
   comida: MEAL_SHEET_ACTIONS,
   comida_varios: [...MEAL_SHEET_ACTIONS, 'ordenar_platos'],
+<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
   plato: ['ver_receta', 'cambiar_azar', 'quitar_plato', 'editar_nota'],
   vacio: NO_DISH_SHEET_ACTIONS,
   no_hay: NO_DISH_SHEET_ACTIONS,
   // PRO-1177: «Añadir comida» → la comida → «Sin plato todavía» (`no_hay`); ya no lleva sus tápers sueltos.
   dia: ['anadir_comida', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
+=======
+  // PRO-1176: el «···» de cada plato. «Cambiar este plato» cuenta como `elegir_receta` y su «Que elija Mimoia», como `cambiar_azar`.
+  plato: ['ver_receta', 'elegir_receta', 'cambiar_azar', 'sobras_si', 'sobras_no', 'vetar', 'quitar_plato', 'editar_nota'],
+  vacio: MEAL_SHEET_ACTIONS,
+  no_hay: ['elegir_receta', 'cambiar_azar', 'congelador', 'taper_nevera'],
+  dia: ['anadir_comida', 'congelador', 'taper_nevera', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
+>>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
   semana: [
     'semana_anterior',
     'semana_siguiente',

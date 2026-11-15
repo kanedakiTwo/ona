@@ -6,13 +6,14 @@
  * chips and a free field. Used by the web sign-up's step 4 and by «Tu menú
  * está listo» after the WhatsApp sign-up (PRO-161).
  */
-import { useState, type KeyboardEvent } from "react"
+import { useId, useState, type KeyboardEvent } from "react"
 import { X } from "lucide-react"
 import { RESTRICTION_PRESETS } from "@ona/shared"
 import { cn } from "@/lib/utils"
 import { HealthConsentCheckbox } from "@/components/HealthConsentCheckbox"
 import { ReligionConsentNote } from "@/components/ReligionConsentNote"
 import { withTyped } from "@/lib/restrictionText"
+import { FieldLabel } from "@/components/FieldLabel"
 
 const FIELD =
   "h-12 w-full rounded-2xl border border-border bg-paper px-4 text-[15px] text-ink placeholder:text-ink-light transition-colors focus:border-ink focus:outline-none disabled:opacity-60"
@@ -41,6 +42,7 @@ export function RestrictionsPicker({
   /** A consent given under v1 (E-19): the box for the current text when halal is picked. */
   religion?: { needed: boolean; checked: boolean; onChange: (checked: boolean) => void }
 }) {
+  const otherId = useId()
   const [ownInput, setTagInputState] = useState("")
   const tagInput = typed ?? ownInput
   function setTagInput(text: string) {
@@ -104,7 +106,11 @@ export function RestrictionsPicker({
           })}
         </div>
         <div className="mt-4">
+          <FieldLabel htmlFor={otherId} optional className="mb-1.5 block text-[13px] font-medium text-ink-mid">
+            Otra que no esté en la lista
+          </FieldLabel>
           <input
+            id={otherId}
             type="text"
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}

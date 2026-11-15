@@ -6,7 +6,8 @@
  * Decisions (ona-hq decision_log): D-021 set the prices; on 2026-10-15
  * Miguel made **Esencial the featured plan**, gave both plans a monthly /
  * yearly choice (Esencial anual 49,99 €), and set the closed beta to run
- * with everything (Plus) until launch day. Prices include VAT and are per
+ * with everything (Plus) until launch day. D-169 (2026-11-04): Plus at
+ * 9,99 €/mes and 99,99 €/año. Prices include VAT and are per
  * household. No struck-through prices, no fake quotas (constitution §8.3).
  * D-158 (2026-11-03, changes D-021's «no freemium»): a third plan, **Gratis**
  * «lo haces tú», with no price and no Stripe: what a household has when its
@@ -134,8 +135,8 @@ export const PAID_PLANS: readonly PaidPlan[] = [
     featured: false,
     tagline: 'Para quien quiere cocinar hablando y que Mimo se adelante.',
     prices: {
-      mensual: { cents: 899, label: '8,99 €/mes' },
-      anual: { cents: 5999, label: '59,99 €/año', perMonth: '5 €/mes' },
+      mensual: { cents: 999, label: '9,99 €/mes' },
+      anual: { cents: 9999, label: '99,99 €/año', perMonth: '8,33 €/mes' },
     },
     highlights: [
       'Todo lo de Esencial',
@@ -302,6 +303,27 @@ export const TRIAL_ENDING_NOTICE_DAYS = 2
 /** Stripe statuses that give the plan (and so keep the household off Gratis). */
 export const PAID_ACCESS_STATUSES: readonly SubscriptionStatus[] = ['trialing', 'active', 'past_due']
 
+/** PRO-386 (D-158): days a failed payment (`past_due`) keeps the plan; then the household loses it until it pays. */
+export const PAST_DUE_GRACE_DAYS = 7
+
+/** When a `past_due` subscription stops giving the plan: `pastDueSince` + 7 days. Null when it isn't `past_due`. */
+export function paymentDueBy(status: SubscriptionStatus | null, pastDueSince: Date | string | null | undefined): Date | null {
+  if (status !== 'past_due' || pastDueSince == null) return null
+  const since = typeof pastDueSince === 'string' ? Date.parse(pastDueSince) : pastDueSince.getTime()
+  return Number.isFinite(since) ? new Date(since + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000) : null
+}
+
+/**
+ * The subscription gives the plan: `PAID_ACCESS_STATUSES`, except a payment
+ * that has failed for more than 7 days (PRO-386). Without `pastDueSince`
+ * (rows from before it existed) a `past_due` still counts.
+ */
+export function hasPaidAccess(status: SubscriptionStatus | null | undefined, pastDueSince: Date | string | null | undefined, now: Date): boolean {
+  if (!status || !PAID_ACCESS_STATUSES.includes(status)) return false
+  const dueBy = paymentDueBy(status, pastDueSince)
+  return !dueBy || now.getTime() < dueBy.getTime()
+}
+
 const ACCESS_DAY_MS = 24 * 60 * 60 * 1000
 
 function launchStart(launchDate: string): number {
@@ -428,6 +450,12 @@ export interface BillingState {
     founderPrice?: boolean
     /** First charge within 15 days (the legal notice, PRO-136): when and how much. */
     upcomingCharge?: { at: string; amount: string } | null
+    /**
+     * PRO-386: a payment failed (`past_due`): when the plan stops counting if
+     * it still isn't paid (`past_due_since` + `PAST_DUE_GRACE_DAYS`), ISO.
+     * Null otherwise.
+     */
+    paymentDueBy?: string | null
   } | null
 }
 
@@ -479,8 +507,8 @@ export function founderOfferFires(i: { access: AccountAccess; weekResolved: bool
 /**
  * The founder price, with its amounts (PRO-204, Legal LEG-23: leaving the
  * figure out could be misleading by omission). Read from `PLANS`, never by
- * hand: «Esencial, 4,99 € al mes o 49,99 € al año; Plus, 8,99 € al mes o
- * 59,99 € al año». The offer goes out before a plan is chosen, so both plans.
+ * hand: «Esencial, 4,99 € al mes o 49,99 € al año; Plus, 9,99 € al mes o
+ * 99,99 € al año». The offer goes out before a plan is chosen, so both plans.
  */
 export function founderPriceAmounts(): string {
   return PAID_PLANS.map((p) => `${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`).join('; ')

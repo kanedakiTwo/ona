@@ -14,6 +14,7 @@ import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
 import { maybeAppendLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
 import { recordQuestionAnswer } from '../whatsapp/oneOffQuestion.js'
+import { maybeAppendSeanEllis, recordSeanEllisReply } from '../seanEllisSurvey.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -128,6 +129,8 @@ export async function chat(
   if (mode === 'whatsapp' && offersOn) await recordLeftoversAnswer(userId, message, history)
   // PRO-1091: the next message after the «pregunta única» is its answer (tagged `pregunta_unica`).
   if (mode === 'whatsapp' && opts.surface !== 'telegram') await recordQuestionAnswer(userId, message, db)
+  // PRO-334: the message right after the Sean Ellis question is its answer (tagged `sean_ellis`).
+  if (mode === 'whatsapp' && offersOn) await recordSeanEllisReply(userId, message, history)
 
   // 5. Model ↔ tools loop (see runToolLoop).
   const result = await runToolLoop({
@@ -157,19 +160,22 @@ export interface ReplyOfferSteps {
   family: (userId: string, reply: string, channel: 'text' | 'whatsapp') => Promise<string>
   invite: (userId: string, reply: string) => Promise<string>
   leftovers: typeof maybeAppendLeftoversQuestion
+  seanEllis: typeof maybeAppendSeanEllis
 }
 
 const REPLY_OFFER_STEPS: ReplyOfferSteps = {
   family: (userId, reply, channel) => maybeAppendFamilyInviteOffer(userId, reply, channel),
   invite: (userId, reply) => maybeAppendInviteOffer(userId, reply),
   leftovers: maybeAppendLeftoversQuestion,
+  seanEllis: maybeAppendSeanEllis,
 }
 
 /**
  * At most ONE line at the end of a reply (never two offers together): the
  * family offer (PRO-262) first; the other-household offer (PRO-164) only
  * when that one didn't go; Mimo's leftovers question (PRO-285, WhatsApp only)
- * only when neither did. `offerAdded` then holds back the avisos re-offer
+ * only when neither did; the Sean Ellis survey (PRO-334, WhatsApp only) last.
+ * `offerAdded` then holds back the avisos re-offer
  * (PRO-248) for this turn.
  */
 export async function appendReplyOffers(
@@ -181,6 +187,7 @@ export async function appendReplyOffers(
   let message = await steps.family(userId, reply, opts.mode)
   if (opts.invite && message === reply) message = await steps.invite(userId, message)
   if (message === reply) message = await steps.leftovers(userId, message, { mode: opts.mode, otherOffer: false })
+  if (message === reply) message = await steps.seanEllis(userId, message, { mode: opts.mode, otherOffer: false })
   return { message, offerAdded: message !== reply }
 }
 

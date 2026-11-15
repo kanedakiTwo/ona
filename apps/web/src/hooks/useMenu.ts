@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey 
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
 import { dishKey, slotKey, type MenuFit, type WeekPlan, type WeekTypeOption } from "@ona/shared"
-import { NO_RECIPE_OF_TYPE, regenerateMealBody, type WeekTypeApplied } from "@/lib/mealSheet"
+import { NO_RECIPE_OF_TYPE, regenerateDishBody, regenerateMealBody, type WeekTypeApplied } from "@/lib/mealSheet"
 import {
   addDishIn,
   addSlotIn,
@@ -668,7 +668,8 @@ export function usePatchDish() {
 }
 
 /**
- * Regenerate a recipe dish at a given position via the matcher (Aleatorio).
+ * Regenerate a recipe dish at a given position via the matcher, or put the
+ * recipe chosen in its picker there (PRO-1176, only that dish changes).
  * Respects the dish type the household's «semana tipo» asks for there and the menu's bannedRecipeIds.
  */
 export function useRegenerateDish() {
@@ -683,9 +684,13 @@ export function useRegenerateDish() {
       day: number
       meal: string
       position: number
+      /** PRO-1176: «Cambiar este plato» — the recipe chosen in the picker. */
+      recipeId?: string
+      /** PRO-1176: «Que elija Mimoia» with the picker's type chip. */
+      dishType?: string | null
     }, expect) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}/regenerate`
-      return api.post<Menu>(url, expect, changeOpts())
+      return api.post<Menu>(url, regenerateDishBody({ expect: expect.expect, recipeId: params.recipeId, dishType: params.dishType }), changeOpts())
     }),
     onSuccess: (data) => settleMenu(queryClient, data),
   })

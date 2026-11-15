@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { HEALTH_CONSENT_TEXT } from "@ona/shared"
+import { FieldMark } from "@/components/FieldLabel"
 
 /**
  * The separate, unticked box for health data (RGPD art. 9, PRO-21). Distinct
@@ -38,6 +39,7 @@ export function HealthConsentCheckbox({
           política de privacidad
         </Link>
         .
+        <FieldMark optional />
       </span>
     </label>
   )

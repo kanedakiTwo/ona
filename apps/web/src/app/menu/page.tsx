@@ -17,6 +17,7 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { SeanEllisCard } from "@/components/menu/SeanEllisCard"
 import { AutoplanCard } from "@/components/menu/AutoplanCard"
 import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
@@ -77,7 +78,12 @@ import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
 import { FridgeHealthQuestion } from "@/components/menu/FridgeHealthQuestion"
 import { ApiError } from "@/lib/api"
+<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
 import { DayFooter, DayMeals, SkippedDay, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
+=======
+import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
+import { WeekTypeDayLine } from "@/components/menu/WeekTypeDayLine"
+>>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
 /** Local-time Monday of `d` as `YYYY-MM-DD`. */
@@ -453,9 +459,19 @@ export default function MenuPage() {
             haptic.medium()
             removeDish.mutate({ ...base, position })
           },
-          regenerateDish: (position) => {
+          regenerateDish: (position, dishType) => {
             haptic.medium()
-            regenerateDish.mutate({ ...base, position })
+            return regenerateDish.mutateAsync({ ...base, position, dishType: dishType ?? null })
+          },
+          // PRO-1176: «Cambiar este plato» → the picker's recipe, only on that dish.
+          pickDishRecipe: (position, recipeId) => {
+            haptic.medium()
+            regenerateDish.mutate({ ...base, position, recipeId })
+          },
+          // PRO-1176: «No lo pongas más esta semana» on one dish: vetoed, and another in its place.
+          banDish: (position, recipeId) => {
+            haptic.medium()
+            banRecipe.mutate({ menuId, recipeId }, { onSuccess: () => regenerateDish.mutate({ ...base, position }) })
           },
           reorderDish: (from, to) => patchDish.mutate({ ...base, position: from, patch: { newPosition: to } }),
           editNote: (position, text) => patchDish.mutate({ ...base, position, patch: { text } }),
@@ -807,6 +823,7 @@ export default function MenuPage() {
                 <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
+                <SeanEllisCard />
                 {favoritesNotice}
                 {statusCard}
               </>
@@ -848,6 +865,7 @@ export default function MenuPage() {
             <AfinaNoticeCard />
             <TasteMenuCard />
             <WhatsAppNudgeCard />
+            <SeanEllisCard />
             {statusCard}
           </div>
         )}
@@ -884,6 +902,7 @@ export default function MenuPage() {
       <AfinaNoticeCard />
       <TasteMenuCard />
       <WhatsAppNudgeCard />
+      <SeanEllisCard />
 
       {!showWeekGrid && (
         <WeekStrip
@@ -981,6 +1000,7 @@ export default function MenuPage() {
           />
         ) : (
           <>
+            <WeekTypeDayLine weekStart={weekStart} day={selectedDay} className="mx-5 -mt-1 mb-1" />
             <DayMeals
               featured={featured}
               rest={rest}

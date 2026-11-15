@@ -1,314 +1,41 @@
 'use client'
 
 /**
- * /profile — "D · Luz y foto" (PRO-39): compact header with the household's
- * name, «Tu ficha» first and full width (PRO-318), then paper cards per
- * section (Casa, Afina tu menú, Creencias, Despensa, Fijos, Recetarios,
- * Suscripción, Voz, WhatsApp) with an icon and a status line, then the menu
- * settings the generator reads (one "Guardar cambios") and the account card.
- * Secondary actions sit behind "···" sheets (`MenuSheet`). 2–3 columns at lg+.
+ * /profile — what Mimo knows of the house, in the order of the questions it
+ * asks itself when it plans (PRO-1202, maqueta 2026-11-12-perfil, columna 1):
+ * the household's name with a gear to «Ajustes» (/profile/ajustes) and a strip
+ * with the last thing Mimo learnt and «Cuéntale más»; then **Vuestra semana**
+ * (PRO-1204), **Quién come** (PRO-1203), **Cómo cocináis**, **Lo que os
+ * gusta** and **La compra**, each a list of rows with a status line that open
+ * the screen that changes it. Each screen saves its own: no «Guardar cambios».
+ * Account, alerts, plan and privacy live in Ajustes; «Mis recetas» and
+ * «Recetarios» in Recetas; the pantry in Cocinar.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { motion } from 'motion/react'
+import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
-import {
-  Archive,
-  Bell,
-  BellOff,
-  BookOpen,
-  CalendarDays,
-  ChefHat,
-  ChevronRight,
-  CreditCard,
-  Compass,
-  Heart,
-  Home,
-  LogOut,
-  MessageCircle,
-  Mic,
-  Minus,
-  Plus,
-  Repeat,
-  Ruler,
-  Send,
-  Shield,
-  ShieldAlert,
-  SlidersHorizontal,
-  UserRound,
-  Wrench,
-  X,
-} from 'lucide-react'
 import Link from 'next/link'
-import { MenuSheet, SheetAction } from '@/components/menu/MenuSheet'
+import { ChevronRight, Settings } from 'lucide-react'
+import { InviteHouseholdButton } from '@/components/referrals/InviteHouseholdButton'
 import { DISPLAY_UI } from '@/components/recipes/RecipeCard'
-import { useUserMemory } from '@/hooks/useUserMemory'
-import { usePantry } from '@/hooks/usePantry'
-import { useStaples } from '@/hooks/useStaples'
-import { useCookbooks } from '@/hooks/useCookbooks'
-import { useBilling } from '@/hooks/useBilling'
-import { useTasteStatus } from '@/hooks/useTaste'
 import { FoundingBadge } from '@/components/profile/FoundingBadge'
-import { FichaHubCard } from '@/components/ficha/FichaHubCard'
-import { GroupLabel, MoreButton, ProfileCard, ProfileHubLink, Switch } from './sections/ProfileCards'
-import { useAuth } from '@/lib/auth'
-import { allergiesStatus } from '@/lib/profileStatus'
-import { useUser } from '@/hooks/useUser'
-import { api } from '@/lib/api'
-import { useWebPush } from '@/hooks/useWebPush'
-import { useMimo } from '@/components/mimo/MimoProvider'
-import { MyRecipesSection } from './sections/MyRecipesSection'
-import { WhatsAppCard } from '@/components/profile/WhatsAppCard'
+import { SUB_LIST } from '@/components/profile/SubPage'
+import { WeekTypeHead } from '@/components/weekType/WeekTypeHead'
+import { WhoEatsSection } from '@/components/profile/WhoEatsSection'
 import { CookingStyleCard } from '@/components/profile/CookingStyleCard'
-import { DeleteAccountCard } from '@/components/profile/DeleteAccountCard'
-import { NewsletterToggle } from '@/components/profile/NewsletterToggle'
-import { BasketConsentsCard } from '@/components/profile/BasketConsentsCard'
-import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
-import { consentCoversReligiousDiet, isReligiousDiet, RESTRICTION_PRESETS, subscriptionSummary, unionRestrictions } from '@ona/shared'
-import type { HealthConsentState } from '@ona/shared'
-import { HealthConsentCheckbox } from '@/components/HealthConsentCheckbox'
-import { ReligionConsentNote } from '@/components/ReligionConsentNote'
-
-interface PhysicalData {
-  sex: 'male' | 'female' | ''
-  age: number | ''
-  weight: number | ''
-  height: number | ''
-  activity_level: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active'
-}
-
-interface Preferences {
-  restrictions: string[]
-  priority: 'balanced' | 'muscle' | 'weight_loss' | 'energy'
-}
-
-interface Household {
-  adults: number
-  kidsCount: number
-}
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  sedentary: 'Sedentario',
-  light: 'Ligero',
-  moderate: 'Moderado',
-  active: 'Activo',
-  very_active: 'Muy activo',
-}
-
-const PRIORITY_LABELS: Record<string, string> = {
-  balanced: 'Equilibrado',
-  muscle: 'Ganar musculo',
-  weight_loss: 'Perder peso',
-  energy: 'Mas energia',
-}
-
-// Shared with onboarding so both offer the same chips (@ona/shared).
-const COMMON_RESTRICTIONS: readonly string[] = RESTRICTION_PRESETS
-
-function calculateBMR(sex: string, weight: number, height: number, age: number): number {
-  if (sex === 'male') return 10 * weight + 6.25 * height - 5 * age + 5
-  return 10 * weight + 6.25 * height - 5 * age - 161
-}
-
-const ACTIVITY_MULTIPLIERS: Record<string, number> = {
-  sedentary: 1.2,
-  light: 1.375,
-  moderate: 1.55,
-  active: 1.725,
-  very_active: 1.9,
-}
+import { useMimo } from '@/components/mimo/MimoProvider'
+import { useUserMemory } from '@/hooks/useUserMemory'
+import { useStaples } from '@/hooks/useStaples'
+import { useShops } from '@/hooks/useShopOrders'
+import { useTasteStatus } from '@/hooks/useTaste'
+import { useFicha } from '@/hooks/useFicha'
+import { useHouseholdPeople } from '@/hooks/useHouseholdPeople'
+import { useAuth } from '@/lib/auth'
+import { api, type ApiError } from '@/lib/api'
+import { factsCountLabel, portraitOpening, recentlyLearnt, visibleQuestion } from '@/lib/ficha'
+import { cuisinesLine, dislikesOfHouse, listLine, skillLine, timeLine } from '@/lib/profileSummary'
 
 export default function ProfilePage() {
-  const { user, logout, updateUser, isLoading: authLoading } = useAuth()
-  const whatsapp = useWhatsAppStatus()
-  const mimo = useMimo()
-
-  // «Datos físicos, en Perfil» from Tu ficha (`/profile#datos-fisicos`): the
-  // cards only render once the session is read, after Next's own hash scroll.
-  const userReady = !!user
-  useEffect(() => {
-    if (!userReady || !window.location.hash) return
-    document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: 'start' })
-  }, [userReady])
-
-  const [physical, setPhysical] = useState<PhysicalData>({
-    sex: '', age: '', weight: '', height: '', activity_level: 'moderate',
-  })
-  const [preferences, setPreferences] = useState<Preferences>({
-    restrictions: [], priority: 'balanced',
-  })
-  const [household, setHousehold] = useState<Household>({ adults: 2, kidsCount: 0 })
-  const [restrictionInput, setRestrictionInput] = useState('')
-  // RGPD art. 9 (PRO-21): physical data and restrictions only with consent.
-  const [healthConsent, setHealthConsent] = useState<HealthConsentState | null>(null)
-  const [consentBusy, setConsentBusy] = useState(false)
-  const healthActive = healthConsent?.active === true
-  // Halal under a v1 consent: the current text first (Legal, E-19).
-  const needsReligion = healthActive && !consentCoversReligiousDiet(healthConsent?.version)
-  const [religionDropped, setReligionDropped] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
-
-  useEffect(() => {
-    if (!user) return
-    api.get<HealthConsentState>(`/user/${user.id}/health-consent`).then(setHealthConsent).catch(() => {})
-  }, [user])
-
-  async function handleHealthConsent(next: boolean) {
-    if (!user || consentBusy) return
-    if (!next && !window.confirm('Si retiras el consentimiento, borramos tus alergias, restricciones y datos físicos. ¿Seguro?')) return
-    setConsentBusy(true)
-    try {
-      const state = await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: next })
-      setHealthConsent(state)
-      if (!next) {
-        setPhysical({ sex: '', age: '', weight: '', height: '', activity_level: 'moderate' })
-        setPreferences((p) => ({ ...p, restrictions: [] }))
-      }
-    } catch (e) { console.error(e) }
-    finally { setConsentBusy(false) }
-  }
-
-  async function handleReligionConsent(next: boolean) {
-    if (!user || !next || consentBusy) return
-    setConsentBusy(true)
-    try {
-      setHealthConsent(await api.post<HealthConsentState>(`/user/${user.id}/health-consent`, { consent: true }))
-      setReligionDropped(false)
-    } catch (e) { console.error(e) }
-    finally { setConsentBusy(false) }
-  }
-
-  useEffect(() => {
-    if (!user) return
-    // Restrictions live in two places: the account (`users.restrictions`,
-    // written by onboarding and read by the menu generator) and the settings
-    // blob. Show the union so nothing picked in onboarding looks lost (PRO-64).
-    Promise.all([
-      api.get<any>(`/user/${user.id}/settings`).catch(() => null),
-      api.get<{ restrictions?: string[]; adults?: number; kidsCount?: number }>(`/user/${user.id}`).catch(() => null),
-    ]).then(([data, account]) => {
-      // The account, not the copy kept in this browser: Mimo may have noted
-      // the kids since (2026-10-22: a tester's profile said 0 niños).
-      if (typeof account?.adults === 'number' && account.adults > 0) {
-        setHousehold({ adults: account.adults, kidsCount: account.kidsCount ?? 0 })
-      }
-      const blob = data?.template && !Array.isArray(data.template) ? data.template : data
-      if (blob?.physical) setPhysical(blob.physical)
-      const restrictions = unionRestrictions(account?.restrictions, blob?.preferences?.restrictions)
-      setPreferences((p) => ({ ...p, ...(blob?.preferences ?? {}), restrictions }))
-    }).catch(() => {})
-  }, [user])
-
-  // Hydrate household sizing from the user object (already includes
-  // adults + kidsCount after the 0005 migration). Falls back to the
-  // legacy enum until the user re-saves their profile.
-  useEffect(() => {
-    if (!user) return
-    if (typeof user.adults === 'number' && user.adults > 0) {
-      setHousehold({ adults: user.adults, kidsCount: user.kidsCount ?? 0 })
-      return
-    }
-    switch (user.householdSize) {
-      case 'solo':
-        setHousehold({ adults: 1, kidsCount: 0 })
-        break
-      case 'couple':
-        setHousehold({ adults: 2, kidsCount: 0 })
-        break
-      case 'family_no_kids':
-        setHousehold({ adults: 3, kidsCount: 0 })
-        break
-      case 'family_with_kids':
-        setHousehold({ adults: 2, kidsCount: 2 })
-        break
-    }
-  }, [user])
-
-  const bmr = useMemo(() => {
-    if (!physical.sex || !physical.weight || !physical.height || !physical.age) return null
-    return Math.round(calculateBMR(physical.sex, Number(physical.weight), Number(physical.height), Number(physical.age)))
-  }, [physical])
-
-  const tdee = useMemo(() => {
-    if (!bmr) return null
-    return Math.round(bmr * (ACTIVITY_MULTIPLIERS[physical.activity_level] ?? 1.55))
-  }, [bmr, physical.activity_level])
-
-  function addRestriction(value: string) {
-    const t = value.trim().toLowerCase()
-    if (t && !preferences.restrictions.includes(t)) {
-      setPreferences((p) => ({ ...p, restrictions: [...p.restrictions, t] }))
-    }
-    setRestrictionInput('')
-  }
-
-  function removeRestriction(value: string) {
-    setPreferences((p) => ({ ...p, restrictions: p.restrictions.filter((r) => r !== value) }))
-  }
-
-  const handleSave = useCallback(async () => {
-    if (!user) return
-    setSaving(true); setSaved(false)
-    // Without the current text a v1 consent doesn't cover halal: the rest is saved, halal isn't.
-    const restrictionsToSave = needsReligion ? preferences.restrictions.filter((r) => !isReligiousDiet(r)) : preferences.restrictions
-    setReligionDropped(restrictionsToSave.length < preferences.restrictions.length)
-    try {
-      const ACTIVITY_MAP: Record<string, 'none' | 'light' | 'moderate' | 'high'> = {
-        sedentary: 'none',
-        light: 'light',
-        moderate: 'moderate',
-        active: 'moderate',
-        very_active: 'high',
-      }
-      const userPayload: Record<string, unknown> = {}
-      if (healthActive) {
-      if (physical.sex) userPayload.sex = physical.sex
-      if (physical.age !== '' && physical.age != null) userPayload.age = Number(physical.age)
-      if (physical.weight !== '' && physical.weight != null) userPayload.weight = Number(physical.weight)
-      if (physical.height !== '' && physical.height != null) userPayload.height = Number(physical.height)
-      if (physical.activity_level) userPayload.activityLevel = ACTIVITY_MAP[physical.activity_level] ?? 'moderate'
-      // Same list to the account and to the settings blob (PRO-64): the
-      // screen shows the union of both, so this never drops either side.
-      userPayload.restrictions = restrictionsToSave
-      }
-      const PRIORITY_MAP: Record<string, 'quick' | 'varied' | 'healthy' | 'cheap'> = {
-        balanced: 'varied',
-        muscle: 'healthy',
-        weight_loss: 'healthy',
-        energy: 'quick',
-      }
-      if (preferences.priority) userPayload.priority = PRIORITY_MAP[preferences.priority] ?? 'varied'
-      // Household sizing — required by the shopping-list scaler.
-      if (Number.isFinite(household.adults) && household.adults >= 1) {
-        userPayload.adults = Math.floor(household.adults)
-      }
-      if (Number.isFinite(household.kidsCount) && household.kidsCount >= 0) {
-        userPayload.kidsCount = Math.floor(household.kidsCount)
-      }
-
-      const calls: Promise<unknown>[] = []
-      if (Object.keys(userPayload).length > 0) {
-        // Keep this browser's copy in step, or the next visit starts from the old counts.
-        calls.push(api.put<{ adults?: number; kidsCount?: number }>(`/user/${user.id}`, userPayload).then((saved) => {
-          if (saved.adults !== user.adults || saved.kidsCount !== user.kidsCount) {
-            updateUser({ adults: saved.adults, kidsCount: saved.kidsCount })
-          }
-        }))
-      }
-      calls.push(api.put(`/user/${user.id}/settings`, {
-        template: healthActive
-          ? { physical, preferences: { ...preferences, restrictions: restrictionsToSave } }
-          : { preferences: { ...preferences, restrictions: [] } },
-      }))
-      await Promise.all(calls)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) { console.error(e) }
-    finally { setSaving(false) }
-  }, [user, updateUser, physical, preferences, household, healthActive, needsReligion])
-
+  const { user, isLoading: authLoading } = useAuth()
 
   if (authLoading || !user) {
     return (
@@ -318,457 +45,30 @@ export default function ProfilePage() {
     )
   }
 
-  const showWhatsApp = Boolean(whatsapp.data?.available || whatsapp.data?.linked)
-
   return (
     <div className="min-h-screen bg-cream pb-12">
       <div className="mx-auto w-full max-w-[var(--page-max)] lg:px-12 lg:pt-8">
-        <ProfileHeader
-          username={user.username}
-          email={user.email}
-          onMore={() => setMoreOpen(true)}
-        />
+        <ProfileHeader />
+        <LearntStrip />
 
-        {/* Casa y Mimo: one paper card per sub-page, with a status line. */}
-        <div className="mt-6 px-5 lg:mt-8 lg:px-0">
-          <GroupLabel>Tu casa y Mimo</GroupLabel>
-          <ProfileHub />
-          {/* PRO-163: another household, not someone of this one (that's «Invitar a alguien» in Casa). */}
-          <InviteHouseholdButton place="perfil" className="mt-3 lg:mt-4" />
+        {/* PRO-1204: the semana tipo heads the profile — the menu comes out of it. */}
+        <div className="mt-6 lg:mt-8">
+          <WeekTypeHead />
         </div>
 
-        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
-          {/* Cómo cocináis (PRO-217): saved on tap in the household's ficha. */}
-          <CookingStyleCard />
-
-          {/* Voz (D-023: one assistant, the floating button on every page) */}
-          <ProfileCard
-            icon={Mic}
-            title="Voz"
-            status={mimo.speakReplies ? 'Mimo lee sus respuestas en voz alta' : 'Mimo lee en voz alta solo cuando le hablas'}
-            data-testid="profile-mimo-voice"
-          >
-            <p className="mt-3 text-[13px] leading-snug text-ink-muted">
-              Mimo está en el botón flotante de cualquier pantalla. Toca el micro para hablarle, o activa
-              «Manos libres» para conversar sin tocar nada mientras cocinas.
-            </p>
-
-            <ToggleRow
-              title="Leer las respuestas en voz alta"
-              subtitle={mimo.speakReplies ? 'Activo · también cuando escribes' : 'Solo cuando le hablas'}
-              on={mimo.speakReplies}
-              onToggle={() => mimo.setSpeakReplies(!mimo.speakReplies)}
-            />
-
-            {mimo.voices.length > 1 && (
-              <label className="flex min-h-[56px] items-center justify-between gap-3 border-t border-border-soft py-2">
-                <span className="text-[14px] font-medium text-ink">Voz de Mimo</span>
-                <select
-                  value={mimo.selectedVoice ?? ''}
-                  onChange={(e) => mimo.previewVoice(e.target.value)}
-                  className="h-11 max-w-[60%] rounded-full border border-border bg-cream px-3 text-[13px] text-ink focus:border-ink focus:outline-none"
-                  aria-label="Voz de Mimo"
-                >
-                  {mimo.voices.map((v) => (
-                    <option key={v.key} value={v.key}>{v.name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-          </ProfileCard>
-
-          {/* WhatsApp. Hidden unless the server has the channel configured for
-              this account (or a phone is already linked, so it can always be
-              disconnected). */}
-          {showWhatsApp && whatsapp.data && (
-            <ProfileCard
-              icon={MessageCircle}
-              title="WhatsApp"
-              status={whatsapp.data.linked ? 'Conectado' : 'Sin conectar'}
-            >
-              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
-                Todo lo que hace el asistente, desde tu WhatsApp: escríbele,
-                mándale audios o compártele recetas.
-              </p>
-              <div className="mt-3">
-                <WhatsAppCard status={whatsapp.data} />
-              </div>
-            </ProfileCard>
-          )}
+        <div className="mt-8 grid gap-8 px-5 lg:mt-10 lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:gap-y-10 lg:px-0">
+          {/* «Quién come» (PRO-1203): one row per person; allergies, dislikes, health and goal inside each. */}
+          <WhoEatsSection />
+          <HowYouCook />
+          <WhatYouLike />
+          <Shopping />
         </div>
 
-        {/* Ajustes del menú: what the generator reads. One save button below. */}
-        <div className="mt-8 px-5 lg:mt-10 lg:px-0">
-          <GroupLabel>Ajustes del menú</GroupLabel>
-        </div>
-        <div className="mt-3 grid gap-3 px-5 lg:mt-4 lg:grid-cols-2 lg:items-start lg:gap-4 lg:px-0">
-          <div className="grid gap-3 lg:gap-4">
-            {/* Datos físicos (RGPD art. 9: only with the health-data consent) */}
-            <ProfileCard
-              id="datos-fisicos"
-              icon={Ruler}
-              title="Datos físicos"
-              status={
-                !healthActive
-                  ? 'Sin tu consentimiento no se guardan'
-                  : tdee
-                    ? `Gasto diario estimado: ${tdee} kcal`
-                    : 'Completa sexo, edad, peso y altura'
-              }
-            >
-              <div className="mt-4" data-testid="health-consent">
-                <HealthConsentCheckbox
-                  checked={healthActive}
-                  disabled={consentBusy || healthConsent === null}
-                  onChange={handleHealthConsent}
-                />
-                {!healthActive && healthConsent !== null && (
-                  <p className="mt-2 text-[12px] italic text-ink-muted">
-                    Sin tu consentimiento no guardamos datos físicos, alergias ni restricciones.
-                  </p>
-                )}
-              </div>
-              <fieldset disabled={!healthActive} className={`mt-5 space-y-5 ${healthActive ? '' : 'opacity-40'}`}>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Sexo" className="col-span-2">
-                    <div className="flex gap-1.5 pt-1">
-                      <SexPill
-                        active={physical.sex === 'male'}
-                        onClick={() => setPhysical((p) => ({ ...p, sex: 'male' }))}
-                      >
-                        Masculino
-                      </SexPill>
-                      <SexPill
-                        active={physical.sex === 'female'}
-                        onClick={() => setPhysical((p) => ({ ...p, sex: 'female' }))}
-                      >
-                        Femenino
-                      </SexPill>
-                    </div>
-                  </Field>
-                  <Field label="Edad">
-                    <input
-                      type="number" min={1} max={120}
-                      value={physical.age}
-                      onChange={(e) => setPhysical((p) => ({ ...p, age: e.target.value ? Number(e.target.value) : '' }))}
-                      placeholder="—"
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Peso · kg">
-                    <input
-                      type="number" min={20} max={300} step={0.1}
-                      value={physical.weight}
-                      onChange={(e) => setPhysical((p) => ({ ...p, weight: e.target.value ? Number(e.target.value) : '' }))}
-                      placeholder="—"
-                      className="input-line"
-                    />
-                  </Field>
-                  <Field label="Altura · cm">
-                    <input
-                      type="number" min={100} max={250}
-                      value={physical.height}
-                      onChange={(e) => setPhysical((p) => ({ ...p, height: e.target.value ? Number(e.target.value) : '' }))}
-                      placeholder="—"
-                      className="input-line"
-                    />
-                  </Field>
-                </div>
-
-                <div>
-                  <Label>Nivel de actividad</Label>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {Object.entries(ACTIVITY_LABELS).map(([value, label]) => (
-                      <Pill
-                        key={value}
-                        active={physical.activity_level === value}
-                        onClick={() => setPhysical((p) => ({ ...p, activity_level: value as PhysicalData['activity_level'] }))}
-                      >
-                        {label}
-                      </Pill>
-                    ))}
-                  </div>
-                </div>
-              </fieldset>
-
-              {bmr && tdee && (
-                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border-soft pt-4">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Metabolismo basal</div>
-                    <div className="mt-1 font-serif-text text-[24px] font-[650] text-ink">
-                      {bmr}<span className="ml-1 text-[13px] font-normal text-ink-muted">kcal</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Gasto diario</div>
-                    <div className="mt-1 font-serif-text text-[24px] font-[650] text-terracotta-deep">
-                      {tdee}<span className="ml-1 text-[13px] font-normal text-ink-muted">kcal</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </ProfileCard>
-
-            {/* Preferencias */}
-            <ProfileCard
-              icon={SlidersHorizontal}
-              title="Preferencias"
-              status={`${household.adults} ${household.adults === 1 ? 'adulto' : 'adultos'} · ${household.kidsCount} ${household.kidsCount === 1 ? 'niño' : 'niños'} · ${PRIORITY_LABELS[preferences.priority] ?? ''}`}
-            >
-              <div className="mt-4 space-y-6">
-                <div>
-                  <Label>Hogar (para escalar la compra)</Label>
-                  <p className="mt-1 text-[12px] italic leading-snug text-ink-muted">
-                    Adultos cuenta a partir de 11 años. Niños son 2 a 10. Menores de 2 no cuentan. Cada niño cuenta como media ración.
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <Stepper
-                      label="Adultos"
-                      value={household.adults}
-                      onMinus={() => setHousehold((h) => ({ ...h, adults: Math.max(1, h.adults - 1) }))}
-                      onPlus={() => setHousehold((h) => ({ ...h, adults: Math.min(20, h.adults + 1) }))}
-                      minusLabel="Quitar adulto"
-                      plusLabel="Añadir adulto"
-                    />
-                    <Stepper
-                      label="Niños 2–10"
-                      value={household.kidsCount}
-                      onMinus={() => setHousehold((h) => ({ ...h, kidsCount: Math.max(0, h.kidsCount - 1) }))}
-                      onPlus={() => setHousehold((h) => ({ ...h, kidsCount: Math.min(20, h.kidsCount + 1) }))}
-                      minusLabel="Quitar niño"
-                      plusLabel="Añadir niño"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Prioridad nutricional</Label>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-                      <Pill
-                        key={value}
-                        active={preferences.priority === value}
-                        onClick={() => setPreferences((p) => ({ ...p, priority: value as Preferences['priority'] }))}
-                      >
-                        {label}
-                      </Pill>
-                    ))}
-                  </div>
-                </div>
-
-                <fieldset disabled={!healthActive} className={healthActive ? '' : 'opacity-40'}>
-                  <Label>Alergias, intolerancias y dieta</Label>
-                  {preferences.restrictions.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {preferences.restrictions.map((r) => (
-                        <motion.span
-                          key={r}
-                          layout
-                          initial={{ scale: 0.85, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          className="inline-flex h-10 items-center gap-0.5 rounded-full bg-ink pl-3.5 pr-0.5 text-[13px] text-cream"
-                        >
-                          {r}
-                          <button
-                            type="button"
-                            onClick={() => removeRestriction(r)}
-                            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-cream/15"
-                            aria-label={`Quitar ${r}`}
-                          >
-                            <X size={13} />
-                          </button>
-                        </motion.span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {COMMON_RESTRICTIONS.filter((r) => !preferences.restrictions.includes(r)).map((r) => (
-                      <button
-                        type="button"
-                        key={r}
-                        onClick={() => addRestriction(r)}
-                        className="inline-flex min-h-[40px] items-center gap-1 rounded-full border border-dashed border-border bg-transparent px-3.5 text-[13px] text-ink-muted hover:border-ink hover:text-ink"
-                      >
-                        <Plus size={12} /> {r}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      type="text"
-                      value={restrictionInput}
-                      onChange={(e) => setRestrictionInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); addRestriction(restrictionInput) }
-                      }}
-                      placeholder="Otra, p. ej. pimiento"
-                      className="input-line flex-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => addRestriction(restrictionInput)}
-                      disabled={!restrictionInput.trim()}
-                      className="h-11 rounded-full bg-ink px-5 text-[13px] font-medium text-cream disabled:opacity-30"
-                    >
-                      Añadir
-                    </button>
-                  </div>
-                  <ReligionConsentNote
-                    restrictions={preferences.restrictions}
-                    needsConsent={needsReligion}
-                    checked={false}
-                    onChange={handleReligionConsent}
-                    disabled={consentBusy}
-                  />
-                  {religionDropped && needsReligion && (
-                    <p role="alert" className="mt-2 text-[13px] text-terracotta-deep">
-                      No hemos guardado «halal»: marca la casilla del texto nuevo para guardarlo.
-                    </p>
-                  )}
-                </fieldset>
-              </div>
-            </ProfileCard>
-          </div>
-
-          <div className="grid gap-3 lg:gap-4">
-            {/* «Tu semana tipo» (D-182): its own page. */}
-            <ProfileHubLink
-              href="/profile/semana-tipo"
-              icon={CalendarDays}
-              title="Tu semana tipo"
-              status="Lo que soléis comer cada día: el menú sale de ahí"
-            />
-
-            {/* Recordatorios */}
-            <ProfileCard
-              icon={Bell}
-              title="Recordatorios"
-              status="Avisos de Mimo y el correo de los viernes"
-            >
-              <p className="mt-3 text-[13px] leading-snug text-ink-muted">
-                Si tienes WhatsApp conectado, Mimo te avisa por ahí. Si no, los
-                avisos de preparación (sacar del congelador, poner en remojo) te
-                llegan como notificación del móvil.
-              </p>
-
-              {/* PRO-237: every alert, by where it arrives, with its switch. */}
-              <Link
-                href="/profile/avisos"
-                data-testid="profile-avisos-link"
-                className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
-              >
-                <div className="min-w-0 text-left">
-                  <div className="text-[14px] font-medium text-ink">Avisos</div>
-                  <div className="truncate text-[12px] text-ink-muted">Qué te llega, por dónde, y apagarlos</div>
-                </div>
-                <ChevronRight size={18} strokeWidth={1.8} aria-hidden="true" className="text-ink-light" />
-              </Link>
-
-              {/* Web Push — server-side notifications that survive a closed tab. */}
-              <PushNotificationsCard />
-
-              {/* Friday menu email (PRO-95): its own consent, saved on tap. */}
-              <NewsletterToggle />
-
-              {/* «Enviar a <cadena>» (D-154): lo aceptado por cadena, con «Desactivar». Sin nada aceptado, nada. */}
-              <BasketConsentsCard />
-            </ProfileCard>
-
-            {/* Mis recetas */}
-            <ProfileCard
-              icon={ChefHat}
-              title="Mis recetas"
-              status="Las que has creado tú. Edítalas o elimínalas si ya no las usas."
-            >
-              <div className="mt-4">
-                <MyRecipesSection />
-              </div>
-            </ProfileCard>
-          </div>
-        </div>
-
-        {/* Save bar */}
-        <div className="mt-6 px-5 lg:flex lg:justify-end lg:px-0">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-ink text-[15px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:opacity-50 lg:w-[320px]"
-          >
-            {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar cambios'}
-          </button>
-        </div>
-
-        {/* Tu cuenta — session, privacy + right to erasure */}
-        <div className="mt-8 px-5 mb-24 lg:mt-10 lg:px-0">
-          <GroupLabel>Tu cuenta</GroupLabel>
-          <ProfileCard
-            icon={UserRound}
-            title={user.username}
-            status={user.email}
-            className="mt-3 lg:mt-4 lg:max-w-[580px]"
-          >
-            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border-soft pt-3">
-              <button
-                type="button"
-                onClick={logout}
-                className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:bg-cream-deep"
-              >
-                <LogOut size={16} strokeWidth={1.8} />
-                Salir
-              </button>
-              <a
-                href="/privacidad"
-                className="inline-flex min-h-[44px] items-center text-[13px] text-ink-muted underline underline-offset-4 hover:text-ink"
-              >
-                Política de privacidad
-              </a>
-            </div>
-            {user.id && (
-              <div className="mt-2">
-                <DeleteAccountCard userId={user.id} />
-              </div>
-            )}
-          </ProfileCard>
+        {/* PRO-163: another household, not someone of this one (that's «Invitar» in «Quién come»). */}
+        <div className="mt-8 px-5 mb-24 lg:mt-10 lg:max-w-[580px] lg:px-0">
+          <InviteHouseholdButton place="perfil" />
         </div>
       </div>
-
-      <MenuSheet open={moreOpen} onClose={() => setMoreOpen(false)} eyebrow="Perfil" title="Más opciones">
-        <div className="flex flex-col gap-1">
-          <SheetAction
-            icon={Mic}
-            label="Onboarding por voz"
-            hint="Cuéntale a Mimo cómo coméis en casa y lo guarda en su memoria"
-            href="/onboarding/voz"
-          />
-          {user.role === 'admin' && (
-            <SheetAction icon={Shield} label="Panel de admin" href="/admin" />
-          )}
-        </div>
-      </MenuSheet>
-
-      <style jsx>{`
-        :global(.input-line) {
-          width: 100%;
-          min-height: 44px;
-          background: transparent;
-          border: none;
-          border-bottom: 1px solid var(--color-border);
-          padding: 0.5rem 0;
-          font-family: inherit;
-          font-size: 15px;
-          color: var(--color-ink);
-          outline: none;
-          transition: border-color 200ms;
-        }
-        :global(.input-line:focus) {
-          border-bottom-color: var(--color-ink);
-        }
-        :global(.input-line::placeholder) {
-          color: var(--color-ink-light);
-        }
-      `}</style>
     </div>
   )
 }
@@ -776,11 +76,10 @@ export default function ProfilePage() {
 /* ─────────────────────────────────────────── */
 
 /**
- * Compact header (PRO-39): eyebrow with the user, the household's name as
- * the h1 (Fraunces 650, like /menu and /recipes) and a "···" for the
- * secondary actions.
+ * «Tu casa» and the household's name as the h1 (Fraunces 650, like /menu
+ * and /recipes), the founding badge, and the gear to Ajustes.
  */
-function ProfileHeader({ username, email, onMore }: { username: string; email: string; onMore: () => void }) {
+function ProfileHeader() {
   const household = useQuery<{ name: string; founding?: boolean }>({
     queryKey: ['household', 'me'],
     queryFn: () => api.get<{ name: string; founding?: boolean }>('/households/me'),
@@ -788,9 +87,7 @@ function ProfileHeader({ username, email, onMore }: { username: string; email: s
   return (
     <header className="flex items-start justify-between gap-3 px-5 pt-3 lg:px-0 lg:pt-0">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
-          Perfil · <span className="normal-case tracking-normal">{username}</span>
-        </p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">Tu casa</p>
         {household.isPending ? (
           <span aria-hidden="true" className="my-1.5 block h-7 w-48 rounded-full bg-bone lg:h-9" />
         ) : (
@@ -799,345 +96,188 @@ function ProfileHeader({ username, email, onMore }: { username: string; email: s
           </h1>
         )}
         {household.data?.founding && <FoundingBadge className="my-1" />}
-        <p className="truncate text-[13px] text-ink-muted">{email}</p>
       </div>
-      <MoreButton onClick={onMore} label="Más opciones del perfil" />
+      <Link
+        href="/profile/ajustes"
+        aria-label="Ajustes"
+        data-testid="profile-settings-link"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors hover:bg-cream-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+      >
+        <Settings size={20} strokeWidth={1.8} aria-hidden="true" />
+      </Link>
     </header>
   )
 }
+
+/**
+ * The strip under the name: the last thing Mimo learnt (else how its
+ * portrait of the house starts, else that it knows little yet), «Tu ficha» with what it knows and a waiting question, and
+ * «Cuéntale más» (Mimo opens with a draft). A `child` member (403) or a user
+ * without a household (404) doesn't get it.
+ */
+function LearntStrip() {
+  const ficha = useFicha()
+  const mimo = useMimo()
+  const status = (ficha.error as ApiError | null)?.status
+  if (status === 403 || status === 404) return null
+  const view = ficha.data
+  const last = view ? recentlyLearnt(view.recent, 1)[0] : undefined
+  const question = view ? visibleQuestion(view) : null
+
+  return (
+    <section data-testid="profile-ficha" aria-label="Lo que sabe Mimo" className="mx-5 mt-4 rounded-[20px] bg-cream-deep/70 px-4 py-3.5 lg:mx-0 lg:mt-5 lg:px-5">
+      {view ? (
+        <p className="text-[14px] leading-snug text-ink-mid">
+          {last ? (
+            <>
+              Lo último que ha aprendido Mimo: <span className="font-medium text-ink">{last.sentence.replace(/\.$/, '')}</span>.
+            </>
+          ) : view.portrait ? (
+            <span className="italic [font-family:var(--font-italic)]">«{portraitOpening(view.portrait.text)}»</span>
+          ) : (
+            'Todavía os conozco poco.'
+          )}
+        </p>
+      ) : ficha.isPending ? (
+        <span aria-hidden="true" className="block h-4 w-11/12 animate-pulse rounded-full bg-bone" />
+      ) : null}
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Link href="/profile/ficha" className="inline-flex min-h-[44px] items-center gap-1 text-[13px] font-semibold text-ink hover:underline">
+          Tu ficha
+          {view && view.facts.length > 0 && <span className="font-normal text-ink-muted">· {factsCountLabel(view.facts.length)}</span>}
+          {question && <span className="font-medium text-terracotta-deep">· 1 pregunta para ti</span>}
+          <ChevronRight size={15} strokeWidth={1.8} aria-hidden="true" className="text-ink-light" />
+        </Link>
+        <button
+          type="button"
+          onClick={() => mimo.open({ draft: 'Te cuento algo de casa: ' })}
+          className="inline-flex min-h-[44px] items-center text-[13px] font-semibold text-terracotta-deep hover:underline"
+        >
+          Cuéntale más
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/** A profile section: its kicker and a paper list of rows. */
+function Section({ id, title, children, after }: { id: string; title: string; children: ReactNode; after?: ReactNode }) {
+  return (
+    <section aria-labelledby={`${id}-title`} data-testid={id}>
+      <h2 id={`${id}-title`} className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted lg:text-[12px]">
+        {title}
+      </h2>
+      <ul className={`${SUB_LIST} mt-2`}>{children}</ul>
+      {after}
+    </section>
+  )
+}
+
+/** One row: what it is, its status, and the screen that changes it. */
+function Row({ href, title, status }: { href: string; title: string; status: ReactNode }) {
+  return (
+    <li>
+      <Link href={href} className="flex min-h-[60px] items-center gap-3 px-4 py-3 transition-colors hover:bg-cream-deep/40">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-medium text-ink">{title}</span>
+          <span className="block truncate text-[12.5px] text-ink-muted">{status}</span>
+        </span>
+        <ChevronRight size={18} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-light" />
+      </Link>
+    </li>
+  )
+}
+
+const LOADING = '…'
+const UNSAID = 'Sin decir todavía'
 
 function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`
 }
 
-/**
- * «Tu ficha» first and full width (PRO-318: it took the place of «Memoria»,
- * whose page lives on behind «Editar mis datos uno a uno»), then the
- * sub-page cards, each with a one-line status from its own data.
- */
-function ProfileHub() {
-  const { user } = useAuth()
-  const account = useUser(user?.id)
-  const household = useQuery<{ members: unknown[]; pendingInvites?: unknown[] }>({
-    queryKey: ['household', 'me'],
-    queryFn: () => api.get('/households/me'),
-  })
+/** «Cómo cocináis»: tiempo, aparatos and nivel (the memory), then the style (PRO-217). */
+function HowYouCook() {
   const memory = useUserMemory()
-  const pantry = usePantry()
-  const staples = useStaples()
-  const cookbooks = useCookbooks()
-  const billing = useBilling()
+  const m = memory.data
+  const show = (line: string | null) => (m == null ? LOADING : line ?? UNSAID)
+  return (
+    <Section
+      id="profile-cooking"
+      title="Cómo cocináis"
+      after={
+        <div className="mt-3">
+          <CookingStyleCard />
+        </div>
+      }
+    >
+      <Row href="/profile/memoria#rutina" title="Tiempo" status={show(timeLine(m?.time_available?.value))} />
+      <Row href="/profile/memoria#cocina" title="Aparatos" status={show(listLine(m?.equipment?.value))} />
+      <Row href="/profile/memoria#cocina" title="Nivel" status={show(skillLine(m?.cooking_skill?.value))} />
+    </Section>
+  )
+}
+
+/** «Lo que os gusta»: cocinas, «No os gusta», «Lo que os importa» (Creencias) and «Afina tu menú». */
+function WhatYouLike() {
+  const memory = useUserMemory()
+  const people = useHouseholdPeople()
   const taste = useTasteStatus()
+  const m = memory.data
+  const principles = m?.nutrition_principles?.value
+  const principlesCount = Array.isArray(principles) ? principles.length : m ? 0 : null
+  const dislikes =
+    people.data || m ? dislikesOfHouse([...(people.data?.people.map((p) => p.dislikes) ?? []), m?.dislikes?.value as string[] | undefined]) : null
 
-  const principles = memory.data?.nutrition_principles?.value
-  const principlesCount = Array.isArray(principles) ? principles.length : memory.data ? 0 : null
-
-  const loading = '…'
-  const members = household.data?.members.length
   return (
-    <>
-      <div className="mt-3 lg:mt-4">
-        <FichaHubCard />
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-4 lg:grid-cols-3 lg:gap-4">
-        <ProfileHubLink
-          href="/profile/casa"
-          icon={Home}
-          title="Casa"
-          status={members == null ? (household.isError ? 'Tu hogar' : loading) : members === 1 ? 'Solo tú' : plural(members, 'persona', 'personas')}
-        />
-        {/* 2026-10-22: a tester couldn't find where to add «intolerancia al pimiento» after the sign-up. */}
-        <ProfileHubLink
-          href="/profile/casa/alergias?next=/profile"
-          icon={ShieldAlert}
-          title="Alergias e intolerancias"
-          status={allergiesStatus(account.data?.restrictions, account.isError)}
-        />
-        <ProfileHubLink
-          href="/afinar"
-          icon={Heart}
-          title="Afina tu menú"
-          status={taste.data == null ? loading : `${taste.data.rated} de ${taste.data.total} valoradas`}
-        />
-        <ProfileHubLink
-          href="/profile/creencias"
-          icon={Compass}
-          title="Creencias"
-          status={principlesCount == null ? loading : principlesCount === 0 ? 'Ninguna todavía' : plural(principlesCount, 'principio', 'principios')}
-        />
-        <ProfileHubLink
-          href="/cocinar#despensa"
-          icon={Archive}
-          title="Despensa"
-          status={pantry.data == null ? loading : pantry.data.length === 0 ? 'Vacía' : plural(pantry.data.length, 'producto', 'productos')}
-        />
-        <ProfileHubLink
-          href="/profile/staples"
-          icon={Repeat}
-          title="Fijos"
-          status={staples.data == null ? loading : staples.data.length === 0 ? 'Ningún básico todavía' : plural(staples.data.length, 'básico', 'básicos')}
-        />
-        <ProfileHubLink
-          href="/profile/cookbooks"
-          icon={BookOpen}
-          title="Recetarios"
-          status={cookbooks.data == null ? loading : cookbooks.data.length === 0 ? 'Ninguno todavía' : plural(cookbooks.data.length, 'recetario', 'recetarios')}
-        />
-        <ProfileHubLink
-          href="/profile/suscripcion"
-          icon={CreditCard}
-          title="Suscripción"
-          status={
-            billing.data == null
-              ? billing.isError ? 'Tu plan' : loading
-              : billing.data.subscription
-                ? subscriptionSummary(billing.data.subscription).hub
-                : billing.data.beta ? 'Beta: Plus gratis' : billing.data.access?.state === 'gratis' ? 'Plan Gratis' : 'Sin plan'
-          }
-        />
-      </div>
-      <p className="mt-3 text-[13.5px] leading-[1.5] text-ink-muted lg:mt-4">
-        «Lo que recuerdo de ti» pasa a ser parte de tu ficha: lo mismo, más lo que aprendo cada noche, con el porqué de cada cosa.
-      </p>
-    </>
+    <Section id="profile-likes" title="Lo que os gusta">
+      <Row href="/profile/memoria#rutina" title="Cocinas" status={m == null ? LOADING : cuisinesLine(m.cuisine_bias?.value) ?? UNSAID} />
+      <Row
+        href="/profile/quien/me"
+        title="No os gusta"
+        status={dislikes == null ? LOADING : listLine(dislikes) ?? 'Nada apuntado'}
+      />
+      <Row
+        href="/profile/creencias"
+        title="Lo que os importa"
+        status={
+          principlesCount == null
+            ? LOADING
+            : principlesCount === 0
+              ? 'Ninguna creencia todavía'
+              : listLine(principles, 2) ?? plural(principlesCount, 'principio', 'principios')
+        }
+      />
+      <Row
+        href="/afinar"
+        title="Afina tu menú"
+        status={taste.data == null ? LOADING : `${taste.data.rated} de ${taste.data.total} recetas valoradas`}
+      />
+    </Section>
   )
 }
 
-/**
- * Renders the Web Push opt-in block inside the Recordatorios card.
- *
- * The button stays hidden when:
- *   - the browser doesn't support Push (esp. iOS Safari pre-install),
- *   - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is missing at build time.
- *
- * On iOS, the user must "Add to Home Screen" first; we surface a tip
- * line so they don't think the button is broken. "Enviar prueba" and
- * "Reparar service worker" live behind its "···" (PRO-39).
- */
-async function resetServiceWorker() {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
-  const regs = await navigator.serviceWorker.getRegistrations()
-  await Promise.all(regs.map((r) => r.unregister()))
-  if (typeof caches !== 'undefined') {
-    const names = await caches.keys()
-    await Promise.all(names.map((n) => caches.delete(n)))
-  }
-  window.location.reload()
-}
-
-function PushNotificationsCard() {
-  const { state, error, subscribe, unsubscribe, sendTest } = useWebPush()
-  const [sheetOpen, setSheetOpen] = useState(false)
-
-  if (state === 'unsupported') {
-    return (
-      <p className="mt-3 border-t border-border-soft pt-3 text-[12px] leading-snug text-ink-muted">
-        Las notificaciones push no están disponibles en este navegador. En
-        iPhone tienes que añadir la app a inicio primero (Compartir → Añadir
-        a pantalla de inicio).
-      </p>
-    )
-  }
-
-  const isSubscribed = state === 'subscribed'
-  const isWorking = state === 'subscribing'
-
+/** «La compra»: los básicos fijos y tus tiendas. */
+function Shopping() {
+  const staples = useStaples()
+  const shops = useShops()
   return (
-    <div className="mt-3 border-t border-border-soft pt-3">
-      <div className="flex items-start gap-3">
-        {isSubscribed ? (
-          <Bell size={18} className="mt-0.5 shrink-0 text-ink" />
-        ) : (
-          <BellOff size={18} className="mt-0.5 shrink-0 text-ink-muted" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-medium text-ink">
-            Notificaciones del móvil
-          </div>
-          <div className="mt-1 text-[12px] leading-snug text-ink-muted">
-            Llegan aunque la app esté cerrada. Sin WhatsApp, por aquí te llegan
-            los avisos de preparación; con WhatsApp, solo si un aviso no puede
-            salir por WhatsApp.{' '}
-            {state === 'denied' && (
-              <span className="text-terracotta-deep">
-                Has denegado el permiso; cámbialo en los ajustes del
-                navegador.
-              </span>
-            )}
-            {error && <span className="text-terracotta-deep"> {error}</span>}
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            {isSubscribed ? (
-              <button
-                type="button"
-                onClick={unsubscribe}
-                className="h-11 rounded-full border border-border bg-paper px-4 text-[13px] font-medium text-ink-muted transition-colors hover:text-ink"
-              >
-                Desactivar
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={subscribe}
-                disabled={isWorking}
-                className="h-11 rounded-full bg-ink px-4 text-[13px] font-medium text-cream transition-colors hover:bg-ink-mid disabled:opacity-50"
-              >
-                {isWorking ? 'Activando…' : 'Activar notificaciones'}
-              </button>
-            )}
-            <MoreButton onClick={() => setSheetOpen(true)} label="Más opciones de las notificaciones push" />
-          </div>
-        </div>
-      </div>
-
-      <MenuSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        eyebrow="Notificaciones push"
-        title="Más opciones"
-      >
-        <div className="flex flex-col gap-1">
-          {isSubscribed ? (
-            <SheetAction
-              icon={Send}
-              label="Enviar prueba"
-              hint="Te llega un aviso de prueba a este dispositivo"
-              onClick={() => {
-                setSheetOpen(false)
-                sendTest()
-              }}
-            />
-          ) : (
-            /* Recovery escape hatch while subscribe hasn't succeeded: some
-               users have a stale broken SW from a previous deploy; one tap
-               nukes everything and reloads cleanly. */
-            <SheetAction
-              icon={Wrench}
-              label="Reparar service worker"
-              hint="Borra la caché de la app y recarga la página"
-              onClick={() => {
-                resetServiceWorker().catch(() => {})
-              }}
-            />
-          )}
-        </div>
-      </MenuSheet>
-    </div>
-  )
-}
-
-function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <Label>{label}</Label>
-      <div className="mt-1">{children}</div>
-    </div>
-  )
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">{children}</div>
-  )
-}
-
-function Stepper({
-  label,
-  value,
-  onMinus,
-  onPlus,
-  minusLabel,
-  plusLabel,
-}: {
-  label: string
-  value: number
-  onMinus: () => void
-  onPlus: () => void
-  minusLabel: string
-  plusLabel: string
-}) {
-  const btn =
-    'flex h-11 w-11 items-center justify-center rounded-full border border-border bg-paper text-ink transition-colors hover:border-ink'
-  return (
-    <div className="rounded-2xl border border-border-soft bg-cream p-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{label}</div>
-      <div className="mt-2 flex items-center justify-between gap-1">
-        <button type="button" onClick={onMinus} className={btn} aria-label={minusLabel}>
-          <Minus size={16} />
-        </button>
-        <span className="w-6 text-center text-xl font-medium tabular-nums text-ink">{value}</span>
-        <button type="button" onClick={onPlus} className={btn} aria-label={plusLabel}>
-          <Plus size={16} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function Pill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`min-h-[40px] rounded-full border px-4 text-[13px] font-medium transition-colors active:scale-95 ${
-        active
-          ? 'border-ink bg-ink text-cream'
-          : 'border-border bg-paper text-ink-mid hover:border-ink'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function SexPill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`h-11 flex-1 rounded-full border px-3 text-[13px] font-medium transition-colors active:scale-95 ${
-        active
-          ? 'border-ink bg-ink text-cream'
-          : 'border-border bg-transparent text-ink-muted hover:border-ink hover:text-ink'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function ToggleRow({ title, subtitle, on, onToggle }: { title: string; subtitle: string; on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="mt-2 flex min-h-[56px] w-full items-center justify-between gap-3 border-t border-border-soft py-2"
-      aria-pressed={on}
-    >
-      <div className="min-w-0 text-left">
-        <div className="text-[14px] font-medium text-ink">{title}</div>
-        <div className="truncate text-[12px] text-ink-muted">{subtitle}</div>
-      </div>
-      <Switch on={on} />
-    </button>
+    <Section id="profile-shopping" title="La compra">
+      <Row
+        href="/profile/staples"
+        title="Básicos fijos"
+        status={
+          staples.data == null
+            ? LOADING
+            : staples.data.length === 0
+              ? 'Ningún básico todavía'
+              : `${plural(staples.data.length, 'producto', 'productos')} cada semana`
+        }
+      />
+      <Row
+        href="/compra/tiendas"
+        title="Tus tiendas"
+        status={shops.data == null ? LOADING : listLine(shops.data.map((s) => s.name), 3) ?? 'Ninguna todavía'}
+      />
+    </Section>
   )
 }

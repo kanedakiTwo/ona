@@ -86,14 +86,14 @@ test('no floating button covers a control at 390×844; both hide with a sheet or
   await expectNothingCoveredAtEnd(page, '/shopping')
 
   // Deleting the account: the card at the end of the profile.
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   const del = page.getByRole('button', { name: 'Borrar mi cuenta' })
   await expect(del).toBeVisible({ timeout: 20_000 })
   await expectClear(page, del, '«Borrar mi cuenta»')
   await del.click()
   await expectClear(page, page.getByText('— No se puede deshacer.'), '«No se puede deshacer»')
   await expectClear(page, page.getByRole('button', { name: 'Borrar definitivamente' }), '«Borrar definitivamente»')
-  await expectNothingCoveredAtEnd(page, '/profile with the deletion card')
+  await expectNothingCoveredAtEnd(page, '/profile/ajustes with the deletion card')
   await page.locator('#delete-password').focus()
   await expectHidden(page, 'typing the password (keyboard up)')
   await page.locator('#delete-password').blur()

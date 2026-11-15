@@ -338,6 +338,14 @@ html, body {
   color: var(--color-ink-light);
 }
 
+/* Required-field asterisk (PRO-1103, components/FieldLabel.tsx). Generated
+   content with empty alt text: seen, not read, and not part of the label's
+   text, so «Email *» is still labelled «Email». */
+.field-mark-required::after {
+  content: " *";
+  content: " *" / "";
+}
+
 /* ── Recipe Filter Chip ────────────────────────── */
 
 .chip-filter {

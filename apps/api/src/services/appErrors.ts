@@ -424,6 +424,7 @@ export const ERROR_DEFINITIONS = {
   newGroups: 'Groups first seen inside the window.',
   events: 'Sum of `count` over the groups in the window — an upper bound of the events in the window (counts are cumulative).',
   kind: 'client = reported by the web app (window.onerror, unhandled rejections, error boundaries); server = an API response with status ≥ 500 or an unhandled promise rejection.',
+  file: 'Read token only: the file of the first stack frame that names one, in a closed shape — app/<page>/<page|layout|error…> (a page of the web), chunks/<id> (shared code), chunks/main-app…, pagina (an inline script of the page), api/<source>, node_modules/<package>, node; anonimo, otro or null (no stack). Never the message.',
 } as const
 
 export interface AppErrorQuery {

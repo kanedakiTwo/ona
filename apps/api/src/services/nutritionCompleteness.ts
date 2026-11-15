@@ -10,7 +10,7 @@
  */
 import { eq, inArray } from 'drizzle-orm'
 import { ingredients, recipeIngredients, recipes } from '../db/schema.js'
-import { aggregateNutrition, type IngredientCatalogEntry } from './nutrition/aggregate.js'
+import { aggregateNutrition, catalogEntryFromRow, type IngredientCatalogEntry } from './nutrition/aggregate.js'
 import type { RecipeIngredient } from '@ona/shared'
 
 type Db = typeof import('../db/connection.js').db
@@ -58,25 +58,20 @@ export async function applyNutritionCompleteness(
     .select({
       id: ingredients.id,
       name: ingredients.name,
+      fdcId: ingredients.fdcId,
       density: ingredients.density,
       unitWeight: ingredients.unitWeight,
+      calories: ingredients.calories,
+      protein: ingredients.protein,
+      carbs: ingredients.carbs,
+      fat: ingredients.fat,
+      fiber: ingredients.fiber,
+      salt: ingredients.salt,
     })
     .from(ingredients)
+  // Values matter since PRO-1125: a row with no nutrition yet marks the recipe.
   const catalog = new Map<string, IngredientCatalogEntry>()
-  for (const r of ingRows) {
-    catalog.set(r.id, {
-      id: r.id,
-      name: r.name,
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      fat: 0,
-      fiber: 0,
-      salt: 0,
-      density: r.density,
-      unitWeight: r.unitWeight,
-    })
-  }
+  for (const r of ingRows) catalog.set(r.id, catalogEntryFromRow(r))
 
   const recipeRows = await db
     .select({ id: recipes.id, incomplete: recipes.nutritionIncomplete })

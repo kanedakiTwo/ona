@@ -181,11 +181,12 @@ test.describe('desktop', () => {
     await picker.locator('ul li button').filter({ hasText: target.name }).first().click()
     // On screen while the request is still held.
     await expect(hero.getByRole('heading', { level: 2 })).toHaveText(target.name, { timeout: 1_500 })
-    expect(release.length).toBe(1)
+    // The screen may paint before the request reaches the route: wait for it, held.
+    await expect.poll(() => release.length).toBe(1)
 
     await hero.getByRole('button', { name: /más opciones de comida/i }).click()
     await page.getByRole('dialog').getByRole('button', { name: /^añadir plato$/i }).click()
-    await page.getByRole('button', { name: /añadir nota/i }).click()
+    await page.getByRole('button', { name: /escribir un plato/i }).click()
     await page.getByPlaceholder('Pan con tomate').fill('Romanescu')
     await page.getByRole('button', { name: 'Añadir', exact: true }).click()
     await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible({ timeout: 1_500 })
@@ -213,7 +214,7 @@ test.describe('desktop', () => {
     await expect(hero).toBeVisible({ timeout: 20_000 })
     await hero.getByRole('button', { name: /más opciones de comida/i }).click()
     await page.getByRole('dialog').getByRole('button', { name: /^añadir plato$/i }).click()
-    await page.getByRole('button', { name: /añadir nota/i }).click()
+    await page.getByRole('button', { name: /escribir un plato/i }).click()
     await page.getByPlaceholder('Pan con tomate').fill('Romanescu')
     await page.getByRole('button', { name: 'Añadir', exact: true }).click()
     await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible({ timeout: 900 })
@@ -291,7 +292,7 @@ test.describe('desktop', () => {
       await page.waitForTimeout(800)
       await hero.getByRole('button', { name: /más opciones de comida/i }).click()
       await page.getByRole('dialog').getByRole('button', { name: /^añadir plato$/i }).click()
-      await page.getByRole('button', { name: /añadir nota/i }).click()
+      await page.getByRole('button', { name: /escribir un plato/i }).click()
       await page.getByPlaceholder('Pan con tomate').fill('Romanescu')
       await page.getByRole('button', { name: 'Añadir', exact: true }).click()
       await expect(hero.locator('[data-extra-dish="Romanescu"]')).toBeVisible({ timeout: 1_500 })

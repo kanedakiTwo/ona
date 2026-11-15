@@ -426,9 +426,19 @@ export default function MenuPage() {
             haptic.medium()
             removeDish.mutate({ ...base, position })
           },
-          regenerateDish: (position) => {
+          regenerateDish: (position, dishType) => {
             haptic.medium()
-            regenerateDish.mutate({ ...base, position })
+            return regenerateDish.mutateAsync({ ...base, position, dishType: dishType ?? null })
+          },
+          // PRO-1176: «Cambiar este plato» → the picker's recipe, only on that dish.
+          pickDishRecipe: (position, recipeId) => {
+            haptic.medium()
+            regenerateDish.mutate({ ...base, position, recipeId })
+          },
+          // PRO-1176: «No lo pongas más esta semana» on one dish: vetoed, and another in its place.
+          banDish: (position, recipeId) => {
+            haptic.medium()
+            banRecipe.mutate({ menuId, recipeId }, { onSuccess: () => regenerateDish.mutate({ ...base, position }) })
           },
           reorderDish: (from, to) => patchDish.mutate({ ...base, position: from, patch: { newPosition: to } }),
           editNote: (position, text) => patchDish.mutate({ ...base, position, patch: { text } }),

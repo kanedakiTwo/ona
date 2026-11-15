@@ -32,6 +32,9 @@ import { useAuth } from "@/lib/auth"
 import { menuDiners } from "@/lib/menuDiners"
 import { mealWhen, weekTypeSavedLine, type WeekTypeApplied } from "@/lib/mealSheet"
 import { mealLabel } from "@/lib/labels"
+import { blankWeekCopy, WEEK_TYPE_HREF } from "@/lib/blankWeek"
+import { useWeekType } from "@/hooks/useWeekType"
+import Link from "next/link"
 import {
   useMenu,
   useGenerateMenu,
@@ -196,6 +199,9 @@ export default function MenuPage() {
     { ...menuQuery, isPending: menuQuery.isPending && Boolean(menuUserId) },
   ])
   const generateMenu = useGenerateMenu()
+  // PRO-1180: the blank week says the semana tipo, or asks for it.
+  const weekTypeQuery = useWeekType()
+  const blankCopy = weekTypeQuery.isPending ? null : blankWeekCopy(weekTypeQuery.data)
   const regenerateMeal = useRegenerateMeal()
   const saveMealToWeekType = useSaveMealToWeekType()
   // PRO-1186: a real generation (not the empty scaffold of a new week, nor «Vaciar») shows the week type's skeleton.
@@ -670,8 +676,26 @@ export default function MenuPage() {
       <p className="mx-auto mt-2 max-w-xs text-[14px] text-ink-soft">
         {isPastWeek
           ? "Esta semana ya pasó. Vuelve a la actual para planificar."
-          : "Mimo la llena con tu semana tipo y la lista de la compra sale sola. O rellena tú los huecos."}
+          : (blankCopy?.lead ?? "")}
       </p>
+      {/* PRO-1180: the semana tipo in two lines, with «Editar». */}
+      {!isPastWeek && blankCopy?.summary && (
+        <div data-testid="blank-week-type" className="mx-auto mt-4 max-w-sm rounded-2xl bg-cream px-4 py-3 text-left">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold text-ink">{blankCopy.summary.meals}</p>
+              {blankCopy.summary.dishes && <p className="mt-0.5 text-[13px] text-ink-soft">{blankCopy.summary.dishes}</p>}
+            </div>
+            <Link
+              href={WEEK_TYPE_HREF}
+              aria-label="Editar tu semana tipo"
+              className="shrink-0 text-[13px] font-medium text-ink underline underline-offset-4 hover:text-terracotta-deep"
+            >
+              Editar
+            </Link>
+          </div>
+        </div>
+      )}
       {!isPastWeek && (
         <WeekPlanQuestions
           key={weekStart}
@@ -683,7 +707,7 @@ export default function MenuPage() {
       {!isPastWeek && fridgeQuestion && (
         <FridgeHealthQuestion question={fridgeQuestion} busy={generateMenu.isPending} onAnswer={answerFridge} />
       )}
-      {!isPastWeek && !fridgeQuestion && (
+      {!isPastWeek && !fridgeQuestion && blankCopy && (
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
@@ -691,8 +715,8 @@ export default function MenuPage() {
             disabled={generateMenu.isPending}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-forest disabled:opacity-50"
           >
-            {/* PRO-1186: configuring weighs more than asking the AI — no sparkles. */}
-            Llenar con mi semana tipo
+            {/* PRO-1186/PRO-1180: configuring weighs more than asking the AI — no sparkles. */}
+            {blankCopy.primary}
           </button>
           {!menu && (
             <button
@@ -705,6 +729,14 @@ export default function MenuPage() {
             </button>
           )}
         </div>
+      )}
+      {!isPastWeek && !fridgeQuestion && blankCopy?.setupLink && (
+        <Link
+          href={WEEK_TYPE_HREF}
+          className="mt-3 inline-block text-[13px] font-medium text-ink underline underline-offset-4 hover:text-terracotta-deep"
+        >
+          Primero, cuéntame cómo coméis
+        </Link>
       )}
       {/* «Menú de <mes>» (PRO-378): copy Cocina's week into this one. */}
       {!isPastWeek && !fridgeQuestion && <MonthMenuCard weekStart={weekStart} className="mx-auto mt-5 max-w-md" />}

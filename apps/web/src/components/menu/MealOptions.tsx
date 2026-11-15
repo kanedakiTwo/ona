@@ -94,12 +94,8 @@ import { trackSheetAction } from "@/lib/usageEvents"
 import { RatingPromptSheet } from "@/components/cooking/RatingPromptSheet"
 import { RecipePickerSheet } from "./RecipePickerSheet"
 import { AddDishSheet } from "./AddDishSheet"
-<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
-import { DishRow } from "./DishRow"
-import { NoDishSheets } from "./NoDishSheets"
-=======
 import { DishRow, courseLabel, dishName } from "./DishRow"
->>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
+import { NoDishSheets } from "./NoDishSheets"
 
 export type DishPayload =
   | { kind: "recipe"; recipeId: string; variant?: "planned" | "freezer" | "fridge" }
@@ -169,9 +165,6 @@ export function slotRecipeHref(recipeId: string, ctx: SlotContext): string {
   return menuRecipeHref(recipeId, slotServings(ctx))
 }
 
-<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
-type OpenSheet = null | "actions" | "more" | "done" | "weekType" | "picker" | "addDish" | "confirmBan" | "confirmRemove" | "rate" | "note"
-=======
 type OpenSheet =
   | null
   | "actions"
@@ -183,11 +176,12 @@ type OpenSheet =
   | "confirmBan"
   | "confirmRemove"
   | "rate"
+  // PRO-1177: «Escribir un plato» of «Sin plato todavía».
+  | "note"
   // PRO-1176: the «···» of one dish of a multi-dish meal, its picker and its veto.
   | "dish"
   | "dishPicker"
   | "confirmBanDish"
->>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
 
 export function useMealOptions() {
   const [open, setOpen] = useState<OpenSheet>(null)
@@ -255,8 +249,16 @@ export function MealOptionsSheets({
   const multi = isMultiDishMeal(ctx.slot)
   const heading = mealSheetHeading({ slot: ctx.slot, mealLabel: label, dayLabel: ctx.dayLabel, diners: ctx.defaultDiners })
   // PRO-1174: which sheet this is, for `menu_sheet_action`.
-<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
   const sheet = isSingleRecipe ? "comida" : "comida_varios"
+  // PRO-1176: the dish whose «···» is open, and the recipe «¿Qué tal?» asks about.
+  const [dishAt, setDishAt] = useState<number | null>(null)
+  const dish = dishAt != null ? dishes[dishAt] ?? null : null
+  const [rateId, setRateId] = useState<string | null>(null)
+  const rateDish = dishes.find((d): d is RecipeDish => d.kind === "recipe" && d.recipeId === rateId) ?? first
+  const openDish = (position: number) => {
+    setDishAt(position)
+    setOpen("dish")
+  }
 
   // PRO-1177: no dish yet → «Sin plato todavía», the same sheet as «no hay», plus «Quitar».
   if (dishes.length === 0) {
@@ -278,37 +280,16 @@ export function MealOptionsSheets({
         onRemove={handlers.remove}
       />
     )
-=======
-  const sheet = isSingleRecipe ? "comida" : dishes.length === 0 ? "vacio" : "comida_varios"
-  // PRO-1176: the dish whose «···» is open, and the recipe «¿Qué tal?» asks about.
-  const [dishAt, setDishAt] = useState<number | null>(null)
-  const dish = dishAt != null ? dishes[dishAt] ?? null : null
-  const [rateId, setRateId] = useState<string | null>(null)
-  const rateDish = dishes.find((d): d is RecipeDish => d.kind === "recipe" && d.recipeId === rateId) ?? first
-  const openDish = (position: number) => {
-    setDishAt(position)
-    setOpen("dish")
->>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
   }
 
   return (
     <>
-<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
-      <MenuSheet
-        open={open === "actions"}
-        onClose={close}
-        eyebrow={eyebrow}
-        title={first?.recipeName ?? label}
-        sheet={sheet}
-      >
-=======
       <MenuSheet open={open === "actions"} onClose={close} eyebrow={heading.eyebrow} title={heading.title} sheet={sheet}>
         {heading.subtitle && (
           <p data-testid="meal-sheet-subtitle" className="-mt-1 mb-3 text-[13.5px] leading-snug text-ink-muted">
             {heading.subtitle}
           </p>
         )}
->>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
         {/* PRO-259: why Mimo chose it — only menus from the planner carry it. A grey line, not a card (PRO-1175). */}
         {!multi && first?.why && (
           <p data-testid="dish-why" className="-mt-1 mb-3 text-[13.5px] leading-snug text-ink-muted">

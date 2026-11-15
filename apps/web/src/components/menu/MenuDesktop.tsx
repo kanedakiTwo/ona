@@ -80,11 +80,8 @@ import {
   type AbsentMeals,
   type SlotPropsFn,
 } from "./DayMeals"
-<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
 import type { NoDishSheet } from "./NoDishSheets"
-=======
 import { WeekTypeDayLine } from "./WeekTypeDayLine"
->>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
 import { MealOptionsButton, MealOptionsSheets, slotRecipeHref, useMealOptions } from "./MealOptions"
 import { trackSheetAction } from "@/lib/usageEvents"
 

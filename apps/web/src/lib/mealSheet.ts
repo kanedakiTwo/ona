@@ -93,7 +93,6 @@ export function mealSheetOptions({ slot, when, canTaper, feedsLeftovers = false,
   return { first: top, more, done }
 }
 
-<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
 // ─── «Sin plato todavía» (PRO-1177): el hueco vacío y «no hay» ─────────────
 
 /** Dónde se abre: una comida sin plato (`vacio`) o una que el día no tiene (`no_hay`). */
@@ -119,7 +118,8 @@ export function noDishSheetOptions({ where, hasWeekType = false }: { where: NoDi
 /** «¿Todos los viernes? Ponlo en tu semana tipo». */
 export function weekTypeLinkLine(day: number): string {
   return `¿Todos ${everyWeekday(day)}? Ponlo en tu semana tipo`
-=======
+}
+
 // ─── Comidas con varios platos (PRO-1176) ──────────────────────────────────
 
 /** Con 2 o más platos o con una nota, la hoja enseña la comida plato a plato. */
@@ -180,7 +180,6 @@ export function regenerateDishBody(p: { recipeId?: string; dishType?: string | n
     ...(p.expect ? { expect: p.expect } : {}),
     ...(p.recipeId ? { recipeId: p.recipeId } : p.dishType ? { dishType: p.dishType } : {}),
   }
->>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
 }
 
 /** Cuándo cae el día `day` (0 = lunes) de una semana: `weeksFromNow` < 0 pasada, 0 esta, > 0 futura. */

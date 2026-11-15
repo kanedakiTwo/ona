@@ -78,12 +78,8 @@ import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
 import { FridgeHealthQuestion } from "@/components/menu/FridgeHealthQuestion"
 import { ApiError } from "@/lib/api"
-<<<<<<< a873db7b500b6f6c1c8e4d97020bd6ef2b7d6dba
 import { DayFooter, DayMeals, SkippedDay, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
-=======
-import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
 import { WeekTypeDayLine } from "@/components/menu/WeekTypeDayLine"
->>>>>>> 3d5ed34ed276f08600e9f8199b614326b7d08f4c
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
 /** Local-time Monday of `d` as `YYYY-MM-DD`. */

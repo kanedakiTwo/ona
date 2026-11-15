@@ -335,10 +335,15 @@ test.describe('desktop', () => {
     await addMeal.click()
     const sheet = page.getByRole('dialog', { name: `Añadir comida al ${WEEKDAYS[other]}` })
     await expect(sheet).toBeVisible()
+    // PRO-1177: choosing the meal opens «Sin plato todavía»; «Que elija Mimoia» adds it.
+    await sheet.getByRole('button', { name: /^cena$/i }).click()
+    const noDish = page.getByRole('dialog', { name: 'Sin plato todavía' })
+    await expect(noDish).toContainText(`Cena · ${WEEKDAYS[other]}`)
     const added = page.waitForResponse(
       (r) => r.request().method() === 'POST' && r.url().endsWith(`/menu/${menu.id}/day/${other}/meal/dinner`),
     )
-    await sheet.getByRole('button', { name: /^cena$/i }).click()
+    await noDish.getByRole('button', { name: /^elegir receta/i }).click()
+    await page.getByTestId('recipe-picker').getByRole('button', { name: 'Que elija Mimoia' }).click()
     expect((await added).ok()).toBeTruthy()
   })
 
@@ -376,8 +381,8 @@ test.describe('desktop', () => {
     // Miguel, 2026-11-05: tapping it opens what to put there, not a dish nobody chose.
     await absent.getByRole('button', { name: `Añadir comida al ${WEEKDAYS[other]}` }).click()
     const sheet = page.getByRole('dialog', { name: 'Sin plato todavía' })
-    await expect(sheet.getByRole('button', { name: /^elegir receta/i })).toBeVisible()
-    await sheet.getByRole('button', { name: /^una al azar/i }).click()
+    await sheet.getByRole('button', { name: /^elegir receta/i }).click()
+    await page.getByTestId('recipe-picker').getByRole('button', { name: 'Que elija Mimoia' }).click()
     expect((await added).ok()).toBeTruthy()
     await expect(absent).toHaveCount(0, { timeout: 10_000 })
   })
@@ -611,7 +616,7 @@ test.describe('desktop', () => {
 
   // Miguel, 2026-10-19: «el botón de añadir comida no funciona» — with no
   // breakfast recipe that fits, the API answered 404 and nothing showed.
-  test('«Añadir comida → Desayuno» always adds it, empty when no breakfast fits', async ({ page }) => {
+  test('«Añadir comida → Desayuno → Que elija Mimoia» always adds it, empty when no breakfast fits', async ({ page }) => {
     test.setTimeout(90_000)
     const { menu, headers } = await userWithMenu(page)
     const other = today() === 0 ? 1 : 0
@@ -628,7 +633,10 @@ test.describe('desktop', () => {
     const added = page.waitForResponse(
       (r) => r.request().method() === 'POST' && r.url().endsWith(`/menu/${menu.id}/day/${other}/meal/breakfast`),
     )
+    // PRO-1177: the meal opens «Sin plato todavía»; «Que elija Mimoia» adds it.
     await sheet.getByRole('button', { name: /^desayuno$/i }).click()
+    await page.getByRole('dialog', { name: 'Sin plato todavía' }).getByRole('button', { name: /^elegir receta/i }).click()
+    await page.getByTestId('recipe-picker').getByRole('button', { name: 'Que elija Mimoia' }).click()
     expect((await added).status()).toBe(201)
     // «La semana» gets its breakfast row, and the day's cell is the new slot, not «no hay».
     await expect(page.getByTestId('week-columns').locator('[data-meal-row="breakfast"]')).toHaveText('Desayuno', { timeout: 10_000 })

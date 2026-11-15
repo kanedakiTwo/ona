@@ -819,6 +819,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
     }
 
     const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
+    const chipType = !manualRecipeId && isDishType(req.body?.dishType) ? (req.body.dishType as string) : null
     let chosenId: string
     let chosenName: string
     let chosenCourse: string | null = null
@@ -836,6 +837,21 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       chosenId = chosen.id
       chosenName = chosen.name
       chosenCourse = chosen.course ?? null
+    } else if (chipType) {
+      // PRO-1177: «Que elija Mimoia» with a type chip, from the «Sin plato
+      // todavía» sheet (an empty meal or one the day lacks): only a recipe of
+      // that type, as PUT does; none that fits → 409, nothing written.
+      const pickCtx = await loadSlotPickContext(menu, req.userId!)
+      const { pool, options } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIdsBut(days, dayIndex, meal))
+      const picked = findForCourse(poolOfChipType(pool, chipType), null, options)
+      if (!picked) {
+        const label = dishTypeInfo(chipType)?.label ?? chipType
+        res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con esta comida.`, code: 'NO_RECIPE_OF_TYPE' })
+        return
+      }
+      chosenId = picked.id
+      chosenName = picked.name
+      chosenCourse = picked.course ?? null
     } else {
       // Run the matcher, same shape as PUT but with a fresh `usedRecipeIds`
       // built from every other slot in the week (so we don't repeat).
@@ -916,7 +932,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       recipeName: chosenName,
       course: chosenCourse as any,
     }
-    days[dayIndex][meal] = { dishes: [initialDish] }
+    // An empty meal keeps its «Solo hoy» (PRO-1177: its sheet fills it through here).
+    days[dayIndex][meal] = { ...(existingSlot?.servings != null ? { servings: existingSlot.servings } : {}), dishes: [initialDish] }
     // A recipe chosen by hand stays when the week is redone (PRO-1175).
     const lockedNow = manualRecipeId ? withLock(menu.locked as LockedSlots, dayIndex, meal, true) : menu.locked
     const [updated] = await db.update(menus).set({ days, locked: lockedNow, skippedDays: unskipDay(menu.skippedDays, dayIndex) }).where(eq(menus.id, menuId)).returning()

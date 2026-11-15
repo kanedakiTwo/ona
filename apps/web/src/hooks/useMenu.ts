@@ -301,9 +301,11 @@ export function useAddMealSlot() {
       recipeId?: string
       /** «Añadir al menú» on a recipe (PRO-1024: only for the usage event). */
       from?: "receta"
+      /** «Que elija Mimoia» with a type chip in «Sin plato todavía» (PRO-1177): only a recipe of that type, or 409. */
+      dishType?: string | null
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
-      const body = params.recipeId ? { recipeId: params.recipeId, ...(params.from ? { from: params.from } : {}) } : {}
+      const body = regenerateMealBody(params) ?? {}
       return api.post<Menu>(url, body, changeOpts())
     }),
     onSuccess: (data) => settleMenu(queryClient, data),

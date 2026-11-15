@@ -103,18 +103,20 @@ test.describe('desktop', () => {
     const sheet = page.getByRole('dialog', { name: 'Sin plato todavía' })
     await expect(sheet).toBeVisible()
     await expect(sheet).toContainText(`Comida · ${WEEKDAYS[other]}`)
+    // PRO-1177: the same options as an empty meal, without «Quitar».
     await expect(sheet.getByRole('button', { name: /^elegir receta/i })).toBeVisible()
-    await expect(sheet.getByRole('button', { name: /^una al azar/i })).toBeVisible()
-    await expect(sheet.getByRole('button', { name: /^del congelador/i })).toBeVisible()
-    await expect(sheet.getByRole('button', { name: /^táper de la nevera/i })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: /^escribir un plato/i })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: /^ya lo tengo hecho/i })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: /^quitar/i })).toHaveCount(0)
     await page.waitForTimeout(400)
     expect(await scrolled(page)).toBe(before)
     // Neither the day shown above changes.
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading ?? '')
 
-    // «Una al azar» fills that day's lunch, still without moving.
+    // «Elegir receta → Que elija Mimoia» fills that day's lunch, still without moving.
     const added = page.waitForResponse((r) => r.request().method() === 'POST' && r.url().endsWith(`/menu/${week.id}/day/${other}/meal/lunch`))
-    await sheet.getByRole('button', { name: /^una al azar/i }).click()
+    await sheet.getByRole('button', { name: /^elegir receta/i }).click()
+    await page.getByTestId('recipe-picker').getByRole('button', { name: 'Que elija Mimoia' }).click()
     expect((await added).ok()).toBeTruthy()
     await expect(noLunch).toHaveCount(0, { timeout: 10_000 })
     expect(await scrolled(page)).toBe(before)

@@ -78,7 +78,7 @@ import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
 import { FridgeHealthQuestion } from "@/components/menu/FridgeHealthQuestion"
 import { ApiError } from "@/lib/api"
-import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
+import { DayFooter, DayMeals, SkippedDay, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
 import { WeekTypeDayLine } from "@/components/menu/WeekTypeDayLine"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
@@ -386,6 +386,30 @@ export default function MenuPage() {
     addDish.mutate({ menuId: menu.id, day, meal, payload: { kind: "recipe", recipeId, variant } })
   }
 
+  /** «Sin plato todavía» for a meal day `d` lacks (PRO-1177): the «no hay» card and cell, and «Añadir comida». */
+  function absentFor(d: number): Omit<AbsentMeals, "meals"> {
+    const menuId = menu!.id
+    return {
+      day: d,
+      dayName: weekdayName(d),
+      isAdding: addMealSlot.isPending,
+      weekTypeLink: !isPastWeek,
+      onAdd: (meal, recipeId) => {
+        haptic.light()
+        addMealSlot.mutate({ menuId, day: d, meal, recipeId })
+      },
+      onAddAuto: (meal, dishType) => {
+        haptic.medium()
+        return addMealSlot.mutateAsync({ menuId, day: d, meal, dishType })
+      },
+      onAddNote: (meal, text) => {
+        haptic.light()
+        addDish.mutate({ menuId, day: d, meal, payload: { kind: "note", text } })
+      },
+      onAddFreezer: (meal, recipeId, variant) => addFreezerDish(d, meal, recipeId, variant),
+    }
+  }
+
   /** Per-slot mutations + context, shared by every view. */
   const slotPropsFor = useCallback(
     (day: number): SlotPropsFn =>
@@ -397,6 +421,11 @@ export default function MenuPage() {
           regenerate: (dishType) => {
             haptic.medium()
             return regenerateMeal.mutateAsync({ ...base, dishType: dishType ?? null })
+          },
+          // «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177).
+          fill: (dishType) => {
+            haptic.medium()
+            return addMealSlot.mutateAsync({ ...base, dishType: dishType ?? null })
           },
           pickRecipe: (recipeId) => {
             haptic.medium()
@@ -816,15 +845,11 @@ export default function MenuPage() {
               haptic.medium()
               skipDay.mutate({ menuId: menu.id, day: d })
             }}
-            onAddMeal={(d, meal, recipeId) => {
-              haptic.light()
-              addMealSlot.mutate({ menuId: menu.id, day: d, meal, ...(recipeId ? { recipeId } : {}) })
-            }}
-            onAddNote={(d, meal, text) => {
-              haptic.light()
-              addDish.mutate({ menuId: menu.id, day: d, meal, payload: { kind: "note", text } })
-            }}
+            onAddMeal={(d, meal, recipeId) => absentFor(d).onAdd(meal, recipeId)}
+            onAddMealAuto={(d, meal, dishType) => absentFor(d).onAddAuto(meal, dishType)}
+            onAddNote={(d, meal, text) => absentFor(d).onAddNote(meal, text)}
             onAddFreezer={addFreezerDish}
+            weekTypeLink={!isPastWeek}
             footer={extras}
           />
         ) : (
@@ -931,7 +956,13 @@ export default function MenuPage() {
               }}
               onAddRecipe={(d, m, recipeId) => {
                 haptic.medium()
-                regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
+                // An empty meal takes the recipe in place; one the day doesn't have is added (PRO-1177).
+                if (days[d]?.[m]) regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
+                else addMealSlot.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
+              }}
+              onFillAuto={(d, m, dishType) => {
+                haptic.medium()
+                return addMealSlot.mutateAsync({ menuId: menu.id, day: d, meal: m, dishType })
               }}
               onPickRecipe={(d, m, recipeId) => {
                 haptic.medium()
@@ -969,20 +1000,7 @@ export default function MenuPage() {
             <DayMeals
               featured={featured}
               rest={rest}
-              absent={{
-                meals: absentMeals(days, selectedDay, skippedDays),
-                dayName: weekdayName(selectedDay),
-                isAdding: addMealSlot.isPending,
-                onAdd: (meal, recipeId) => {
-                  haptic.light()
-                  addMealSlot.mutate({ menuId: menu.id, day: selectedDay, meal, ...(recipeId ? { recipeId } : {}) })
-                },
-                onAddNote: (meal, text) => {
-                  haptic.light()
-                  addDish.mutate({ menuId: menu.id, day: selectedDay, meal, payload: { kind: "note", text } })
-                },
-                onAddFreezer: (meal, recipeId, variant) => addFreezerDish(selectedDay, meal, recipeId, variant),
-              }}
+              absent={{ meals: absentMeals(days, selectedDay, skippedDays), ...absentFor(selectedDay) }}
               slotProps={slotPropsFor(selectedDay)}
               readOnly={isPastWeek}
               isToday={selectedDay === todayIndex}
@@ -990,19 +1008,13 @@ export default function MenuPage() {
             {!isPastWeek && (
               <div className="mt-5">
                 <DayFooter
-                  dayName={weekdayName(selectedDay)}
                   missing={missingMeals(day)}
                   canSkip={orderedSlots(day).length > 0}
-                  isAdding={addMealSlot.isPending}
-                  onAddMeal={(meal) => {
-                    haptic.light()
-                    addMealSlot.mutate({ menuId: menu.id, day: selectedDay, meal })
-                  }}
+                  absent={absentFor(selectedDay)}
                   onSkip={() => {
                     haptic.medium()
                     skipDay.mutate({ menuId: menu.id, day: selectedDay })
                   }}
-                  onAddFreezer={(meal, recipeId, variant) => addFreezerDish(selectedDay, meal, recipeId, variant)}
                 />
               </div>
             )}

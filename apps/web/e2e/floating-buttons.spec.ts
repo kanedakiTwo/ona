@@ -67,11 +67,11 @@ test('no floating button covers a control at 390×844; both hide with a sheet or
   // «Añadir comida» on the menu, and its sheet.
   await page.goto('/menu')
   const addMeal = page.getByRole('button', { name: /^añadir comida$/i })
-  const skip = page.getByRole('button', { name: /^saltar día$/i })
+  const skip = page.getByRole('button', { name: /^este día no cocino$/i })
   await expect(skip).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('mimo-button')).toBeVisible()
   await expectNothingCoveredAtEnd(page, '/menu')
-  await expectClear(page, skip, '«Saltar día»')
+  await expectClear(page, skip, '«Este día no cocino»')
   if (await addMeal.count()) {
     await expectClear(page, addMeal, '«Añadir comida»')
     await addMeal.click()

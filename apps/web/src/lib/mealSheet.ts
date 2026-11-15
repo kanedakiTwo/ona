@@ -20,7 +20,7 @@
  * buscador) ni «Tipo de comida» (los chips de tipo del buscador). Fijar ya no
  * deja gris nada: solo dice qué se queda al rehacer la semana.
  */
-import { dishTypeInfo, isTaperDish, type MealSlot, type RecipeDish, type WeekTypeOption } from "@ona/shared"
+import { dishTypeInfo, isTaperDish, type Dish, type MealSlot, type RecipeDish, type WeekTypeOption } from "@ona/shared"
 
 /** Cuándo cae la comida respecto a hoy. */
 export type MealWhen = "past" | "today" | "future"
@@ -73,7 +73,8 @@ export function mealSheetOptions({ slot, when, canTaper, feedsLeftovers = false,
   else if (canTaper) done.push("taper_si")
 
   const top: MealSheetFirst[] = []
-  if (first) top.push("ver_receta")
+  // Con varios platos, «Ver receta» va en la fila de cada plato (PRO-1176).
+  if (isSingleRecipe) top.push("ver_receta")
   if (canReshape) top.push("cambiar_plato")
   top.push("anadir_plato")
   if (first) {
@@ -90,6 +91,95 @@ export function mealSheetOptions({ slot, when, canTaper, feedsLeftovers = false,
   if (canSaveToWeekType) more.push("semana_tipo")
 
   return { first: top, more, done }
+}
+
+// ─── «Sin plato todavía» (PRO-1177): el hueco vacío y «no hay» ─────────────
+
+/** Dónde se abre: una comida sin plato (`vacio`) o una que el día no tiene (`no_hay`). */
+export type NoDishWhere = "vacio" | "no_hay"
+
+export type NoDishOption = "elegir_receta" | "escribir_plato" | "ya_hecho" | "quitar_comida" | "semana_tipo"
+
+/**
+ * Puro: lo que pinta la hoja «Sin plato todavía», igual en la vista día, la
+ * vista semana y el escritorio (propuesta §1.3, §1.4 y §3): «Elegir receta»
+ * (el buscador con chips y «Que elija Mimoia»), «Escribir un plato» y «Ya lo
+ * tengo hecho» (nevera o congelador); en el hueco vacío, además, «Quitar
+ * <comida> de este día»; con la semana tipo, el enlace «¿Todos los <día>?
+ * Ponlo en tu semana tipo». Nunca «Fijar»: en un hueco sin plato no protege nada.
+ */
+export function noDishSheetOptions({ where, hasWeekType = false }: { where: NoDishWhere; hasWeekType?: boolean }): NoDishOption[] {
+  const out: NoDishOption[] = ["elegir_receta", "escribir_plato", "ya_hecho"]
+  if (where === "vacio") out.push("quitar_comida")
+  if (hasWeekType) out.push("semana_tipo")
+  return out
+}
+
+/** «¿Todos los viernes? Ponlo en tu semana tipo». */
+export function weekTypeLinkLine(day: number): string {
+  return `¿Todos ${everyWeekday(day)}? Ponlo en tu semana tipo`
+}
+
+// ─── Comidas con varios platos (PRO-1176) ──────────────────────────────────
+
+/** Con 2 o más platos o con una nota, la hoja enseña la comida plato a plato. */
+export function isMultiDishMeal(slot: MealSlot): boolean {
+  const dishes = slot.dishes ?? []
+  return dishes.length >= 2 || dishes.some((d) => d.kind === "note")
+}
+
+export interface MealSheetHeading {
+  eyebrow?: string
+  title: string
+  subtitle?: string
+}
+
+/**
+ * Puro: la cabecera de la hoja. Un plato: «Comida · jueves 13» encima y la
+ * receta de título. Varios platos o una nota: el título es la comida y el
+ * subtítulo, «2 platos · 3 comensales».
+ */
+export function mealSheetHeading(p: { slot: MealSlot; mealLabel: string; dayLabel: string; diners: number }): MealSheetHeading {
+  const meal = `${p.mealLabel} · ${p.dayLabel}`
+  const dishes = p.slot.dishes ?? []
+  if (isMultiDishMeal(p.slot)) {
+    const n = dishes.length
+    const diners = p.slot.servings ?? p.diners
+    return { title: meal, subtitle: `${n} ${n === 1 ? "plato" : "platos"} · ${diners} ${diners === 1 ? "comensal" : "comensales"}` }
+  }
+  const first = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
+  return { eyebrow: meal, title: first?.recipeName ?? (dishes.length > 0 ? p.mealLabel : "Sin plato todavía") }
+}
+
+/** Lo que ofrece el «···» de cada plato de la lista. */
+export type DishSheetOption = "ver_receta" | "cambiar_plato" | "ya_hecho" | "no_hecho" | "vetar" | "quitar_plato" | "editar_nota"
+
+/**
+ * Puro: la hoja de un plato. Una receta: Ver receta, «Cambiar este plato»,
+ * «Ya está hecho / táper», «No lo pongas más esta semana» y «Quitar este
+ * plato». Unas sobras no se cambian, no se vetan ni se dan por hechas; un
+ * táper (nevera, congelador, ya hecho) solo puede volver a la compra. La
+ * tanda de unas sobras planificadas no puede ser «ya está hecho». Una nota:
+ * editarla y quitarla, nunca «Cambiar».
+ */
+export function dishSheetOptions(dish: Dish, opts: { feedsLeftovers?: boolean } = {}): DishSheetOption[] {
+  if (dish.kind === "note") return ["editar_nota", "quitar_plato"]
+  if (dish.variant === "leftover") return ["ver_receta", "quitar_plato"]
+  if (isTaperDish(dish)) return ["ver_receta", "no_hecho", "quitar_plato"]
+  return ["ver_receta", "cambiar_plato", ...(opts.feedsLeftovers ? [] : (["ya_hecho"] as const)), "vetar", "quitar_plato"]
+}
+
+/** Puro: las recetas que apunta «Marcar la comida como cocinada», una vez cada una y en su orden. */
+export function mealCookRecipeIds(slot: MealSlot): string[] {
+  return [...new Set((slot.dishes ?? []).filter((d): d is RecipeDish => d.kind === "recipe").map((d) => d.recipeId))]
+}
+
+/** Cuerpo de `POST …/dish/:position/regenerate`: una receta elegida en el buscador, o «Que elija Mimoia» con su chip. */
+export function regenerateDishBody(p: { recipeId?: string; dishType?: string | null; expect?: string }): Record<string, string> {
+  return {
+    ...(p.expect ? { expect: p.expect } : {}),
+    ...(p.recipeId ? { recipeId: p.recipeId } : p.dishType ? { dishType: p.dishType } : {}),
+  }
 }
 
 /** Cuándo cae el día `day` (0 = lunes) de una semana: `weeksFromNow` < 0 pasada, 0 esta, > 0 futura. */

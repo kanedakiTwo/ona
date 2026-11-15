@@ -5,15 +5,16 @@
  *   existing GET /ingredients?search= endpoint. Empty query returns the
  *   first page (perPage=20).
  *
+ * `useSimilarIngredients(name, enabled)` — GET /ingredients/similar: the
+ *   «¿Es …?» rows the recipe form offers before «Añadir» (PRO-1125).
+ *
  * `useSuggestIngredient(name, enabled, query?)` — query wrapping
- *   GET /ingredients/suggest. Used by the auto-create / re-map modals to
- *   surface USDA / BEDCA candidates after the user opts to create. Pass
- *   `query` to override the automatic es→en translation (curators
- *   refining a poor auto-search).
+ *   GET /ingredients/suggest. Used by the admin re-map modal to surface
+ *   BEDCA / USDA candidates. `query` is the curator's manual search.
  *
  * `useAutoCreateIngredient()` — mutation hitting POST /ingredients/auto-create.
- *   Invalidates the `["ingredients"]` cache so the recipe form sees the new
- *   row immediately.
+ *   The household's «Añadir» sends only the name. Invalidates the
+ *   `["ingredients"]` cache so the recipe form sees the new row immediately.
  *
  * `useEstimateNutrition(id)` — mutation hitting
  *   POST /ingredients/:id/estimate-nutrition. Last-resort estimate via Claude
@@ -96,12 +97,26 @@ export function useSearchIngredients(query: string) {
 }
 
 /**
- * Fetch USDA / BEDCA candidates for a given Spanish name.
+ * PRO-1125: catalogue rows that look like a name the search didn't find
+ * («¿Es manitas de cerdo?»). Only runs when `enabled`.
+ */
+export function useSimilarIngredients(name: string, enabled: boolean) {
+  const trimmed = name.trim()
+  return useQuery<Ingredient[]>({
+    queryKey: ["ingredients", "similar", trimmed.toLowerCase()],
+    queryFn: () => api.get<Ingredient[]>(`/ingredients/similar?name=${encodeURIComponent(trimmed)}`),
+    enabled: enabled && trimmed.length >= 2,
+    staleTime: 30 * 1000,
+  })
+}
+
+/**
+ * Fetch BEDCA / USDA candidates for a given Spanish name (admin remap).
  *
  * @param name — original ingredient name (used as the row's identity / fallback)
  * @param enabled — gate the query
- * @param query — optional override sent to USDA verbatim (skips es→en).
- *                Curators use this to refine a poor automatic translation.
+ * @param query — optional manual search; the API translates it for USDA
+ *                and searches it in Spanish in BEDCA, like the name.
  */
 export function useSuggestIngredient(
   name: string,
@@ -133,33 +148,6 @@ export function useAutoCreateIngredient() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ingredients"] })
     },
-  })
-}
-
-export interface EstimateNutritionPreviewResponse {
-  nutrition: {
-    kcal: number
-    proteinG: number
-    carbsG: number
-    fatG: number
-    fiberG: number
-    saltG: number
-  }
-  source: "estimated"
-}
-
-/**
- * Preview-only estimate (no DB write). Used by the auto-create modal
- * where the ingredient row doesn't yet exist. Curator confirms in the
- * modal, then the auto-create POST persists the values via the
- * `nutrition` field.
- */
-export function useEstimateNutritionPreview() {
-  return useMutation<EstimateNutritionPreviewResponse, Error, { name: string }>({
-    mutationFn: ({ name }) =>
-      api.post<EstimateNutritionPreviewResponse>("/ingredients/estimate-nutrition", {
-        name,
-      }),
   })
 }
 

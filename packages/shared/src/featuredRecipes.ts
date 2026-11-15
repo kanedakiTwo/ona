@@ -29,6 +29,18 @@ export const FEATURED_RECIPES: ReadonlyArray<{ id: string; name: string }> = [
 export const RETIRED_RECIPE_TAG = 'retirada'
 
 /**
+ * PRO-1200: the «de diario» recipes Cocina tags (COC-513), what a Spanish
+ * home already eats. While a household is starting, its menu only draws
+ * from them; afterwards, at most 2 dishes a week come from outside.
+ */
+export const EVERYDAY_RECIPE_TAG = 'diario'
+
+/** Pure: whether a recipe is «de diario» (PRO-1200), by its internal or public tags. */
+export function isEverydayRecipe(r: { tags?: readonly string[] | null; internalTags?: readonly string[] | null }): boolean {
+  return (r.internalTags ?? []).includes(EVERYDAY_RECIPE_TAG) || (r.tags ?? []).includes(EVERYDAY_RECIPE_TAG)
+}
+
+/**
  * PRO-373: a recipe tagged `base` (sofrito, legumbre aliñada, verduras
  * asadas…) is cooked one day and used by several dishes of the week
  * (`recipe_bases`). It shows in `/recipes`, but the menu never picks it as a

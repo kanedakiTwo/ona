@@ -30,6 +30,7 @@ import { apiPublic } from "@/lib/api"
 import ReferralShare from "./ReferralShare"
 import { SocialFollow } from "./SocialFollow"
 import { rememberSignupAttribution } from "@/lib/signupAttribution"
+import { FieldLabel, RequiredNote, type FieldMarkProps } from "@/components/FieldLabel"
 
 /** Anchor every public CTA points to ("/#lista-de-espera"). */
 export const WAITLIST_ANCHOR = "lista-de-espera"
@@ -129,7 +130,7 @@ export default function WaitlistSection() {
             ) : (
               <form onSubmit={submit} noValidate aria-describedby="waitlist-form-help">
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  <Field label="Tu email" htmlFor="waitlist-email">
+                  <Field label="Tu email" htmlFor="waitlist-email" required>
                     <input
                       id="waitlist-email"
                       type="email"
@@ -142,7 +143,7 @@ export default function WaitlistSection() {
                       className="input-editorial"
                     />
                   </Field>
-                  <Field label="Tu nombre (opcional)" htmlFor="waitlist-name">
+                  <Field label="Tu nombre" htmlFor="waitlist-name" optional>
                     <input
                       id="waitlist-name"
                       type="text"
@@ -186,7 +187,7 @@ export default function WaitlistSection() {
                 />
 
                 <div className="mt-8">
-                  <Field label="¿Dónde sueles hacer la compra? (opcional)" htmlFor="waitlist-supermarket">
+                  <Field label="¿Dónde sueles hacer la compra?" htmlFor="waitlist-supermarket" optional>
                     <input
                       id="waitlist-supermarket"
                       type="text"
@@ -218,6 +219,7 @@ export default function WaitlistSection() {
                     id="waitlist-whatsapp"
                     checked={form.wantsWhatsapp}
                     onChange={(v) => set("wantsWhatsapp", v)}
+                    optional
                     label={`Quiero usar ${BRAND_NAME} por WhatsApp cuando entre`}
                     hint="La invitación te llega por email, con el enlace para escribirle por WhatsApp."
                   />
@@ -225,6 +227,7 @@ export default function WaitlistSection() {
                     id="waitlist-newsletter"
                     checked={form.newsletterOptIn}
                     onChange={(v) => set("newsletterOptIn", v)}
+                    optional
                     label={NEWSLETTER_OPT_IN_LABEL}
                     hint="Te lo recomendamos: te va a sorprender. Es opcional y aparte de la lista; te das de baja con un clic."
                   />
@@ -232,6 +235,7 @@ export default function WaitlistSection() {
                     id="waitlist-consent"
                     checked={form.consent}
                     onChange={(v) => set("consent", v)}
+                    required
                     label={
                       <>
                         He leído la{" "}
@@ -250,10 +254,12 @@ export default function WaitlistSection() {
                   </p>
                 )}
 
+                <RequiredNote className="mt-6" />
+
                 <button
                   type="submit"
                   disabled={!complete || status === "sending"}
-                  className="mt-8 inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-[#1A1612] px-7 py-4 text-base font-medium text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#1A1612]"
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-[#1A1612] px-7 py-4 text-base font-medium text-[#FAF6EE] transition-colors hover:bg-[#2D6A4F] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#1A1612]"
                 >
                   {status === "sending" ? "Guardando tu sitio…" : "Guárdame un sitio"}
                   <ArrowUpRight size={18} />
@@ -315,12 +321,17 @@ function WaitlistSuccess({ done }: { done: WaitlistSignupResponse & { origin: st
   )
 }
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+  ...mark
+}: { label: string; htmlFor: string; children: React.ReactNode } & FieldMarkProps) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="text-eyebrow block text-[#7A7066]">
+      <FieldLabel htmlFor={htmlFor} className="text-eyebrow block text-[#7A7066]" {...(mark as FieldMarkProps)}>
         {label}
-      </label>
+      </FieldLabel>
       {children}
     </div>
   )
@@ -341,10 +352,11 @@ function ChoiceGroup<T extends string>({
 }) {
   return (
     <div className="mt-8">
-      <div id={`${id}-legend`} className="mb-3 text-sm font-medium text-[#1A1612]">
+      {/* The four questions are required (the button waits for them). */}
+      <FieldLabel as="div" id={`${id}-legend`} required className="mb-3 text-sm font-medium text-[#1A1612]">
         {legend}
-      </div>
-      <div role="radiogroup" aria-labelledby={`${id}-legend`} className="flex flex-wrap gap-2">
+      </FieldLabel>
+      <div role="radiogroup" aria-labelledby={`${id}-legend`} aria-required="true" className="flex flex-wrap gap-2">
         {options.map(([v, label]) => (
           <button
             key={v}
@@ -369,13 +381,14 @@ function CheckRow({
   onChange,
   label,
   hint,
+  ...mark
 }: {
   id: string
   checked: boolean
   onChange: (v: boolean) => void
   label: React.ReactNode
   hint?: string
-}) {
+} & FieldMarkProps) {
   return (
     <div className="flex items-start gap-3">
       <input
@@ -383,13 +396,14 @@ function CheckRow({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
+        required={mark.required}
         aria-describedby={hint ? `${id}-hint` : undefined}
         className="mt-0.5 h-5 w-5 shrink-0 accent-[#2D6A4F]"
       />
       <div>
-        <label htmlFor={id} className="text-sm leading-snug text-[#1A1612]">
+        <FieldLabel htmlFor={id} className="text-sm leading-snug text-[#1A1612]" {...(mark as FieldMarkProps)}>
           {label}
-        </label>
+        </FieldLabel>
         {hint && (
           <p id={`${id}-hint`} className="mt-1 text-xs text-[#7A7066]">
             {hint}

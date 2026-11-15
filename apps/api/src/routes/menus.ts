@@ -27,6 +27,7 @@ import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/
 import { generateAndSaveMenu } from '../services/menuGenerate.js'
 import { autoplanNoticeFor, markAutoplanViewed, noteAutoplanChange } from '../services/weeklyAutoplan.js'
 import { loadSlotPickContext, slotPickOptions } from '../services/menuSlotPick.js'
+import { memoryTastes } from '../services/menuTastes.js'
 import {
   menuEditWho,
   recordMenuEdits,
@@ -818,6 +819,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
     }
 
     const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
+    const chipType = !manualRecipeId && isDishType(req.body?.dishType) ? (req.body.dishType as string) : null
     let chosenId: string
     let chosenName: string
     let chosenCourse: string | null = null
@@ -835,6 +837,21 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       chosenId = chosen.id
       chosenName = chosen.name
       chosenCourse = chosen.course ?? null
+    } else if (chipType) {
+      // PRO-1177: «Que elija Mimoia» with a type chip, from the «Sin plato
+      // todavía» sheet (an empty meal or one the day lacks): only a recipe of
+      // that type, as PUT does; none that fits → 409, nothing written.
+      const pickCtx = await loadSlotPickContext(menu, req.userId!)
+      const { pool, options } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIdsBut(days, dayIndex, meal))
+      const picked = findForCourse(poolOfChipType(pool, chipType), null, options)
+      if (!picked) {
+        const label = dishTypeInfo(chipType)?.label ?? chipType
+        res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con esta comida.`, code: 'NO_RECIPE_OF_TYPE' })
+        return
+      }
+      chosenId = picked.id
+      chosenName = picked.name
+      chosenCourse = picked.course ?? null
     } else {
       // Run the matcher, same shape as PUT but with a fresh `usedRecipeIds`
       // built from every other slot in the week (so we don't repeat).
@@ -860,10 +877,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       const dislikesValue2 = memory2?.dislikes?.value
       const equipmentValue2 = memory2?.equipment?.value
       // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-      const { dislikes, availableEquipment, unavailableEquipment: unavailEquip2 } = withFichaFilters(
+      const { dislikes, availableEquipment, unavailableEquipment: unavailEquip2, tastes: tastes2 } = withFichaFilters(
         {
           dislikes: Array.isArray(dislikesValue2) ? (dislikesValue2 as string[]) : [],
           availableEquipment: Array.isArray(equipmentValue2) ? new Set<string>((equipmentValue2 as string[]).map(normaliseEquipment)) : undefined,
+          tastes: memoryTastes(memory2),
         },
         await loadFichaMenuConstraints(menu.userId),
       )
@@ -891,6 +909,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         dislikes,
         availableEquipment,
         unavailableEquipment: unavailEquip2,
+        tastes: tastes2,
         timeBudget,
       })
       if (!newRecipe) {
@@ -913,7 +932,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       recipeName: chosenName,
       course: chosenCourse as any,
     }
-    days[dayIndex][meal] = { dishes: [initialDish] }
+    // An empty meal keeps its «Solo hoy» (PRO-1177: its sheet fills it through here).
+    days[dayIndex][meal] = { ...(existingSlot?.servings != null ? { servings: existingSlot.servings } : {}), dishes: [initialDish] }
     // A recipe chosen by hand stays when the week is redone (PRO-1175).
     const lockedNow = manualRecipeId ? withLock(menu.locked as LockedSlots, dayIndex, meal, true) : menu.locked
     const [updated] = await db.update(menus).set({ days, locked: lockedNow, skippedDays: unskipDay(menu.skippedDays, dayIndex) }).where(eq(menus.id, menuId)).returning()
@@ -1700,6 +1720,27 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       res.status(400).json({ error: 'Cannot regenerate a note dish' }); return
     }
 
+    // PRO-1176: «Cambiar este plato» — the recipe chosen in the picker takes
+    // this dish only (the meal's other dishes stay) and, chosen by hand, it
+    // locks the meal like PUT /meal/:meal { recipeId }.
+    const manualRecipeId = typeof req.body?.recipeId === 'string' ? req.body.recipeId : null
+    if (manualRecipeId) {
+      const [chosen] = await db
+        .select({ id: recipes.id, name: recipes.name, course: recipes.course })
+        .from(recipes)
+        .where(and(eq(recipes.id, manualRecipeId), visibleRecipeWhere(await visibleAuthorIds(req.userId!))))
+        .limit(1)
+      if (!chosen) { res.status(404).json({ error: 'Recipe not found' }); return }
+      const next = [...slot.dishes]
+      next[position] = { kind: 'recipe', recipeId: chosen.id, recipeName: chosen.name, course: (chosen.course as RecipeDish['course']) ?? dish.course ?? null }
+      days[day][meal] = { ...slot, dishes: next }
+      await db.update(menus).set({ days: days as any, locked: withLock(menu.locked as LockedSlots, day, meal, true) }).where(eq(menus.id, menuId))
+      await recordMenuEdits(req, menu, slotDiff(day, meal, [dish], [next[position]]))
+      refreshPrepAlerts(menuId)
+      res.json({ dish: next[position] })
+      return
+    }
+
     // Build matcher options — same pattern as PUT /meal/:meal above.
     const usedRecipeIds = new Set<string>()
     for (let d = 0; d < days.length; d++) {
@@ -1726,10 +1767,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
     const dislikesValRegen = memRegen?.dislikes?.value
     const equipValRegen = memRegen?.equipment?.value
     // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes: dislikesRegen, availableEquipment: availEquipRegen, unavailableEquipment: unavailEquip3 } = withFichaFilters(
+    const { dislikes: dislikesRegen, availableEquipment: availEquipRegen, unavailableEquipment: unavailEquip3, tastes: tastesRegen } = withFichaFilters(
       {
         dislikes: Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : [],
         availableEquipment: Array.isArray(equipValRegen) ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment)) : undefined,
+        tastes: memoryTastes(memRegen),
       },
       await loadFichaMenuConstraints(menu.userId),
     )
@@ -1758,12 +1800,22 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       dislikes: dislikesRegen,
       availableEquipment: availEquipRegen,
       unavailableEquipment: unavailEquip3,
+      tastes: tastesRegen,
       timeBudget: timeBudgetRegen,
     }
 
     // «Semana tipo» (D-182): another recipe of the type the week type asks for there.
-    const typeRegen = await weekTypeDishTypeAt(menu.userId, menu.weekStart, day, meal, position)
-    const picked = findForCourse(poolOfDishType(recipesWithIngredientsRegen, typeRegen), typeRegen ? null : dish.course ?? null, matcherOptionsRegen)
+    // PRO-1176: «Que elija Mimoia» in that dish's picker, with its type chip: only that type (none → 409).
+    const chipRegen = isDishType(req.body?.dishType) ? (req.body.dishType as string) : null
+    const typeRegen = chipRegen ? null : await weekTypeDishTypeAt(menu.userId, menu.weekStart, day, meal, position)
+    const picked = chipRegen
+      ? findForCourse(poolOfChipType(recipesWithIngredientsRegen, chipRegen, dish.recipeId), null, matcherOptionsRegen)
+      : findForCourse(poolOfDishType(recipesWithIngredientsRegen, typeRegen), typeRegen ? null : dish.course ?? null, matcherOptionsRegen)
+    if (!picked && chipRegen) {
+      const label = dishTypeInfo(chipRegen)?.label ?? chipRegen
+      res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con este plato.`, code: 'NO_RECIPE_OF_TYPE' })
+      return
+    }
     if (!picked) {
       res.status(409).json({ error: 'No candidates for this course right now' }); return
     }
@@ -1822,10 +1874,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
     const dislikesValR = memR?.dislikes?.value
     const equipValR = memR?.equipment?.value
     // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes: dislikesR, availableEquipment: availEquipR, unavailableEquipment: unavailEquip4 } = withFichaFilters(
+    const { dislikes: dislikesR, availableEquipment: availEquipR, unavailableEquipment: unavailEquip4, tastes: tastesR } = withFichaFilters(
       {
         dislikes: Array.isArray(dislikesValR) ? (dislikesValR as string[]) : [],
         availableEquipment: Array.isArray(equipValR) ? new Set<string>((equipValR as string[]).map(normaliseEquipment)) : undefined,
+        tastes: memoryTastes(memR),
       },
       await loadFichaMenuConstraints(menu.userId),
     )
@@ -1854,6 +1907,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       dislikes: dislikesR,
       availableEquipment: availEquipR,
       unavailableEquipment: unavailEquip4,
+      tastes: tastesR,
       timeBudget: timeBudgetR,
     }
 

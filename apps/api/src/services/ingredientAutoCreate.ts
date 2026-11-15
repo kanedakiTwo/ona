@@ -22,6 +22,7 @@ import {
   createUsdaClient,
   type UsdaClient,
   type UsdaNutrientProfile,
+  type UsdaSearchResult,
 } from './nutrition/usdaClient.js'
 import { inferAllergenTagsFromName } from './nutrition/allergens.js'
 import { searchBedca, type BedcaResult } from './nutrition/bedcaClient.js'
@@ -63,11 +64,16 @@ export interface SuggestOpts {
   /** Override the underlying USDA client (tests, mocking) */
   client?: UsdaClient
   /**
-   * Override the search query. When provided, this string is sent to USDA
-   * verbatim (no es→en translation). Curators use this to refine a poor
-   * automatic translation.
+   * Override the search query (the curator's manual search). It takes the
+   * same path as the name: es→en for USDA (English passes through), and
+   * Spanish for BEDCA.
    */
   query?: string
+  /**
+   * PRO-1125: search BEDCA too, not only when USDA finds nothing, and list
+   * its entries first (the admin's remap modal).
+   */
+  alwaysBedca?: boolean
   /**
    * Skip BEDCA fallback and translation. Used by the test suite to keep
    * pure unit tests free of network/LLM side effects.
@@ -244,6 +250,15 @@ const ES_EN: Record<string, string> = {
   'vinagre de vino': 'vinegar red wine',
   'vino blanco': 'wine table white',
   'vino tinto': 'wine table red',
+
+  // PRO-1125: names the household recipes had with no nutrition (5-nov)
+  manitas: 'pork feet raw',
+  'manitas de cerdo': 'pork feet raw',
+  datiles: 'dates medjool',
+  membrillo: 'quinces raw',
+  hojaldre: 'puff pastry frozen ready-to-bake',
+  'masa de hojaldre': 'puff pastry frozen ready-to-bake',
+  mascarpone: 'cheese mascarpone',
 }
 
 // ─── Aisle inference ─────────────────────────────────────────────
@@ -398,9 +413,13 @@ function normalize(s: string): string {
     .trim()
 }
 
+// Produce last: its «raw» would take «pork feet raw» or «chicken … raw».
+const AISLE_ORDER: readonly Aisle[] = ['proteinas', 'lacteos', 'panaderia', 'congelados', 'produce']
+
 function inferAisleFromEnglishQuery(en: string): Aisle {
   const q = en.toLowerCase()
-  for (const { aisle, needles } of AISLE_KEYWORDS) {
+  const ordered = [...AISLE_KEYWORDS].sort((a, b) => AISLE_ORDER.indexOf(a.aisle) - AISLE_ORDER.indexOf(b.aisle))
+  for (const { aisle, needles } of ordered) {
     for (const n of needles) {
       if (q.includes(n)) return aisle
     }
@@ -423,21 +442,48 @@ export function translateEsToEn(name: string): string {
   // Try the first word in case the user typed e.g. "alcaparras pequeñas".
   const first = n.split(/\s+/)[0]
   if (first && ES_EN[first]) return ES_EN[first]
+  // PRO-1125: the longest known name inside it («pechuga de pollo» → pollo).
+  const padded = ` ${n.replace(/\s+/g, ' ')} `
+  let best: string | null = null
+  for (const key of Object.keys(ES_EN)) {
+    if (padded.includes(` ${key} `) && (!best || key.length > best.length)) best = key
+  }
+  if (best) return ES_EN[best]
   // Last resort: pass the Spanish through. USDA's search is permissive.
   return n
 }
 
-// ─── DataType priority ───────────────────────────────────────────
-// Foundation > SR Legacy > FNDDS. Branded is filtered out (per Task 5).
+/** Aisle for a Spanish name without asking USDA (the household «Añadir»). */
+export function suggestAisleForName(name: string): Aisle {
+  return inferAisleFromEnglishQuery(translateEsToEn(name))
+}
+
+// ─── Candidate filter ────────────────────────────────────────────
+// PRO-1125: only ingredients. Foundation > SR Legacy; Branded and the survey
+// dishes (FNDDS) are out, and so are SR Legacy's dish categories — «cerdo»
+// used to bring pupusas and restaurant stews.
 
 const DATA_TYPE_RANK: Record<string, number> = {
   Foundation: 0,
   'SR Legacy': 1,
-  'Survey (FNDDS)': 2,
 }
+
+/** SR Legacy / Foundation categories that are dishes, not ingredients. */
+export const DISH_FOOD_CATEGORIES: readonly string[] = [
+  'Restaurant Foods',
+  'Fast Foods',
+  'Meals, Entrees, and Side Dishes',
+  'Baby Foods',
+]
 
 function rankDataType(dt: string): number {
   return DATA_TYPE_RANK[dt] ?? 99
+}
+
+/** True for a USDA search hit that is an ingredient (not a dish, a brand or a survey food). */
+export function isIngredientCandidate(r: Pick<UsdaSearchResult, 'dataType' | 'foodCategory'>): boolean {
+  if (!Object.hasOwn(DATA_TYPE_RANK, r.dataType)) return false
+  return !r.foodCategory || !DISH_FOOD_CATEGORIES.includes(r.foodCategory)
 }
 
 // ─── Public API ─────────────────────────────────────────────────
@@ -449,8 +495,9 @@ function getDefaultClient(): UsdaClient {
 }
 
 /**
- * Return USDA candidates for a given Spanish ingredient name plus
- * suggested aisle and allergens. Branded entries are filtered out.
+ * Return BEDCA + USDA candidates for a given Spanish ingredient name plus
+ * suggested aisle and allergens. Only ingredients: Branded, FNDDS and the
+ * dish categories are filtered out (`isIngredientCandidate`).
  */
 export async function suggestIngredient(
   name: string,
@@ -460,22 +507,29 @@ export async function suggestIngredient(
   const client = opts?.client ?? getDefaultClient()
   const normalizedName = normalize(name)
 
-  // If the curator passed an explicit query, use it verbatim. Otherwise
-  // run the es→en translation as before.
+  // PRO-1125: the curator's manual search takes the same path as the
+  // automatic one — translated to English for USDA (an English query passes
+  // through), and searched in Spanish in BEDCA.
   const queryOverride = opts?.query?.trim()
-  const enQuery = queryOverride && queryOverride.length > 0
-    ? queryOverride
-    : translateEsToEn(name)
+  const spanishQuery = queryOverride && queryOverride.length > 0 ? queryOverride : name
+  const enQuery = translateEsToEn(spanishQuery)
 
-  // Ask USDA for a slightly larger pool — we'll filter Branded and re-sort.
+  // BEDCA (Spanish, in Spanish) goes first, in parallel with USDA, when asked
+  // (`alwaysBedca`: the admin's suggest route); otherwise only if USDA has
+  // nothing — the extractor and the imports call this once per ingredient
+  // and BEDCA fetches each food in turn.
+  const bedcaPromise =
+    opts?.skipFallbacks || !opts?.alwaysBedca ? Promise.resolve([]) : safeSearchBedca(spanishQuery, limit)
+
+  // Ask USDA for a slightly larger pool — we'll filter dishes and re-sort.
   // USDA can return 4xx for short / weird queries (e.g. "beans" without
   // qualifier sometimes 400s). On any USDA failure we fall through to
   // BEDCA + estimation rather than 500ing the whole curator workflow.
   let search: Awaited<ReturnType<UsdaClient['searchByName']>> = []
   try {
     search = await client.searchByName(enQuery, {
-      limit: Math.min(20, limit * 3),
-      preferDataTypes: ['Foundation', 'SR Legacy', 'Survey (FNDDS)'],
+      limit: Math.min(25, limit * 4),
+      preferDataTypes: ['Foundation', 'SR Legacy'],
     })
   } catch (err) {
     console.warn(
@@ -484,8 +538,9 @@ export async function suggestIngredient(
     )
   }
 
+  // Stable sort: USDA's relevance order within each data type.
   const filtered = search
-    .filter((r) => r.dataType !== 'Branded')
+    .filter(isIngredientCandidate)
     .sort((a, b) => rankDataType(a.dataType) - rankDataType(b.dataType))
     .slice(0, limit)
 
@@ -511,23 +566,23 @@ export async function suggestIngredient(
     })
   }
 
-  // If USDA returned 0 candidates, fall back to BEDCA. The BEDCA shape
-  // already returns Spanish descriptions and per-100 g values together,
-  // so we don't need to translate them — `descriptionEs` mirrors
-  // `description`.
-  if (candidates.length === 0 && !opts?.skipFallbacks) {
-    const bedcaResults = await safeSearchBedca(name, limit)
-    for (const b of bedcaResults) {
-      candidates.push({
-        fdcId: null,
-        bedcaId: b.bedcaId,
-        description: b.description,
-        descriptionEs: b.description,
-        dataType: 'BEDCA',
-        per100g: b.per100g,
-      })
-    }
+  // BEDCA entries go first (Spanish food, Spanish names). The BEDCA shape
+  // already returns Spanish descriptions and per-100 g values together, so
+  // we don't need to translate them — `descriptionEs` mirrors `description`.
+  let bedcaResults = await bedcaPromise
+  if (candidates.length === 0 && bedcaResults.length === 0 && !opts?.skipFallbacks && !opts?.alwaysBedca) {
+    bedcaResults = await safeSearchBedca(spanishQuery, limit)
   }
+  candidates.unshift(
+    ...bedcaResults.map((b) => ({
+      fdcId: null,
+      bedcaId: b.bedcaId,
+      description: b.description,
+      descriptionEs: b.description,
+      dataType: 'BEDCA',
+      per100g: b.per100g,
+    })),
+  )
 
   // Translate USDA English descriptions in a single batched Anthropic call.
   // Cached entries return instantly; only first-time descriptions cost a
@@ -617,4 +672,55 @@ export function levenshtein(a: string, b: string): number {
 
 export function normalizeForDedupe(s: string): string {
   return normalize(s).replace(/\s+/g, ' ')
+}
+
+// ─── Similar catalogue names ────────────────────────────────────
+// PRO-1125: what the household sees when its word isn't in the catalogue
+// («¿Es manitas de cerdo?») before «Añadir».
+
+const SIMILAR_STOPWORDS = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'con', 'en', 'y', 'a', 'al'])
+
+function words(s: string): string[] {
+  return normalizeForDedupe(s)
+    .split(/[^a-z0-9ñ]+/)
+    .filter((w) => w.length >= 2 && !SIMILAR_STOPWORDS.has(w))
+}
+
+/** A typed word against a catalogue word: same, a prefix of 3+ letters, or a typo away. */
+function wordMatches(typed: string, word: string): boolean {
+  if (typed === word) return true
+  if (typed.length >= 3 && word.startsWith(typed)) return true
+  if (typed.length < 4 || Math.abs(typed.length - word.length) > 2) return false
+  return levenshtein(typed, word) <= (typed.length >= 6 ? 2 : 1)
+}
+
+/**
+ * Catalogue rows that look like what was typed, best first: more typed words
+ * found, then the shorter name. Each typed word that isn't a stopword counts
+ * once; the same name (other capitals, accents) goes first. Pure: the route
+ * passes the whole catalogue.
+ */
+export function similarIngredients<T extends { name: string }>(
+  typed: string,
+  rows: readonly T[],
+  limit = 5,
+): T[] {
+  const typedWords = [...new Set(words(typed))]
+  if (typedWords.length === 0) return []
+  const typedNorm = normalizeForDedupe(typed)
+  const scored: Array<{ row: T; score: number }> = []
+  for (const row of rows) {
+    // The same name with other capitals or accents goes first.
+    if (normalizeForDedupe(row.name) === typedNorm) {
+      scored.push({ row, score: Number.MAX_SAFE_INTEGER })
+      continue
+    }
+    const rowWords = words(row.name)
+    const score = typedWords.filter((t) => rowWords.some((w) => wordMatches(t, w))).length
+    if (score > 0) scored.push({ row, score })
+  }
+  return scored
+    .sort((a, b) => b.score - a.score || a.row.name.length - b.row.name.length || a.row.name.localeCompare(b.row.name, 'es'))
+    .slice(0, limit)
+    .map((s) => s.row)
 }

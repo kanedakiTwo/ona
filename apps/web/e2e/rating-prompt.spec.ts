@@ -76,7 +76,7 @@ test('cook mode: «Terminar» on the last step records the dish and asks; «Bien
   await registerFreshUser(page)
   await completeOnboarding(page)
   await page.goto('/recipes')
-  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"])').first()
+  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])').first()
   await expect(card).toBeVisible({ timeout: 15_000 })
   const href = (await card.getAttribute('href'))!
   const recipeId = href.match(/[0-9a-f-]{36}/)![0]

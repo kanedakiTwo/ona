@@ -9,13 +9,14 @@
  * Presentation only — every piece takes its state and handlers from the page,
  * so the form payload (and `recipeFormContract.test.ts`) is untouched.
  */
-import { useEffect, useRef, type ReactNode } from "react"
+import { useEffect, useId, useRef, type ReactNode } from "react"
 import Link from "next/link"
 import { ChevronLeft, Plus, Trash2 } from "lucide-react"
 import { RECIPE_UNIT_LABELS, type Ingredient, type Unit } from "@ona/shared"
 import { cn } from "@/lib/utils"
 import { humanizeLintKey } from "@/lib/recipeView"
 import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
+import { FieldLabel, FieldMark, type FieldMarkProps } from "@/components/FieldLabel"
 
 /** Fraunces at text sizes, semibold — the `/menu` and `/recipes` title cut. */
 export const FORM_TITLE = "font-serif-text font-[650] text-ink"
@@ -85,6 +86,7 @@ export function FormCard({
   children,
   className,
   labelledBy,
+  mark,
 }: {
   title: ReactNode
   description?: ReactNode
@@ -93,15 +95,27 @@ export function FormCard({
   children: ReactNode
   className?: string
   labelledBy?: string
+  /**
+   * When the card itself is one field (a list of ingredient rows, of steps,
+   * a photo), its title carries the mark and stands as the label of the
+   * unlabelled controls inside (PRO-1103).
+   */
+  mark?: FieldMarkProps
 }) {
   return (
     <section
       aria-labelledby={labelledBy}
+      data-field-group={mark ? "" : undefined}
       className={cn("rounded-[20px] border border-border-soft bg-paper p-4 sm:p-5 lg:p-6", className)}
     >
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id={labelledBy} className={cn(FORM_TITLE, "text-[20px] leading-tight lg:text-[22px]")}>
+        <h2
+          id={labelledBy}
+          data-field-group-label={mark ? "" : undefined}
+          className={cn(FORM_TITLE, "text-[20px] leading-tight lg:text-[22px]")}
+        >
           {title}
+          {mark && <FieldMark {...mark} />}
         </h2>
         {action}
       </div>
@@ -111,7 +125,10 @@ export function FormCard({
   )
 }
 
-/** One field inside a card: label + control (+ hint / error). */
+/**
+ * One field inside a card: label + control (+ hint / error). The label always
+ * carries its mark, `required` or `optional` (PRO-1103).
+ */
 export function Field({
   label,
   htmlFor,
@@ -119,6 +136,9 @@ export function Field({
   error,
   children,
   className,
+  required,
+  optional,
+  plural,
 }: {
   label: ReactNode
   htmlFor?: string
@@ -126,15 +146,18 @@ export function Field({
   error?: ReactNode
   children: ReactNode
   className?: string
-}) {
+} & FieldMarkProps) {
+  const mark = (required ? { required } : { optional, plural }) as FieldMarkProps
   return (
     <div className={className}>
       {htmlFor ? (
-        <label htmlFor={htmlFor} className={LABEL}>
+        <FieldLabel htmlFor={htmlFor} className={LABEL} {...mark}>
           {label}
-        </label>
+        </FieldLabel>
       ) : (
-        <div className={LABEL}>{label}</div>
+        <FieldLabel as="div" className={LABEL} {...mark}>
+          {label}
+        </FieldLabel>
       )}
       {hint && <p className={cn(HINT, "mt-1")}>{hint}</p>}
       <div className="mt-2">{children}</div>
@@ -238,6 +261,7 @@ export function IngredientRowFields({
   hint?: string | null
 }) {
   const label = selected?.name ?? defaultText ?? ""
+  const noteId = useId()
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1">
@@ -297,16 +321,20 @@ export function IngredientRowFields({
         </button>
       </div>
       {onNote && (
-        <div className="pr-12">
-        <input
-          type="text"
-          value={note ?? ""}
-          onChange={(e) => onNote(e.target.value)}
-          placeholder="Nota (opcional): en lomos, picada…"
-          aria-label={label ? `Nota de ${label}` : "Nota del ingrediente"}
-          maxLength={200}
-          className={fieldClass(false, "text-[14px]")}
-        />
+        <div className="flex items-center gap-2 pr-12">
+          <FieldLabel htmlFor={noteId} optional className="shrink-0 text-[12px] text-ink-muted">
+            Nota
+          </FieldLabel>
+          <input
+            id={noteId}
+            type="text"
+            value={note ?? ""}
+            onChange={(e) => onNote(e.target.value)}
+            placeholder="en lomos, picada…"
+            aria-label={label ? `Nota de ${label} (opcional)` : "Nota del ingrediente (opcional)"}
+            maxLength={200}
+            className={fieldClass(false, "min-w-0 text-[14px]")}
+          />
         </div>
       )}
       {hint && <p className="text-[12px] italic text-terracotta-deep">{hint}</p>}

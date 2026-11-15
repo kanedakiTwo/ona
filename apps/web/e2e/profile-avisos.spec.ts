@@ -19,7 +19,7 @@ test('profile → Avisos: each alert, where it arrives, and a switch that saves'
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   await page.getByTestId('profile-avisos-link').click()
   await expect(page).toHaveURL(/\/profile\/avisos/)
   await expect(page.getByRole('heading', { name: /Qué te llega y por dónde/ })).toBeVisible()

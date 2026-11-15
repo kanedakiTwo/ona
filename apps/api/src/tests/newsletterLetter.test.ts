@@ -274,6 +274,7 @@ function editor(opts: { now?: () => Date; proofStatus?: EmailResult['status'] } 
         repo,
         drafts,
         adminAuth: [asAdmin],
+        recommendationAuth: asAdmin,
         audit: audit as any,
         adminEmail: async (id) => (id === ADMIN ? 'Miguel@Example.com' : null),
         makeDeps: (urls) => ({ ...deps(repo, { sendOne, sendBatch, now: () => clock() }), ...urls }),

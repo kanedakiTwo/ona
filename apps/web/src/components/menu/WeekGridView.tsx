@@ -76,6 +76,8 @@ import { AddDishSheet } from "@/components/menu/AddDishSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { NoteEditor } from "@/components/menu/NoteEditor"
 import { RecipeCover } from "@/components/menu/RecipeCover"
+import { NoDishSheets, type NoDishSheet } from "@/components/menu/NoDishSheets"
+import type { DishPayload } from "@/components/menu/MealOptions"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -125,12 +127,14 @@ interface Props {
   onRemove?: (day: number, meal: MealKey) => void
   /** "+ Añadir" en slot vacío → opens RecipePickerSheet inline → server replaces. */
   onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  /** «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177). Rejects when nothing fits. */
+  onFillAuto?: (day: number, meal: MealKey, dishType: string | null) => Promise<unknown>
   /** Elegir receta en slot lleno → opens RecipePickerSheet inline → server replaces. */
   onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
   /** Bloquear/Desbloquear slot — same toggle as Vista día. */
   onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
   /** Añadir plato extra al slot (multi-dish) — opens AddDishSheet. */
-  onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  onAddDish?: (day: number, meal: MealKey, payload: DishPayload) => void
   /** Aleatorio que **añade** un plato adicional al slot (no reemplaza el primero). */
   onAddRandomDish?: (day: number, meal: MealKey) => void
   /** Edit the text of a note dish in place. Persists via `patchDish`. */
@@ -164,6 +168,7 @@ export function WeekGridView({
   onBan,
   onRemove,
   onAddRecipe,
+  onFillAuto,
   onPickRecipe,
   onToggleLock,
   onAddDish,
@@ -272,6 +277,7 @@ export function WeekGridView({
               onBan={onBan}
               onRemove={onRemove}
               onAddRecipe={onAddRecipe}
+              onFillAuto={onFillAuto}
               onPickRecipe={onPickRecipe}
               onToggleLock={onToggleLock}
               onAddDish={onAddDish}
@@ -315,6 +321,7 @@ function DaySection({
   onBan,
   onRemove,
   onAddRecipe,
+  onFillAuto,
   onPickRecipe,
   onToggleLock,
   onAddDish,
@@ -342,9 +349,11 @@ function DaySection({
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
   onRemove?: (day: number, meal: MealKey) => void
   onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  /** «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177). Rejects when nothing fits. */
+  onFillAuto?: (day: number, meal: MealKey, dishType: string | null) => Promise<unknown>
   onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
   onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
-  onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  onAddDish?: (day: number, meal: MealKey, payload: DishPayload) => void
   onAddRandomDish?: (day: number, meal: MealKey) => void
   onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
   onRemoveDish?: (day: number, meal: MealKey, position: number) => void
@@ -463,6 +472,7 @@ function DaySection({
                   onBan={onBan}
                   onRemove={onRemove}
                   onAddRecipe={onAddRecipe}
+                  onFillAuto={onFillAuto}
                   onPickRecipe={onPickRecipe}
                   onToggleLock={onToggleLock}
                   onAddDish={onAddDish}
@@ -493,6 +503,7 @@ function SlotRow({
   onBan,
   onRemove,
   onAddRecipe,
+  onFillAuto,
   onPickRecipe,
   onToggleLock,
   onAddDish,
@@ -511,9 +522,11 @@ function SlotRow({
   onBan?: (day: number, meal: MealKey, recipeId: string) => void
   onRemove?: (day: number, meal: MealKey) => void
   onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
+  /** «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177). Rejects when nothing fits. */
+  onFillAuto?: (day: number, meal: MealKey, dishType: string | null) => Promise<unknown>
   onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
   onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
-  onAddDish?: (day: number, meal: MealKey, payload: { kind: 'recipe'; recipeId: string } | { kind: 'note'; text: string }) => void
+  onAddDish?: (day: number, meal: MealKey, payload: DishPayload) => void
   onAddRandomDish?: (day: number, meal: MealKey) => void
   onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
   onRemoveDish?: (day: number, meal: MealKey, position: number) => void
@@ -524,7 +537,7 @@ function SlotRow({
     data: { dayIndex, meal },
   })
   const { label: mealLabel, Icon: MealIcon } = MEAL_META[meal]
-  const [emptyPickerOpen, setEmptyPickerOpen] = useState(false)
+  const [emptySheet, setEmptySheet] = useState<NoDishSheet>(null)
   const [replacePickerOpen, setReplacePickerOpen] = useState(false)
   const [addDishOpen, setAddDishOpen] = useState(false)
   const [confirm, setConfirm] = useState<null | "ban" | "remove">(null)
@@ -535,17 +548,19 @@ function SlotRow({
   // A leftover is part of its source batch: no «N pax» chip (PRO-75).
   const slotServingsOverride = firstRecipe?.variant === "leftover" ? null : slot?.servings ?? null
 
-  // Empty slot (no dishes at all) — keep the dashed "+ Añadir" affordance.
+  // Empty slot (no dishes at all) — the dashed "+ Añadir" opens «Sin plato todavía» (PRO-1177).
   if (dishes.length === 0) {
+    const dayName = DAY_NAMES[dayIndex].toLowerCase()
     return (
       <>
       <button
         ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
         type="button"
         onClick={() => {
-          if (onAddRecipe) setEmptyPickerOpen(true)
+          if (onAddRecipe) setEmptySheet("actions")
           else onSelectDay(dayIndex)
         }}
+        aria-haspopup={onAddRecipe ? "dialog" : undefined}
         className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:border lg:border-dashed lg:border-[#DDD6C5] lg:bg-[#FFFEFA]/40 ${
           isOver ? "bg-[#1A1612]/10 lg:border-[#1A1612]/40 lg:bg-[#1A1612]/5" : "hover:bg-[#F2EDE0] lg:hover:border-[#1A1612]/40 lg:hover:bg-[#F2EDE0]/40"
         }`}
@@ -564,16 +579,24 @@ function SlotRow({
           </p>
         </div>
       </button>
-      <RecipePickerSheet
-        open={emptyPickerOpen}
-        onClose={() => setEmptyPickerOpen(false)}
-        title={`${mealLabel} del día`}
-        subtitle="Sin plato"
-        onPick={(picked) => {
-          if (onAddRecipe) onAddRecipe(dayIndex, meal, picked.id)
-          setEmptyPickerOpen(false)
-        }}
-      />
+      {onAddRecipe && (
+        <NoDishSheets
+          open={emptySheet}
+          setOpen={setEmptySheet}
+          // A meal the day doesn't have at all («no hay») has nothing to remove.
+          where={slot ? "vacio" : "no_hay"}
+          meal={meal}
+          day={dayIndex}
+          eyebrow={`${mealLabel} · ${dayName}`}
+          pickerTitle={`${mealLabel} del ${dayName}`}
+          showWeekTypeLink
+          onPick={(recipeId) => onAddRecipe(dayIndex, meal, recipeId)}
+          onPickAuto={(dishType) => onFillAuto?.(dayIndex, meal, dishType) ?? Promise.resolve()}
+          onNote={(text) => onAddDish?.(dayIndex, meal, { kind: "note", text })}
+          onDone={(recipeId, place) => onAddDish?.(dayIndex, meal, { kind: "recipe", recipeId, variant: place })}
+          onRemove={slot && onRemove ? () => onRemove(dayIndex, meal) : undefined}
+        />
+      )}
       </>
     )
   }

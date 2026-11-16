@@ -84,6 +84,7 @@ import type { NoDishSheet } from "./NoDishSheets"
 import { WeekTypeDayLine } from "./WeekTypeDayLine"
 import { MealOptionsButton, MealOptionsSheets, slotRecipeHref, useMealOptions } from "./MealOptions"
 import { trackSheetAction } from "@/lib/usageEvents"
+import { useWeekTypeHint, WeekTypeHintLine } from "./WeekTypeHint"
 
 interface Props {
   header: ReactNode
@@ -663,6 +664,7 @@ function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
   const meal = mealLabel(s.meal)
   const dayName = weekdayName(d)
   const weekType = weekTypeChipOf(s.slot.dishes)
+  const hint = useWeekTypeHint(d, s.meal)
 
   // The sheets render as a sibling of the drag wrapper, never inside it:
   // React events bubble out of portals, so a keystroke in the recipe
@@ -688,11 +690,15 @@ function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
           disabled={readOnly}
           onClick={() => ctl.setOpen("actions")}
           {...stopKeys}
-          aria-label={`${meal} del ${dayName}: ${readOnly ? "sin plato" : "añadir un plato"}`}
-          className={`flex ${CELL_H} w-full flex-col items-center justify-center gap-1 rounded-[12px] border border-dashed border-border bg-paper/60 text-[13px] text-ink-mid hover:border-ink focus-visible:outline-2 focus-visible:outline-ink disabled:cursor-default`}
+          aria-label={`${meal} del ${dayName}: ${readOnly ? "sin plato" : "añadir un plato"}${hint ? `. Tu semana tipo: ${hint.label}` : ""}`}
+          className={`flex ${CELL_H} w-full flex-col items-center justify-center gap-1 rounded-[12px] border border-dashed border-border bg-paper/60 px-1.5 text-[13px] text-ink-mid hover:border-ink focus-visible:outline-2 focus-visible:outline-ink disabled:cursor-default`}
         >
-          {!readOnly && <Plus size={16} />}
-          <span>{readOnly ? "Sin plato" : "Añadir"}</span>
+          {/* PRO-1233: a week with no dishes shows what its semana tipo puts here. */}
+          {hint && <WeekTypeHintLine hint={hint} size={20} stacked className="text-[12px]" />}
+          <span className="inline-flex items-center gap-1">
+            {!readOnly && <Plus size={hint ? 13 : 16} />}
+            <span>{readOnly ? "Sin plato" : "Añadir"}</span>
+          </span>
         </button>
       ) : (
         <button

@@ -76,12 +76,9 @@ import { AddDishSheet } from "@/components/menu/AddDishSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { NoteEditor } from "@/components/menu/NoteEditor"
 import { RecipeCover } from "@/components/menu/RecipeCover"
-<<<<<<< bdeabcbe6ad4c761b88b016794d07c7490b00f69
 import { useWeekTypeHint, WeekTypeHintLine } from "@/components/menu/WeekTypeHint"
-=======
 import { NoDishSheets, type NoDishSheet } from "@/components/menu/NoDishSheets"
 import type { DishPayload } from "@/components/menu/MealOptions"
->>>>>>> 861ce7a4a1eaabebdf1c34f518d035c0fe4998e7
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 

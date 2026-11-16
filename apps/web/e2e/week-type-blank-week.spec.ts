@@ -53,9 +53,11 @@ test.describe('escritorio', () => {
     // A free slot says so; «Añadir» opens the same sheet as always.
     await expect(page.locator(`[data-week-cell="${SATURDAY}-dinner"]`).getByTestId('week-type-hint')).toHaveText('Cualquier receta')
     await cell.getByRole('button', { name: /Comida del sábado/ }).click()
-    const sheet = page.getByRole('heading', { name: 'Añadir plato', level: 3 })
+    // PRO-1177: «Sin plato todavía», the empty meal's sheet.
+    const sheet = page.getByRole('dialog', { name: 'Sin plato todavía' })
     await expect(sheet).toBeVisible()
-    await page.getByRole('button', { name: 'Cerrar', exact: true }).click()
+    await expect(sheet).toContainText('Comida · sábado')
+    await page.keyboard.press('Escape')
     await expect(sheet).toHaveCount(0)
     await fill(page)
     await expect(cell).toContainText('Legumbres · semana tipo', { timeout: 20_000 })

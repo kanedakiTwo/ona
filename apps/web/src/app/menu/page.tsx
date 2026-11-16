@@ -26,7 +26,8 @@ import { AfinaNoticeCard } from "@/components/taste/AfinaNoticeCard"
 import { useTasteStatus } from "@/hooks/useTaste"
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw, Share2 } from "lucide-react"
+import Link from "next/link"
+import { CalendarRange, ChevronLeft, ChevronRight, MoreHorizontal, Share2 } from "lucide-react"
 import type { DayMenu, MealSlot } from "@ona/shared"
 import { menuShareText, weekTypeOptionLabel } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
@@ -35,7 +36,6 @@ import { mealWhen, weekTypeSavedLine, type WeekTypeApplied } from "@/lib/mealShe
 import { mealLabel } from "@/lib/labels"
 import { blankWeekCopy, WEEK_TYPE_HREF } from "@/lib/blankWeek"
 import { useWeekType } from "@/hooks/useWeekType"
-import Link from "next/link"
 import {
   useMenu,
   useGenerateMenu,
@@ -65,7 +65,7 @@ import { haptic } from "@/lib/pwa/haptics"
 import { DAY_PARAM, dayFromSearch, menuRecipeHref } from "@/lib/menuReturn"
 import { recordMenuVisit } from "@/lib/pwa/installPrompt"
 import { share } from "@/lib/pwa/share"
-import { trackUsage } from "@/lib/usageEvents"
+import { trackSheetAction, trackUsage } from "@/lib/usageEvents"
 import { absentMeals, batchServings, dateOfDay, dayHeading, feedsLeftovers, missingMeals, orderedSlots, splitDay, taperSourceOf, weekHasDishes, weekRangeLabel, weekdayName, type MealKey } from "@/lib/menuDay"
 import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
@@ -298,7 +298,7 @@ export default function MenuPage() {
   function handleGenerate() {
     if (!user) return
     haptic.medium()
-    // Only the blank week asks the questions; «Regenerar semana» sends none.
+    // Only the blank week asks the questions; «Rehacer la semana… → Con mi semana tipo» sends none.
     const plan = !menu || blankWeek ? weekPlan : undefined
     generateMenu.mutate({ userId: user.id, weekStart, ...(plan ? { weekPlan: plan } : {}) })
   }
@@ -580,24 +580,13 @@ export default function MenuPage() {
     <WeekActionsSheet
       open={weekSheetOpen}
       onClose={() => setWeekSheetOpen(false)}
-      weekLabel={weekLabel(weekStart)}
       weekRange={weekRange}
       printHref={`/menu/imprimir?week=${weekStart}`}
-      isCurrentWeek={isCurrentWeek}
-      isPastWeek={isPastWeek}
+      weeksFromNow={delta}
       hasMenu={Boolean(menu)}
       isGenerating={generateMenu.isPending}
       viewMode={viewMode}
-      showViewToggle={!isDesktop}
-      onPrevWeek={() => {
-        haptic.light()
-        setWeekStart(shiftWeek(weekStart, -1))
-      }}
-      onNextWeek={() => {
-        haptic.light()
-        setWeekStart(shiftWeek(weekStart, 1))
-      }}
-      onThisWeek={() => setWeekStart(getWeekStart())}
+      desktop={isDesktop}
       onRegenerate={handleGenerate}
       onRegenerateFavorites={handleGenerateFavorites}
       onShare={handleShareWeek}
@@ -822,17 +811,14 @@ export default function MenuPage() {
               <Share2 size={15} /> Compartir semana
             </button>
           )}
-          {!isPastWeek && menu && (
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={generateMenu.isPending}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink disabled:opacity-50"
-            >
-              <RefreshCw size={15} className={generateMenu.isPending ? "animate-spin" : ""} />
-              Regenerar semana
-            </button>
-          )}
+          {/* PRO-1179: «Semana tipo» in place of «Regenerar semana» (now «Rehacer la semana…» in the «···»). */}
+          <Link
+            href={WEEK_TYPE_HREF}
+            onClick={() => trackSheetAction("semana", "semana_tipo")}
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink"
+          >
+            <CalendarRange size={15} /> Semana tipo
+          </Link>
           {moreButton}
         </div>
       </div>

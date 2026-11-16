@@ -78,17 +78,20 @@ export const MENU_SHEET_ACTIONS = {
   no_hay: NO_DISH_SHEET_ACTIONS,
   // PRO-1177: «Añadir comida» → la comida → «Sin plato todavía» (`no_hay`); ya no lleva sus tápers sueltos.
   dia: ['anadir_comida', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
+  // PRO-1179: no ‹ › nor «Volver a esta semana» (the header has them);
+  // `rehacer` opens «Rehacer la semana…», where `regenerar` is «Con mi semana
+  // tipo», `favoritas` «Solo con mis favoritas» and `vaciar` «Vaciarla y
+  // rellenar a mano». `semana_tipo` is also the desktop header button.
   semana: [
-    'semana_anterior',
-    'semana_siguiente',
-    'volver_semana',
-    'regenerar',
-    'favoritas',
-    'compartir',
-    'imprimir',
+    'semana_tipo',
     'vista_semana',
     'vista_dia',
+    'compartir',
+    'imprimir',
     'historial',
+    'rehacer',
+    'regenerar',
+    'favoritas',
     'vaciar',
   ],
   semana_fila: ['elegir_receta', 'cambiar_azar', 'anadir_plato', 'fijar', 'desfijar', 'vetar', 'quitar_comida'],

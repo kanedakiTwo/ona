@@ -13,17 +13,18 @@
  * `services/accountAccess.ts`). TODO(billing): per-plan caps (PRO-15).
  */
 import Stripe from 'stripe'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import {
   LAUNCH_DATE,
   MIN_DAYS_CARD_TO_CHARGE,
   TRIAL_DAYS,
-  PAID_ACCESS_STATUSES,
   accountAccess,
   euros,
   founderOfferStands,
   founderPriceIfSubscribing,
+  hasPaidAccess,
   isFoundingHousehold,
+  paymentDueBy,
   planByKey,
   PLAN_KEYS,
   BILLING_PERIODS,
@@ -98,6 +99,11 @@ export interface SubscriptionRow {
   founderPrice: boolean
   /** When the legal notice before the first charge went out. Ours only: the webhook never writes it. */
   chargeNoticeAt?: Date | null
+  /** PRO-386: Stripe's `cancellation_details.reason` and the portal's category (`feedback`). Never the free comment (D-094). */
+  cancelReason?: string | null
+  cancelFeedback?: string | null
+  /** PRO-386: since when it is `past_due`. Ours: the repo sets it on the first `past_due` and clears it on any other status. */
+  pastDueSince?: Date | null
 }
 
 export interface CheckoutInput {
@@ -203,6 +209,9 @@ export function rowFromStripeSubscription(sub: Stripe.Subscription): Subscriptio
     cancelAtPeriodEnd: !!sub.cancel_at_period_end || !!sub.cancel_at,
     canceledAt: toDate(sub.canceled_at),
     founderPrice: meta.founder_price === 'true',
+    // PRO-386: why it was cancelled. `comment` (free text) is left out on purpose (D-094).
+    cancelReason: sub.cancellation_details?.reason ?? null,
+    cancelFeedback: sub.cancellation_details?.feedback ?? null,
   }
 }
 
@@ -241,7 +250,8 @@ export function billingStateFor(
   },
 ): BillingState {
   const live = row && LIVE_STATUSES.includes(row.status) ? row : null
-  const paid = !!row && PAID_ACCESS_STATUSES.includes(row.status)
+  // PRO-386: a payment that failed more than 7 days ago no longer gives the plan.
+  const paid = !!row && hasPaidAccess(row.status, row.pastDueSince, opts.now)
   const householdCreatedAt = opts.householdCreatedAt ?? opts.userCreatedAt ?? null
   const trialDays = opts.trialDays
   const access = accountAccess({ householdCreatedAt, paid, now: opts.now, trialDays })
@@ -273,6 +283,7 @@ export function billingStateFor(
             isChargeNoticeDue(live, opts.now) && live.trialEnd
               ? { at: live.trialEnd.toISOString(), amount: chargeAmount(live.plan, live.period) }
               : null,
+          paymentDueBy: paymentDueBy(live.status, live.pastDueSince)?.toISOString() ?? null,
         }
       : null,
   }
@@ -303,6 +314,9 @@ export function createDbSubscriptionRepo(db: typeof defaultDb = defaultDb): Subs
     canceledAt: r.canceledAt,
     founderPrice: r.founderPrice,
     chargeNoticeAt: r.chargeNoticeAt,
+    cancelReason: r.cancelReason,
+    cancelFeedback: r.cancelFeedback,
+    pastDueSince: r.pastDueSince,
   })
   return {
     async latestForHousehold(householdId) {
@@ -318,7 +332,15 @@ export function createDbSubscriptionRepo(db: typeof defaultDb = defaultDb): Subs
       const now = new Date()
       await db
         .insert(subscriptions)
-        .values({ ...row, chargeNoticeAt: row.chargeNoticeAt ?? null, createdAt: now, updatedAt: now })
+        .values({
+          ...row,
+          chargeNoticeAt: row.chargeNoticeAt ?? null,
+          cancelReason: row.cancelReason ?? null,
+          cancelFeedback: row.cancelFeedback ?? null,
+          pastDueSince: row.status === 'past_due' ? (row.pastDueSince ?? now) : null,
+          createdAt: now,
+          updatedAt: now,
+        })
         .onConflictDoUpdate({
           target: subscriptions.stripeSubscriptionId,
           set: {
@@ -331,6 +353,13 @@ export function createDbSubscriptionRepo(db: typeof defaultDb = defaultDb): Subs
             canceledAt: row.canceledAt,
             stripeCustomerId: row.stripeCustomerId,
             founderPrice: row.founderPrice,
+            cancelReason: row.cancelReason ?? null,
+            cancelFeedback: row.cancelFeedback ?? null,
+            // PRO-386: the first `past_due` starts the 7 days, a later one keeps them, any other status clears them.
+            pastDueSince:
+              row.status === 'past_due'
+                ? sql`COALESCE(${subscriptions.pastDueSince}, ${(row.pastDueSince ?? now).toISOString()}::timestamptz)`
+                : null,
             updatedAt: now,
           },
         })
@@ -417,13 +446,33 @@ export function createStripeGateway(): BillingGateway {
   }
 }
 
+/** PRO-386: an invoice of one of our subscriptions whose payment failed, with the subscription as Stripe has it now. */
+export interface PaymentFailure {
+  invoiceId: string
+  row: SubscriptionRow
+}
+
+/** The subscription an invoice belongs to (API 2025-03-31+: `parent.subscription_details`; before, `subscription`). */
+export function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  const sub = invoice.parent?.subscription_details?.subscription ?? (invoice as unknown as { subscription?: string | Stripe.Subscription | null }).subscription
+  if (!sub) return null
+  return typeof sub === 'string' ? sub : sub.id
+}
+
 /**
  * Webhook → our table. Events can arrive late or out of order, so we never
  * trust the payload's copy: we take the subscription id and read the current
  * subscription from Stripe. Anything else is acknowledged and ignored.
+ * `invoice.payment_failed` (PRO-386) also saves the subscription (now
+ * `past_due`) and then hands the failure to `onPaymentFailed` (the notice,
+ * once per invoice: `services/paymentFailures.ts`).
  */
-export async function handleBillingEvent(event: Stripe.Event, deps: { repo: SubscriptionRepo; gateway: BillingGateway }): Promise<'saved' | 'ignored'> {
+export async function handleBillingEvent(
+  event: Stripe.Event,
+  deps: { repo: SubscriptionRepo; gateway: BillingGateway; onPaymentFailed?: (f: PaymentFailure) => Promise<unknown> },
+): Promise<'saved' | 'ignored'> {
   let id: string | null = null
+  let failedInvoice: string | null = null
   switch (event.type) {
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
@@ -438,6 +487,12 @@ export async function handleBillingEvent(event: Stripe.Event, deps: { repo: Subs
       if (session.mode === 'subscription' && sub) id = typeof sub === 'string' ? sub : sub.id
       break
     }
+    case 'invoice.payment_failed': {
+      const invoice = event.data.object as Stripe.Invoice
+      id = invoiceSubscriptionId(invoice)
+      failedInvoice = invoice.id ?? null
+      break
+    }
     default:
       return 'ignored'
   }
@@ -445,6 +500,7 @@ export async function handleBillingEvent(event: Stripe.Event, deps: { repo: Subs
   const row = rowFromStripeSubscription(await deps.gateway.retrieveSubscription(id))
   if (!row) return 'ignored'
   await deps.repo.upsert(row)
+  if (failedInvoice && deps.onPaymentFailed) await deps.onPaymentFailed({ invoiceId: failedInvoice, row })
   return 'saved'
 }
 

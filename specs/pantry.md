@@ -104,4 +104,4 @@ Numeric rounding uses `Math.round(x * 1000) / 1000` to dodge 0.999… artefacts 
 - `apps/web/src/hooks/usePantry.ts` — TanStack hooks
 - `apps/web/src/components/pantry/PantryManager.tsx` — management UI, shown in `apps/web/src/app/cocinar/page.tsx`
 - `apps/web/src/app/profile/pantry/page.tsx` — redirect to `/cocinar#despensa`
-- `apps/web/src/app/profile/page.tsx` — link button
+- `apps/web/src/app/cocinar/page.tsx` — the pantry's only home (Perfil has no link to it since PRO-1202)

@@ -73,8 +73,8 @@ describe('recipe visibility coverage', () => {
     expect(read('services/cookNow/load.ts')).toContain('loadMatchableRecipes(userId)')
     expect(read('services/cookNow/load.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
     expect(read('services/advisor.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
-    // manual pick of a recipe for a slot (meal + course variants).
-    expect(read('routes/menus.ts').match(/eq\(recipes\.id, manualRecipeId\), visibleRecipeWhere/g)?.length).toBe(2)
+    // manual pick of a recipe for a slot (meal + course variants) and for one dish («Cambiar este plato», PRO-1176).
+    expect(read('routes/menus.ts').match(/eq\(recipes\.id, manualRecipeId\), visibleRecipeWhere/g)?.length).toBe(3)
   })
 
   it('the chain extractor catches an unscoped bulk load', () => {

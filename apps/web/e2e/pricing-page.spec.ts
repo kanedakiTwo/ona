@@ -30,12 +30,13 @@ test('pricing page: Gratis, Esencial recommended and Plus, monthly/yearly, what 
   await expect(esencial).toContainText('Recomendado')
   await expect(plus).not.toContainText('Recomendado')
   await expect(page.getByTestId('pricing-price-esencial')).toHaveText('4,99 €/mes')
-  await expect(page.getByTestId('pricing-price-plus')).toHaveText('8,99 €/mes')
+  await expect(page.getByTestId('pricing-price-plus')).toHaveText('9,99 €/mes')
 
   await page.getByTestId('period-anual').click()
   await expect(page.getByTestId('pricing-price-esencial')).toHaveText('49,99 €/año')
-  await expect(page.getByTestId('pricing-price-plus')).toHaveText('59,99 €/año')
+  await expect(page.getByTestId('pricing-price-plus')).toHaveText('99,99 €/año')
   await expect(esencial).toContainText('Sale a 4,17 €/mes')
+  await expect(plus).toContainText('Sale a 8,33 €/mes')
 
   // Logged out → the waitlist.
   await expect(page.getByTestId('cta-esencial')).toHaveAttribute('href', '/#lista-de-espera')

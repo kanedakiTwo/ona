@@ -76,9 +76,12 @@ import {
   ExtraDishLines,
   MealHero,
   SkippedDay,
-  type AbsentSheet,
+  SlotChips,
+  type AbsentMeals,
   type SlotPropsFn,
 } from "./DayMeals"
+import type { NoDishSheet } from "./NoDishSheets"
+import { WeekTypeDayLine } from "./WeekTypeDayLine"
 import { MealOptionsButton, MealOptionsSheets, slotRecipeHref, useMealOptions } from "./MealOptions"
 import { trackSheetAction } from "@/lib/usageEvents"
 import { useWeekTypeHint, WeekTypeHintLine } from "./WeekTypeHint"
@@ -97,11 +100,16 @@ interface Props {
   onMoveSlot: (p: { fromDay: number; fromMeal: MealKey; toDay: number; toMeal: MealKey }) => void
   onUnskipDay: (day: number) => void
   onSkipDay: (day: number) => void
-  /** With `recipeId`, that recipe; without, one the matcher picks (or empty when nothing fits). */
-  onAddMeal: (day: number, meal: MealKey, recipeId?: string) => void
-  /** A missing meal as a note («Usar "<lo escrito>" como plato»). */
-  onAddNote?: (day: number, meal: MealKey, text: string) => void
-  onAddFreezer?: (day: number, meal: MealKey, recipeId: string, variant: "freezer" | "fridge") => void
+  /** A meal the day lacks, with that recipe («Elegir receta» in «Sin plato todavía»). */
+  onAddMeal: (day: number, meal: MealKey, recipeId: string) => void
+  /** «Que elija Mimoia» for a meal the day lacks (PRO-1177), of the chip's type if one is on. Rejects when nothing fits. */
+  onAddMealAuto: (day: number, meal: MealKey, dishType: string | null) => Promise<unknown>
+  /** A missing meal as a note («Escribir un plato», «Usar "<lo escrito>" como plato»). */
+  onAddNote: (day: number, meal: MealKey, text: string) => void
+  /** «Ya lo tengo hecho» → «Nevera» / «Congelador». */
+  onAddFreezer: (day: number, meal: MealKey, recipeId: string, variant: "freezer" | "fridge") => void
+  /** «¿Todos los viernes? Ponlo en tu semana tipo» in «Sin plato todavía». */
+  weekTypeLink?: boolean
   /** Rendered under the week (vetoes panel, pantry card). */
   footer?: ReactNode
 }
@@ -142,7 +150,6 @@ export function MenuDesktop(p: Props) {
   const { featured, rest } = splitDay(day)
   const slotProps = p.slotPropsFor(p.selectedDay)
   const missing = DAY_MEAL_ORDER.filter((m) => !day || day[m] == null)
-  const dayName = weekdayName(p.selectedDay)
   const absent = absentMeals(p.days, p.selectedDay, p.skippedDays)
 
   function onDragStart(e: DragStartEvent) {
@@ -184,16 +191,7 @@ export function MenuDesktop(p: Props) {
       if (!absent.includes(m)) return null
       return (
         <SlotDrop key={m} scope="hero" d={p.selectedDay} meal={m} className="rounded-2xl">
-          <AbsentMealCard
-            meal={m}
-            dayName={dayName}
-            isAdding={p.isAddingMeal}
-            onAdd={(meal, recipeId) => p.onAddMeal(p.selectedDay, meal, recipeId)}
-            onAddNote={p.onAddNote ? (meal, text) => p.onAddNote?.(p.selectedDay, meal, text) : undefined}
-            onAddFreezer={p.onAddFreezer ? (meal, recipeId, variant) => p.onAddFreezer?.(p.selectedDay, meal, recipeId, variant) : undefined}
-            readOnly={p.readOnly}
-            compact
-          />
+          <AbsentMealCard meal={m} {...absentFor(p, p.selectedDay)} readOnly={p.readOnly} compact />
         </SlotDrop>
       )
     })
@@ -211,6 +209,7 @@ export function MenuDesktop(p: Props) {
       >
         {/* Hero row */}
         <div ref={heroRef}>
+          {!isSkipped && <WeekTypeDayLine weekStart={p.weekStart} day={p.selectedDay} className="-mt-3 mb-2" />}
           {isSkipped ? (
             <SkippedDay readOnly={p.readOnly} onUnskip={() => p.onUnskipDay(p.selectedDay)} />
           ) : (
@@ -252,13 +251,10 @@ export function MenuDesktop(p: Props) {
                 {!p.readOnly && (
                   <div className="-mx-4">
                     <DayFooter
-                      dayName={dayName}
                       missing={missing}
                       canSkip={orderedSlots(day).length > 0}
-                      isAdding={p.isAddingMeal}
-                      onAddMeal={(m) => p.onAddMeal(p.selectedDay, m)}
+                      absent={absentFor(p, p.selectedDay)}
                       onSkip={() => p.onSkipDay(p.selectedDay)}
-                      onAddFreezer={p.onAddFreezer ? (m, id, v) => p.onAddFreezer!(p.selectedDay, m, id, v) : undefined}
                     />
                   </div>
                 )}
@@ -428,6 +424,8 @@ function SideMeal({
         <span className={`font-serif-text font-[650] leading-[1.1] text-ink ${big ? "text-[26px]" : "text-[18px]"}`}>
           {title}
         </span>
+        {/* «Del congelador · no suma a la compra», «Solo hoy: 4»… as on mobile (PRO-1177); the lock is in the eyebrow. */}
+        <SlotChips ctx={{ ...props.ctx, isLocked: false }} first={first} />
       </span>
     </>
   )
@@ -559,10 +557,10 @@ function DayColumn({ d, day, meals, ...p }: Props & { d: number; day: DayMenu; m
                       trackSheetAction("dia", "reactivar_dia")
                       p.onUnskipDay(d)
                     }}
-                    aria-label={`Reactivar el ${dayName}`}
+                    aria-label={`Volver a cocinar el ${dayName}`}
                     className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-border bg-paper px-3 text-[12px] text-ink hover:border-ink focus-visible:outline-2 focus-visible:outline-ink"
                   >
-                    <RotateCcw size={12} /> Reactivar
+                    <RotateCcw size={12} /> Volver a cocinar
                   </button>
                 )}
               </div>
@@ -582,15 +580,28 @@ function DayColumn({ d, day, meals, ...p }: Props & { d: number; day: DayMenu; m
   )
 }
 
+/** What «Sin plato todavía» does for a meal day `d` lacks (the card, the «no hay» cell, «Añadir comida»). */
+function absentFor(p: Props, d: number): Omit<AbsentMeals, "meals"> {
+  return {
+    day: d,
+    dayName: weekdayName(d),
+    isAdding: p.isAddingMeal,
+    weekTypeLink: p.weekTypeLink,
+    onAdd: (meal, recipeId) => p.onAddMeal(d, meal, recipeId),
+    onAddAuto: (meal, dishType) => p.onAddMealAuto(d, meal, dishType),
+    onAddNote: (meal, text) => p.onAddNote(d, meal, text),
+    onAddFreezer: (meal, recipeId, variant) => p.onAddFreezer(d, meal, recipeId, variant),
+  }
+}
+
 /**
  * A meal the day doesn't have: a drop zone and, clicked, the same sheet as
  * the «El viernes no hay comida» card («Comida · viernes — Sin plato
- * todavía»: Elegir receta, Una al azar, Del congelador, Táper de la nevera),
- * without changing the day or the scroll (Miguel, 2026-11-10; until then it
- * showed the day and scrolled up to the hero).
+ * todavía», PRO-1177), without changing the day or the scroll (Miguel,
+ * 2026-11-10; until then it showed the day and scrolled up to the hero).
  */
 function AbsentCell({ d, meal, ...p }: Props & { d: number; meal: MealKey }) {
-  const [open, setOpen] = useState<AbsentSheet>(null)
+  const [open, setOpen] = useState<NoDishSheet>(null)
   const dayName = weekdayName(d)
   const label = mealLabel(meal)
   const cls = `flex ${CELL_H} w-full items-center justify-center rounded-[12px] border border-dashed border-border text-[13px] italic text-ink-muted`
@@ -616,16 +627,7 @@ function AbsentCell({ d, meal, ...p }: Props & { d: number; meal: MealKey }) {
         )}
       </SlotDrop>
       {!p.readOnly && (
-        <AbsentMealSheets
-          open={open}
-          setOpen={setOpen}
-          meal={meal}
-          dayName={dayName}
-          isAdding={p.isAddingMeal}
-          onAdd={(m, recipeId) => p.onAddMeal(d, m, recipeId)}
-          onAddNote={p.onAddNote ? (m, text) => p.onAddNote?.(d, m, text) : undefined}
-          onAddFreezer={p.onAddFreezer ? (m, recipeId, variant) => p.onAddFreezer?.(d, m, recipeId, variant) : undefined}
-        />
+        <AbsentMealSheets open={open} setOpen={setOpen} meal={meal} {...absentFor(p, d)} />
       )}
     </>
   )
@@ -686,7 +688,7 @@ function SlotTile({ d, s, slotProps, readOnly, onShow }: SlotCellProps) {
         <button
           type="button"
           disabled={readOnly}
-          onClick={() => ctl.setOpen("addDish")}
+          onClick={() => ctl.setOpen("actions")}
           {...stopKeys}
           aria-label={`${meal} del ${dayName}: ${readOnly ? "sin plato" : "añadir un plato"}${hint ? `. Tu semana tipo: ${hint.label}` : ""}`}
           className={`flex ${CELL_H} w-full flex-col items-center justify-center gap-1 rounded-[12px] border border-dashed border-border bg-paper/60 px-1.5 text-[13px] text-ink-mid hover:border-ink focus-visible:outline-2 focus-visible:outline-ink disabled:cursor-default`}

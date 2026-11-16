@@ -1,9 +1,9 @@
 /**
  * PRO-64: a restriction picked in onboarding is stored on the account
- * (`users.restrictions`), but /profile used to read only `user_settings`,
- * so "sin gluten" showed unticked and users thought it wasn't saved. The
- * profile now shows the union of both stores, and saving writes it to both
- * without dropping either. Mobile (390×844).
+ * (`users.restrictions`) and the profile shows it as saved. Since PRO-1203
+ * the allergies have one place: your row of «Quién come» in Perfil, which
+ * opens «Tus alergias y tu dieta» (the account, what the menu reads).
+ * Mobile (390×844).
  */
 
 import { test, expect, type Page } from '@playwright/test'
@@ -39,31 +39,45 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
 })
 
-test('the profile shows the onboarding restriction and saving keeps it in both places', async ({ page }) => {
+/** Perfil → your row of «Quién come» → «Cambiar alergias y dieta». */
+async function openMyAllergies(page: Page) {
+  await page.goto('/profile')
+  await page.getByTestId('who-eats').getByTestId('who-eats-row').first().click()
+  await expect(page).toHaveURL(/\/profile\/quien\/me$/, { timeout: 15_000 })
+  await page.getByRole('link', { name: 'Cambiar alergias y dieta' }).click()
+  await expect(page).toHaveURL(/\/profile\/casa\/alergias/, { timeout: 15_000 })
+}
+
+/** «Guardar» there; the first week already has dishes, so leave it as it is. Back on your row. */
+async function saveAndBack(page: Page) {
+  await page.getByRole('button', { name: /^guardar$/i }).click()
+  const keep = page.getByRole('button', { name: 'Dejar el menú tal cual' })
+  await keep.or(page.getByTestId('person-page')).first().waitFor({ timeout: 15_000 })
+  if (await keep.isVisible()) await keep.click()
+  await expect(page).toHaveURL(/\/profile\/quien\/me$/, { timeout: 15_000 })
+}
+
+test('the profile shows the onboarding restriction and changing it keeps it on the account', async ({ page }) => {
   test.setTimeout(90_000)
   await registerFreshUser(page)
   await onboardWithGlutenFree(page)
 
+  // In your row of «Quién come», as a chip.
   await page.goto('/profile')
-  // Shown as a selected chip (with its «Quitar» button), not as a "+ sin gluten" suggestion.
-  await expect(page.getByRole('button', { name: 'Quitar sin gluten' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('who-eats-row').first()).toContainText('sin gluten', { timeout: 15_000 })
 
-  // Add another one in the profile and save.
-  await page.getByRole('button', { name: /^vegetariano$/i }).click()
+  await openMyAllergies(page)
+  // Shown as a selected chip (with its «Quitar» button).
+  await expect(page.getByRole('button', { name: 'Quitar sin gluten' })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: 'vegetariano', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Quitar vegetariano' })).toBeVisible()
-  await page.getByRole('button', { name: /guardar/i }).click()
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  await saveAndBack(page)
 
   const s = await session(page)
   const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
   expect(account.restrictions).toEqual(['sin gluten', 'vegetariano'])
-  const settings = await (await page.request.get(`${API_URL}/user/${s.userId}/settings`, { headers: s.auth })).json()
-  expect(settings.template.preferences.restrictions).toEqual(['sin gluten', 'vegetariano'])
-
-  // After a reload both are still shown.
-  await page.reload()
-  await expect(page.getByRole('button', { name: 'Quitar sin gluten' })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('button', { name: 'Quitar vegetariano' })).toBeVisible()
+  await expect(page.getByTestId('person-restrictions')).toContainText('vegetariano', { timeout: 15_000 })
+  await expect(page.getByTestId('person-restrictions')).toContainText('sin gluten')
 })
 
 test('PRO-144: «sin alcohol» is a chip in onboarding and in the profile, and it is saved', async ({ page }) => {
@@ -89,18 +103,15 @@ test('PRO-144: «sin alcohol» is a chip in onboarding and in the profile, and i
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
 
   // In the profile: pick it and save.
-  await page.goto('/profile')
-  await page.getByRole('button', { name: /^sin alcohol$/i }).click()
+  await openMyAllergies(page)
+  await page.getByRole('button', { name: 'sin alcohol', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Quitar sin alcohol' })).toBeVisible()
-  await page.getByRole('button', { name: /guardar/i }).click()
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  await saveAndBack(page)
 
   const s = await session(page)
   const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
   expect(account.restrictions).toEqual(['sin gluten', 'sin alcohol'])
-
-  await page.reload()
-  await expect(page.getByRole('button', { name: 'Quitar sin alcohol' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('person-restrictions')).toContainText('sin alcohol', { timeout: 15_000 })
 })
 
 test('halal (2026-10-25) is a chip in onboarding and in the profile, and it is saved', async ({ page }) => {
@@ -109,19 +120,16 @@ test('halal (2026-10-25) is a chip in onboarding and in the profile, and it is s
   await onboardWithGlutenFree(page)
 
   // Onboarding offered it with the rest (the PRO-144 test walks that screen); here, the profile.
-  await page.goto('/profile')
+  await openMyAllergies(page)
   await expect(page.getByRole('button', { name: 'Quitar sin gluten' })).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: /^halal$/i }).click()
+  await page.getByRole('button', { name: 'halal', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Quitar halal' })).toBeVisible()
   // Legal (E-19): Mimoia leaves pork and alcohol out; it doesn't certify anything.
   await expect(page.getByTestId('religion-consent')).toContainText('Sin cerdo ni alcohol. La carne y los productos, búscalos con sello halal.')
-  await page.getByRole('button', { name: /guardar/i }).click()
-  await expect(page.getByText(/guardado/i).first()).toBeVisible({ timeout: 10_000 })
+  await saveAndBack(page)
 
   const s = await session(page)
   const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
   expect(account.restrictions).toEqual(['sin gluten', 'halal'])
-
-  await page.reload()
-  await expect(page.getByRole('button', { name: 'Quitar halal' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('person-restrictions')).toContainText('halal', { timeout: 15_000 })
 })

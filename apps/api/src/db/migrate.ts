@@ -10,8 +10,10 @@ import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
 import { applyCompoundIngredientTags } from '../services/compoundIngredients.js'
 import { applyNameAllergenTags } from '../services/nutrition/allergenBackfill.js'
+import { logRecipeAllergenMismatches } from '../services/nutrition/recipeAllergenSync.js'
 import { applyRecipeDishTypes } from '../services/dishTypes.js'
 import { applyWeekTypeMigration } from '../services/weekType.js'
+import { applyUndercookedMarks } from '../services/undercookedRecipes.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -85,6 +87,13 @@ async function main() {
   } catch (err) {
     console.error('[allergen-names] failed:', err)
   }
+  // Read-only (PRO-1118): count the recipes whose stored allergens don't
+  // match their ingredients' union; the list is in Admin → Alérgenos sugeridos.
+  try {
+    await logRecipeAllergenMismatches(db)
+  } catch (err) {
+    console.error('[recipe-allergens] failed:', err)
+  }
   // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
   // every recipe; the cached figures are left as they are.
   try {
@@ -105,6 +114,14 @@ async function main() {
     await applyWeekTypeMigration(db)
   } catch (err) {
     console.error('[week-type] failed:', err)
+  }
+  // Idempotent, additive (PRO-1181, D-1009): Cocina's runny-yolk and
+  // pink-mince recipes get their hidden tag and the «Para embarazo o bebés»
+  // line in their steps.
+  try {
+    await applyUndercookedMarks(db)
+  } catch (err) {
+    console.error('[undercooked-marks] failed:', err)
   }
   await pool.end()
 }

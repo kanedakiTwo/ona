@@ -5,7 +5,8 @@
  *   - a locked meal still changes: «Que elija Mimoia» (`PUT` without a
  *     recipe), drag and drop (the lock moves with it) and «Quitar» (the lock
  *     goes with it);
- *   - `{ dishType }` gives a recipe of that type, or 409 NO_RECIPE_OF_TYPE.
+ *   - `{ dishType }` gives a recipe of that type, or 409 NO_RECIPE_OF_TYPE;
+ *     also on `POST` (PRO-1177: «Que elija Mimoia» in «Sin plato todavía»).
  * Requires SMOKE_USER_ID + SMOKE_USER_TOKEN (smoke orchestrator provides them).
  */
 import { describe, it, expect } from 'vitest'
@@ -82,5 +83,42 @@ describe('meal lock and «Que elija Mimoia» (smoke)', () => {
     expect(r.status).toBe(200)
     m = await (await fetch(`${API_URL}/menu/${USER_ID}/${weekStart}`, { headers: auth() })).json()
     expect(m.locked?.['4']?.lunch).toBe(true)
+  }, 90_000)
+
+  it.skipIf(!ready)('«Sin plato todavía» → «Que elija Mimoia» with a type chip: POST takes { dishType } (PRO-1177)', async () => {
+    // Seventeen weeks back: a week no other smoke file uses.
+    const monday = new Date()
+    monday.setDate(monday.getDate() - 119 - ((monday.getDay() + 6) % 7))
+    const weekStart = monday.toISOString().slice(0, 10)
+    const gen = await fetch(`${API_URL}/menu/generate`, {
+      method: 'POST',
+      headers: auth(),
+      body: JSON.stringify({ userId: USER_ID, weekStart, empty: true, force: true }),
+    })
+    expect(gen.status).toBe(201)
+    const menu = await gen.json()
+    const slot = (day: number, meal: string) => `${API_URL}/menu/${menu.id}/day/${day}/meal/${meal}`
+    const write = (method: string, url: string, body: unknown = {}) => fetch(url, { method, headers: auth(), body: JSON.stringify(body) })
+    const week = async () => (await fetch(`${API_URL}/menu/${USER_ID}/${weekStart}`, { headers: auth() })).json()
+    if (menu.days[SAT]?.dinner) expect((await fetch(slot(SAT, 'dinner'), { method: 'DELETE', headers: auth() })).status).toBe(200)
+
+    // A type the catalogue lacks: 409, and the meal is still not there.
+    const none: unknown[] = await (await fetch(`${API_URL}/recipes?perPage=100&fitsMe=1&dishType=carpaccio-tartar`, { headers: auth() })).json()
+    if (none.length === 0) {
+      const r = await write('POST', slot(SAT, 'dinner'), { dishType: 'carpaccio-tartar' })
+      expect(r.status).toBe(409)
+      expect((await r.json()).code).toBe('NO_RECIPE_OF_TYPE')
+      expect((await week()).days[SAT].dinner).toBeUndefined()
+    }
+    // A type with recipes: one of that type, not locked (Mimoia chose it).
+    const typed: Array<{ id: string }> = await (await fetch(`${API_URL}/recipes?perPage=100&fitsMe=1&dishType=legumbres`, { headers: auth() })).json()
+    if (typed.length > 0) {
+      const r = await write('POST', slot(SAT, 'dinner'), { dishType: 'legumbres' })
+      if (r.status === 201) {
+        const m = await r.json()
+        expect(typed.map((t) => t.id)).toContain(m.days[SAT].dinner.dishes[0].recipeId)
+        expect(m.locked?.[String(SAT)]?.dinner).toBeFalsy()
+      } else expect(r.status).toBe(409)
+    }
   }, 90_000)
 })

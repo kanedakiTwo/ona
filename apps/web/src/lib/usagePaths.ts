@@ -42,7 +42,7 @@ export function onboardingStepKey(step: number): OnboardingStep | null {
   return NUMBERED_STEPS[step - 1] ?? null
 }
 
-const RECIPE_DETAIL = /^\/recipes\/(?!new\/?$)[^/]+\/?$/
+const RECIPE_DETAIL = /^\/recipes\/(?!(?:new|mias|recetarios)\/?$)[^/]+\/?$/
 
 /** Pure: the screen a path is, or null (public pages, cook mode, forms…). */
 export function screenOfPath(path: string | null | undefined): UsageScreen | null {
@@ -62,7 +62,7 @@ export function screenOfPath(path: string | null | undefined): UsageScreen | nul
   if (p === "/afinar") return "afinar"
   if (p === "/menu/history") return "historial"
   if (p === "/menu/imprimir") return "imprimir"
-  if (p === "/profile/cookbooks" || /^\/cookbooks\/[^/]+$/.test(p)) return "recetarios"
+  if (p === "/recipes/recetarios" || p === "/profile/cookbooks" || /^\/cookbooks\/[^/]+$/.test(p)) return "recetarios"
   if (p === "/compra/tiendas") return "tiendas"
   return null
 }
@@ -71,7 +71,7 @@ export function screenOfPath(path: string | null | undefined): UsageScreen | nul
 export function recipeFromPath(prev: string | null | undefined): RecipeViewFrom {
   const p = prev ?? ""
   if (p.startsWith("/menu")) return "menu"
-  if (p === "/recipes" || p.startsWith("/recipes?") || p.startsWith("/cookbooks") || p.startsWith("/profile/cookbooks")) return "catalogo"
+  if (p === "/recipes" || p.startsWith("/recipes?") || p.startsWith("/cookbooks") || p.startsWith("/profile/cookbooks") || p === "/recipes/recetarios" || p === "/recipes/mias") return "catalogo"
   if (p.startsWith("/shopping")) return "lista"
   return "otro"
 }

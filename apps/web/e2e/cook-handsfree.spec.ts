@@ -41,7 +41,7 @@ test('cook mode: «Mimo, manos libres» survives a silence and ends when leaving
   })
 
   await page.goto('/recipes')
-  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"])').first()
+  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])').first()
   await expect(card).toBeVisible({ timeout: 10_000 })
   await Promise.all([page.waitForURL(/\/recipes\/[0-9a-f-]{36}(\?|$)/), card.click()])
   await Promise.all([
@@ -75,7 +75,7 @@ test('cook mode: «Mimo, manos libres» survives a silence and ends when leaving
 test('cook mode: «Parar» ends hands-free', async ({ page }) => {
   test.setTimeout(60_000)
   await page.goto('/recipes')
-  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"])').first()
+  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])').first()
   await expect(card).toBeVisible({ timeout: 10_000 })
   const id = (await card.getAttribute('href'))!.match(/\/recipes\/([^/?#]+)/)![1]
   await page.goto(`/recipes/${id}/cook`)
@@ -96,7 +96,7 @@ test('cook mode: «Parar» ends hands-free', async ({ page }) => {
 test('cook mode: «Parar» right after opening never turns the mic on (PRO-79)', async ({ page }) => {
   test.setTimeout(60_000)
   await page.goto('/recipes')
-  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"])').first()
+  const card = page.getByRole('main').locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])').first()
   await expect(card).toBeVisible({ timeout: 10_000 })
   const id = (await card.getAttribute('href'))!.match(/\/recipes\/([^/?#]+)/)![1]
   await page.goto(`/recipes/${id}/cook`)

@@ -109,13 +109,13 @@ describe('Mimo: get_alerts / set_alerts (same routes as the screen)', () => {
     expect(r.summary).toContain('La semana, hecha cada jueves (weekly_autoplan): encendido, en su menú de la app')
     expect(r.summary).toContain(`Domingo de planificar (weekly_nudge): encendido, no llega (${WEEKLY_NUDGE_AUTOPLAN_NOTE})`)
     expect(r.summary).toContain('Menú del día (daily_brief): apagado')
-    expect(r.summary).toContain('Perfil → Avisos')
+    expect(r.summary).toContain('Perfil → Ajustes → Avisos')
   })
   it('«no me mandes el menú del día» → PATCH that one kind off', async () => {
     const f = fakeApi(OVERVIEW(true))
     const r = await skill('set_alerts').handler({ kind: 'daily_brief', enabled: false }, ctx(f.api, 'whatsapp'))
     expect(f.calls).toEqual([{ method: 'PATCH', path: '/notifications/prefs', body: { prefs: { daily_brief: false } } }])
-    expect(r.summary).toBe('Hecho: Menú del día apagado. Se ve en Perfil → Avisos.')
+    expect(r.summary).toBe('Hecho: Menú del día apagado. Se ve en Perfil → Ajustes → Avisos.')
   })
   it('kind=all with WhatsApp also flips «Avisos por WhatsApp»; without WhatsApp it does not', async () => {
     const wa = fakeApi(OVERVIEW(true))
@@ -130,7 +130,7 @@ describe('Mimo: get_alerts / set_alerts (same routes as the screen)', () => {
     const f = fakeApi(OVERVIEW(true))
     const r = await skill('set_alerts').handler({ kind: 'weekly_autoplan', enabled: false }, ctx(f.api, 'whatsapp'))
     expect(f.calls).toEqual([{ method: 'PATCH', path: '/notifications/prefs', body: { prefs: { weekly_autoplan: false } } }])
-    expect(r.summary).toBe('Hecho: La semana, hecha cada jueves apagado. Se ve en Perfil → Avisos.')
+    expect(r.summary).toBe('Hecho: La semana, hecha cada jueves apagado. Se ve en Perfil → Ajustes → Avisos.')
     expect(skill('set_alerts').parameters.properties.kind.enum).toContain('weekly_autoplan')
   })
   it('kind=all on does not turn on the opt-in morning menu (PRO-215)', async () => {

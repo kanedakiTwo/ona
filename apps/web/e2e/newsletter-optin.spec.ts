@@ -64,7 +64,7 @@ test('register with the newsletter box → recipient; the profile switch turns i
   await expect.poll(() => adminIncludes(page.request, creds.email)).toBe(true)
 
   await completeOnboarding(page)
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   await expect(page.getByTestId('profile-newsletter')).toContainText(
     'Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia',
   )

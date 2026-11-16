@@ -4,7 +4,7 @@ Server-side Web Push notifications that survive a closed tab — the foundation 
 
 ## User Capabilities
 
-- Users can opt in to push notifications from `/profile` → card "Recordatorios" → «Notificaciones del móvil» → "Activar notificaciones". The browser asks for permission; on grant, the subscription is registered server-side. Without WhatsApp, the prep alerts arrive here; with WhatsApp, only when a WhatsApp alert can't go out (see *Channels*).
+- Users can opt in to push notifications from Perfil → gear → Ajustes (`/profile/ajustes`, PRO-1202) → «Avisos» → «Notificaciones del móvil» → "Activar notificaciones". The browser asks for permission; on grant, the subscription is registered server-side. Without WhatsApp, the prep alerts arrive here; with WhatsApp, only when a WhatsApp alert can't go out (see *Channels*).
 - Users can send a test push from the same card (its "···" sheet → "Enviar prueba"; while not subscribed the sheet offers "Reparar service worker" instead) to confirm the pipe end-to-end without waiting for a real event.
 - Users can opt out with "Desactivar"; the row is deleted in the API and the browser subscription unregistered.
 - On iOS, push only works when the user has installed the PWA to the home screen first. The card surfaces a tip when the browser reports no support.
@@ -177,4 +177,4 @@ When any of these is missing the pipe degrades to "not configured" instead of cr
 - [apps/web/worker/index.ts](../apps/web/worker/index.ts) — `push` + `notificationclick` handlers (compiled into the generated SW by `next-pwa`)
 - [apps/web/src/lib/webPush.ts](../apps/web/src/lib/webPush.ts) — `isWebPushSupported`, `urlBase64ToUint8Array`, `getOrCreatePushSubscription`
 - [apps/web/src/hooks/useWebPush.ts](../apps/web/src/hooks/useWebPush.ts) — React hook used by the Profile card
-- [apps/web/src/app/profile/page.tsx](../apps/web/src/app/profile/page.tsx) — `PushNotificationsCard` component
+- [apps/web/src/app/profile/ajustes/page.tsx](../apps/web/src/app/profile/ajustes/page.tsx) — `PushNotificationsCard` component (in Ajustes since PRO-1202)

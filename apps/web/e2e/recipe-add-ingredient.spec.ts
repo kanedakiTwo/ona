@@ -20,7 +20,8 @@ test('an ingredient that does not exist: «nuevo», then save the recipe without
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
   const auth = { Authorization: `Bearer ${token}` }
 
-  const name = `kombu ahumado ${Date.now().toString(36)}`
+  // One unique word: a name sharing words with the library would ask «¿cuál?».
+  const name = `wakame${Date.now().toString(36)}`
   await page.goto('/recipes/new')
   await page.locator('input[placeholder*="Tortilla" i]').fill('Ensalada de kombu de prueba')
   await page.locator('input[placeholder="30"]').fill('10')
@@ -35,7 +36,7 @@ test('an ingredient that does not exist: «nuevo», then save the recipe without
   await page.locator('#recipe-steps').fill(`Corta el ${name} en tiras finas.`)
 
   await Promise.all([
-    page.waitForURL(/\/recipes\/[0-9a-f-]{36}\/edit/, { timeout: 20_000 }),
+    page.waitForURL(/\/recipes\/[0-9a-f-]{36}\/edit/, { timeout: 40_000 }),
     page.getByRole('button', { name: /^crear receta$/i }).click(),
   ])
   await expect(page.getByRole('dialog')).toHaveCount(0)

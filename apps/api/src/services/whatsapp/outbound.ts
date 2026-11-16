@@ -52,6 +52,7 @@ import { isShoppingReminderWindow } from './proactive.js'
 import { loadUserAlertPrefs, mergeAlertPrefs } from '../notifications/alertPrefs.js'
 import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
 import { fillRecipeNames } from '../menuNames.js'
+import { stripAiSignature, withAiSignature } from './aiNotice.js'
 
 /** Per-kind templates (WHATSAPP_TEMPLATES), parsed once. */
 const TEMPLATES = parseTemplateMap(env.WHATSAPP_TEMPLATES)
@@ -75,7 +76,9 @@ export async function sendProactive(
   if (delivery === 'skip') return { status: 'skipped', error: 'outside-24h-window' }
   try {
     if (delivery === 'session') {
-      for (const m of messages) {
+      // PRO-1169: free-form, so the AI line goes in the message itself (a
+      // template carries it in its footer, registered in Meta).
+      for (const m of withAiSignature(messages)) {
         const wamid = await client.sendMessage(link.phone, m)
         void recordServiceMessageCost(link.userId)
         await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: m.text, status: 'sent', wamid, meta })
@@ -252,6 +255,8 @@ export async function guidedContextFor(link: Pick<LinkWithUser, 'userId' | 'phon
     // PRO-274: the last avisos of any kind, so two in a row don't open the same.
     store.recentOutboundBodiesOfKinds(link.phone, [...PROACTIVE_KINDS, 'alert'], 3),
   ])
+  // PRO-1169: the AI line is the code's, not something for the writer to copy.
+  const unsigned = (bodies: string[]) => bodies.map(stripAiSignature)
   const memory = memRows
     .filter((r) => !isHealthMemoryKey(r.key) && !GUIDE_MEMORY_SKIP.has(r.key) && !r.key.startsWith('physical.'))
     .map((r) => `${r.key}: ${typeof r.value === 'string' ? r.value : JSON.stringify(r.value)}`)
@@ -259,8 +264,8 @@ export async function guidedContextFor(link: Pick<LinkWithUser, 'userId' | 'phon
   const recent = history
     .filter((r) => r.body && !NOT_CONVERSATION.has(r.kind ?? '') && (r.direction === 'in' ? r.status === 'processed' : r.status === 'sent'))
     .slice(-8)
-    .map((r) => ({ who: r.direction === 'in' ? ('usuario' as const) : ('mimo' as const), text: r.body! }))
-  return { memory, recent, previous, lastAvisos }
+    .map((r) => ({ who: r.direction === 'in' ? ('usuario' as const) : ('mimo' as const), text: stripAiSignature(r.body!) }))
+  return { memory, recent, previous: unsigned(previous), lastAvisos: unsigned(lastAvisos) }
 }
 
 /** Write one message from its guide for this link, or the fixed text. Never throws. */

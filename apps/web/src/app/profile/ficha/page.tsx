@@ -701,7 +701,7 @@ function OwnPart({
 
 /**
  * The reader's health, only in their own part: «Solo lo ves tú». Body data
- * (`physical.*`) isn't listed: one «Datos físicos» row leads to Perfil, where
+ * (`physical.*`) isn't listed: one «Datos físicos» row leads to your row of «Quién come» in Perfil (PRO-1203), where
  * it is edited. Nothing when there is no health fact.
  */
 function HealthSection({ facts, onOpen }: { facts: FichaFactView[]; onOpen: (f: FichaFactView) => void }) {
@@ -717,7 +717,7 @@ function HealthSection({ facts, onOpen }: { facts: FichaFactView[]; onOpen: (f: 
             </li>
           ))}
         <li>
-          <LinkRow href="/profile#datos-fisicos" title="Datos físicos" hint="Edad, altura, peso y actividad, en Perfil" />
+          <LinkRow href="/profile/quien/me#datos-fisicos" title="Datos físicos" hint="Edad, altura, peso y actividad, en Perfil → Quién come" />
         </li>
       </FichaList>
       <p className="text-[13.5px] leading-[1.5] text-ink-muted">

@@ -48,6 +48,7 @@ export function WeekTypeGrid({
   selected = null,
   onSelect,
   weekStart,
+  highlightDay = null,
 }: {
   days: WeekTypeDays
   meals: Meal[]
@@ -56,6 +57,8 @@ export function WeekTypeGrid({
   onSelect?: (day: number, meal: Meal) => void
   /** Show only what each slot takes that week (its turn), not all its options. */
   weekStart?: string
+  /** PRO-1204: the day the menu's «Según tu semana» line came from, marked. */
+  highlightDay?: number | null
 }) {
   // md+: like «La semana» of the menu — days in columns, meals in rows. Mobile: days in rows.
   const wide = useMediaQuery("(min-width: 768px)")
@@ -94,8 +97,13 @@ export function WeekTypeGrid({
       <div className="grid gap-2" style={{ gridTemplateColumns: "72px repeat(7, minmax(0, 1fr))" }} role="grid" aria-label="Tu semana tipo">
         <div role="row" className="contents">
           <div />
-          {DAY_NAMES.map((name) => (
-            <div key={name} role="columnheader" className="pb-1 text-center font-serif-text text-[15px] font-[650] text-ink">
+          {DAY_NAMES.map((name, d) => (
+            <div
+              key={name}
+              role="columnheader"
+              data-highlight={d === highlightDay || undefined}
+              className={`pb-1 text-center font-serif-text text-[15px] font-[650] ${d === highlightDay ? "rounded-full bg-terracotta text-cream" : "text-ink"}`}
+            >
               {name.slice(0, 3)}
             </div>
           ))}
@@ -124,7 +132,12 @@ export function WeekTypeGrid({
       </div>
       {DAY_NAMES.map((dayName, d) => (
         <div key={d} role="row" className="contents">
-          <div role="rowheader" className="flex items-center justify-center font-serif-text text-[15px] font-[650] text-ink" title={dayName}>
+          <div
+            role="rowheader"
+            data-highlight={d === highlightDay || undefined}
+            className={`flex items-center justify-center font-serif-text text-[15px] font-[650] ${d === highlightDay ? "rounded-full bg-terracotta text-cream" : "text-ink"}`}
+            title={dayName}
+          >
             {DAY_SHORT[d]}
           </div>
           {meals.map((meal) => cell(d, meal))}

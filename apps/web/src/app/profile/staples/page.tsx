@@ -23,6 +23,7 @@ import {
   type Staple,
 } from "@/hooks/useStaples"
 import { MenuSheet, SheetAction } from "@/components/menu/MenuSheet"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import {
   Accent,
   MoreButton,
@@ -110,18 +111,25 @@ export default function StaplesPage() {
         <section className="lg:sticky lg:top-6">
           <form onSubmit={handleAdd} className={`${SUB_CARD} space-y-3 p-4`}>
             <h2 className={SUB_EYEBROW}>Nuevo básico</h2>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Leche, Pan, Café…"
-              maxLength={80}
-              aria-label="Nombre"
-              className={SUB_INPUT}
-            />
+            <label className="block">
+              <FieldLabel as="span" required className={FIELD_LABEL}>
+                Nombre
+              </FieldLabel>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Leche, Pan, Café…"
+                maxLength={80}
+                required
+                className={SUB_INPUT}
+              />
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <label>
-                <span className={FIELD_LABEL}>Cantidad</span>
+                <FieldLabel as="span" required className={FIELD_LABEL}>
+                  Cantidad
+                </FieldLabel>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -129,14 +137,18 @@ export default function StaplesPage() {
                   step={0.5}
                   value={qty}
                   onChange={(e) => setQty(e.target.value)}
+                  required
                   className={SUB_INPUT}
                 />
               </label>
               <label>
-                <span className={FIELD_LABEL}>Unidad</span>
+                <FieldLabel as="span" required className={FIELD_LABEL}>
+                  Unidad
+                </FieldLabel>
                 <select
                   value={unit}
                   onChange={(e) => setUnit(e.target.value as BuyableUnit)}
+                  required
                   className={SUB_INPUT}
                 >
                   {UNIT_OPTIONS.map((u) => (
@@ -147,10 +159,13 @@ export default function StaplesPage() {
                 </select>
               </label>
               <label>
-                <span className={FIELD_LABEL}>Pasillo</span>
+                <FieldLabel as="span" required className={FIELD_LABEL}>
+                  Pasillo
+                </FieldLabel>
                 <select
                   value={aisle}
                   onChange={(e) => setAisle(e.target.value as Aisle)}
+                  required
                   className={SUB_INPUT}
                 >
                   {AISLES.map((a) => (
@@ -161,19 +176,22 @@ export default function StaplesPage() {
                 </select>
               </label>
               <label>
-                <span className={FIELD_LABEL}>Precio € (opcional)</span>
+                <FieldLabel as="span" optional className={FIELD_LABEL}>
+                  Precio €
+                </FieldLabel>
                 <input
                   type="number"
                   inputMode="decimal"
                   min={0}
                   step={0.05}
-                  placeholder="precio por unidad (opcional)"
+                  placeholder="por unidad"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   className={SUB_INPUT}
                 />
               </label>
             </div>
+            <RequiredNote />
             <button type="submit" disabled={!name.trim() || add.isPending} className={`${PILL_INK} w-full`}>
               <Plus size={16} /> {add.isPending ? "Añadiendo…" : "Añadir básico"}
             </button>

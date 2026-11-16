@@ -1,6 +1,6 @@
 # «Cocinar ahora» — diseño
 
-**Fecha:** 2026-11-03 · **Estado:** aprobado por Miguel en la sesión del 2026-11-03 (pestaña propia; Mimoia elige y Mimo explica; una receta preferente y dos alternativas; despensa confirmada como pregunta; los ingredientes secundarios no descartan recetas; el catálogo lo marca la oficina, no la API, también cada receta nueva).
+**Fecha:** 2026-11-03 · **Estado:** aprobado por Miguel en la sesión del 2026-11-03 (pestaña propia; Mimoia elige y Mimo explica; una receta preferente y dos alternativas; despensa confirmada como pregunta; los ingredientes secundarios no descartan recetas; el catálogo lo marca la oficina, no la API, también cada receta nueva). **Construido** en PRO-1105 a PRO-1109: lo que cambió al construirlo, en §10.
 
 ## Para qué
 
@@ -139,3 +139,17 @@ Cada criterio solo desempata el anterior:
 3. `/cocinar`: preguntas, propuesta, frase de Mimo, tarjeta y despensa mudadas, barra de cinco.
 4. «Cocinar esta», hoja «¿Y las lentejas?» y contexto de menú en el modo cocina.
 5. En ona-hq: tarea de Cocina (pasada del catálogo y marcado nocturno) y campo en las tandas.
+
+## 10. Lo construido (PRO-1105 a PRO-1109, 2026-11-13)
+
+Donde lo construido se separa de lo de arriba, vale esto (detalle en [`specs/cook-now.md`](../../../specs/cook-now.md)):
+
+- **`GET /cook-now/today`** da la comida de ahora a la web: `{ weekStart, day, meal, menuId, planned[], slotServings, targets[] }`. La web no calcula la hora: la decide la API (hora de Madrid).
+- **`POST /cook-now/choose`** contesta `{ placed: true, menuId, weekStart, day, meal }` o `{ placed: false, reason }` con `no_meal`, `not_found` o `banned`; no hay `locked`: desde PRO-1175 una comida bloqueada se sustituye como cualquier otra y también es destino de «Pasarlas a otro día».
+- **`servings` va nulo** cuando coincide con los comensales del hogar, para que el hueco no guarde su propio número.
+- **`requirePantryUse`** en `POST /cook-now/proposal`: la tarjeta «Con lo que tienes» pide solo recetas que usen algo de la despensa, y no cuenta como propuesta en los eventos.
+- **El tiempo** de una receta es `totalTime` o, sin él, preparación + cocción (`recipeTotalMinutes`); solo sin ninguno de los dos se queda fuera.
+- **La oficina escribe el marcado** con `x-cocina-token` / `COCINA_WRITE_TOKEN` (hasta ahora solo tenía tokens de lectura), o con el JWT de un admin.
+- **La frase de Mimo se cobra al hogar**, sin persona, así que no suma al tope mensual de cada uno; Gratis no la recibe (PRO-385).
+- **Eventos de uso**: `cook_now_proposed` (`canBuy`), `cook_now_chosen` (`displaced`) y `meal_cooked` con `fromMenu`.
+- **Prueba del recorrido entero**: `apps/web/e2e/cook-now.spec.ts`, contra la API y el catálogo de verdad; en domingo, sin días a los que mover, quita el plato planeado en vez de pasarlo.

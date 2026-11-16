@@ -17,6 +17,7 @@ import { FirstStepsGuide } from "@/components/menu/FirstStepsGuide"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
 import { PriceSurveySheet } from "@/components/menu/PriceSurveySheet"
 import { WhatsAppNudgeCard } from "@/components/menu/WhatsAppNudgeCard"
+import { SeanEllisCard } from "@/components/menu/SeanEllisCard"
 import { AutoplanCard } from "@/components/menu/AutoplanCard"
 import { PendingSignUpCard } from "@/components/menu/PendingSignUpCard"
 import { AccountAccessNotice } from "@/components/billing/AccountAccessNotice"
@@ -33,6 +34,9 @@ import { useAuth } from "@/lib/auth"
 import { menuDiners } from "@/lib/menuDiners"
 import { mealWhen, weekTypeSavedLine, type WeekTypeApplied } from "@/lib/mealSheet"
 import { mealLabel } from "@/lib/labels"
+import { blankWeekCopy, WEEK_TYPE_HREF } from "@/lib/blankWeek"
+import { useWeekType } from "@/hooks/useWeekType"
+import Link from "next/link"
 import {
   useMenu,
   useGenerateMenu,
@@ -79,7 +83,8 @@ import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
 import { FridgeHealthQuestion } from "@/components/menu/FridgeHealthQuestion"
 import { ApiError } from "@/lib/api"
-import { DayFooter, DayMeals, SkippedDay, type SlotPropsFn } from "@/components/menu/DayMeals"
+import { DayFooter, DayMeals, SkippedDay, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
+import { WeekTypeDayLine } from "@/components/menu/WeekTypeDayLine"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
 /** Local-time Monday of `d` as `YYYY-MM-DD`. */
@@ -198,6 +203,9 @@ export default function MenuPage() {
     { ...menuQuery, isPending: menuQuery.isPending && Boolean(menuUserId) },
   ])
   const generateMenu = useGenerateMenu()
+  // PRO-1180: the blank week says the semana tipo, or asks for it.
+  const weekTypeQuery = useWeekType()
+  const blankCopy = weekTypeQuery.isPending ? null : blankWeekCopy(weekTypeQuery.data)
   const regenerateMeal = useRegenerateMeal()
   const saveMealToWeekType = useSaveMealToWeekType()
   // PRO-1186: a real generation (not the empty scaffold of a new week, nor «Vaciar») shows the week type's skeleton.
@@ -386,6 +394,30 @@ export default function MenuPage() {
     addDish.mutate({ menuId: menu.id, day, meal, payload: { kind: "recipe", recipeId, variant } })
   }
 
+  /** «Sin plato todavía» for a meal day `d` lacks (PRO-1177): the «no hay» card and cell, and «Añadir comida». */
+  function absentFor(d: number): Omit<AbsentMeals, "meals"> {
+    const menuId = menu!.id
+    return {
+      day: d,
+      dayName: weekdayName(d),
+      isAdding: addMealSlot.isPending,
+      weekTypeLink: !isPastWeek,
+      onAdd: (meal, recipeId) => {
+        haptic.light()
+        addMealSlot.mutate({ menuId, day: d, meal, recipeId })
+      },
+      onAddAuto: (meal, dishType) => {
+        haptic.medium()
+        return addMealSlot.mutateAsync({ menuId, day: d, meal, dishType })
+      },
+      onAddNote: (meal, text) => {
+        haptic.light()
+        addDish.mutate({ menuId, day: d, meal, payload: { kind: "note", text } })
+      },
+      onAddFreezer: (meal, recipeId, variant) => addFreezerDish(d, meal, recipeId, variant),
+    }
+  }
+
   /** Per-slot mutations + context, shared by every view. */
   const slotPropsFor = useCallback(
     (day: number): SlotPropsFn =>
@@ -397,6 +429,11 @@ export default function MenuPage() {
           regenerate: (dishType) => {
             haptic.medium()
             return regenerateMeal.mutateAsync({ ...base, dishType: dishType ?? null })
+          },
+          // «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177).
+          fill: (dishType) => {
+            haptic.medium()
+            return addMealSlot.mutateAsync({ ...base, dishType: dishType ?? null })
           },
           pickRecipe: (recipeId) => {
             haptic.medium()
@@ -426,9 +463,19 @@ export default function MenuPage() {
             haptic.medium()
             removeDish.mutate({ ...base, position })
           },
-          regenerateDish: (position) => {
+          regenerateDish: (position, dishType) => {
             haptic.medium()
-            regenerateDish.mutate({ ...base, position })
+            return regenerateDish.mutateAsync({ ...base, position, dishType: dishType ?? null })
+          },
+          // PRO-1176: «Cambiar este plato» → the picker's recipe, only on that dish.
+          pickDishRecipe: (position, recipeId) => {
+            haptic.medium()
+            regenerateDish.mutate({ ...base, position, recipeId })
+          },
+          // PRO-1176: «No lo pongas más esta semana» on one dish: vetoed, and another in its place.
+          banDish: (position, recipeId) => {
+            haptic.medium()
+            banRecipe.mutate({ menuId, recipeId }, { onSuccess: () => regenerateDish.mutate({ ...base, position }) })
           },
           reorderDish: (from, to) => patchDish.mutate({ ...base, position: from, patch: { newPosition: to } }),
           editNote: (position, text) => patchDish.mutate({ ...base, position, patch: { text } }),
@@ -661,8 +708,26 @@ export default function MenuPage() {
       <p className="mx-auto mt-2 max-w-xs text-[14px] text-ink-soft">
         {isPastWeek
           ? "Esta semana ya pasó. Vuelve a la actual para planificar."
-          : "Mimo la llena con tu semana tipo y la lista de la compra sale sola. O rellena tú los huecos."}
+          : (blankCopy?.lead ?? "")}
       </p>
+      {/* PRO-1180: the semana tipo in two lines, with «Editar». */}
+      {!isPastWeek && blankCopy?.summary && (
+        <div data-testid="blank-week-type" className="mx-auto mt-4 max-w-sm rounded-2xl bg-cream px-4 py-3 text-left">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold text-ink">{blankCopy.summary.meals}</p>
+              {blankCopy.summary.dishes && <p className="mt-0.5 text-[13px] text-ink-soft">{blankCopy.summary.dishes}</p>}
+            </div>
+            <Link
+              href={WEEK_TYPE_HREF}
+              aria-label="Editar tu semana tipo"
+              className="shrink-0 text-[13px] font-medium text-ink underline underline-offset-4 hover:text-terracotta-deep"
+            >
+              Editar
+            </Link>
+          </div>
+        </div>
+      )}
       {!isPastWeek && (
         <WeekPlanQuestions
           key={weekStart}
@@ -674,7 +739,7 @@ export default function MenuPage() {
       {!isPastWeek && fridgeQuestion && (
         <FridgeHealthQuestion question={fridgeQuestion} busy={generateMenu.isPending} onAnswer={answerFridge} />
       )}
-      {!isPastWeek && !fridgeQuestion && (
+      {!isPastWeek && !fridgeQuestion && blankCopy && (
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
@@ -682,8 +747,8 @@ export default function MenuPage() {
             disabled={generateMenu.isPending}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream transition-colors hover:bg-forest disabled:opacity-50"
           >
-            {/* PRO-1186: configuring weighs more than asking the AI — no sparkles. */}
-            Llenar con mi semana tipo
+            {/* PRO-1186/PRO-1180: configuring weighs more than asking the AI — no sparkles. */}
+            {blankCopy.primary}
           </button>
           {!menu && (
             <button
@@ -696,6 +761,14 @@ export default function MenuPage() {
             </button>
           )}
         </div>
+      )}
+      {!isPastWeek && !fridgeQuestion && blankCopy?.setupLink && (
+        <Link
+          href={WEEK_TYPE_HREF}
+          className="mt-3 inline-block text-[13px] font-medium text-ink underline underline-offset-4 hover:text-terracotta-deep"
+        >
+          Primero, cuéntame cómo coméis
+        </Link>
       )}
       {/* «Menú de <mes>» (PRO-378): copy Cocina's week into this one. */}
       {!isPastWeek && !fridgeQuestion && <MonthMenuCard weekStart={weekStart} className="mx-auto mt-5 max-w-md" />}
@@ -766,6 +839,7 @@ export default function MenuPage() {
                 <AfinaNoticeCard />
                 <TasteMenuCard />
                 <WhatsAppNudgeCard />
+                <SeanEllisCard />
                 {favoritesNotice}
                 {statusCard}
               </>
@@ -791,15 +865,11 @@ export default function MenuPage() {
               haptic.medium()
               skipDay.mutate({ menuId: menu.id, day: d })
             }}
-            onAddMeal={(d, meal, recipeId) => {
-              haptic.light()
-              addMealSlot.mutate({ menuId: menu.id, day: d, meal, ...(recipeId ? { recipeId } : {}) })
-            }}
-            onAddNote={(d, meal, text) => {
-              haptic.light()
-              addDish.mutate({ menuId: menu.id, day: d, meal, payload: { kind: "note", text } })
-            }}
+            onAddMeal={(d, meal, recipeId) => absentFor(d).onAdd(meal, recipeId)}
+            onAddMealAuto={(d, meal, dishType) => absentFor(d).onAddAuto(meal, dishType)}
+            onAddNote={(d, meal, text) => absentFor(d).onAddNote(meal, text)}
             onAddFreezer={addFreezerDish}
+            weekTypeLink={!isPastWeek}
             footer={extras}
           />
         ) : (
@@ -811,6 +881,7 @@ export default function MenuPage() {
             <AfinaNoticeCard />
             <TasteMenuCard />
             <WhatsAppNudgeCard />
+            <SeanEllisCard />
             {statusCard}
           </div>
         )}
@@ -847,6 +918,7 @@ export default function MenuPage() {
       <AfinaNoticeCard />
       <TasteMenuCard />
       <WhatsAppNudgeCard />
+      <SeanEllisCard />
 
       {!showWeekGrid && (
         <WeekStrip
@@ -904,7 +976,13 @@ export default function MenuPage() {
               }}
               onAddRecipe={(d, m, recipeId) => {
                 haptic.medium()
-                regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
+                // An empty meal takes the recipe in place; one the day doesn't have is added (PRO-1177).
+                if (days[d]?.[m]) regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
+                else addMealSlot.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
+              }}
+              onFillAuto={(d, m, dishType) => {
+                haptic.medium()
+                return addMealSlot.mutateAsync({ menuId: menu.id, day: d, meal: m, dishType })
               }}
               onPickRecipe={(d, m, recipeId) => {
                 haptic.medium()
@@ -938,23 +1016,11 @@ export default function MenuPage() {
           />
         ) : (
           <>
+            <WeekTypeDayLine weekStart={weekStart} day={selectedDay} className="mx-5 -mt-1 mb-1" />
             <DayMeals
               featured={featured}
               rest={rest}
-              absent={{
-                meals: absentMeals(days, selectedDay, skippedDays),
-                dayName: weekdayName(selectedDay),
-                isAdding: addMealSlot.isPending,
-                onAdd: (meal, recipeId) => {
-                  haptic.light()
-                  addMealSlot.mutate({ menuId: menu.id, day: selectedDay, meal, ...(recipeId ? { recipeId } : {}) })
-                },
-                onAddNote: (meal, text) => {
-                  haptic.light()
-                  addDish.mutate({ menuId: menu.id, day: selectedDay, meal, payload: { kind: "note", text } })
-                },
-                onAddFreezer: (meal, recipeId, variant) => addFreezerDish(selectedDay, meal, recipeId, variant),
-              }}
+              absent={{ meals: absentMeals(days, selectedDay, skippedDays), ...absentFor(selectedDay) }}
               slotProps={slotPropsFor(selectedDay)}
               readOnly={isPastWeek}
               isToday={selectedDay === todayIndex}
@@ -962,19 +1028,13 @@ export default function MenuPage() {
             {!isPastWeek && (
               <div className="mt-5">
                 <DayFooter
-                  dayName={weekdayName(selectedDay)}
                   missing={missingMeals(day)}
                   canSkip={orderedSlots(day).length > 0}
-                  isAdding={addMealSlot.isPending}
-                  onAddMeal={(meal) => {
-                    haptic.light()
-                    addMealSlot.mutate({ menuId: menu.id, day: selectedDay, meal })
-                  }}
+                  absent={absentFor(selectedDay)}
                   onSkip={() => {
                     haptic.medium()
                     skipDay.mutate({ menuId: menu.id, day: selectedDay })
                   }}
-                  onAddFreezer={(meal, recipeId, variant) => addFreezerDish(selectedDay, meal, recipeId, variant)}
                 />
               </div>
             )}

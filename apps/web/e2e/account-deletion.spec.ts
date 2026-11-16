@@ -11,7 +11,7 @@ test('delete my account from the profile', async ({ page }) => {
   const creds = await registerFreshUser(page)
   await completeOnboarding(page)
 
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   await page.getByRole('button', { name: /borrar mi cuenta/i }).click()
   await page.getByLabel(/contraseña para confirmar/i).fill('not-my-password')
   await page.getByRole('button', { name: /borrar definitivamente/i }).click()

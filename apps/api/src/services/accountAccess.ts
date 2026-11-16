@@ -18,8 +18,8 @@ import { desc, eq } from 'drizzle-orm'
 import type { NextFunction, Response } from 'express'
 import {
   PLAN_GRATIS_MESSAGE,
-  PAID_ACCESS_STATUSES,
   accountAccess,
+  hasPaidAccess,
   type AccountAccess,
   trialDaysFor,
   type SubscriptionStatus,
@@ -33,6 +33,8 @@ import { creatorRefsSql } from './creatorTrial.js'
 export interface AccessFacts {
   householdCreatedAt: Date | null
   latestStatus: SubscriptionStatus | null
+  /** PRO-386: since when that subscription is `past_due` (7 days → no paid access). */
+  pastDueSince?: Date | null
   /** `TRIAL_DAYS`, or `CREATOR_TRIAL_DAYS` when its creator came with a creator's link (PRO-353). */
   trialDays?: number
 }
@@ -52,16 +54,18 @@ export async function loadAccessFacts(userId: string, db: typeof defaultDb = def
     .limit(1)
   if (!u) return null
   let latestStatus: SubscriptionStatus | null = null
+  let pastDueSince: Date | null = null
   if (u.householdId) {
     const [s] = await db
-      .select({ status: subscriptions.status })
+      .select({ status: subscriptions.status, pastDueSince: subscriptions.pastDueSince })
       .from(subscriptions)
       .where(eq(subscriptions.householdId, u.householdId))
       .orderBy(desc(subscriptions.updatedAt))
       .limit(1)
     latestStatus = (s?.status as SubscriptionStatus | undefined) ?? null
+    pastDueSince = s?.pastDueSince ?? null
   }
-  return { householdCreatedAt: u.householdCreatedAt ?? u.userCreatedAt ?? null, latestStatus, trialDays: trialDaysFor(u.creatorRefs) }
+  return { householdCreatedAt: u.householdCreatedAt ?? u.userCreatedAt ?? null, latestStatus, pastDueSince, trialDays: trialDaysFor(u.creatorRefs) }
 }
 
 export async function accessForUser(
@@ -74,7 +78,8 @@ export async function accessForUser(
   const facts = await load(userId)
   return accountAccess({
     householdCreatedAt: facts?.householdCreatedAt ?? null,
-    paid: !!facts?.latestStatus && PAID_ACCESS_STATUSES.includes(facts.latestStatus),
+    // PRO-386: `past_due` for more than 7 days no longer counts as paid.
+    paid: hasPaidAccess(facts?.latestStatus, facts?.pastDueSince, now),
     now,
     trialDays: facts?.trialDays,
   })

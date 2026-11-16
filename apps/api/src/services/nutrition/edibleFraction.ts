@@ -25,10 +25,9 @@
  *
  * Spec: ../../../../../specs/nutrition.md ("Edible weight")
  */
-import { and, eq, inArray } from 'drizzle-orm'
-import { ingredients, recipeIngredients, recipes } from '../../db/schema.js'
-import { aggregateNutrition, type IngredientCatalogEntry } from './aggregate.js'
-import type { RecipeIngredient } from '@ona/shared'
+import { and, eq } from 'drizzle-orm'
+import { ingredients } from '../../db/schema.js'
+import { recomputeRecipesUsing } from './recomputeRecipes.js'
 
 function normalize(s: string): string {
   return s
@@ -179,76 +178,10 @@ export async function applyEdibleFractions(
         c.from === 1 ? and(eq(ingredients.id, c.id), eq(ingredients.edibleFraction, 1)) : eq(ingredients.id, c.id),
       )
   }
-  const recomputed = await recomputeRecipesUsing(db, changes.map((c) => c.id))
+  const recomputed = (await recomputeRecipesUsing(db, changes.map((c) => c.id))).length
   log(
     `[edible-fraction] ${changes.map((c) => `«${c.name}» ${c.fraction}`).join(', ')}; ${recomputed} receta(s) recalculada(s)`,
   )
   return { set: changes.map((c) => c.name), recomputed }
 }
 
-/** Recompute `nutrition_per_serving` + `nutrition_incomplete` of the recipes that use these ingredients. */
-async function recomputeRecipesUsing(db: Db, ingredientIds: string[]): Promise<number> {
-  const uses = await db
-    .selectDistinct({ recipeId: recipeIngredients.recipeId })
-    .from(recipeIngredients)
-    .where(inArray(recipeIngredients.ingredientId, ingredientIds))
-  const recipeIds = uses.map((u) => u.recipeId)
-  if (recipeIds.length === 0) return 0
-
-  const lines = await db
-    .select({
-      recipeId: recipeIngredients.recipeId,
-      ingredientId: recipeIngredients.ingredientId,
-      quantity: recipeIngredients.quantity,
-      unit: recipeIngredients.unit,
-      note: recipeIngredients.note,
-    })
-    .from(recipeIngredients)
-    .where(inArray(recipeIngredients.recipeId, recipeIds))
-  const usedIds = [...new Set(lines.map((l) => l.ingredientId))]
-  const ingRows = await db.select().from(ingredients).where(inArray(ingredients.id, usedIds))
-  const catalog = new Map<string, IngredientCatalogEntry>()
-  for (const r of ingRows) {
-    catalog.set(r.id, {
-      id: r.id,
-      name: r.name,
-      calories: r.calories ?? 0,
-      protein: r.protein ?? 0,
-      carbs: r.carbs ?? 0,
-      fat: r.fat ?? 0,
-      fiber: r.fiber ?? 0,
-      salt: r.salt ?? 0,
-      density: r.density,
-      unitWeight: r.unitWeight,
-      edibleFraction: r.edibleFraction,
-    })
-  }
-  const recipeRows = await db
-    .select({ id: recipes.id, servings: recipes.servings })
-    .from(recipes)
-    .where(inArray(recipes.id, recipeIds))
-  let n = 0
-  for (const r of recipeRows) {
-    const ings = lines.filter((l) => l.recipeId === r.id)
-    if (ings.length === 0 || !(r.servings > 0)) continue
-    const agg = aggregateNutrition({
-      servings: r.servings,
-      ingredients: ings.map((l, i) => ({
-        id: String(i),
-        ingredientId: l.ingredientId,
-        quantity: l.quantity,
-        unit: l.unit as RecipeIngredient['unit'],
-        note: l.note ?? undefined,
-        optional: false,
-        displayOrder: i,
-      })),
-      catalog,
-    })
-    await db
-      .update(recipes)
-      .set({ nutritionPerServing: agg.perServing, nutritionIncomplete: agg.incomplete })
-      .where(eq(recipes.id, r.id))
-    n++
-  }
-  return n
-}

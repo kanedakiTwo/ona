@@ -25,7 +25,7 @@ import { ingredients, recipeIngredients, recipes } from '../db/schema.js'
 import { seedIngredients } from '../seed/ingredients.js'
 import { seedRecipes } from '../seed/recipes.js'
 import { normalizeRecipeName } from './catalogSourceLinks.js'
-import { aggregateNutrition, type IngredientCatalogEntry } from './nutrition/aggregate.js'
+import { aggregateNutrition, catalogEntryFromRow, type IngredientCatalogEntry } from './nutrition/aggregate.js'
 import { allergenUnion } from './nutrition/allergens.js'
 
 export const ARROZ_AL_CALDERO = 'Arroz al caldero'
@@ -114,19 +114,7 @@ export async function applyCatalogRecipeFixes(
   const nutritionCatalog = new Map<string, IngredientCatalogEntry>()
   const allergenCatalog = new Map<string, { allergenTags?: string[] | null }>()
   for (const { ing } of resolved) {
-    nutritionCatalog.set(ing.id, {
-      id: ing.id,
-      name: ing.name,
-      calories: ing.calories ?? 0,
-      protein: ing.protein ?? 0,
-      carbs: ing.carbs ?? 0,
-      fat: ing.fat ?? 0,
-      fiber: ing.fiber ?? 0,
-      salt: ing.salt ?? 0,
-      density: ing.density,
-      unitWeight: ing.unitWeight,
-      edibleFraction: ing.edibleFraction,
-    })
+    nutritionCatalog.set(ing.id, catalogEntryFromRow(ing))
     allergenCatalog.set(ing.id, { allergenTags: ing.allergenTags ?? [] })
   }
 

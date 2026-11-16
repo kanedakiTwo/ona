@@ -73,8 +73,8 @@ export function pricingBlock(): string {
     .map((f) => `- ${f.label}: Gratis ${v(f.gratis)}; Esencial ${v(f.esencial)}; Plus ${v(f.plus)}`)
     .join('\n')
   const payNow = isBillingConfigured()
-    ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos; con el enlace de una creadora, 4 semanas: el ${CREATOR_BETA_FIRST_CHARGE_LABEL}); si cancela antes no paga nada.`
-    : `Muy pronto podra dejarlo pagado desde Perfil → Suscripcion (en la beta, el primer cobro seria el ${BETA_FIRST_CHARGE_LABEL}); de momento aun no se puede pagar.`
+    ? `Quien gestiona el hogar puede dejarlo pagado ya en Perfil → Ajustes → Suscripcion: guarda la tarjeta y, si esta en la beta, el primer cobro es el ${BETA_FIRST_CHARGE_LABEL} (14 dias despues de la salida del ${LAUNCH_DATE_LABEL}, como todos; con el enlace de una creadora, 4 semanas: el ${CREATOR_BETA_FIRST_CHARGE_LABEL}); si cancela antes no paga nada.`
+    : `Muy pronto podra dejarlo pagado desde Perfil → Ajustes → Suscripcion (en la beta, el primer cobro seria el ${BETA_FIRST_CHARGE_LABEL}); de momento aun no se puede pagar.`
   return `Planes y precios (por hogar, IVA incluido; todo esta en mimoia.com/precios):
 ${plans}
 Que incluye cada plan:
@@ -82,7 +82,7 @@ ${table}
 - ${PLAN_CAPS_NOTE}
 - Como funciona: ${FOUNDER_FOOTER}.
 - Si el usuario ya esta en la beta: ${FOUNDER_FOOTER_BETA}. Durante la beta todos tienen Plus gratis. ${payNow}
-- Cambiar de plan, la tarjeta o cancelar: Perfil → Suscripcion → Gestionar mi suscripcion. Si cancela, sigue con su plan hasta el final de lo pagado.
+- Cambiar de plan, la tarjeta o cancelar: Perfil → Ajustes → Suscripcion → Gestionar mi suscripcion. Si cancela, sigue con su plan hasta el final de lo pagado.
 - Quien cobra: Stripe a traves de Link, que emite los recibos; en el extracto aparece LINK.COM* MIMOIA.
 - Si pregunta algo de precios que no este aqui (descuentos, empresas, otros paises), di que no lo sabes y que escriba a ${BRAND_SUPPORT_EMAIL}.`
 }
@@ -197,6 +197,18 @@ export const NOTICE_TASTE_RULE = `- Si el hogar te pregunta por un aviso de la a
  * or «En este mensaje no he cambiado nada: solo he mirado tu lista…»: Mimo
  * answered the previous message instead of the new one.
  */
+/**
+ * AI Act art. 50.1 (PRO-1169, LEG-34 texts 2 and 3, approved by Miguel on
+ * 2026-11-11; same meaning, in the prompt's words): Mimo always owns up to
+ * being an AI, and says it once when the talk turns to allergies,
+ * intolerances, diets or health.
+ */
+export const AI_IDENTITY_RULE = `- Si te preguntan si eres una persona, un bot o una IA (o parece que alguien cree que habla con una persona), dile con claridad que eres un asistente de inteligencia artificial de ${BRAND_NAME}. No digas nunca ni des a entender que eres una persona.
+- Cuando se hable de alergias, intolerancias, dietas o salud, recuerda una sola vez en la conversacion, en una frase corta, que eres una IA y no sustituyes a un profesional sanitario.`
+
+/** First words of the spoken voice onboarding (PRO-1169, LEG-34 text 1): it says it is an AI out loud. */
+export const VOICE_ONBOARDING_GREETING = `Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}, un asistente de inteligencia artificial.`
+
 export const NEW_QUESTION_RULE = `- Contesta siempre a su ULTIMO mensaje. Lo que hiciste en turnos anteriores (los ⟦hecho: …⟧) ya se lo contaste: no vuelvas a resumirlo. Si el ultimo mensaje es una pregunta nueva (un presupuesto o una cifra en euros, como adaptar un plato, que toca hoy…), contestala directamente con lo que te pide; no empieces diciendo que no has cambiado nada, que no has tocado el menu o que sigue igual, ni le preguntes que cambio quiere.`
 
 /**
@@ -288,6 +300,7 @@ export function buildSystemParts(
 
 Tu nombre:
 - Te llamas ${ASSISTANT_NAME} y eres de ${BRAND_NAME}. Si te presentas, dilo asi: "Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}". No uses ningun otro nombre para ti ni para la app. Si el usuario te llama por un nombre antiguo o distinto, entiende que habla de ti o de la app.
+${AI_IDENTITY_RULE}
 
 Tu personalidad:
 - Hablas en espanol, de tu, tono cercano pero informado.
@@ -358,7 +371,7 @@ Modo onboarding por voz (instrucciones obligatorias):
 Tu objetivo es conocer al usuario en una conversación natural y guardar lo que cuente en la memoria con la herramienta update_memory. La conversación debe sentirse como hablar con un cocinero amable que toma notas, NO como rellenar un formulario.
 
 Hilo de la conversación (en este orden, una pregunta por turno):
-1. Saluda en español de España, presentate brevemente ("Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}. Voy a hacerte unas preguntas para personalizar tus menús…"). Una frase.
+1. Saluda en español de España, presentate brevemente ("${VOICE_ONBOARDING_GREETING} Voy a hacerte unas preguntas para personalizar tus menús…"). Una frase.
 2. Edad. Tras la respuesta, guárdala con update_memory: {key:'physical.age', value:NUMERO}.
 3. Composición del hogar: cuántos adultos (incluye mayores de 10) y cuántos niños de 2 a 10. Guarda household.adults + household.kids_2_to_10.
 4. Restricciones (sin gluten, sin lactosa, vegano, vegetariano, alergias…). Si no tiene, pasa. Guarda restrictions:['…'].

@@ -184,7 +184,7 @@ describe('GET /admin/errors', () => {
   it('with the read token, groups carry no message, user id, stack or free text', async () => {
     load.mockResolvedValueOnce({ totals: { groups: 1 }, groups: [GROUP] } as any)
     const body = await (await fetch(`${base}/admin/errors`, { headers: { 'x-metrics-token': 'errors-test-token' } })).json()
-    expect(body.groups[0]).toEqual({ id: 'g1', kind: 'client', type: 'Error', path: '/lista/:x', release: null, userAgentFamily: null, count: 1, firstSeen: 'a', lastSeen: 'b', resolvedAt: null })
+    expect(body.groups[0]).toEqual({ id: 'g1', kind: 'client', type: 'Error', file: 'otro', path: '/lista/:x', release: null, userAgentFamily: null, count: 1, firstSeen: 'a', lastSeen: 'b', resolvedAt: null })
     expect(JSON.stringify(body)).not.toMatch(/ana|u-1|at x/i)
   })
 

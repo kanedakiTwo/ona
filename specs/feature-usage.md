@@ -14,7 +14,7 @@ En `packages/shared/src/constants/featureCatalog.ts`, una entrada por truco:
 - `per`: `hogar` (una fila por hogar) o `persona` (una por persona y hogar).
 - `events`: qué eventos cuentan. Un evento cuenta si coincide con alguna regla: el `name` y, si la regla los trae, el `channel` y las `props` (todas las claves; una lista es «cualquiera de estos valores»).
 
-Las entradas de hoy salen de los eventos que ya existen:
+Las entradas de hoy salen de los eventos que ya existen. «Cocinar ahora» (`/cocinar`, [Cook now](./cook-now.md)) no es todavía un truco del catálogo: su visita es `screen_viewed` `cocinar` (antes `despensa`, porque `/profile/pantry` redirige allí) y sus usos, `cook_now_proposed` y `cook_now_chosen` ([metrics.md](./metrics.md)); «Terminar» en el modo cocina cuenta en `marcar_cocinado` (`meal_cooked`, con `fromMenu` cuando viene del menú).
 
 | id | Función | Tipo | Por | Eventos |
 |---|---|---|---|---|
@@ -93,11 +93,19 @@ Para decidir qué opciones de las hojas «···» del menú se quedan a la vist
 |---|---|---|
 | `comida` | hoja de una comida con un plato (`MealOptions`, día y escritorio) | `ver_receta`, `elegir_receta` («Cambiar plato»), `cambiar_azar` («Que elija Mimoia», dentro del buscador, PRO-1175), `mas_opciones`, `ya_hecho` («Ya está hecho / táper…»), `sobras_si` / `sobras_no`, `anadir_plato`, `fijar` / `desfijar`, `vetar`, `cocinada` / `desmarcar_cocinada`, `taper_si` / `taper_no`, `comensales_menos` / `comensales_mas` / `comensales_quitar`, `quitar_comida`, `semana_tipo` («Guardar en mi semana tipo», en «Más opciones», PRO-1186; guardar es un `template_changed`) |
 | `comida_varios` | la misma hoja con varios platos o con una nota | las de `comida` y `ordenar_platos` (arrastrar) |
+<<<<<<< 4a5b9609fe787ae5347f7caacf4fb42b2e5e4186
 | `plato` | cada plato de esa lista | `ver_receta` (la miniatura), `cambiar_azar` («Cambiar»), `quitar_plato`, `editar_nota` |
 | `vacio` | la hoja de una comida sin plato | las de `comida` (se ven `anadir_plato`, `fijar`, comensales y `quitar_comida`) |
 | `no_hay` | «El viernes no hay cena» → «Sin plato todavía» | `elegir_receta`, `cambiar_azar` («Una al azar»), `congelador`, `taper_nevera` |
 | `dia` | pie del día y su hoja «Añadir comida» | `anadir_comida`, `congelador`, `taper_nevera`, `saltar_dia`, `reactivar_dia` (también en la vista semana y en escritorio), `levantar_veto` |
 | `semana` | la hoja «···» de la semana y su subhoja «Rehacer la semana…» (PRO-1179) | `semana_tipo` («Tu semana tipo»; en escritorio, el botón «Semana tipo» de la cabecera), `vista_semana` / `vista_dia`, `compartir`, `imprimir`, `historial`, `rehacer` (abre la subhoja), `regenerar` («Con mi semana tipo»), `favoritas` («Solo con mis favoritas»), `vaciar` («Vaciarla y rellenar a mano»). Hasta PRO-1179, también `semana_anterior`, `semana_siguiente` y `volver_semana`, que ya no se mandan ni se cuentan |
+=======
+| `plato` | el «···» de cada plato de esa lista (PRO-1176) | `ver_receta` (la fila o «Ver receta»), `elegir_receta` («Cambiar este plato»), `cambiar_azar` («Que elija Mimoia» en su buscador), `sobras_si` / `sobras_no` («Ya está hecho / táper» / «No lo tengo hecho»), `vetar`, `quitar_plato`, `editar_nota` |
+| `vacio` | la hoja de una comida sin plato: «Sin plato todavía» (PRO-1177) | las de `no_hay` (`quitar_comida` solo sale aquí); hasta PRO-1177, las de `comida` |
+| `no_hay` | «El viernes no hay cena» (y «Añadir comida» → la comida) → «Sin plato todavía» | `elegir_receta`, `cambiar_azar` («Que elija Mimoia», dentro del buscador; «Una al azar» hasta PRO-1177), `escribir_plato`, `ya_hecho` (abre el buscador con «Nevera» / «Congelador»), `congelador` y `taper_nevera` (la receta elegida, según el chip), `quitar_comida`, `semana_tipo` (el enlace «¿Todos los viernes?») |
+| `dia` | pie del día y su hoja «Añadir comida» | `anadir_comida` (abre «Sin plato todavía» de esa comida, que cuenta como `no_hay`), `saltar_dia` («Este día no cocino»), `reactivar_dia` («Volver a cocinar este día»; también en la vista semana y en escritorio), `levantar_veto`. Hasta PRO-1177 también `congelador` y `taper_nevera` |
+| `semana` | la hoja «···» de la semana | `semana_anterior`, `semana_siguiente`, `volver_semana`, `regenerar`, `favoritas`, `compartir`, `imprimir`, `vista_semana` / `vista_dia`, `historial`, `vaciar` |
+>>>>>>> 8dc63cec7765b1dad2a2bbbf54f663a42cafafd0
 | `semana_fila` | el menú «···» de una fila de la vista semana | `elegir_receta`, `cambiar_azar` («Aleatorio»), `anadir_plato`, `fijar` / `desfijar` («Bloquear»), `vetar`, `quitar_comida` («Quitar slot») |
 
 `GET /admin/usage` (y `data/uso` en Mimoia HQ) lo devuelve en `menuSheetActions`: por hoja, el total y los toques de cada opción, las más tocadas primero (las ocho hojas, también sin uso), y en `breakdown.menu_sheet_action` por `sheet` y por `action` sueltos. En `breakdown.meal_swapped` se ve cuántos cambios fueron al azar (`how: auto`) y cuántos elegidos (`picked`), de la comida (`target: meal`) o de un plato (`dish`), de la web y de Mimo. Solo recuentos. No es una función del catálogo: no entra en `household_feature_usage`.

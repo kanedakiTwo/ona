@@ -42,6 +42,8 @@ export const NOTICE_PRIORITY: Readonly<Record<string, NoticePriority>> = {
   cooking_reminder: 1,
   // PRO-1076 (D-146): week of 19-oct, 11 Sunday nudges possible, 0 sent.
   weekly_nudge: 1,
+  // PRO-386 (D-158): a failed payment, once per invoice (services/paymentFailures.ts).
+  payment_failed: 1,
   // 2: caducidades, sobras, congelador (no proactive kind yet).
   shopping_reminder: 3,
   dinner_checkin: 4,

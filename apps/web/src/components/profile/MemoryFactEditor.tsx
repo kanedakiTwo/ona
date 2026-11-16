@@ -15,6 +15,7 @@ import { useState } from "react"
 import { Plus, X } from "lucide-react"
 import type { MemoryKey, TimeBudgetMode } from "@ona/shared"
 import { SPANISH_REGIONS, toDayTimeBudget } from "@ona/shared"
+import { FieldLabel } from "@/components/FieldLabel"
 
 interface Props {
   memoryKey: MemoryKey
@@ -428,8 +429,11 @@ function RecordEditor({
     <EditorFrame onSave={() => onSave(build())} onCancel={onCancel} disabled={disabled}>
       <div className="space-y-2">
         {fields.map((f) => (
-          <div key={f.key} className="flex items-center justify-between gap-2">
-            <span className="w-24 text-[14px] text-ink-muted">{f.label}</span>
+          // A blank day is skipped on save: each one is optional (PRO-1103).
+          <label key={f.key} className="flex items-center justify-between gap-2">
+            <FieldLabel as="span" optional className="w-24 text-[14px] text-ink-muted">
+              {f.label}
+            </FieldLabel>
             <input
               type="number"
               value={values[f.key]}
@@ -440,7 +444,7 @@ function RecordEditor({
               className="flex-1 min-h-[44px] rounded-xl border border-border-soft bg-paper px-3 text-[15px] text-ink focus:border-ink focus:outline-none"
             />
             {unit ? <span className="text-[11px] text-ink-muted">{unit}</span> : null}
-          </div>
+          </label>
         ))}
       </div>
     </EditorFrame>
@@ -480,15 +484,17 @@ function TimeRecordEditor({
     <EditorFrame onSave={() => onSave(build())} onCancel={onCancel} disabled={disabled}>
       <div className="space-y-2">
         {fields.map((f) => (
-          <div key={f.key} className="flex items-center justify-between gap-2">
-            <span className="w-24 text-[14px] text-ink-muted">{f.label}</span>
+          <label key={f.key} className="flex items-center justify-between gap-2">
+            <FieldLabel as="span" optional className="w-24 text-[14px] text-ink-muted">
+              {f.label}
+            </FieldLabel>
             <input
               type="time"
               value={values[f.key]}
               onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
               className="flex-1 min-h-[44px] rounded-xl border border-border-soft bg-paper px-3 text-[15px] text-ink focus:border-ink focus:outline-none"
             />
-          </div>
+          </label>
         ))}
       </div>
     </EditorFrame>

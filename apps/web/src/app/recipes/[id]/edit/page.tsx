@@ -33,11 +33,13 @@ import {
   FormHeader,
   ICON_BUTTON,
   IngredientRowFields,
+  LABEL,
   SaveBar,
   TagList,
   choicePillClass,
   fieldClass,
 } from "@/components/recipes/form/RecipeFormUI"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import { LintFailureError } from "@/lib/api"
 import { createRecipeSchema, COURSES, COURSE_LABELS, unitAfterQuantity } from "@ona/shared"
 import type { Course, Difficulty, Ingredient, Meal, Season } from "@ona/shared"
@@ -512,7 +514,7 @@ export default function EditRecipePage() {
 
               <FormCard title="Datos">
                 <div className="space-y-5">
-                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name}>
+                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name} required>
                     <input
                       id="recipe-name"
                       type="text"
@@ -523,15 +525,18 @@ export default function EditRecipePage() {
                     />
                   </Field>
 
-                  <Field label="Tiempos y comensales">
-                    <div className="grid grid-cols-3 gap-3">
+                  {/* A heading, not a field: each of the three carries its own mark. */}
+                  <div>
+                    <div className={LABEL}>Tiempos y comensales</div>
+                    <div className="mt-2 grid grid-cols-3 gap-3">
                       <div>
-                        <label htmlFor="recipe-servings" className="text-[12px] text-ink-muted">
+                        <FieldLabel htmlFor="recipe-servings" required className="text-[12px] text-ink-muted">
                           Comensales
-                        </label>
+                        </FieldLabel>
                         <input
                           id="recipe-servings"
                           type="number"
+                          required
                           value={servings}
                           onChange={(e) => setServings(Math.max(1, Number(e.target.value) || 1))}
                           min={1}
@@ -539,9 +544,9 @@ export default function EditRecipePage() {
                         />
                       </div>
                       <div>
-                        <label htmlFor="recipe-prep" className="text-[12px] text-ink-muted">
+                        <FieldLabel htmlFor="recipe-prep" optional className="text-[12px] text-ink-muted">
                           Prep (min)
-                        </label>
+                        </FieldLabel>
                         <input
                           id="recipe-prep"
                           type="number"
@@ -554,9 +559,9 @@ export default function EditRecipePage() {
                         />
                       </div>
                       <div>
-                        <label htmlFor="recipe-cook" className="text-[12px] text-ink-muted">
+                        <FieldLabel htmlFor="recipe-cook" optional className="text-[12px] text-ink-muted">
                           Cocción (min)
-                        </label>
+                        </FieldLabel>
                         <input
                           id="recipe-cook"
                           type="number"
@@ -569,11 +574,12 @@ export default function EditRecipePage() {
                         />
                       </div>
                     </div>
-                  </Field>
+                  </div>
 
                   <Field
                     label="Enlace a la fuente (vídeo o artículo)"
                     htmlFor="recipe-source"
+                    optional
                   >
                     <input
                       id="recipe-source"
@@ -590,7 +596,7 @@ export default function EditRecipePage() {
                     </p>
                   </Field>
 
-                  <Field label="Dificultad">
+                  <Field label="Dificultad" optional>
                     <div className="flex flex-wrap gap-2">
                       {DIFFICULTY_OPTIONS.map((opt) => {
                         const active = difficulty === opt.value
@@ -609,7 +615,7 @@ export default function EditRecipePage() {
                     </div>
                   </Field>
 
-                  <Field label="Tipo de plato" htmlFor="recipe-course">
+                  <Field label="Tipo de plato" htmlFor="recipe-course" optional>
                     <select
                       id="recipe-course"
                       value={course}
@@ -625,7 +631,7 @@ export default function EditRecipePage() {
                     </select>
                   </Field>
 
-                  <Field label="Etiquetas" htmlFor="recipe-tags">
+                  <Field label="Etiquetas" htmlFor="recipe-tags" optional plural>
                     <input
                       id="recipe-tags"
                       type="text"
@@ -681,6 +687,7 @@ export default function EditRecipePage() {
                     label="Tipo de comida"
                     hint='Pulsa: vacío → encaja a veces → encaja perfectamente. El menú prioriza los "perfecto" frente a los "a veces".'
                     error={errors.meals}
+                    required
                   >
                     <div className="flex flex-wrap gap-2">
                       {MEAL_OPTIONS.map((opt) => (
@@ -694,7 +701,8 @@ export default function EditRecipePage() {
                     </div>
                   </Field>
 
-                  <Field label="Temporada" error={errors.seasons}>
+                  {/* Required here: «Guardar cambios» waits for one (saveBlocker). */}
+                  <Field label="Temporada" error={errors.seasons} required>
                     <div className="flex flex-wrap gap-2">
                       {SEASON_OPTIONS.map((opt) => (
                         <FitChip
@@ -712,7 +720,7 @@ export default function EditRecipePage() {
 
             {/* Right column — ingredients, steps and notes. */}
             <div className="min-w-0 space-y-4 lg:space-y-6">
-              <FormCard title="Ingredientes">
+              <FormCard title="Ingredientes" mark={{ required: true }}>
                 {/* What the last saved version still lacks for the shopping
                     list (shared with the detail page, which gives it mt-8). */}
                 <div className="[&>section]:mb-4 [&>section]:mt-0">
@@ -761,7 +769,7 @@ export default function EditRecipePage() {
               {/* Steps — drag-and-drop reorderable. The grip handle on the
                   left of each row drags; the textarea and trash do their own
                   thing. */}
-              <FormCard title="Preparación">
+              <FormCard title="Preparación" mark={{ optional: true }}>
                 <SortableStepsList
                   steps={steps}
                   onReorder={setSteps}
@@ -775,7 +783,7 @@ export default function EditRecipePage() {
                   users don't actually separate the two so we merged them into
                   a single stack). Persists into `recipes.notes`; `recipes.tips`
                   is cleared on save. */}
-              <FormCard title="Notas">
+              <FormCard title="Notas" mark={{ optional: true, plural: true }}>
                 <NotesEditor
                   title=""
                   placeholder="e.g. la madre la hacía con cebolla pochada — o cualquier truco"
@@ -793,6 +801,7 @@ export default function EditRecipePage() {
               warnings) and the sticky ink pill. */}
           {/* The bar must be a direct child of the form: a sticky element
               only sticks inside its parent's box. */}
+          <RequiredNote className="mt-4" />
           <div className="mt-6">
             <FormErrors
               errors={errors}
@@ -870,6 +879,7 @@ function PhotoSection({ recipeId, userId }: { recipeId: string; userId: string }
 
   return (
     <FormCard
+      mark={{ optional: true }}
       title={
         <>
           <span className="font-medium italic text-terracotta-deep">Foto</span> de la receta

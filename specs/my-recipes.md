@@ -6,7 +6,7 @@ User-scoped curator at `/recipes/mias`, in the Recetas tab (PRO-1202; it was a c
 
 When Mimoia only had system recipes, the `/curator` page treated all recipes the same. Now that users can create recipes (via `/recipes/new`, the photo extractor, the URL importer, the LLM regen pipeline), each user has their own slice of the catalog — and they're the only person who should be touching it. They want the same convenience the admin dashboard offers (filter by gap, edit inline) but scoped to their own work.
 
-It lives in the Recetas tab since PRO-1202 (Miguel 2026-11-12, maqueta `docs/maquetas/2026-11-12-perfil.html`): the profile keeps only what changes the menu, and a person looks for their recipes where the recipes are.
+It lives in the Recetas tab since PRO-1202 (Miguel 2026-11-12, maqueta del perfil de 2026-11-12): the profile keeps only what changes the menu, and a person looks for their recipes where the recipes are.
 
 ## User Capabilities
 

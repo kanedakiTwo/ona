@@ -72,23 +72,16 @@ const NO_DISH_SHEET_ACTIONS = [
 export const MENU_SHEET_ACTIONS = {
   comida: MEAL_SHEET_ACTIONS,
   comida_varios: [...MEAL_SHEET_ACTIONS, 'ordenar_platos'],
-<<<<<<< 4a5b9609fe787ae5347f7caacf4fb42b2e5e4186
-  plato: ['ver_receta', 'cambiar_azar', 'quitar_plato', 'editar_nota'],
-  vacio: MEAL_SHEET_ACTIONS,
-  no_hay: ['elegir_receta', 'cambiar_azar', 'congelador', 'taper_nevera'],
-  dia: ['anadir_comida', 'congelador', 'taper_nevera', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
-  // PRO-1179: no ‹ › nor «Volver a esta semana» (the header has them);
-  // `rehacer` opens «Rehacer la semana…», where `regenerar` is «Con mi semana
-  // tipo», `favoritas` «Solo con mis favoritas» and `vaciar` «Vaciarla y
-  // rellenar a mano». `semana_tipo` is also the desktop header button.
-=======
   // PRO-1176: el «···» de cada plato. «Cambiar este plato» cuenta como `elegir_receta` y su «Que elija Mimoia», como `cambiar_azar`.
   plato: ['ver_receta', 'elegir_receta', 'cambiar_azar', 'sobras_si', 'sobras_no', 'vetar', 'quitar_plato', 'editar_nota'],
   vacio: NO_DISH_SHEET_ACTIONS,
   no_hay: NO_DISH_SHEET_ACTIONS,
   // PRO-1177: «Añadir comida» → la comida → «Sin plato todavía» (`no_hay`); ya no lleva sus tápers sueltos.
   dia: ['anadir_comida', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
->>>>>>> 8dc63cec7765b1dad2a2bbbf54f663a42cafafd0
+  // PRO-1179: no ‹ › nor «Volver a esta semana» (the header has them);
+  // `rehacer` opens «Rehacer la semana…», where `regenerar` is «Con mi semana
+  // tipo», `favoritas` «Solo con mis favoritas» and `vaciar` «Vaciarla y
+  // rellenar a mano». `semana_tipo` is also the desktop header button.
   semana: [
     'semana_tipo',
     'vista_semana',

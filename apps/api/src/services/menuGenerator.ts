@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { loadHouseholdRatingSets, withHouseholdRatings } from './householdRatings.js'
 import { visibleAuthorIds, visibleRecipeWhere } from './recipeVisibility.js'
 import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.js'
@@ -9,10 +9,7 @@ import { holidayTimeBudgets, regionFromMemory } from './menuHolidays.js'
 import { menuMetabolicQuality, recipeMetabolicProfile, type MetabolicProfile } from './metabolicScore.js'
 import {
   users,
-  userSettings,
   recipes,
-  recipeIngredients,
-  ingredients,
   userFavorites,
 } from '../db/schema.js'
 import {
@@ -27,7 +24,7 @@ import {
 import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
 import { applyWeekPlan } from './weekPlan.js'
 import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
-import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
+import { normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
@@ -40,7 +37,7 @@ import { loadWeekTypeForUser } from './weekType.js'
 import { recordCatalogWish } from './catalogWishes.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
-import { calculateRecipeCaloriesFromDB, calculateMenuCaloriesFromDB } from './calorieCalculator.js'
+import { calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
 import type { MealDishCounts, Dish, RecipeDish, Course, FoodGroup } from '@ona/shared'
 import { dishTypeInfo } from '@ona/shared'

@@ -36,7 +36,6 @@ import { mealWhen, weekTypeSavedLine, type WeekTypeApplied } from "@/lib/mealShe
 import { mealLabel } from "@/lib/labels"
 import { blankWeekCopy, WEEK_TYPE_HREF } from "@/lib/blankWeek"
 import { useWeekType } from "@/hooks/useWeekType"
-import Link from "next/link"
 import {
   useMenu,
   useGenerateMenu,
@@ -73,7 +72,6 @@ import { WeekStrip } from "@/components/menu/WeekStrip"
 import { BannedRecipesPanel } from "@/components/menu/BannedRecipesPanel"
 import { MenuFitLine } from "@/components/menu/MenuFitLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
-import { WEEK_TYPE_HREF } from "@/lib/weekSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
 import { ChangeFailedNotice, showMenuNotice } from "@/components/menu/ChangeFailedNotice"

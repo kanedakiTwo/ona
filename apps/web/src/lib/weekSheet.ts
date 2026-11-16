@@ -10,7 +10,8 @@
  *   week, «Vaciarla y rellenar a mano».
  */
 
-export const WEEK_TYPE_HREF = "/profile/semana-tipo"
+// The same link as the blank week's «Editar» (PRO-1180).
+export { WEEK_TYPE_HREF } from "./blankWeek"
 
 export type WeekSheetOption = "semana_tipo" | "vista" | "compartir" | "imprimir" | "historial" | "rehacer"
 export type WeekRedoOption = "regenerar" | "favoritas" | "vaciar"

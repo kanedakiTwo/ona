@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { refreshRecipeDishTypes } from '../dishTypes.js'
 import { fromWeekTypeOf, poolOfDishType, weekTypeDishTypeAt } from '../weekType.js'
-import { and, eq, desc, ilike, or, inArray, isNull } from 'drizzle-orm'
+import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
   recipes,
@@ -20,7 +20,7 @@ import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } fr
 import { describeWeekPlan } from '../weekPlan.js'
 import { COOKING_STYLES, householdMultiplier, isCookingStyle } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
-import { findRecipeForSlot, type RecipeWithIngredients } from '../recipeMatcher.js'
+import { findRecipeForSlot } from '../recipeMatcher.js'
 import { calculateMenuCaloriesFromDB } from '../calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../nutrientCalculator.js'
 import { updateBalance } from '../nutrientBalance.js'

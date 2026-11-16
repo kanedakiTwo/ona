@@ -14,7 +14,6 @@ const FILES = [
   'apps/web/src/components/recipes/UrlRecipeImport.tsx',
   'apps/web/src/components/recipes/SortableIngredientsList.tsx',
   'apps/web/src/components/recipes/SortableStepsList.tsx',
-  'apps/web/src/components/recipes/IngredientAutocomplete.tsx',
   'apps/web/src/components/recipes/IngredientCandidateCard.tsx',
   'apps/web/src/components/recipes/FitChip.tsx',
 ]

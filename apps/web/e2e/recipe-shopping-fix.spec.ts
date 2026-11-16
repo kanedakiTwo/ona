@@ -1,6 +1,7 @@
 /**
  * PRO-90: the "Para hacer la compra" notice must go away once the author
- * fixes the recipe in the editor. It didn't: typing an amount on a row
+ * fixes the recipe in the editor (since PRO-1115, by writing the amount in
+ * the ingredient's line). It didn't: typing an amount on a row
  * "al gusto" kept the unit, the row was saved as "1 al gusto" and the notice
  * came back on the detail page. Two ways in, as Miguel hit them (2026-10-14,
  * "jengibre fresco" and "cilantro" with no amount):
@@ -83,11 +84,12 @@ test('imported recipe: fix the rows "al gusto" in the editor → the notice goes
   await expect(notice).toContainText('1 ud (manojo) de cilantro')
   await expect(notice).not.toContainText('1 manojo')
 
-  await page.getByLabel('Cantidad de jengibre fresco').fill('1')
-  await page.getByLabel('Cantidad de cilantro').fill('1')
-  // The unit followed the amount: no longer "al gusto".
-  await expect(page.getByLabel('Unidad de jengibre fresco')).toHaveValue('u')
-  await expect(page.getByLabel('Unidad de cilantro')).toHaveValue('u')
+  // The saved rows as lines (PRO-1115); an amount replaces «al gusto».
+  const box = page.locator('#recipe-ingredients')
+  await expect(box).toHaveValue('2 calabacin\njengibre fresco al gusto\ncilantro al gusto')
+  await box.fill('2 calabacin\n1 jengibre fresco\n1 cilantro')
+  await expect(page.getByTestId('ingredient-line').nth(1)).toContainText('1 · jengibre fresco')
+  await expect(page.locator('[data-testid="ingredient-line"][data-status="match"]')).toHaveCount(3, { timeout: 10_000 })
   await save(page, recipe.id)
   await expectNoNotice(page)
 })
@@ -104,9 +106,8 @@ test('«Corregir en la receta» → fix → save → back on the detail without 
   await notice.getByRole('link', { name: 'Corregir en la receta' }).click()
   await expect(page).toHaveURL(new RegExp(`/recipes/${recipe.id}/edit`), { timeout: 15_000 })
 
-  await page.getByLabel('Cantidad de jengibre fresco').fill('20')
-  await page.getByLabel('Unidad de jengibre fresco').selectOption('g')
-  await page.getByLabel('Cantidad de cilantro').fill('1')
+  await page.locator('#recipe-ingredients').fill('2 calabacin\n20 g de jengibre fresco\n1 cilantro')
+  await expect(page.locator('[data-testid="ingredient-line"][data-status="match"]')).toHaveCount(3, { timeout: 10_000 })
   await save(page, recipe.id)
   await expectNoNotice(page)
 })

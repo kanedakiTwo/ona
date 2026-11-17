@@ -15,8 +15,8 @@ interface RecipePickerSheetProps {
   title: string
   /** Optional helper line under the title (e.g. "para el lunes · cena"). */
   subtitle?: string
-  /** Called with the chosen recipe. The sheet closes after the parent confirms. */
-  onPick: (recipe: { id: string; name: string; imageUrl?: string | null }) => void
+  /** Called with the chosen recipe (and, with `taperChips`, where it is). The sheet closes after the parent confirms. */
+  onPick: (recipe: { id: string; name: string; imageUrl?: string | null }, taper?: TaperPlace) => void
   /**
    * PRO-74: with 0 results, «Usar "<lo escrito>" como plato» puts the typed
    * text in the slot instead of the current dish (a note, not one more dish).
@@ -29,7 +29,20 @@ interface RecipePickerSheetProps {
    * sheet stays open (no recipe of that type fits, 409 NO_RECIPE_OF_TYPE).
    */
   onPickAuto?: (dishType: string | null) => Promise<unknown>
+  /**
+   * PRO-1177: «Ya lo tengo hecho» — the type chips become «Nevera» /
+   * «Congelador» (one always on, «Nevera» first) and `onPick` gets which.
+   */
+  taperChips?: boolean
 }
+
+/** Where a dish already cooked is: `fridge` («Táper de la nevera») or `freezer` («Del congelador»). */
+export type TaperPlace = "fridge" | "freezer"
+
+const TAPER_CHIPS: Array<{ key: TaperPlace; label: string }> = [
+  { key: "fridge", label: "Nevera" },
+  { key: "freezer", label: "Congelador" },
+]
 
 /**
  * Bottom-sheet recipe picker. Lists recipes from `useRecipes()`, filterable
@@ -59,9 +72,11 @@ export function RecipePickerSheet({
   onPick,
   onUseText,
   onPickAuto,
+  taperChips = false,
 }: RecipePickerSheetProps) {
   const [query, setQuery] = useState("")
   const [dishType, setDishType] = useState<string | null>(null)
+  const [taper, setTaper] = useState<TaperPlace>("fridge")
   const [auto, setAuto] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null })
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -82,6 +97,7 @@ export function RecipePickerSheet({
     if (open) {
       setQuery("")
       setDishType(null)
+      setTaper("fridge")
       setAuto({ busy: false, error: null })
       // Focus the search input on open.
       setTimeout(() => inputRef.current?.focus(), 50)
@@ -124,7 +140,7 @@ export function RecipePickerSheet({
       >
         <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5">
           <div className="min-w-0">
-            <div className="text-eyebrow text-[#7A7066]">Cambiar plato</div>
+            <div className="text-eyebrow text-[#7A7066]">{taperChips ? "Ya lo tengo hecho" : "Cambiar plato"}</div>
             <h2 className="mt-1 font-display text-[1.5rem] leading-tight text-[#1A1612]">
               {title}
             </h2>
@@ -145,6 +161,23 @@ export function RecipePickerSheet({
           </button>
         </div>
 
+        {taperChips ? (
+          <div role="group" aria-label="Dónde está" data-testid="picker-taper-chips" className="mt-3 flex shrink-0 gap-1.5 px-5 pb-1">
+            {TAPER_CHIPS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                aria-pressed={taper === t.key}
+                onClick={() => setTaper(t.key)}
+                className={`min-h-[36px] shrink-0 whitespace-nowrap rounded-full border px-3 text-[13px] transition-colors ${
+                  taper === t.key ? "border-[#1A1612] bg-[#1A1612] text-[#FAF6EE]" : "border-[#DDD6C5] bg-[#FFFEFA] text-[#1A1612] hover:border-[#1A1612]"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        ) : (
         <div
           role="group"
           aria-label="Tipo de plato"
@@ -172,6 +205,7 @@ export function RecipePickerSheet({
             )
           })}
         </div>
+        )}
 
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-5" data-testid="picker-results">
           {(isLoading || (searching && filtered.length === 0)) && (
@@ -219,7 +253,7 @@ export function RecipePickerSheet({
                 <button
                   type="button"
                   disabled={auto.busy}
-                  onClick={() => onPick({ id: r.id, name: r.name, imageUrl: r.imageUrl ?? null })}
+                  onClick={() => onPick({ id: r.id, name: r.name, imageUrl: r.imageUrl ?? null }, taperChips ? taper : undefined)}
                   className="flex min-h-[44px] w-full items-center justify-between gap-3 py-2.5 text-left hover:bg-[#F2EDE0]"
                 >
                   <span className="min-w-0 truncate text-[14px] text-[#1A1612]">

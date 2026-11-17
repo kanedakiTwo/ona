@@ -21,11 +21,8 @@ type Card = { id: string; name: string; authorId: string | null; seasons: string
 async function openCatalog(page: Page) {
   await page.goto('/recipes')
   const cards = page.getByTestId('recipe-card')
-  try {
-    await cards.first().waitFor({ state: 'visible', timeout: 15_000 })
-  } catch {
-    test.skip(true, 'Empty catalog — seed step did not produce recipes')
-  }
+  // CI seeds the catalogue (ci.yml, «Seed catalog»): empty means broken, not skip.
+  await expect(cards.first(), 'seeded catalogue shows no recipe cards').toBeVisible({ timeout: 15_000 })
   return cards
 }
 
@@ -91,7 +88,7 @@ test('"Selección Mimoia" shows only system recipes, "Mis recetas" only mine', a
   // Give the user one recipe of their own: copy a system one.
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
   const [system] = (await (await page.request.get(`${apiUrl}/recipes?perPage=1`)).json()) as Card[]
-  test.skip(!system, 'Empty catalog — seed step did not produce recipes')
+  expect(system, 'seeded catalogue returned no recipes').toBeTruthy()
   const copyRes = await page.request.post(`${apiUrl}/recipes/${system.id}/copy`, {
     headers: { Authorization: `Bearer ${token}` },
   })

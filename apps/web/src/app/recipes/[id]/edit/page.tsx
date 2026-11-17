@@ -5,22 +5,15 @@ import { useParams, useRouter } from "next/navigation"
 import { Camera, Sparkles, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import {
-  useIngredients,
   useRecipe,
   useRegenerateRecipeImage,
   useUpdateRecipe,
   useUploadRecipeImage,
 } from "@/hooks/useRecipes"
 import { useUser } from "@/hooks/useUser"
-import {
-  SortableStepsList,
-  makeStep,
-  type StepDraft,
-} from "@/components/recipes/SortableStepsList"
-import {
-  SortableIngredientsList,
-  makeRowId,
-} from "@/components/recipes/SortableIngredientsList"
+import { useIngredientLines } from "@/hooks/useIngredientLines"
+import { IngredientLinesField, StepsTextField } from "@/components/recipes/form/RecipeTextFields"
+import { stepsText, type ResolvedIngredientRow, type SavedIngredientRow } from "@/lib/ingredientLines"
 import { ShoppingIssues } from "@/components/recipes/ShoppingIssues"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import {
@@ -32,7 +25,6 @@ import {
   FormErrors,
   FormHeader,
   ICON_BUTTON,
-  IngredientRowFields,
   LABEL,
   SaveBar,
   TagList,
@@ -41,8 +33,13 @@ import {
 } from "@/components/recipes/form/RecipeFormUI"
 import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import { LintFailureError } from "@/lib/api"
+<<<<<<< e5905c17adc2a37b66c07451e233daf0667d6e2d
 import { createRecipeSchema, COURSES, COURSE_LABELS, unitAfterQuantity } from "@ona/shared"
 import type { Course, CreateRecipeInput, Difficulty, Ingredient, Meal, RecipeStep, Season } from "@ona/shared"
+=======
+import { createRecipeSchema, formatIngredientText, splitSteps, COURSES, COURSE_LABELS } from "@ona/shared"
+import type { Course, Difficulty, Meal, Season } from "@ona/shared"
+>>>>>>> 55cbc4e8b06e97881688a43ac1b18c953bb78972
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
@@ -59,13 +56,13 @@ const SEASON_OPTIONS: { value: Season; label: string }[] = [
   { value: "winter", label: SEASON_LABELS.winter },
 ]
 
-const UNIT_OPTIONS = ["g", "ml", "u", "cda", "cdita", "pizca", "al_gusto"]
 const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
   { value: "easy", label: "Fácil" },
   { value: "medium", label: "Media" },
   { value: "hard", label: "Compleja" },
 ]
 
+<<<<<<< e5905c17adc2a37b66c07451e233daf0667d6e2d
 interface IngredientRow {
   /** Stable client-side id used by the sortable list. Stripped from the
    *  payload at submit time. */
@@ -107,6 +104,8 @@ function emptyRow(): IngredientRow {
   }
 }
 
+=======
+>>>>>>> 55cbc4e8b06e97881688a43ac1b18c953bb78972
 export default function EditRecipePage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
@@ -115,8 +114,6 @@ export default function EditRecipePage() {
   const { data: recipe, isLoading: recipeLoading, error: recipeError } =
     useRecipe(params.id)
   const updateRecipe = useUpdateRecipe(params.id)
-  const { data: ingredientLibrary = [], isLoading: ingredientsLoading } =
-    useIngredients()
 
   const [name, setName] = useState("")
   const [servings, setServings] = useState<number>(2)
@@ -140,6 +137,7 @@ export default function EditRecipePage() {
   const [course, setCourse] = useState<Course | "">("")
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
+<<<<<<< e5905c17adc2a37b66c07451e233daf0667d6e2d
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyRow()])
   // Steps carry a stable client-side id so the drag-and-drop list can
   // reorder them without losing focus or remounting textareas. The id is
@@ -151,6 +149,22 @@ export default function EditRecipePage() {
   // Notes and tips (trucos) — one multi-entry list in the UI. The
   // paragraphs that came from `tips` and are left as they were go back to
   // `tips` (Mimo reads them as «Trucos»); edited or new ones go to `notes`.
+=======
+  // Ingredients, one per line (PRO-1115): the saved rows written as text.
+  // A line left as it was keeps its row exactly (useIngredientLines).
+  const [savedRows, setSavedRows] = useState<SavedIngredientRow[]>([])
+  const [ingredientText, setIngredientText] = useState("")
+  const ingredientLines = useIngredientLines(ingredientText, savedRows)
+  // Steps as one numbered text; left as it was, the saved steps go back as they are.
+  const [savedSteps, setSavedSteps] = useState<string[]>([])
+  const [stepText, setStepText] = useState("")
+  const [resolving, setResolving] = useState(false)
+  // Notes (a.k.a. tips — unified in the UI to a single multi-entry list).
+  // On load we merge any pre-existing `tips` content into the notes list
+  // so users who authored recipes under the split UI keep all their
+  // entries. On save the joined blob goes into `recipes.notes`; `tips`
+  // is cleared so the column drains over time without a migration.
+>>>>>>> 55cbc4e8b06e97881688a43ac1b18c953bb78972
   const [notes, setNotes] = useState<string[]>([""])
   const [loadedTips, setLoadedTips] = useState<string[]>([])
 
@@ -192,6 +206,7 @@ export default function EditRecipePage() {
     // ones beneath the notes ones.
     const merged = [...splitParas(recipe.notes), ...splitParas(recipe.tips)]
     setNotes(merged.length > 0 ? merged : [""])
+<<<<<<< e5905c17adc2a37b66c07451e233daf0667d6e2d
     setLoadedTips(splitParas(recipe.tips))
     setIngredientRows(
       recipe.ingredients.length > 0
@@ -223,6 +238,24 @@ export default function EditRecipePage() {
         ]),
       ),
     )
+=======
+    const rows: SavedIngredientRow[] = recipe.ingredients.map((ri) => ({
+      ingredientId: ri.ingredientId,
+      ingredientName: ri.ingredientName ?? "",
+      quantity: ri.quantity,
+      unit: ri.unit,
+      optional: ri.optional ?? false,
+      note: ri.note ?? null,
+      section: ri.section ?? null,
+      displayQuantity: ri.displayQuantity ?? null,
+      displayUnit: ri.displayUnit ?? null,
+    }))
+    setSavedRows(rows)
+    setIngredientText(formatIngredientText(rows.map((r) => ({ ...r, note: r.note ?? undefined }))))
+    const texts = recipe.steps.map((s) => s.text)
+    setSavedSteps(texts)
+    setStepText(stepsText(texts))
+>>>>>>> 55cbc4e8b06e97881688a43ac1b18c953bb78972
     setSeeded(true)
   }, [recipe, seeded])
 
@@ -258,57 +291,6 @@ export default function EditRecipePage() {
     setTags(tags.filter((x) => x !== t))
   }
 
-  // All ingredient mutations key by `rowId` now that the rows are
-  // sortable. Reordering invalidates positional indices, so functions that
-  // used `idx` would target the wrong row mid-drag.
-  function setRowIngredient(rowId: string, ing: Ingredient) {
-    setIngredientRows((prev) =>
-      prev.map((r) =>
-        r.rowId === rowId ? { ...r, ingredientName: ing.name, ingredientId: ing.id } : r,
-      ),
-    )
-  }
-  function updateIngredientQuantity(rowId: string, value: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) =>
-        r.rowId === rowId
-          ? (() => {
-              const quantity: number | "" = value === "" ? "" : Number(value)
-              // An amount on an "al gusto" / "pizca" row means the user is
-              // fixing it for the shopping list: switch to a buyable unit,
-              // or it would be saved as "1 al gusto" (PRO-90).
-              return { ...r, quantity, unit: unitAfterQuantity(r.ingredientName, r.unit, quantity) }
-            })()
-          : r,
-      ),
-    )
-  }
-  function updateIngredientUnit(rowId: string, value: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, unit: value } : r)),
-    )
-  }
-  function toggleIngredientOptional(rowId: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
-    )
-  }
-  function updateIngredientNote(rowId: string, value: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, note: value } : r)),
-    )
-  }
-
-  function addIngredientRow() {
-    setIngredientRows((prev) => [...prev, emptyRow()])
-  }
-  function removeIngredientRow(rowId: string) {
-    setIngredientRows((prev) => {
-      if (prev.length <= 1) return prev
-      return prev.filter((r) => r.rowId !== rowId)
-    })
-  }
-
   // Generic single-string-list helpers, shared by notes + tips.
   function updateAt(setter: (next: string[]) => void, list: string[], idx: number, value: string) {
     const next = [...list]
@@ -328,21 +310,19 @@ export default function EditRecipePage() {
     setter(list.filter((_, i) => i !== idx))
   }
 
-  function updateStep(id: string, value: string) {
-    setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, text: value } : s)))
-  }
-  function addStep() {
-    setSteps((prev) => [...prev, makeStep()])
-  }
-  function removeStep(id: string) {
-    setSteps((prev) => {
-      // Last row — clear it instead of dropping so the form always has a
-      // visible textarea (mirrors the notes/tips editor behaviour).
-      if (prev.length <= 1) return [makeStep()]
-      return prev.filter((s) => s.id !== id)
-    })
-  }
+  function buildPayload(ingredientRows: ResolvedIngredientRow[]) {
+    const cleanedIngredients = ingredientRows.map((r) => ({
+      ingredientId: r.ingredientId,
+      quantity: r.quantity,
+      unit: r.unit || "g",
+      optional: r.optional,
+      ...(r.note?.trim() ? { note: r.note.trim() } : {}),
+      ...(r.section ? { section: r.section } : {}),
+      ...(r.displayQuantity != null ? { displayQuantity: r.displayQuantity } : {}),
+      ...(r.displayUnit ? { displayUnit: r.displayUnit } : {}),
+    }))
 
+<<<<<<< e5905c17adc2a37b66c07451e233daf0667d6e2d
   function buildPayload() {
     const keptRows = ingredientRows.filter((r) => r.ingredientName.trim().length > 0)
     const keptRowIds = new Set(keptRows.flatMap((r) => (r.id ? [r.id] : [])))
@@ -369,6 +349,15 @@ export default function EditRecipePage() {
         ...(extras?.technique ? { technique: extras.technique } : {}),
         ingredientRefs: (extras?.ingredientRefs ?? []).filter((id) => keptRowIds.has(id)),
       }))
+=======
+    // Untouched, the saved steps go back as they are (a step with a line
+    // break inside would otherwise be read again).
+    const stepTexts = stepText === stepsText(savedSteps) ? savedSteps : splitSteps(stepText)
+    const cleanedSteps = stepTexts
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((text, index) => ({ index, text }))
+>>>>>>> 55cbc4e8b06e97881688a43ac1b18c953bb78972
 
     const payload: Record<string, unknown> = {
       name: name.trim(),
@@ -426,14 +415,6 @@ export default function EditRecipePage() {
     return payload
   }
 
-  const ingredientRowHints = ingredientRows.map((row) => {
-    const typed = row.ingredientName.trim()
-    if (!typed) return null
-    if (ingredientsLoading) return null
-    if (!row.ingredientId) return "no encontrado"
-    return null
-  })
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     // The user picked between two type="submit" buttons. The secondary one
@@ -443,7 +424,17 @@ export default function EditRecipePage() {
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null
     const useForce = submitter?.name === "force"
     setErrors({})
-    const payload = buildPayload()
+    // Lines → rows; the new ingredients are created now, like in the imports.
+    let payload: Record<string, unknown>
+    setResolving(true)
+    try {
+      payload = buildPayload(await ingredientLines.resolveRows())
+    } catch (err) {
+      setErrors({ _form: (err as Error).message || "No se han podido guardar los ingredientes." })
+      return
+    } finally {
+      setResolving(false)
+    }
     const parsed = createRecipeSchema.safeParse(payload)
     if (!parsed.success) {
       const next: Record<string, string> = {}
@@ -454,6 +445,7 @@ export default function EditRecipePage() {
       setErrors(next)
       return
     }
+<<<<<<< e5905c17adc2a37b66c07451e233daf0667d6e2d
     const hasUnresolved = ingredientRows.some(
       (r) => r.ingredientName.trim() && !r.ingredientId
     )
@@ -468,6 +460,9 @@ export default function EditRecipePage() {
     // (`internalTags: []`, `equipment: []`…) would wipe what the form doesn't
     // show. What it leaves out the server keeps (PRO-1259).
     updateRecipe.mutate({ ...(payload as CreateRecipeInput), force: useForce }, {
+=======
+    updateRecipe.mutate({ ...parsed.data, force: useForce }, {
+>>>>>>> 55cbc4e8b06e97881688a43ac1b18c953bb78972
       onSuccess: (updated) => {
         router.push(`/recipes/${updated.id}`)
       },
@@ -503,13 +498,7 @@ export default function EditRecipePage() {
     )
   }
 
-  const hasIngredient = ingredientRows.some(
-    (r) =>
-      r.ingredientName.trim() !== "" &&
-      r.ingredientId !== "" &&
-      typeof r.quantity === "number" &&
-      r.quantity > 0
-  )
+  const hasIngredient = ingredientLines.views.length > 0
   // What still blocks "Guardar cambios", in words: a recipe imported without
   // ingredients used to leave the button greyed out with no explanation.
   const saveBlocker =
@@ -522,7 +511,7 @@ export default function EditRecipePage() {
           : Object.keys(seasonFit).length === 0
             ? "Elige al menos una temporada."
             : !hasIngredient
-              ? "Para guardar, añade al menos un ingrediente de la lista con su cantidad."
+              ? "Para guardar, añade al menos un ingrediente, uno por línea."
               : null
 
   return (
@@ -761,63 +750,40 @@ export default function EditRecipePage() {
 
             {/* Right column — ingredients, steps and notes. */}
             <div className="min-w-0 space-y-4 lg:space-y-6">
-              <FormCard title="Ingredientes" mark={{ required: true }}>
+              <FormCard
+                title="Ingredientes"
+                description="Uno por línea: «200 g de lentejas», «1 cebolla», «sal». Después de una coma va una nota y «(opcional)» lo marca."
+                mark={{ required: true }}
+              >
                 {/* What the last saved version still lacks for the shopping
                     list (shared with the detail page, which gives it mt-8). */}
                 <div className="[&>section]:mb-4 [&>section]:mt-0">
                   <ShoppingIssues issues={recipe?.shoppingIssues} />
                 </div>
-                <SortableIngredientsList
-                  rows={ingredientRows}
-                  onReorder={setIngredientRows}
-                  renderRow={(row) => {
-                    const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
-                    const hint = ingredientRowHints[idx]
-                    const selectedIng = row.ingredientId
-                      ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
-                      : null
-                    const fallbackText =
-                      !selectedIng && row.ingredientName ? row.ingredientName : undefined
-                    return (
-                      <IngredientRowFields
-                        selected={selectedIng}
-                        onSelect={(ing) => setRowIngredient(row.rowId, ing)}
-                        placeholder={
-                          ingredientsLoading ? "Cargando biblioteca…" : "Ingrediente"
-                        }
-                        hasError={!!hint}
-                        defaultText={fallbackText}
-                        quantity={row.quantity}
-                        onQuantity={(v) => updateIngredientQuantity(row.rowId, v)}
-                        unit={row.unit}
-                        units={UNIT_OPTIONS}
-                        onUnit={(v) => updateIngredientUnit(row.rowId, v)}
-                        optional={row.optional}
-                        onToggleOptional={() => toggleIngredientOptional(row.rowId)}
-                        note={row.note}
-                        onNote={(v) => updateIngredientNote(row.rowId, v)}
-                        onRemove={() => removeIngredientRow(row.rowId)}
-                        removable={ingredientRows.length > 1}
-                        hint={hint}
-                      />
-                    )
-                  }}
+                <IngredientLinesField
+                  text={ingredientText}
+                  onText={setIngredientText}
+                  views={ingredientLines.views}
+                  onChoose={ingredientLines.choose}
+                  hasError={!!errors.ingredients}
+                  errorAt={(idx) => lintAt(errors, "ingredients", idx)}
                 />
-                <AddRowButton onClick={addIngredientRow}>Añadir ingrediente</AddRowButton>
                 <FieldError>{errors.ingredients}</FieldError>
               </FormCard>
 
               {/* Steps — drag-and-drop reorderable. The grip handle on the
                   left of each row drags; the textarea and trash do their own
                   thing. */}
-              <FormCard title="Preparación" mark={{ optional: true }}>
-                <SortableStepsList
-                  steps={steps}
-                  onReorder={setSteps}
-                  onChange={updateStep}
-                  onRemove={removeStep}
+              <FormCard
+                title="Preparación"
+                description="Un paso por línea o numerados («1.», «2)», «Paso 3:»). Puedes pegar el texto entero."
+                mark={{ optional: true }}
+              >
+                <StepsTextField
+                  text={stepText}
+                  onText={setStepText}
+                  errorAt={(idx) => lintAt(errors, "steps", idx)}
                 />
-                <AddRowButton onClick={addStep}>Añadir paso</AddRowButton>
               </FormCard>
 
               {/* Notes — unified list ("notas y trucos" used to be two boxes;
@@ -857,7 +823,7 @@ export default function EditRecipePage() {
                 <button
                   type="submit"
                   name="force"
-                  disabled={updateRecipe.isPending}
+                  disabled={updateRecipe.isPending || resolving}
                   className={FORCE_PILL}
                 >
                   {updateRecipe.isPending ? "Guardando…" : "Guardar igualmente"}
@@ -866,8 +832,8 @@ export default function EditRecipePage() {
             </FormErrors>
           </div>
           <SaveBar
-            submitLabel={updateRecipe.isPending ? "Guardando…" : "Guardar cambios"}
-            disabled={saveBlocker !== null || updateRecipe.isPending}
+            submitLabel={updateRecipe.isPending || resolving ? "Guardando…" : "Guardar cambios"}
+            disabled={saveBlocker !== null || updateRecipe.isPending || resolving}
             hint={saveBlocker}
             cancelHref={`/recipes/${params.id}`}
           />
@@ -1050,5 +1016,12 @@ function NotesEditor({
       </div>
       <AddRowButton onClick={onAdd}>{addLabel}</AddRowButton>
     </div>
+  )
+}
+
+/** A server lint message for row `idx` of a list: "ingredients[3]" or "steps[3].text". */
+function lintAt(errors: Record<string, string>, list: "ingredients" | "steps", idx: number): string | null {
+  return (
+    Object.entries(errors).find(([k]) => k === `${list}[${idx}]` || k.startsWith(`${list}[${idx}].`))?.[1] ?? null
   )
 }

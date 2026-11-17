@@ -80,7 +80,7 @@ describe('PRO-1175 · primer nivel de la hoja de una comida', () => {
     expect(mealSheetOptions({ slot: one(), when: 'future', canTaper: false, feedsLeftovers: true }).more).toEqual(['comensales', 'fijar'])
   })
 
-  it('un hueco vacío: añadir, más opciones (solo comensales) y quitar', () => {
+  it('un hueco vacío (la web le pinta «Sin plato todavía» desde PRO-1177): sin «Fijar»', () => {
     const o = mealSheetOptions({ slot: { dishes: [] } as MealSlot, when: 'future', canTaper: false })
     expect(o.first).toEqual(['anadir_plato', 'mas_opciones', 'quitar_comida'])
     expect(o.more).toEqual(['comensales'])

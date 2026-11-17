@@ -1,5 +1,5 @@
 /**
- * PRO-115: when «Saltar día» left the whole week without meals, /menu took
+ * PRO-115: when «Este día no cocino» left the whole week without meals, /menu took
  * it for a broken `[{}, …]` row and "healed" it with an empty week: after a
  * reload the meals that were removed came back as empty slots. A week whose
  * days are empty because they were skipped is a real week.
@@ -19,7 +19,7 @@ async function session(page: Page) {
   return { headers: { Authorization: `Bearer ${token}` }, userId }
 }
 
-test('a week with one day of dishes → «Saltar día» → reload: the day stays skipped and no empty slot comes back', async ({ page }) => {
+test('a week with one day of dishes → «Este día no cocino» → reload: the day stays skipped and no empty slot comes back', async ({ page }) => {
   test.setTimeout(120_000)
   const { weekStart, dayIdx } = await pinClock(page)
   await registerFreshUser(page)
@@ -44,9 +44,9 @@ test('a week with one day of dishes → «Saltar día» → reload: the day stay
   })
 
   await page.goto('/menu')
-  await expect(page.getByRole('button', { name: /^saltar día$/i })).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('button', { name: /^saltar día$/i }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /^saltar día$/i }).click()
+  await expect(page.getByRole('button', { name: /^este día no cocino$/i })).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: /^este día no cocino$/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^este día no cocino$/i }).click()
   await expect(page.getByText('Día marcado sin cocinar.')).toBeVisible({ timeout: 10_000 })
 
   await page.reload()

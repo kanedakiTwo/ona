@@ -79,6 +79,12 @@ export interface SuggestOpts {
    * pure unit tests free of network/LLM side effects.
    */
   skipFallbacks?: boolean
+  /**
+   * Translate the USDA descriptions (a Claude call). Default true; the
+   * ingredients a household creates from its recipe form skip it (PRO-1115:
+   * no AI cost), since only the nutrition is kept.
+   */
+  translate?: boolean
 }
 
 // ─── ES → EN dictionary ──────────────────────────────────────────
@@ -588,7 +594,7 @@ export async function suggestIngredient(
   // Cached entries return instantly; only first-time descriptions cost a
   // network round trip. Failures (or missing API key) leave `descriptionEs`
   // as null and the UI falls back to the English string.
-  if (!opts?.skipFallbacks) {
+  if (!opts?.skipFallbacks && opts?.translate !== false) {
     const usdaIdxs: number[] = []
     const usdaTexts: string[] = []
     for (let i = 0; i < candidates.length; i++) {

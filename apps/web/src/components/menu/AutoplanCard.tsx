@@ -35,11 +35,6 @@ export function autoplanRange(n: AutoplanNotice): string {
  */
 export function useAutoplanCard(weekStart: string) {
   const notice = useAutoplanNotice(true)
-<<<<<<< 3937a819bbd7fc0cd412d123c0e822d657fa7f84
-=======
-  const viewed = useAutoplanViewed()
-  const weekType = useWeekType()
->>>>>>> 67d6c374bd573cc35af94c760b05113789d5d1d8
   // Kept for this visit: stamping the week clears the query, not the card on screen.
   const [kept, setKept] = useState<AutoplanNotice | null>(null)
   const [stamped, setStamped] = useState(false)
@@ -62,7 +57,7 @@ export function AutoplanCard({
 }) {
   const { kept, onItsWeek, stamped, setStamped, show } = card
   const viewed = useAutoplanViewed()
-  const mimo = useMimo()
+  const weekType = useWeekType()
   // Stamped only once it is really on screen on its week.
   useEffect(() => {
     if (!kept || !onItsWeek || stamped) return

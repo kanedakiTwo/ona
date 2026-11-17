@@ -15,7 +15,6 @@ import {
   weekTypeOptionsFor,
   weeksBetween,
   type DayMenu,
-  type DayTemplate,
   type WeekTypeDays,
   type WeekTypeSlot,
 } from '@ona/shared'

@@ -9,7 +9,6 @@ import {
   applyNotesPatch,
   sanitizeIngredientOverrides,
   validateRating,
-  type NotesPatch,
   type NotesShape,
 } from '../services/recipeNotesStore.js'
 

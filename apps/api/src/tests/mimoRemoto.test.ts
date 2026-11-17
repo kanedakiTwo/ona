@@ -62,10 +62,18 @@ describe('resolveMimoRemoto', () => {
     expect(resolveMimoRemoto({ MIMO_REMOTO: '1', RAILWAY_ENVIRONMENT: 'staging', RAILWAY_ENVIRONMENT_NAME: 'staging' })).toBe(true)
   })
 
+  it('boots in Railway staging, whose build also sets NODE_ENV=production (2026-11-17: staging crashed on it)', () => {
+    expect(resolveMimoRemoto({ MIMO_REMOTO: '1', NODE_ENV: 'production', RAILWAY_ENVIRONMENT: 'staging', RAILWAY_ENVIRONMENT_NAME: 'staging' })).toBe(true)
+  })
+
   it('refuses the mode in production', () => {
     expect(() => resolveMimoRemoto({ MIMO_REMOTO: '1', NODE_ENV: 'production' })).toThrow(/MIMO_REMOTO/)
     expect(() => resolveMimoRemoto({ MIMO_REMOTO: '1', RAILWAY_ENVIRONMENT: 'production' })).toThrow(/MIMO_REMOTO/)
     expect(() => resolveMimoRemoto({ MIMO_REMOTO: '1', RAILWAY_ENVIRONMENT_NAME: 'production' })).toThrow(/MIMO_REMOTO/)
+    expect(() => resolveMimoRemoto({ MIMO_REMOTO: '1', NODE_ENV: 'production', RAILWAY_ENVIRONMENT: 'production', RAILWAY_ENVIRONMENT_NAME: 'production' })).toThrow(/MIMO_REMOTO/)
+    // Any other Railway environment (a PR one, or the two names disagreeing) is not staging.
+    expect(() => resolveMimoRemoto({ MIMO_REMOTO: '1', RAILWAY_ENVIRONMENT_NAME: 'pr-12' })).toThrow(/MIMO_REMOTO/)
+    expect(() => resolveMimoRemoto({ MIMO_REMOTO: '1', RAILWAY_ENVIRONMENT: 'production', RAILWAY_ENVIRONMENT_NAME: 'staging' })).toThrow(/MIMO_REMOTO/)
     // Off, production is fine.
     expect(resolveMimoRemoto({ NODE_ENV: 'production' })).toBe(false)
   })

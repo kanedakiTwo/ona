@@ -368,6 +368,16 @@ export { resolveFromTable } from './units/resolve.js'
 export type { ResolveInput, ResolveResult } from './units/resolve.js'
 export { formatScaled, formatFraction, formatCanonical, isCulinaryClean } from './units/format.js'
 export type { FormatScaledInput, FormatScaledOutput } from './units/format.js'
+export {
+  parseIngredientLine,
+  ingredientLineToRow,
+  formatIngredientLine,
+  formatLineQuantity,
+  parseIngredientText,
+  formatIngredientText,
+} from './units/ingredientLine.js'
+export type { ParsedIngredientLine, IngredientLineAmount, IngredientLineRow, IngredientTextLine } from './units/ingredientLine.js'
+export { splitSteps } from './utils/splitSteps.js'
 
 // In-house error tracker (specs/errors.md)
 export {

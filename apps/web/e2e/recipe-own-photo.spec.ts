@@ -31,13 +31,9 @@ test('crear una receta con foto propia: no se genera con IA y la ficha la enseñ
   await page.getByRole('button', { name: /comida/i }).first().click()
   await page.getByRole('button', { name: /primavera/i }).first().click()
 
-  const ingredientInput = page.getByPlaceholder(/ingrediente|cargando/i).first()
-  await ingredientInput.fill('ajo')
-  const ajoOption = page.locator('ul[role="listbox"] li button', { hasText: /^ajo$/i }).first()
-  await ajoOption.waitFor({ state: 'visible', timeout: 10_000 })
-  await ajoOption.click()
-  await page.locator('input[placeholder="Cant."]').first().fill('10')
-  await page.locator('textarea').first().fill('Pelar y picar el ajo')
+  await page.locator('#recipe-ingredients').fill('10 g de ajo')
+  await expect(page.getByTestId('ingredient-line').first()).toHaveAttribute('data-status', 'match', { timeout: 10_000 })
+  await page.locator('#recipe-steps').fill('Pelar y picar el ajo')
 
   // Photo card: «Generar con IA» is the default; «Subir mi foto» picks a file.
   const card = page.getByTestId('new-recipe-photo')

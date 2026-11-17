@@ -66,6 +66,6 @@ test('the source of a táper opens its recipe for the whole batch; the táper sa
   await page.getByRole('navigation', { name: 'Días de la semana' }).getByRole('button').nth(today).click()
   const hero = page.getByTestId('menu-hero')
   await hero.getByRole('link', { name }).first().click()
-  await expect(page).toHaveURL(/\/recipes\/[0-9a-f-]{36}\?servings=2$/, { timeout: 15_000 })
+  await expect(page).toHaveURL(/\/recipes\/[0-9a-f-]{36}\?servings=2&desde=menu$/, { timeout: 15_000 })
   await expect(page.getByTestId('servings-value').first()).toHaveText('2 raciones', { timeout: 15_000 })
 })

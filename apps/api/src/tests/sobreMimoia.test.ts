@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { BRAND_SUPPORT_EMAIL, FOUNDER_FOOTER, FOUNDER_FOOTER_BETA, PLANS, PLAN_FEATURE_GROUPS } from '@ona/shared'
+import { BRAND_SUPPORT_EMAIL, FOUNDER_FOOTER, FOUNDER_FOOTER_BETA, PAID_PLANS, PLANS, PLAN_FEATURE_GROUPS } from '@ona/shared'
 import {
   ABOUT_FILE,
   WHATSAPP_OFF_TOPIC_REPLY,
@@ -63,14 +63,17 @@ describe("Mimo's prompt carries the public facts and today's prices", () => {
     await knowledgeBaseReady
   })
 
-  it('pricingBlock: both plans with both prices, Esencial recommended, every feature row and the conditions', () => {
+  it('pricingBlock: the three plans, both prices of the paid ones, Esencial recommended, every feature row and the conditions', () => {
     const block = pricingBlock()
-    for (const p of PLANS) {
+    for (const p of PAID_PLANS) {
       expect(block).toContain(`${p.name}${p.featured ? ' (el que recomendamos)' : ''}: ${p.prices.mensual.label} o ${p.prices.anual.label}`)
-      for (const h of p.highlights) expect(block).toContain(h)
     }
-    for (const f of PLAN_FEATURE_GROUPS.flatMap((g) => g.features)) expect(block).toContain(`- ${f.label}: Esencial`)
-    expect(block).toContain('- Hablar con Mimo por voz: Esencial no; Plus si')
+    for (const p of PLANS) for (const h of p.highlights) expect(block).toContain(h)
+    // PRO-385 (D-158): Gratis, with no price, after the trial.
+    expect(block).toContain('- Gratis: 0 €, sin tarjeta; es lo que queda al acabar la prueba sin elegir plan')
+    for (const f of PLAN_FEATURE_GROUPS.flatMap((g) => g.features)) expect(block).toContain(`- ${f.label}: Gratis`)
+    expect(block).toContain('- Hablar con Mimo por voz: Gratis no; Esencial no; Plus si')
+    expect(block).toContain('- Chat con Mimo en la app: Gratis no; Esencial Con tope mensual')
     expect(block).toContain(FOUNDER_FOOTER)
     expect(block).toContain(FOUNDER_FOOTER_BETA)
     expect(block).toContain('LINK.COM* MIMOIA')
@@ -81,7 +84,7 @@ describe("Mimo's prompt carries the public facts and today's prices", () => {
       const p = buildSystemPrompt('Usuario de prueba', mode)
       expect(p).toContain(INTENDED_PURPOSE)
       expect(p).toContain('que en casa solo quede la parte divertida de cocinar')
-      for (const plan of PLANS) for (const period of ['mensual', 'anual'] as const) expect(p).toContain(plan.prices[period].label)
+      for (const plan of PAID_PLANS) for (const period of ['mensual', 'anual'] as const) expect(p).toContain(plan.prices[period].label)
     })
   }
 

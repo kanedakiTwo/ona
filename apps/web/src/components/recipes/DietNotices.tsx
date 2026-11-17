@@ -3,7 +3,8 @@ import { Info } from "lucide-react"
 /**
  * Notices for the signed-in household on the recipe detail (PRO-196), e.g.
  * «Elige embutido sin gluten» for a coeliac household when the recipe has a
- * cured meat whose gluten depends on the brand. The API decides
+ * cured meat whose gluten depends on the brand, or «Elige chili en polvo sin
+ * gluten» for a blended spice or a stock (PRO-1063). The API decides
  * (`recipe.dietNotices`); nothing when none apply.
  */
 export function DietNotices({ notices }: { notices?: string[] }) {

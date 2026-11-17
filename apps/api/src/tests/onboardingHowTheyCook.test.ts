@@ -107,10 +107,12 @@ describe('what Mimo reads about the household', () => {
 
 describe('the web questions', () => {
   it('household, how they cook, weekday time and allergies; the funnel keeps their names', () => {
-    expect(WEB_STEPS.map(onboardingStepKey)).toEqual(['hogar', 'cocina', 'tiempo', 'dieta'])
+    expect(WEB_STEPS.map(onboardingStepKey)).toEqual(['hogar', 'quien_compra', 'invitar', 'cocina', 'tiempo', 'dieta'])
     expect(onboardingOrder(false)).toEqual([1, 3, 4, RESTRICTIONS_STEP])
     // Allergies answered before «Afina tu menú»: three questions.
     expect(onboardingOrder(true)).toEqual([1, 3, 4])
+    // PRO-383: 2 adults also get «¿Quién hace la compra?» (onboardingShopper.test.ts).
+    expect(onboardingOrder({ allergiesAnswered: true, adults: 2 })).toEqual([1, 7, 3, 4])
   })
 
   it('a draft left on a step that is gone resumes on the next one', () => {

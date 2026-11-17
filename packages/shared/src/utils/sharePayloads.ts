@@ -22,16 +22,38 @@ interface ShareableRecipe {
 
 const strip = (origin: string) => origin.replace(/\/+$/, '')
 
-export function recipeSharePayload(recipe: ShareableRecipe, origin: string): SharePayload {
+/**
+ * The household's personal link in its short form (PRO-1016, D-132):
+ * `https://www.mimoia.com` + code → `mimoia.com/i/<code>` (no scheme or
+ * `www.`; WhatsApp and the share sheets still make it a link). `/i/<code>`
+ * takes a household's code to the landing with `?invita=` (PRO-162).
+ */
+export function shortInviteLink(origin: string, code: string): string {
+  return `${strip(origin).replace(/^https?:\/\//, '').replace(/^www\./, '')}/i/${code}`
+}
+
+/** The foot of what people forward (D-132): «Hecho con Mimo · mimoia.com/i/<code>». */
+export function madeWithMimoLine(origin: string, code: string): string {
+  return `Hecho con Mimo · ${shortInviteLink(origin, code)}`
+}
+
+/**
+ * `inviteCode` is the sharing household's code (`GET /referrals/me`): with
+ * it the share carries their invitation (D-132); without it (signed out, or
+ * the code hasn't loaded yet) the share is as before.
+ */
+export function recipeSharePayload(recipe: ShareableRecipe, origin: string, inviteCode?: string | null): SharePayload {
   const base = strip(origin)
   if (recipe.authorId == null) {
     // The recipe page itself (it opens without an account). Title + link
     // only: the link's preview (app/recipes/[id]/layout.tsx) says what Mimoia
     // is, and a `text` next to the `url` gets glued into the link by some
-    // receiving apps (`…?ref=receta%20Pollo%20a%20la%20plancha…`).
+    // receiving apps (`…?ref=receta%20Pollo%20a%20la%20plancha…`). So the
+    // invitation rides in the link (`&invita=`): the page shows the foot and
+    // a sign-up from it counts for the household.
     return {
       title: recipe.name,
-      url: `${base}/recipes/${recipe.id}?ref=receta`,
+      url: `${base}/recipes/${recipe.id}?ref=receta${inviteCode ? `&invita=${inviteCode}` : ''}`,
     }
   }
   // Private recipes have no public page: share the recipe itself as text.
@@ -45,12 +67,73 @@ export function recipeSharePayload(recipe: ShareableRecipe, origin: string): Sha
     .filter((l): l is string => !!l)
   return {
     title: recipe.name,
-    text: `${recipe.name}${lines.length ? `\n\nIngredientes:\n${lines.join('\n')}` : ''}\n\nLa organizo con ${BRAND_NAME}, mi menú semanal: ${base}/?ref=receta`,
+    text: `${recipe.name}${lines.length ? `\n\nIngredientes:\n${lines.join('\n')}` : ''}\n\n${
+      inviteCode ? madeWithMimoLine(origin, inviteCode) : `La organizo con ${BRAND_NAME}, mi menú semanal: ${base}/?ref=receta`
+    }`,
   }
 }
 
-export function withOnaFooter(text: string, origin: string, ref: string): string {
+/** With the household's `inviteCode` the foot is its invitation (D-132); without it, the generic Mimoia link. */
+export function withOnaFooter(text: string, origin: string, ref: string, inviteCode?: string | null): string {
+  if (inviteCode) return `${text.trimEnd()}\n\n${madeWithMimoLine(origin, inviteCode)}`
   return `${text.trimEnd()}\n\n— Hecho con ${BRAND_NAME}, el menú semanal que hace la lista de la compra: ${strip(origin)}/?ref=${ref}`
+}
+
+/**
+ * Link at the foot of what is sent from the list (PRO-380): `?ref=lista` and,
+ * with the household's code (PRO-162), `&invita=<code>`, so a sign-up from it
+ * counts for the K factor.
+ */
+export function shoppingListShareUrl(origin: string, code?: string | null): string {
+  return `${strip(origin)}/?ref=lista${code ? `&invita=${encodeURIComponent(code)}` : ''}`
+}
+
+const LIST_AISLES: ReadonlyArray<[string, string]> = [
+  ['produce', 'Frutas y verduras'],
+  ['proteinas', 'Carnes y pescados'],
+  ['lacteos', 'Lácteos y huevos'],
+  ['panaderia', 'Panadería'],
+  ['despensa', 'Despensa'],
+  ['congelados', 'Congelados'],
+  ['otros', 'Otros'],
+]
+
+interface ShareableListItem {
+  name: string
+  aisle?: string | null
+  quantity?: number | null
+  unit?: string | null
+  amountText?: string | null
+}
+
+/**
+ * «Mandar la lista» (PRO-380): what is left to buy, by aisle (the walk through
+ * the shop), each line with its amount, and at the foot the household's
+ * invitation, «Hecho con Mimo · mimoia.com/i/<code>» (PRO-1016, D-132; the
+ * generic Mimoia line + `?ref=lista` while there is no code). Pure: the web
+ * and the tests use it.
+ */
+export function shoppingListShareText(
+  items: ReadonlyArray<ShareableListItem>,
+  opts: { origin: string; code?: string | null; heading?: string },
+): string {
+  const known = new Set(LIST_AISLES.map(([a]) => a))
+  const out: string[] = [opts.heading ?? 'Lista de la compra', '']
+  for (const [aisle, label] of LIST_AISLES) {
+    const rows = items
+      .filter((i) => (known.has(i.aisle ?? '') ? i.aisle : 'otros') === aisle)
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    if (rows.length === 0) continue
+    out.push(`*${label}*`)
+    for (const i of rows) {
+      const amount = i.amountText ?? (i.quantity && i.unit ? `${i.quantity} ${i.unit}` : '')
+      out.push(`- ${i.name}${amount ? `: ${amount}` : ''}`)
+    }
+    out.push('')
+  }
+  // With the household's code the foot is its invitation (PRO-1016, D-132).
+  if (opts.code) return `${out.join('\n').trimEnd()}\n\n${madeWithMimoLine(opts.origin, opts.code)}`
+  return `${out.join('\n').trimEnd()}\n\n— Hecho con ${BRAND_NAME}, el menú semanal que hace la lista de la compra: ${shoppingListShareUrl(opts.origin, opts.code)}`
 }
 
 const DAY_NAMES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']

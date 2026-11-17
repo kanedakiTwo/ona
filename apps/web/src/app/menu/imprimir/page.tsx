@@ -19,6 +19,7 @@ import { mondayOf } from "@/lib/addToMenu"
 import { dateOfDay, weekRangeLabel, weekdayName } from "@/lib/menuDay"
 import { AISLE_LABELS, formatQuantity, MEAL_LABELS } from "@/lib/labels"
 import { printCell, printMealRows, printShoppingByAisle } from "@/lib/printWeek"
+import { trackUsage } from "@/lib/usageEvents"
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 
@@ -68,7 +69,10 @@ export default function PrintWeekPage() {
         </label>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => {
+            trackUsage("week_printed", { withList })
+            window.print()
+          }}
           className="ml-auto inline-flex h-11 items-center gap-2 rounded-full bg-ink px-5 text-[14px] font-semibold text-cream"
         >
           <Printer size={16} /> Imprimir

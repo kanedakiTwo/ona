@@ -24,14 +24,17 @@ export function familyInviteUrl(token: string): string {
 export function FamilyInviteShare({
   inviteId,
   token,
+  text = familyInviteShareText,
   className = "",
 }: {
   inviteId: string
   token: string
+  /** The message around the link (the sign-up's «¿Quién hace la compra?» has its own, PRO-383). */
+  text?: (inviteUrl: string) => string
   className?: string
 }) {
   const [copied, setCopied] = useState(false)
-  const message = familyInviteShareText(familyInviteUrl(token))
+  const message = text(familyInviteUrl(token))
 
   function markShared() {
     void api.post(`/households/me/invites/${inviteId}/shared`).catch(() => {})

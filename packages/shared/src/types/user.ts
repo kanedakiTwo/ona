@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { WEEKDAY_COOKING_CHOICES } from './cookingTime.js'
 import { COOKING_STYLES } from './cookingStyle.js'
 import { FREEZE_ANSWERS } from './freezeHabit.js'
+import { SHOPPERS } from './shopper.js'
 import type { ActivityLevel, CookingFrequency, HouseholdSize, Priority, Sex } from '../constants/enums.js'
 import { cleanAttributionText, normalizeReferralCode, normalizeSource } from './waitlist.js'
 
@@ -135,6 +136,11 @@ export const onboardingSchema = z.object({
    * `prep_habits` (freezeHabit.ts). Optional: «No» or absent saves nothing.
    */
   freezesMeatFish: z.enum(FREEZE_ANSWERS).optional(),
+  /**
+   * PRO-383 «¿Quién hace la compra?» (only with 2 adults or more) → the
+   * household's ficha (`shopper`). Optional: absent saves nothing.
+   */
+  shopper: z.enum(SHOPPERS).optional(),
 }).refine((b) => b.cookingStyle !== undefined || b.cookingFreq !== undefined, {
   message: 'Falta cómo cocináis en casa.',
   path: ['cookingStyle'],
@@ -147,7 +153,8 @@ export const onboardingSchema = z.object({
  * are only stored with the consent, when the sign-up is finished.
  */
 export const onboardingDraftSchema = z.object({
-  step: z.number().int().min(1).max(6),
+  /** 1…6, and 7 «¿Quién hace la compra?» / 8 its invitation (PRO-383, apps/web/src/lib/onboardingSteps.ts). */
+  step: z.number().int().min(1).max(8),
   adults: z.number().int().min(1).max(20),
   kidsCount: z.number().int().min(0).max(20),
   /** No longer asked (2026-11-03); optional so drafts saved before still resume. */
@@ -156,6 +163,8 @@ export const onboardingDraftSchema = z.object({
   cookingStyle: z.enum(COOKING_STYLES).nullable().optional(),
   /** PRO-221. Optional for the same reason. */
   freezesMeatFish: z.enum(FREEZE_ANSWERS).nullable().optional(),
+  /** PRO-383. Optional so a draft saved before the question still resumes. */
+  shopper: z.enum(SHOPPERS).nullable().optional(),
   weekdayCooking: z.enum(WEEKDAY_COOKING_CHOICES).nullable(),
   cookingNote: z.string().max(500),
   /** No longer asked (2026-11-03); optional for the same reason. */

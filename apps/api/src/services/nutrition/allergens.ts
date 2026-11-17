@@ -424,7 +424,34 @@ export function isCeleryBroth(normalizedName: string): boolean {
 }
 
 const MUSTARD_KEYWORDS = ['mostaza']
-const SESAME_KEYWORDS = ['sesamo', 'tahini', 'tahina', 'shichimi']
+/**
+ * PRO-1096 (2026-11-03): za'atar in its spellings (the bought blend carries
+ * sesame seeds) and the blends that almost always carry sesame. Exported so
+ * the admin list of ingredients that still lack «sesamo» uses the same words.
+ */
+export const PRO1096_SESAME_TERMS = [
+  "za'atar",
+  'za’atar',
+  'zaatar',
+  'zatar',
+  'zahtar',
+  'dukkah',
+  'dukka',
+  'gomasio',
+  'halva',
+  'halwa',
+] as const
+const SESAME_KEYWORDS = ['sesamo', 'tahini', 'tahina', 'shichimi', ...PRO1096_SESAME_TERMS]
+
+/**
+ * True when the name has a PRO-1096 sesame word and the stored tags lack
+ * «sesamo» — the rows the admin list shows so they can be fixed by hand.
+ */
+export function lacksPro1096Sesame(name: string, stored: readonly string[] | null | undefined): boolean {
+  if ((stored ?? []).includes('sesamo')) return false
+  const n = normalize(name)
+  return PRO1096_SESAME_TERMS.some((t) => nameHasTerm(n, t))
+}
 const LUPIN_KEYWORDS = ['altramuz', 'altramuces']
 /** PRO-363: raisins («pasas», «uvas pasas») are usually kept with sulphites. Exported for the boot step. */
 export const PRO363_SULFITE_TERMS = ['pasa'] as const

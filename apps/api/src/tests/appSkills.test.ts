@@ -16,7 +16,7 @@ import type { DayMenu, Dish } from '@ona/shared'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
 import { buildSystemParts } from '../services/assistant/systemPrompt.js'
-import { updateProfileSchema } from '@ona/shared'
+import { fullWeekTypeDays, updateProfileSchema } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from '../services/dietaryRestrictions.js'
 
 const get = (name: string) => {
@@ -177,6 +177,19 @@ describe('menu skills', () => {
     expect(writes(g.calls)).toEqual([{ method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish/random', body: undefined }])
   })
 
+  // PRO-349 (Dani y Sara, 2026-10-22): the route takes the day out of
+  // skippedDays; the summary tells Mimo so it can say it.
+  it('add_dish and set_meal_note on a «sin cocinar» day say it is active again; on another day, nothing', async () => {
+    const skipped = { ...MENU, skippedDays: [5] }
+    const f = fakeApi({ 'GET /recipes': [], 'GET /menu/u1/*': skipped })
+    const added = await get('add_dish').handler({ dayIndex: 5, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(added.summary).toMatch(/El sábado \d+ de \w+ estaba marcado sin cocinar: ya vuelve a estar activo\./)
+    const note = await get('set_meal_note').handler({ dayIndex: 5, meal: 'lunch', text: 'Arroz de limpieza' }, ctx(f.api))
+    expect(note.summary).toContain('estaba marcado sin cocinar: ya vuelve a estar activo.')
+    const other = await get('add_dish').handler({ dayIndex: 2, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(other.summary).not.toContain('sin cocinar')
+  })
+
   it('remove_dish deletes by position found by name', async () => {
     const f = fakeApi()
     await get('remove_dish').handler({ dayIndex: 0, meal: 'lunch', dishName: 'ensalada' }, ctx(f.api))
@@ -221,7 +234,7 @@ describe('menu skills', () => {
         { dinner: { dishes: [lent, { kind: 'recipe', recipeId: 'r-ens', recipeName: 'Ensalada verde' }] } }, // miércoles
         {},
         { dinner: { servings: 2, dishes: [{ ...lent, variant: 'leftover', leftoverOf: { day: 2, meal: 'dinner', dishPosition: 0 } }] } }, // viernes: sobras del miércoles
-        { lunch: { dishes: [lent] } },                                                   // sábado: fijada
+        { lunch: { dishes: [lent] } },                                                   // sábado: fijada (se cambia igual, PRO-1175)
         { dinner: { dishes: [lent] } },                                                  // domingo: sin alternativa
       ],
     }
@@ -231,6 +244,7 @@ describe('menu skills', () => {
         const f = fakeApi({
           'GET /menu/u1/*': WEEK,
           'POST /menu/m1/day/2/meal/dinner/dish/0/regenerate': { dish: { kind: 'recipe', recipeId: 'r-gar', recipeName: 'Garbanzos con espinacas' } },
+          'POST /menu/m1/day/5/meal/lunch/dish/0/regenerate': { dish: { kind: 'recipe', recipeId: 'r-alu', recipeName: 'Alubias blancas' } },
           'POST /menu/m1/day/6/meal/dinner/dish/0/regenerate': new AppApiError(409, 'No candidates'),
         })
         const r = await get('ban_recipe_this_week').handler({ recipeName: 'lentejas' }, ctx(f.api))
@@ -245,6 +259,7 @@ describe('menu skills', () => {
       expect(writes(f.calls)).toEqual([
         { method: 'POST', path: '/menu/m1/ban', body: { recipeId: 'r-lent' } },
         { method: 'POST', path: '/menu/m1/day/2/meal/dinner/dish/0/regenerate', body: undefined },
+        { method: 'POST', path: '/menu/m1/day/5/meal/lunch/dish/0/regenerate', body: undefined },
         { method: 'POST', path: '/menu/m1/day/6/meal/dinner/dish/0/regenerate', body: undefined },
         { method: 'DELETE', path: '/menu/m1/day/4/meal/dinner', body: undefined },
         { method: 'POST', path: '/menu/m1/day/4/leftover', body: { sourceDay: 2, sourceMeal: 'dinner', targetMeal: 'dinner' } },
@@ -259,11 +274,14 @@ describe('menu skills', () => {
       expect(r.summary).toContain('- Miércoles 14 de octubre, cena: "Garbanzos con espinacas"')
       expect(r.summary).toContain('- Viernes 16 de octubre, cena: sobras de "Garbanzos con espinacas"')
       expect(r.summary).toContain('Martes 13 de octubre, comida (es un taper del congelador)')
-      expect(r.summary).toContain('Sábado 17 de octubre, comida (esta fijada)')
+      // A locked meal is changed too (PRO-1175): the lock only keeps it when the week is redone.
+      expect(r.summary).toContain('- Sábado 17 de octubre, comida: "Alubias blancas"')
+      expect(r.summary).not.toContain('esta fijada')
       expect(r.summary).toContain('Domingo 18 de octubre, cena (no hay otra receta que encaje)')
       expect(r.summary).not.toContain('Lunes 12')
       expect((r.data as any).changes.map((c: any) => [c.date, c.meal, c.recipeName])).toEqual([
         ['2026-10-14', 'dinner', 'Garbanzos con espinacas'],
+        ['2026-10-17', 'lunch', 'Alubias blancas'],
         ['2026-10-16', 'dinner', 'Garbanzos con espinacas'],
       ])
     })
@@ -364,13 +382,16 @@ describe('shopping, pantry, staples', () => {
     const r = await get('get_shopping_list').handler({}, ctx(f.api))
     expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado: 1. En casa: 1.')
     expect(r.uiHint).toBe('shopping_list')
+    // PRO-380: handing out the whole list counts as `shopping_list_shared`.
+    expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/list-shared', body: { channel: 'web' } }])
   })
 
-  it('get_shopping_list: all done, and empty list', async () => {
+  it('get_shopping_list: all done, and empty list (nothing handed out, nothing counted)', async () => {
     const done = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i1', name: 'Pan', checked: true }] } })
     expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado: 1.')
     const empty = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [] } })
     expect((await get('get_shopping_list').handler({}, ctx(empty.api))).summary).toContain('está vacía')
+    expect([...writes(done.calls), ...writes(empty.calls)]).toEqual([])
   })
 
   it('remove_shopping_items deletes matches and reports the rest', async () => {
@@ -641,10 +662,22 @@ describe('recipes, profile, household', () => {
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { priority: 'cheap' } }])
   })
 
-  it('update_weekly_template writes the merged settings blob', async () => {
-    const f = fakeApi({ 'GET /user/u1/settings': { template: { mealTemplate: { sabado: { cena: 2 } } } } })
+  it('update_weekly_template writes only the slots that change in the household\'s «semana tipo» (D-182)', async () => {
+    const days = fullWeekTypeDays()
+    days[5].dinner = { diners: 2, options: [{ kind: 'type', type: 'pizza' }] }
+    const f = fakeApi({ 'GET /households/me/week-type': { days } })
     await get('update_weekly_template').handler({ days: [5], meal: 'dinner', diners: 0 }, ctx(f.api))
-    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1/settings', body: { template: { mealTemplate: { sabado: { cena: 0 } } } } }])
+    // Saturday's dinner is off; its pizza stays for when it comes back; nothing else is written.
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/households/me/week-type/5/dinner', body: { off: true, options: [{ kind: 'type', type: 'pizza' }] } }])
+  })
+
+  it('update_weekly_template counts the household’s real diners: «somos dos» in a house of 4 writes those slots', async () => {
+    const f = fakeApi({ 'GET /households/me/week-type': { days: fullWeekTypeDays() }, 'GET /user/u1': { adults: 4, kidsCount: 0 } })
+    await get('update_weekly_template').handler({ days: [0, 1], meal: 'dinner', diners: 2 }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'PUT', path: '/households/me/week-type/0/dinner', body: { diners: 2 } },
+      { method: 'PUT', path: '/households/me/week-type/1/dinner', body: { diners: 2 } },
+    ])
   })
 
   it('invite_to_household returns the written message with the link, counted as sent by Mimo (PRO-260)', async () => {

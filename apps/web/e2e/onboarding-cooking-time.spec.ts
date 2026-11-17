@@ -5,7 +5,7 @@
  * «Lo que recuerdo de ti». At 390×844 (iPhone 14).
  */
 import { test, expect } from '@playwright/test'
-import { registerFreshUser } from './_helpers'
+import { answerShopper, registerFreshUser } from './_helpers'
 
 test.use({ viewport: { width: 390, height: 844 } })
 
@@ -21,13 +21,14 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
 
-  // The third question (since 2026-11-03): one tap, and the optional field.
+  // Then the weekday time: one tap, and the optional field.
   await expect(page.getByRole('heading', { name: /entre semana, ¿cómo te gusta cocinar/i })).toBeVisible()
-  await expect(page.getByText('Primeros pasos · 3 de 4')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 4 de 5')).toBeVisible()
   await expect(page.getByText('El fin de semana, sin prisa.')).toBeVisible()
   await expect(next).toBeDisabled()
   for (const label of [/^rápido/i, /^poco rato de trabajo/i, /^sin prisa/i]) {
@@ -35,7 +36,7 @@ test('weekday cooking question + «tu caso» field → time limits in the memory
   }
   const note = page.getByLabel(/algo más\? cuéntanos tu caso/i)
   await expect(note).toBeVisible()
-  await expect(note).toHaveAttribute('placeholder', /los lunes ceno tarde/)
+  await expect(note).toHaveAttribute('placeholder', /pasta los miércoles/)
   await page.getByRole('button', { name: /^poco rato de trabajo/i }).click()
   await expect(page.getByRole('button', { name: /^poco rato de trabajo/i })).toHaveAttribute('aria-pressed', 'true')
   await note.fill('teletrabajo y puedo dejar algo al fuego')

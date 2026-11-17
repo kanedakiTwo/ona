@@ -13,7 +13,7 @@
  *     admins) never send it twice. A failed send is not retried.
  *   - One person per household: the owner, else the earliest member, with
  *     WhatsApp linked. Never whoever asked BAJA (or said «No, gracias»), a
- *     suspended or paused account, or one outside `WHATSAPP_ALLOWED_EMAILS`.
+ *     suspended account or one on the Gratis plan, or one outside `WHATSAPP_ALLOWED_EMAILS`.
  *   - Never a household with an internal account (role admin or in
  *     `ADMIN_EMAILS`) or a test household (an email in a reserved test
  *     domain: example.com, *.test, *.local…, or `EMAIL_SINK_DOMAINS`).
@@ -27,7 +27,7 @@ import { sql } from 'drizzle-orm'
 import { env } from '../../config/env.js'
 import { db as defaultDb } from '../../db/connection.js'
 import { recordCost } from '../costLedger.js'
-import { isAccountPaused } from '../accountAccess.js'
+import { isOnFreePlan } from '../accountAccess.js'
 import { emailSinkDomains } from '../emailSink.js'
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { isUserAllowed, isWhatsAppConfigured } from './config.js'
@@ -306,7 +306,7 @@ export interface QuestionPreview extends QuestionPlan {
 
 async function pausedAmong(households: readonly CandidateHousehold[], now: Date, isPaused: QuestionDeps['isPaused']): Promise<Set<string>> {
   const paused = new Set<string>()
-  const check = isPaused ?? ((id: string, at: Date) => isAccountPaused(id, at))
+  const check = isPaused ?? ((id: string, at: Date) => isOnFreePlan(id, at))
   for (const h of households) for (const m of h.members) if (m.link && (await check(m.userId, now))) paused.add(m.userId)
   return paused
 }

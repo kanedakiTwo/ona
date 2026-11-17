@@ -1,4 +1,4 @@
-import type { DayMenu } from '@ona/shared'
+import { alertKindOn, type DayMenu } from '@ona/shared'
 import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
 import type { GuideSpec } from './guided.js'
@@ -11,7 +11,8 @@ import { freezerReviewDue, freezerReviewGuide, freezerReviewMessages, isFreezerR
  * you when something needs attention"):
  *   - daily brief at breakfast time: today's menu + "¿cambio algo?"
  *   - Sunday evening nudge: "¿te preparo el menú de la semana que viene?"
- *     when next week has no menu yet
+ *     when next week has no menu yet — only for whoever switched off the
+ *     Thursday autopilot (`weekly_autoplan`, PRO-381)
  * Prep alerts ("saca el pescado del congelador") come from the existing
  * notification_schedule queue — see notificationScheduler.ts.
  *
@@ -413,7 +414,8 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     }
   }
 
-  if (can('weekly_nudge') && isWeeklyNudgeWindow(p) && !(await input.hasNextWeekMenu())) {
+  // PRO-381 (D-158): with the Thursday autopilot on, the Sunday question doesn't go.
+  if (can('weekly_nudge') && !alertKindOn('weekly_autoplan', input.prefs) && isWeeklyNudgeWindow(p) && !(await input.hasNextWeekMenu())) {
     out.push({
       kind: 'weekly_nudge',
       messages: [

@@ -22,6 +22,7 @@ import {
 import { db } from '../db/connection.js'
 import { profileChanges, profileFacts, userMemories, users, userSettings } from '../db/schema.js'
 import { env } from '../config/env.js'
+import { ensureErasureLog, recordErasure } from './erasureLog.js'
 
 /**
  * WhatsApp is not for special-category data (Meta's terms 4.2, PRO-24): over
@@ -131,14 +132,18 @@ export async function grantHealthConsent(userId: string): Promise<void> {
 
 /**
  * Withdraw (or decline) the consent: record the date and delete every copy
- * of the health data. The consent date and version stay as the record.
+ * of the health data. The consent date and version stay as the record, and
+ * the erasure log keeps the id and the date (PRO-1122) for a restored backup.
  */
-export async function withdrawHealthConsent(userId: string): Promise<void> {
-  await db.transaction(async (tx) => {
+export async function withdrawHealthConsent(userId: string, opts: { db?: typeof db; at?: Date } = {}): Promise<void> {
+  const conn = opts.db ?? db
+  const at = opts.at ?? new Date()
+  await ensureErasureLog(conn)
+  await conn.transaction(async (tx) => {
     await tx
       .update(users)
       .set({
-        healthConsentWithdrawnAt: new Date(),
+        healthConsentWithdrawnAt: at,
         // A «No tengo ninguna» from before no longer stands for what was saved since.
         allergiesNoneAt: null,
         sex: null,
@@ -169,6 +174,7 @@ export async function withdrawHealthConsent(userId: string): Promise<void> {
         .set({ template: stripHealthFromTemplate(settings.template) as object })
         .where(eq(userSettings.userId, userId))
     }
+    await recordErasure(tx, 'health_consent', userId, at)
   })
 }
 

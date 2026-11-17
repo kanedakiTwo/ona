@@ -1,9 +1,9 @@
 /**
  * «Familia en el mismo hogar» (PRO-261, D-088; specs/household.md →
- * «Ofrecer la invitación»): the invitation is offered once in the sign-up
- * (2 adults or more) and once the first time the shopping list opens;
- * «Te preparo el mensaje» turns into «Enviar por WhatsApp» with the link.
- * Neither comes back. 390×844.
+ * «Ofrecer la invitación»): the invitation is offered once the first time
+ * the shopping list opens; «Te preparo el mensaje» turns into «Enviar por
+ * WhatsApp» with the link. It doesn't come back. 390×844. The sign-up's
+ * moment is «¿Quién hace la compra?» since PRO-383 (onboarding-shopper.spec.ts).
  */
 import { test, expect, type Page } from '@playwright/test'
 import { registerFreshUser, skipFirstSteps, skipTasteOffer } from './_helpers'
@@ -12,58 +12,11 @@ const API = process.env.API_URL ?? 'http://localhost:8765'
 
 test.use({ viewport: { width: 390, height: 844 } })
 
-async function startWebQuestions(page: Page) {
-  const web = page.getByRole('button', { name: /prefiero la web/i })
-  const household = page.getByRole('heading', { name: /para cuántos cocinas/i })
-  await expect(web.or(household)).toBeVisible({ timeout: 15_000 })
-  if (await web.isVisible()) await web.click()
-  await expect(household).toBeVisible()
-}
-
 async function auth(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem('ona_token'))
   const user = JSON.parse((await page.evaluate(() => localStorage.getItem('ona_user'))) ?? '{}')
   return { headers: { Authorization: `Bearer ${token}` }, userId: user.id as string }
 }
-
-test('sign-up with 2 adults: the offer shows once, prepares the WhatsApp message and does not come back', async ({ page }) => {
-  test.setTimeout(90_000)
-  await registerFreshUser(page)
-  await page.goto('/onboarding')
-  await startWebQuestions(page)
-
-  // Two adults (the default): the offer is there.
-  await expect(page.locator('[aria-live="polite"]').nth(0)).toHaveText('2')
-  const offer = page.getByTestId('family-invite-offer-alta')
-  await expect(offer).toBeVisible({ timeout: 15_000 })
-  await expect(offer).toContainText('¿Quieres que la otra persona vea también el menú y la lista?')
-
-  // With one adult it hides; back to two, it's there again (same visit).
-  await page.getByRole('button', { name: 'Quitar adulto' }).click()
-  await expect(offer).toBeHidden()
-  await page.getByRole('button', { name: 'Añadir adulto' }).click()
-  await expect(offer).toBeVisible()
-
-  const created = page.waitForResponse((r) => r.url().endsWith('/households/me/invites') && r.request().method() === 'POST')
-  await offer.getByTestId('family-invite-prepare').click()
-  const res = await created
-  expect(res.status()).toBe(201)
-  expect(JSON.parse(res.request().postData() ?? '{}')).toMatchObject({ source: 'alta' })
-  const { token } = await res.json()
-  const whatsapp = offer.getByTestId('family-invite-whatsapp')
-  await expect(whatsapp).toBeVisible()
-  const href = (await whatsapp.getAttribute('href'))!
-  expect(href.startsWith('https://wa.me/?text=')).toBe(true)
-  expect(decodeURIComponent(href)).toContain(`/invites/${token}`)
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
-
-  // Never again: a new visit to the sign-up doesn't show it.
-  const status = page.waitForResponse((r) => r.url().endsWith('/households/me/family-offer') && r.request().method() === 'GET')
-  await page.reload()
-  await startWebQuestions(page)
-  expect(await (await status).json()).toMatchObject({ alta: false })
-  await expect(page.getByTestId('family-invite-offer-alta')).toHaveCount(0)
-})
 
 test('first visit to the shopping list: «Compártela con quien compra contigo», once', async ({ page }) => {
   test.setTimeout(90_000)

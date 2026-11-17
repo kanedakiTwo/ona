@@ -30,9 +30,11 @@ describe('onboardingDraftSchema', () => {
     expect(onboardingDraftSchema.safeParse({ ...draft, healthConsent: true }).success).toBe(false)
   })
 
-  it('rejects a step outside the six questions (PRO-217 added «¿Cómo cocináis en casa?»)', () => {
+  it('rejects a step outside the questions (PRO-383 added 7 «¿Quién hace la compra?» and 8 its invitation)', () => {
     expect(onboardingDraftSchema.safeParse({ ...draft, step: 6 }).success).toBe(true)
-    expect(onboardingDraftSchema.safeParse({ ...draft, step: 7 }).success).toBe(false)
+    expect(onboardingDraftSchema.safeParse({ ...draft, step: 8, shopper: 'other' }).success).toBe(true)
+    expect(onboardingDraftSchema.safeParse({ ...draft, step: 9 }).success).toBe(false)
+    expect(onboardingDraftSchema.safeParse({ ...draft, shopper: 'mi pareja' }).success).toBe(false)
     expect(onboardingDraftSchema.safeParse({ ...draft, step: 0 }).success).toBe(false)
   })
 })

@@ -125,7 +125,11 @@ export const PRICES: PriceTable = {
   'aikit/flux-2-pro': { currency: 'EUR', perImage: 0.027 },
   // Historical: the old Imagen-fal route (403 to keys since 2026-10-08); kept so old rows keep their price.
   'aikit/imagen-fal': { currency: 'USD', perImage: 0.04 }, // UNVERIFIED (fal Imagen list price; AiKit's own markup unknown)
-  // gpt-image-1, quality medium, 1536×1024: ~1,570 output image tokens at $40/MTok (measured 2026-10-08).
+  // The OpenAI reserve since PRO-1149: gpt-image-2, quality medium, 1536×1024 — 0.041 $ in OpenAI's own
+  // per-image estimate (image output at $30/MTok, read on its pricing page 2026-11-13). UNVERIFIED: not measured on a bill.
+  'openai/gpt-image-2': { currency: 'USD', perImage: 0.041 }, // UNVERIFIED (OpenAI estimate)
+  // Historical: gpt-image-1 (switched off by OpenAI on 2026-10-23); kept so old rows keep their price.
+  // Quality medium, 1536×1024: ~1,570 output image tokens at $40/MTok (measured 2026-10-08).
   'openai/gpt-image-1': { currency: 'USD', perImage: 0.063 },
 
   // ── AIKIT chat (transcription reserve, services/stt.ts) ──

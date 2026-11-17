@@ -14,7 +14,7 @@ En `packages/shared/src/constants/featureCatalog.ts`, una entrada por truco:
 - `per`: `hogar` (una fila por hogar) o `persona` (una por persona y hogar).
 - `events`: qué eventos cuentan. Un evento cuenta si coincide con alguna regla: el `name` y, si la regla los trae, el `channel` y las `props` (todas las claves; una lista es «cualquiera de estos valores»).
 
-Las entradas de hoy salen de los eventos que ya existen:
+Las entradas de hoy salen de los eventos que ya existen. «Cocinar ahora» (`/cocinar`, [Cook now](./cook-now.md)) no es todavía un truco del catálogo: su visita es `screen_viewed` `cocinar` (antes `despensa`, porque `/profile/pantry` redirige allí) y sus usos, `cook_now_proposed` y `cook_now_chosen` ([metrics.md](./metrics.md)); «Terminar» en el modo cocina cuenta en `marcar_cocinado` (`meal_cooked`, con `fromMenu` cuando viene del menú).
 
 | id | Función | Tipo | Por | Eventos |
 |---|---|---|---|---|
@@ -85,14 +85,34 @@ D-122, punto 5. `GET /admin/feature-usage?days=30[&includeInternal=1]` (`routes/
 
 La pantalla es `/admin/funciones` («Uso de funciones» en el menú del admin, `FeatureUsageSection.tsx`): los filtros (7, 30 o 90 días; acciones o ajustes; por hogar o por persona; orden del catálogo, más o menos usadas), una tarjeta por función con sus cifras y el bloque «Trucos de la newsletter» con, por función, cuántos no la han usado nunca y cuántos la dejaron. «Menos de 5» se pinta tal cual llega de la API.
 
+## Las hojas del menú (PRO-1174)
+
+Para decidir qué opciones de las hojas «···» del menú se quedan a la vista (propuesta de Producto del 2026-11-11, «Las hojas «···» del menú»; menú: [Menus](./menus.md)), cada toque en una opción deja un evento `menu_sheet_action` (`POST /usage/event`, solo web) con dos palabras de una lista cerrada, `MENU_SHEET_ACTIONS` (`packages/shared/src/constants/menuSheets.ts`): la hoja (`sheet`) y la opción (`action`). Cuenta el toque, antes de cualquier confirmación («¿Vetar…?», «¿Quitar…?»). La API guarda solo opciones de esa hoja: otra palabra, o una opción de otra hoja, no se guarda.
+
+| `sheet` | Dónde | `action` |
+|---|---|---|
+| `comida` | hoja de una comida con un plato (`MealOptions`, día y escritorio) | `ver_receta`, `elegir_receta` («Cambiar plato»), `cambiar_azar` («Que elija Mimoia», dentro del buscador, PRO-1175), `mas_opciones`, `ya_hecho` («Ya está hecho / táper…»), `sobras_si` / `sobras_no`, `anadir_plato`, `fijar` / `desfijar`, `vetar`, `cocinada` / `desmarcar_cocinada`, `taper_si` / `taper_no`, `comensales_menos` / `comensales_mas` / `comensales_quitar`, `quitar_comida`, `semana_tipo` («Guardar en mi semana tipo», en «Más opciones», PRO-1186; guardar es un `template_changed`) |
+| `comida_varios` | la misma hoja con varios platos o con una nota | las de `comida` y `ordenar_platos` (arrastrar) |
+| `plato` | cada plato de esa lista | `ver_receta` (la miniatura), `cambiar_azar` («Cambiar»), `quitar_plato`, `editar_nota` |
+| `vacio` | la hoja de una comida sin plato | las de `comida` (se ven `anadir_plato`, `fijar`, comensales y `quitar_comida`) |
+| `no_hay` | «El viernes no hay cena» → «Sin plato todavía» | `elegir_receta`, `cambiar_azar` («Una al azar»), `congelador`, `taper_nevera` |
+| `dia` | pie del día y su hoja «Añadir comida» | `anadir_comida`, `congelador`, `taper_nevera`, `saltar_dia`, `reactivar_dia` (también en la vista semana y en escritorio), `levantar_veto` |
+| `semana` | la hoja «···» de la semana | `semana_anterior`, `semana_siguiente`, `volver_semana`, `regenerar`, `favoritas`, `compartir`, `imprimir`, `vista_semana` / `vista_dia`, `historial`, `vaciar` |
+| `semana_fila` | el menú «···» de una fila de la vista semana | `elegir_receta`, `cambiar_azar` («Aleatorio»), `anadir_plato`, `fijar` / `desfijar` («Bloquear»), `vetar`, `quitar_comida` («Quitar slot») |
+
+`GET /admin/usage` (y `data/uso` en Mimoia HQ) lo devuelve en `menuSheetActions`: por hoja, el total y los toques de cada opción, las más tocadas primero (las ocho hojas, también sin uso), y en `breakdown.menu_sheet_action` por `sheet` y por `action` sueltos. En `breakdown.meal_swapped` se ve cuántos cambios fueron al azar (`how: auto`) y cuántos elegidos (`picked`), de la comida (`target: meal`) o de un plato (`dish`), de la web y de Mimo. Solo recuentos. No es una función del catálogo: no entra en `household_feature_usage`.
+
 ## Tests
 
 - `featureUsageReport.test.ts` (router de métricas de verdad, base de datos de mentira): cerrada sin credenciales; una fila por función del catálogo, en su orden; una celda con 3 hogares sale «menos de 5», con sus usos; en la respuesta no hay ids ni textos (ni los que traiga de más la consulta); los trucos, de más a menos; `days` acotado y sin cuentas internas por defecto. `tokenRoutes.test.ts` fija la ruta entre las del token.
 - `e2e/admin-feature-usage.spec.ts`: `/admin/funciones` con una respuesta fijada (filas, filtros, orden, trucos y «menos de 5»), con la API de verdad y desde el menú del admin en escritorio.
 - `featureUsage.test.ts` (repo en memoria que imita el SQL): una acción suma un uso; volver a pasar la misma noche no suma; un ajuste cuenta una vez por semana (el domingo a las 23:30 de Madrid es aún esa semana); `uses_total` sobrevive a borrar los eventos y los 30 días bajan; filas por hogar y por persona; filtro por props; la ventana con el cambio de hora; una vez al día desde la 01:00; el catálogo.
+- `menuSheetAction.test.ts` (PRO-1174): por hoja, cada opción es un `menu_sheet_action` válido y su componente la manda; una opción fuera de la lista (o de otra hoja) no se guarda; `meal_swapped` se desglosa por `how` y `target`; `menuSheetActions` cruza hoja y opción. `usageRoute.smoke.ts` lo comprueba con el SQL de verdad, y `e2e/menu-sheet-actions.spec.ts` abre la hoja de una comida a 390×844 y a 1440×900, toca «Ver receta» y espera el evento contado.
 - `featureUsage.smoke.ts` (Postgres, CI): lo mismo con el SQL de verdad sobre un hogar propio, y borrar la cuenta (y su hogar) borra las filas.
 
 ## Pendiente
+
+- Con los datos de las hojas (PRO-1174), Producto decide qué opción queda a la vista y cuál baja a «Más opciones» (PRO-1175 y siguientes).
 
 - La lee el admin (`/admin/funciones`, arriba); la usará también la newsletter del n.º 4 (truco por persona).
 - Ajustes que no dejan evento (comidas fijas, menú del cole…) necesitan antes su evento.

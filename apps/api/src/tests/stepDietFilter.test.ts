@@ -132,8 +132,9 @@ describe('loadMatchableRecipes + matchRecipes: a vegetarian household', () => {
   ]
 
   it('the recipe whose steps name chorizo is never proposed; the fixed one is', async () => {
-    // Queries: recipes, the ficha (household, facts, persons, portrait), ingredient lines, steps.
-    const pool = await loadMatchableRecipes('u-laura', makeDb(rows, [{ householdId: 'h1' }], [], [], [], lines, steps))
+    // Queries: recipes, the ficha (household, facts, persons, portrait), ingredient lines, steps,
+    // PRO-1142's dislike overrides (no household, no «Me apetece»).
+    const pool = await loadMatchableRecipes('u-laura', makeDb(rows, [{ householdId: 'h1' }], [], [], [], lines, steps, [], []))
     expect(pool.find((r) => r.id === 'r-lent')!.stepMentions!.map((m) => m.term)).toEqual(['hueso', 'chorizo', 'morcilla'])
     expect(pool.map((r) => r.catalogAuditIssues)).toEqual([[], []])
     const opts = { meal: 'lunch' as const, season: 'autumn' as const, usedRecipeIds: new Set<string>(), favoriteRecipeIds: new Set<string>() }

@@ -11,6 +11,8 @@
  * still unanswered after API_SLOW_MS (8 s): it used to leave /menu on a
  * near-empty «Cargando...» for good (Windows app, 2026-10-21). If the late
  * answer says the sign-up is pending, it still goes to `/onboarding`.
+ * With a menu already made (by Mimo, PRO-1042) the server doesn't require
+ * it: the page shows the menu and `PendingSignUpCard` offers the sign-up.
  *
  * Only the answer fetched for this visit counts (2026-10-22). A disabled query
  * still hands back what an earlier visit cached: an account that reached
@@ -29,11 +31,12 @@ import { useSlowLoad } from "@/components/profile/SubLoadError"
 interface OnboardingStatus {
   onboardingDone?: boolean | null
   onboardingRequired?: boolean
+  /** PRO-1042: still to do, though a menu is already there (made by Mimo). */
+  onboardingPending?: boolean
 }
 
-export function useOnboardingGate(): "ok" | "checking" {
-  const { user, isLoading, updateUser } = useAuth()
-  const router = useRouter()
+function useGateStatus() {
+  const { user } = useAuth()
   const knownDone = Boolean(user?.onboardingDone)
   const status = useQuery({
     queryKey: ["onboarding-gate", user?.id],
@@ -42,6 +45,13 @@ export function useOnboardingGate(): "ok" | "checking" {
     staleTime: 0,
     refetchOnWindowFocus: false,
   })
+  return { knownDone, status }
+}
+
+export function useOnboardingGate(): "ok" | "checking" {
+  const { user, isLoading, updateUser } = useAuth()
+  const router = useRouter()
+  const { knownDone, status } = useGateStatus()
 
   // What the server said for this visit; never an earlier visit's cached answer.
   const fresh = !knownDone && status.isFetchedAfterMount ? status.data : undefined
@@ -58,6 +68,17 @@ export function useOnboardingGate(): "ok" | "checking" {
   if (slow && !required) return "ok"
   if (!fresh || required) return "checking"
   return "ok"
+}
+
+/**
+ * PRO-1042: the sign-up is still to do, but the menu is already there (Mimo
+ * made it by WhatsApp or the account came through the API): /menu shows the
+ * menu and offers the sign-up apart. Same request as the gate's.
+ */
+export function usePendingSignUp(): boolean {
+  const { knownDone, status } = useGateStatus()
+  const fresh = !knownDone && status.isFetchedAfterMount ? status.data : undefined
+  return Boolean(fresh?.onboardingPending && !fresh.onboardingRequired)
 }
 
 /**

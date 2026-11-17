@@ -48,8 +48,8 @@ test('logout clears the cached API responses and the offline queue', async ({ pa
   expect(await page.evaluate(() => caches.has('api-cache'))).toBe(true)
   expect(await idb(page, 'get')).toBeTruthy()
 
-  await page.goto('/profile')
-  await page.getByRole('button', { name: /salir/i }).click()
+  await page.goto('/profile/ajustes')
+  await page.getByRole('button', { name: /cerrar sesión/i }).click()
   await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 })
 
   expect(await page.evaluate(() => caches.has('api-cache'))).toBe(false)

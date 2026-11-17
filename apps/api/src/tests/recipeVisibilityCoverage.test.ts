@@ -40,7 +40,7 @@ function recipeChains(source: string): string[] {
 const SCOPED_FILES = [
   'services/matchableRecipes.ts',
   'services/menuGenerator.ts',
-  'services/pantryMatcher.ts',
+  'services/cookNow/load.ts',
   'services/advisor.ts',
   'services/assistant/skills.ts',
   'routes/menus.ts',
@@ -69,7 +69,9 @@ describe('recipe visibility coverage', () => {
     expect(read('routes/menus.ts').match(/= await (schoolDinnerPool\(await )?loadMatchableRecipes\(req\.userId!\)/g)?.length).toBe(3)
     // «Cambiar» (PUT slot) and PRO-364's review share the context in menuSlotPick.ts.
     expect(read('services/menuSlotPick.ts')).toContain('= await loadMatchableRecipes(requesterId)')
-    expect(read('services/pantryMatcher.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
+    // «Cocinar ahora» searches through the loader and picks through the visibility.
+    expect(read('services/cookNow/load.ts')).toContain('loadMatchableRecipes(userId)')
+    expect(read('services/cookNow/load.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
     expect(read('services/advisor.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
     // manual pick of a recipe for a slot (meal + course variants).
     expect(read('routes/menus.ts').match(/eq\(recipes\.id, manualRecipeId\), visibleRecipeWhere/g)?.length).toBe(2)

@@ -35,6 +35,7 @@ import {
 import { buildRecipePayload, createRecipeSchema, COURSES, COURSE_LABELS } from "@ona/shared"
 import type { Course, Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
+import { RequiredNote } from "@/components/FieldLabel"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
   { value: "breakfast", label: MEAL_LABELS.breakfast },
@@ -426,7 +427,7 @@ function NewRecipePageInner() {
             <div className="min-w-0 space-y-4 lg:space-y-6">
               <FormCard title="Datos">
                 <div className="space-y-5">
-                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name}>
+                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name} required>
                     <input
                       id="recipe-name"
                       type="text"
@@ -450,11 +451,12 @@ function NewRecipePageInner() {
                     <Field
                       label="Enlace del original"
                       htmlFor="recipe-source"
+                      optional
                       error={errors.sourceUrl}
                       hint={
                         askSourceLink
                           ? "Parece una captura de una web o una red social. Pega aquí el enlace del original y se guardará como fuente de la receta."
-                          : "Opcional. Si la receta viene de una web o un vídeo, la receta mostrará «Ver fuente»."
+                          : "Si la receta viene de una web o un vídeo, la receta mostrará «Ver fuente»."
                       }
                     >
                       <input
@@ -470,11 +472,12 @@ function NewRecipePageInner() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Comensales" htmlFor="recipe-servings" error={errors.servings}>
+                    <Field label="Comensales" htmlFor="recipe-servings" error={errors.servings} required>
                       <div className="flex items-center gap-2">
                         <input
                           id="recipe-servings"
                           type="number"
+                          required
                           value={servings}
                           onChange={(e) => {
                             setServings(e.target.value ? Number(e.target.value) : "")
@@ -491,6 +494,7 @@ function NewRecipePageInner() {
                       label="Tiempo de preparacion"
                       htmlFor="recipe-prep"
                       error={errors.prepTime}
+                      optional
                     >
                       <div className="flex items-center gap-2">
                         <input
@@ -509,7 +513,7 @@ function NewRecipePageInner() {
                     </Field>
                   </div>
 
-                  <Field label="Tipo de plato" htmlFor="recipe-course">
+                  <Field label="Tipo de plato" htmlFor="recipe-course" optional>
                     <select
                       id="recipe-course"
                       value={course}
@@ -525,7 +529,7 @@ function NewRecipePageInner() {
                     </select>
                   </Field>
 
-                  <Field label="Etiquetas" htmlFor="recipe-tags">
+                  <Field label="Etiquetas" htmlFor="recipe-tags" optional plural>
                     <input
                       id="recipe-tags"
                       type="text"
@@ -579,6 +583,7 @@ function NewRecipePageInner() {
                     label="Tipo de comida"
                     hint="Toca: vacío → encaja a veces → encaja perfecto. Al menos una en cualquier estado distinto a vacío."
                     error={errors.meals}
+                    required
                   >
                     <div className="flex flex-wrap gap-2">
                       {MEAL_OPTIONS.map((opt) => (
@@ -594,8 +599,9 @@ function NewRecipePageInner() {
 
                   <Field
                     label="Temporada"
-                    hint="Marca al menos una con el grado de encaje"
+                    hint="Marca las que encajen y con qué grado"
                     error={errors.seasons}
+                    optional
                   >
                     <div className="flex flex-wrap gap-2">
                       {SEASON_OPTIONS.map((opt) => (
@@ -619,6 +625,7 @@ function NewRecipePageInner() {
               <FormCard
                 title="Ingredientes"
                 description="Cada ingrediente se asocia a la biblioteca de Mimoia. Empieza a escribir y selecciona uno de la lista."
+                mark={{ required: true }}
               >
                 <SortableIngredientsList
                   rows={ingredientRows}
@@ -660,11 +667,11 @@ function NewRecipePageInner() {
                     )
                   }}
                 />
-                <AddRowButton onClick={addIngredientRow}>Anadir ingrediente</AddRowButton>
+                <AddRowButton onClick={addIngredientRow}>Añadir ingrediente</AddRowButton>
                 <FieldError>{errors.ingredients}</FieldError>
               </FormCard>
 
-              <FormCard title="Preparacion">
+              <FormCard title="Preparacion" mark={{ optional: true }}>
                 <SortableStepsList
                   steps={steps}
                   onReorder={setSteps}
@@ -678,7 +685,7 @@ function NewRecipePageInner() {
                     )?.[1] ?? null
                   }
                 />
-                <AddRowButton onClick={addStep}>Anadir paso</AddRowButton>
+                <AddRowButton onClick={addStep}>Añadir paso</AddRowButton>
               </FormCard>
             </div>
           </div>
@@ -687,6 +694,7 @@ function NewRecipePageInner() {
               warnings) and the sticky ink pill. */}
           {/* The bar must be a direct child of the form: a sticky element
               only sticks inside its parent's box. */}
+          <RequiredNote className="mt-4" />
           <div className="mt-6">
             <FormErrors
               errors={errors}

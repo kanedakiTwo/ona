@@ -13,13 +13,16 @@ import { lastNightDish, weekHasCooked } from '../../../web/src/lib/weekSteps'
 const ALL: NextStepState = {
   noHealthData: true,
   afinaNotice: true,
-  accountPaused: true,
+  planGratis: true,
   firstSteps: true,
   billing: true,
+  autoplan: true,
   sendList: true,
   lastNight: true,
+  pendingSignUp: true,
   tasteCard: true,
   whatsappNudge: true,
+  seanEllis: true,
   priceSurvey: true,
   install: true,
 }
@@ -36,24 +39,31 @@ describe('pickNextStepCard', () => {
   it('one card at a time, in the order of D-158', () => {
     expect(without()).toBe('no_health_data')
     expect(without('noHealthData')).toBe('afina_notice')
-    expect(without('noHealthData', 'afinaNotice')).toBe('account_paused')
-    expect(without('noHealthData', 'afinaNotice', 'accountPaused')).toBe('first_steps')
-    expect(without('noHealthData', 'afinaNotice', 'accountPaused', 'firstSteps')).toBe('billing')
-    expect(without('noHealthData', 'afinaNotice', 'accountPaused', 'firstSteps', 'billing')).toBe('send_list')
-    expect(without('noHealthData', 'afinaNotice', 'accountPaused', 'firstSteps', 'billing', 'sendList')).toBe('last_night')
-    expect(without('noHealthData', 'afinaNotice', 'accountPaused', 'firstSteps', 'billing', 'sendList', 'lastNight')).toBe('taste_card')
-    expect(
-      without('noHealthData', 'afinaNotice', 'accountPaused', 'firstSteps', 'billing', 'sendList', 'lastNight', 'tasteCard'),
-    ).toBe('whatsapp_nudge')
+    expect(without('noHealthData', 'afinaNotice')).toBe('plan_gratis')
+    expect(without('noHealthData', 'afinaNotice', 'planGratis')).toBe('first_steps')
+    expect(without('noHealthData', 'afinaNotice', 'planGratis', 'firstSteps')).toBe('billing')
+    const upTo = ['noHealthData', 'afinaNotice', 'planGratis', 'firstSteps', 'billing'] as const
+    expect(without(...upTo)).toBe('autoplan')
+    expect(without(...upTo, 'autoplan')).toBe('send_list')
+    expect(without(...upTo, 'autoplan', 'sendList')).toBe('last_night')
+    expect(without(...upTo, 'autoplan', 'sendList', 'lastNight')).toBe('pending_sign_up')
+    expect(without(...upTo, 'autoplan', 'sendList', 'lastNight', 'pendingSignUp')).toBe('taste_card')
+    expect(without(...upTo, 'autoplan', 'sendList', 'lastNight', 'pendingSignUp', 'tasteCard')).toBe('whatsapp_nudge')
+    expect(without(...upTo, 'autoplan', 'sendList', 'lastNight', 'pendingSignUp', 'tasteCard', 'whatsappNudge')).toBe('sean_ellis')
   })
 
   it('safety goes before billing and the first week', () => {
     expect(pickNextStepCard({ noHealthData: true, billing: true, sendList: true })).toBe('no_health_data')
-    expect(pickNextStepCard({ accountPaused: true, sendList: true, lastNight: true })).toBe('account_paused')
+    expect(pickNextStepCard({ planGratis: true, sendList: true, lastNight: true })).toBe('plan_gratis')
   })
 
   it('billing goes before «Manda la lista»', () => {
     expect(pickNextStepCard({ billing: true, sendList: true, whatsappNudge: true })).toBe('billing')
+  })
+
+  it('«Mimo os ha dejado hecha la semana» goes with «Manda la lista», just before it', () => {
+    expect(pickNextStepCard({ autoplan: true, sendList: true, lastNight: true })).toBe('autoplan')
+    expect(pickNextStepCard({ billing: true, autoplan: true })).toBe('billing')
   })
 
   it('«Manda la lista» goes before «¿Qué tal la cena de ayer?» and the rest', () => {
@@ -63,6 +73,7 @@ describe('pickNextStepCard', () => {
 
   it('the price survey and the install prompt only when there is no other card', () => {
     expect(pickNextStepCard({ whatsappNudge: true, priceSurvey: true, install: true })).toBe('whatsapp_nudge')
+    expect(pickNextStepCard({ seanEllis: true, priceSurvey: true })).toBe('sean_ellis')
     expect(pickNextStepCard({ sendList: true, priceSurvey: true })).toBe('send_list')
     expect(pickNextStepCard({ priceSurvey: true, install: true })).toBe('price_survey')
     expect(pickNextStepCard({ install: true })).toBe('install')
@@ -81,8 +92,13 @@ describe('accountNoticeTier', () => {
     expect(accountNoticeTier(billing({ access: access('trial', 9) }))).toBeNull()
   })
 
-  it('a paused account is safety', () => {
-    expect(accountNoticeTier(billing({ access: access('paused'), founder: { offer: true } }))).toBe('paused')
+  it('the Gratis plan (trial over) is safety, also with the founder offer', () => {
+    expect(accountNoticeTier(billing({ access: access('gratis'), founder: { offer: true } }))).toBe('gratis')
+  })
+
+  it('a pending payment is billing, also once on Gratis', () => {
+    expect(accountNoticeTier(billing({ access: access('subscribed'), subscription: { status: 'past_due' } }))).toBe('billing')
+    expect(accountNoticeTier(billing({ access: access('gratis'), subscription: { status: 'unpaid' } }))).toBe('billing')
   })
 
   it('last days of the trial, the founder offer, the first charge and unknown states are billing', () => {

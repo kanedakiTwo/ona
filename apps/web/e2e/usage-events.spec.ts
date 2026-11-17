@@ -5,7 +5,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { completeOnboarding, registerFreshUser } from './_helpers'
+import { answerShopper, completeOnboarding, registerFreshUser } from './_helpers'
 
 type Sent = { name: string; props: Record<string, unknown>; counted: boolean | null }
 
@@ -28,6 +28,7 @@ test('the web sign-up records every step, seen and done', async ({ page }) => {
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()
   await page.getByRole('button', { name: /sin prisa/i }).click()
@@ -36,7 +37,7 @@ test('the web sign-up records every step, seen and done', async ({ page }) => {
   await expect(page).toHaveURL(/\/menu/, { timeout: 30_000 })
 
   const steps = () => sent.filter((e) => e.name === 'onboarding_step').map((e) => `${e.props.step}:${e.props.action}`)
-  for (const step of ['hogar', 'cocina', 'tiempo', 'dieta']) {
+  for (const step of ['hogar', 'quien_compra', 'cocina', 'tiempo', 'dieta']) {
     await expect.poll(steps, { timeout: 10_000 }).toContain(`${step}:visto`)
     await expect.poll(steps, { timeout: 10_000 }).toContain(`${step}:hecho`)
   }

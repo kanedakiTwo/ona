@@ -5,7 +5,7 @@
  * /profile/casa, /memoria, /creencias, /pantry, /staples, /cookbooks.
  *
  * - `SubPage` — cream page, 1180 px max at lg+, compact header with a
- *   "← Perfil" link, 11 px eyebrow and a Fraunces 650 h1 (same cut as /menu).
+ *   "← Perfil" link (`back` for the pages that hang from Ajustes or Recetas), 11 px eyebrow and a Fraunces 650 h1 (same cut as /menu).
  * - `MoreButton` — the 44 px "···" trigger that opens a `MenuSheet`.
  * - Class strings for paper cards, inputs (#E8E2D3 border) and ink pills.
  */
@@ -34,6 +34,7 @@ export function SubPage({
   title,
   intro,
   action,
+  back = { href: "/profile", label: "Perfil" },
   children,
 }: {
   eyebrow: string
@@ -42,18 +43,20 @@ export function SubPage({
   intro?: ReactNode
   /** Right-hand header slot (e.g. a "···" button or a primary pill). */
   action?: ReactNode
+  /** Where «←» goes (PRO-1202): Perfil by default; Ajustes or Recetas for the pages that moved there. */
+  back?: { href: string; label: string }
   children: ReactNode
 }) {
   return (
     <div className="min-h-screen bg-cream">
       <div className="mx-auto w-full max-w-[var(--page-max)] px-4 pb-12 pt-3 md:px-8 lg:px-12 lg:pt-6">
         <Link
-          href="/profile"
+          href={back.href}
           draggable={false}
           className="-ml-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-2 text-[14px] font-medium text-ink-mid transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
         >
           <ArrowLeft size={18} strokeWidth={2} aria-hidden="true" />
-          Perfil
+          {back.label}
         </Link>
         <header className="mt-2 flex items-start justify-between gap-3">
           <div className="min-w-0">

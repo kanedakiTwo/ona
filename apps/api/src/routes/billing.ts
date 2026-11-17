@@ -15,9 +15,12 @@ import {
   handleBillingEvent,
   isBillingConfigured,
   type BillingGateway,
+  type PaymentFailure,
   type SubscriptionRepo,
 } from '../services/billing.js'
 import { creatorRefsSql } from '../services/creatorTrial.js'
+import { householdWeekResolved, trialFirstDay } from '../services/founderOffer.js'
+import { createPaymentFailedNotifier } from '../services/paymentFailures.js'
 
 /**
  * Subscriptions (specs/billing.md).
@@ -25,7 +28,7 @@ import { creatorRefsSql } from '../services/creatorTrial.js'
  *   GET  /billing            auth: plan state of the caller's household
  *   POST /billing/checkout   auth, household owner: Stripe Checkout URL for a plan + period
  *   POST /billing/portal     auth, household owner: Stripe customer portal URL (change card, cancel); { cancel: true } → cancel flow
- *   POST /billing/webhook    Stripe → us, signed; mounted BEFORE express.json() (raw body)
+ *   POST /billing/webhook    Stripe → us, signed; mounted BEFORE express.json() (raw body); subscriptions + invoice.payment_failed (PRO-386)
  */
 
 export interface Payer {
@@ -49,6 +52,20 @@ export interface BillingDeps {
   now: () => Date
   webUrl: string
   auth: RequestHandler
+  /** PRO-384: what the founder offer needs (resolved week, already sent). Only asked in the trial. */
+  offerSignals: (payer: Payer) => Promise<{ weekResolved: boolean; founderOfferAt: Date | null }>
+}
+
+async function loadOfferSignals(payer: Payer): Promise<{ weekResolved: boolean; founderOfferAt: Date | null }> {
+  try {
+    const [h] = await db.select({ at: households.founderOfferAt }).from(households).where(eq(households.id, payer.householdId)).limit(1)
+    const founderOfferAt = h?.at ?? null
+    if (founderOfferAt || !payer.householdCreatedAt) return { weekResolved: false, founderOfferAt }
+    return { weekResolved: await householdWeekResolved(payer.householdId, trialFirstDay(payer.householdCreatedAt, payer.trialDays)), founderOfferAt }
+  } catch (err) {
+    console.error('[billing] founder offer signals failed:', err)
+    return { weekResolved: false, founderOfferAt: null }
+  }
 }
 
 async function loadPayer(userId: string): Promise<Payer | null> {
@@ -82,6 +99,7 @@ function defaults(): BillingDeps {
     now: () => new Date(),
     webUrl: env.WEB_PUBLIC_URL,
     auth: authMiddleware as RequestHandler,
+    offerSignals: loadOfferSignals,
   }
 }
 
@@ -96,16 +114,22 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
   router.get('/billing', d.auth, async (req: AuthRequest, res) => {
     const payer = await d.payer(req.userId!)
     const row = payer ? await d.repo.latestForHousehold(payer.householdId) : null
-    res.json(
-      billingStateFor(row, {
-        enabled: d.enabled(),
-        canManage: !!payer?.isOwner,
-        now: d.now(),
-        userCreatedAt: payer?.createdAt ?? null,
-        householdCreatedAt: payer?.householdCreatedAt ?? null,
-        trialDays: payer?.trialDays,
-      }),
-    )
+    const now = d.now()
+    const opts = {
+      enabled: d.enabled(),
+      canManage: !!payer?.isOwner,
+      now,
+      userCreatedAt: payer?.createdAt ?? null,
+      householdCreatedAt: payer?.householdCreatedAt ?? null,
+      trialDays: payer?.trialDays,
+    }
+    const state = billingStateFor(row, opts)
+    // PRO-384: before day 10 the offer depends on the resolved week; ask only then.
+    if (payer && state.access.state === 'trial' && !state.subscription && !state.founder.offer) {
+      res.json(billingStateFor(row, { ...opts, ...(await d.offerSignals(payer)) }))
+      return
+    }
+    res.json(state)
   })
 
   router.post('/billing/checkout', d.auth, async (req: AuthRequest, res) => {
@@ -187,8 +211,11 @@ export function createBillingRouter(overrides: Partial<BillingDeps> = {}): Route
 }
 
 /** Mounted in index.ts BEFORE `express.json()`: Stripe signs the raw bytes. */
-export function createBillingWebhookRouter(overrides: Partial<Pick<BillingDeps, 'repo' | 'gateway' | 'enabled'>> = {}): Router {
-  const d = { ...defaults(), ...overrides }
+export function createBillingWebhookRouter(
+  overrides: Partial<Pick<BillingDeps, 'repo' | 'gateway' | 'enabled'>> & { onPaymentFailed?: (f: PaymentFailure) => Promise<unknown> } = {},
+): Router {
+  // PRO-386: `invoice.payment_failed` → one notice per invoice (services/paymentFailures.ts).
+  const d = { ...defaults(), onPaymentFailed: overrides.onPaymentFailed ?? createPaymentFailedNotifier(), ...overrides }
   const router = Router()
   router.post('/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
     if (!d.enabled()) {

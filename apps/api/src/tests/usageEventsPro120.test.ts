@@ -90,7 +90,7 @@ describe('/admin/usage blocks (counts only)', () => {
       { step: 'hogar', action: 'hecho', people: 4 },
       { step: 'dieta', action: 'visto', people: 3 },
     ])
-    expect(steps.map((s) => s.step)).toEqual(['afina', 'canal', 'hogar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'])
+    expect(steps.map((s) => s.step)).toEqual(['afina', 'canal', 'hogar', 'quien_compra', 'invitar', 'frecuencia', 'cocina', 'tiempo', 'dieta', 'prioridad'])
     expect(steps.find((s) => s.step === 'hogar')).toEqual({ step: 'hogar', seen: 5, done: 4 })
     expect(steps.find((s) => s.step === 'dieta')).toEqual({ step: 'dieta', seen: 3, done: 0 })
   })

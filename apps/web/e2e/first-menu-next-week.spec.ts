@@ -8,7 +8,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test'
-import { registerFreshUser } from './_helpers'
+import { answerShopper, registerFreshUser } from './_helpers'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -53,6 +53,7 @@ test('a weekend sign-up gets this week and the next, and /menu opens the next', 
 
   const next = page.getByRole('button', { name: /siguiente/i })
   await next.click()
+  await answerShopper(page) // PRO-383: two adults (the default)
   // PRO-217: «¿Cómo cocináis en casa?»
   await page.getByRole('button', { name: /^cocino cada día/i }).click()
   await next.click()

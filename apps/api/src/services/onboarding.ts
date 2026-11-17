@@ -1,11 +1,13 @@
-import { eq, sql } from 'drizzle-orm'
+import { eq, or, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
-import { households, users } from '../db/schema.js'
+import { households, menus, users } from '../db/schema.js'
 import { grantHealthConsent, hasHealthConsent, healthConsentCoversReligion } from './healthConsent.js'
 import { recordWishesFromFavoriteDishes } from './catalogWishes.js'
-import { applyFreezeAnswer, cookingFreqForStyle, isReligiousDiet, timeAvailableForChoice, type CookingFrequency, type CookingStyle, type FreezeAnswer, type Priority, type WeekdayCookingChoice } from '@ona/shared'
+import { applyFreezeAnswer, asksShopper, cookingFreqForStyle, isReligiousDiet, timeAvailableForChoice, type CookingFrequency, type CookingStyle, type FreezeAnswer, type Priority, type Shopper, type WeekdayCookingChoice } from '@ona/shared'
 import { getMemoryForUser, setMemoryFact } from './userMemoryStore.js'
 import { cookingStyleHousehold, setCookingStyle } from './profile/cookingStyle.js'
+import { setShopper } from './profile/shopper.js'
+import { trackEvent } from './usageEvents.js'
 
 /**
  * Save the first-steps answers and mark the user onboarded. Shared by the web
@@ -51,6 +53,14 @@ export interface OnboardingInput {
    * «No» saves nothing. Absent leaves it as it is.
    */
   freezesMeatFish?: FreezeAnswer
+  /**
+   * PRO-383 «¿Quién hace la compra?» → the household's ficha (`shopper`,
+   * origin onboarding) and the event `shopper_answered`. Only kept with 2
+   * adults or more (only they are asked). Absent saves nothing.
+   */
+  shopper?: Shopper
+  /** Where the sign-up happened, for the shopper's evidence and event (default the web). */
+  via?: 'web' | 'whatsapp'
 }
 
 export const ONBOARDING_NOTE_MAX = 500
@@ -122,6 +132,14 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
       await setCookingStyle({ householdId: home.householdId, style: input.cookingStyle, origin: 'onboarding', actorUserId: userId, signal: 'onboarding' })
     }
   }
+  if (updated && input.shopper && asksShopper(adults) && database === defaultDb) {
+    const via = input.via ?? 'web'
+    const home = await cookingStyleHousehold(userId)
+    if (home?.canEdit) {
+      await setShopper({ householdId: home.householdId, who: input.shopper, actorUserId: userId, signal: via === 'whatsapp' ? 'whatsapp' : 'onboarding' })
+    }
+    trackEvent('shopper_answered', { userId, channel: via, props: { value: input.shopper } })
+  }
   return updated ?? null
 }
 
@@ -153,11 +171,28 @@ export async function onboardingStatus(userId: string, database: any = defaultDb
       onboardingDone: users.onboardingDone,
       onboardingDraft: users.onboardingDraft,
       householdOwnerId: households.ownerId,
+      // PRO-1042: a menu already made (Mimo by WhatsApp, an API sign-up).
+      hasMenu: sql<boolean>`EXISTS (SELECT 1 FROM ${menus} WHERE ${or(eq(menus.userId, users.id), eq(menus.householdId, users.primaryHouseholdId))})`,
     })
     .from(users)
     .leftJoin(households, eq(households.id, users.primaryHouseholdId))
     .where(eq(users.id, userId))
     .limit(1)
   if (!row) return null
-  return { onboardingRequired: needsOnboarding(row), onboardingDraft: row.onboardingDraft ?? null }
+  return onboardingGate(row)
+}
+
+/**
+ * PRO-1042: /menu goes to /onboarding only while there is no menu to show.
+ * With a menu already made, /menu shows it and offers the sign-up still to
+ * do apart (`onboardingPending`), instead of starting it again from zero.
+ */
+export function onboardingGate(row: { onboardingDone: boolean | null; householdOwnerId: string | null; id: string; hasMenu?: boolean | null; onboardingDraft?: unknown }) {
+  const pending = needsOnboarding(row)
+  return {
+    onboardingRequired: pending && !row.hasMenu,
+    onboardingPending: pending,
+    hasMenu: Boolean(row.hasMenu),
+    onboardingDraft: row.onboardingDraft ?? null,
+  }
 }

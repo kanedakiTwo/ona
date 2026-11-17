@@ -16,7 +16,7 @@ import type { TelegramInbound } from './updateParser.js'
  * or more messages out. It reuses WhatsApp's pieces: the same engine in
  * `whatsapp` mode (same tools, same health rule: nothing about health is
  * stored from here), the same history builder, the same reply renderer and
- * the same € budget, monthly spend cap and paused-account gate. Side effects
+ * the same € budget, monthly spend cap and Gratis-plan gate. Side effects
  * come through `deps` (tested with fakes in `telegram.test.ts`; real ones in
  * `wiring.ts`).
  */
@@ -105,7 +105,7 @@ export async function processTelegramUpdate(msg: TelegramInbound, deps: Telegram
     return
   }
   if (deps.isPaused && (await deps.isPaused(userId))) {
-    await sendText(COPY.paused(`${deps.webUrl.replace(/\/$/, '')}/profile/suscripcion`))
+    await sendText(COPY.gratis(`${deps.webUrl.replace(/\/$/, '')}/profile/suscripcion`))
     return
   }
 

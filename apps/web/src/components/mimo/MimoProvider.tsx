@@ -108,7 +108,7 @@ const MAX_KEPT = 40
 
 /** Routes where Mimo has no button: sign-in, onboarding (it has its own voice flow), «Afina tu menú» (full screen), public pages. */
 export function mimoHiddenOn(pathname: string | null): boolean {
-  return /^\/(login|register|reset|onboarding|afinar|invites|lista|i\/|c\/|privacidad|terminos|aviso-legal|como-funciona|blog)(\/|$)/.test(pathname ?? '') || pathname === '/'
+  return /^\/(login|register|reset|onboarding|afinar|invites|lista|i\/|c\/|privacidad|terminos|aviso-legal|como-funciona|blog|receta-del-dia)(\/|$)/.test(pathname ?? '') || pathname === '/'
 }
 
 function readJson<T>(key: string, fallback: T): T {

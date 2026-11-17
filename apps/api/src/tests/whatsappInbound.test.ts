@@ -13,6 +13,8 @@ import type { HistoryRow } from '../services/whatsapp/history.js'
 import type { OutboundMessage } from '../services/whatsapp/render.js'
 import { EMPTY_USAGE } from '../services/advisorBudget.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
+import Anthropic from '@anthropic-ai/sdk'
+import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -204,17 +206,25 @@ describe('processInbound — unlinked numbers', () => {
 })
 
 describe('processInbound — gates', () => {
-  it('a paused account (PRO-135) gets only the notice to choose a plan: no Mimo, no budget check', async () => {
+  it('the Gratis plan (PRO-385) gets only the notice to choose a plan: no Mimo, no budget check', async () => {
     const t = setup({ paused: true })
     await processInbound(msg(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.paused(`${WEB}/profile/suscripcion`) }])
-    expect(t.outbound[0]).toMatchObject({ kind: 'paused' })
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.gratis(`${WEB}/profile/suscripcion`) }])
+    expect(t.outbound[0]).toMatchObject({ kind: 'gratis' })
     expect(t.chat).not.toHaveBeenCalled()
     expect(t.checkBudget).not.toHaveBeenCalled()
-    expect(COPY.paused('x')).toMatch(/No se ha borrado nada/)
+    expect(COPY.gratis('x')).toBe('En el plan Gratis, Mimo descansa. Con Esencial vuelve a haceros la semana él solo.\n\nElige tu plan aquí:\nx')
   })
 
-  it('an account that is not paused talks to Mimo as always', async () => {
+  it('the Gratis notice goes once a day: a second message the same day gets nothing', async () => {
+    const t = setup({ paused: true, recentLinkHint: true })
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([])
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', errorMessage: 'plan-gratis' })
+  })
+
+  it('an account that is not on Gratis talks to Mimo as always', async () => {
     const t = setup({ paused: false })
     await processInbound(msg(), t.deps)
     expect(t.chat).toHaveBeenCalledOnce()
@@ -332,6 +342,25 @@ describe('processInbound — chat round-trip', () => {
     await processInbound(msg(), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.error }])
     expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'failed', errorMessage: 'Anthropic down' })
+  })
+
+  it('PRO-1101: Anthropic sin saldo → el texto propio de Mimo, y queda apuntado', async () => {
+    const record = vi.fn(async () => true)
+    setApiSaldoWriterForTests({ record, close: async () => true })
+    const t = setup()
+    t.chat.mockRejectedValueOnce(
+      new Anthropic.BadRequestError(
+        400,
+        { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.' } },
+        undefined,
+        new Headers(),
+      ),
+    )
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: API_SALDO_REPLY }])
+    expect(API_SALDO_REPLY).toBe('Ahora mismo no puedo contestarte; lo estamos arreglando. Vuelve a escribirme en un rato.')
+    expect(record).toHaveBeenCalledTimes(1)
+    setApiSaldoWriterForTests(null)
   })
 
   it('logs a failed send instead of throwing', async () => {

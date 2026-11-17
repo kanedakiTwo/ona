@@ -1,6 +1,6 @@
 # PWA — Native-feeling Mobile
 
-Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Android app: installable, offline-capable, with haptic feedback, page transitions, swipe gestures, and local notifications.
+Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Android app: installable, offline-capable, with haptic feedback, page transitions, and swipe gestures. Phone notifications come from the server (see [Notifications](./notifications.md)).
 
 ## User Capabilities
 
@@ -30,7 +30,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 - Users can **swipe horizontally** between the 4 bottom-tab routes (menu ↔ compra ↔ recetas ↔ perfil; Mimo is the floating button, not a tab — D-023) with a pan gesture (`SwipeNavigator`, `motion/react` `onPan`). Not on the recipe detail `/recipes/[id]` (it has its own tabs) nor in cook mode `/recipes/[id]/cook`: a horizontal swipe there stays on the page. **Only with a finger or a pen** (`swipesWith(pointerType)`, 2026-10-21): with a mouse or a touchpad a press-and-drag is a text selection or a slip — on a Windows desktop it slid the whole page sideways and, past 30 % of the window, jumped to another section
 - **App links aren't dragged** (2026-10-21): inside the app shell (`[data-app-shell]`: `<main>`, the desktop sidebar, the tab bar) links and images carry `-webkit-user-drag: none`, and the card links (Perfil's cards, «Tu ficha», the sidebar/tab bar `TransitionLink`, sheet rows, the «‹ Perfil» links) `draggable={false}` for Firefox. A click whose pointer slipped a few pixels (a touchpad press, a mouse) used to start the browser's native link drag and never navigate — «desde el ordenador el menú Perfil no funciona»
 - **The installed app keeps itself current** (2026-10-21, `components/pwa/ServiceWorkerRegistration.tsx` + `lib/pwa/swUpdate.ts`): the installed app has no reload button and stays open for days, and next-pwa activates a new worker at once (`skipWaiting`) while the open window keeps the old JavaScript. A new worker taking over a page that already had one reloads it **once**, on the person's next move to another page of the app — never under their typing (a recipe half written, an answer of the sign-up) — never on the first install, never twice within 30 s (`sessionStorage` `ona.sw.reloadedAt`); and coming back to the app (`visibilitychange` → visible) asks `registration.update()` at most once a minute
-- **Every full-screen page has its own way back** (the installed app has no browser back button): the profile sub-pages and «Tu ficha» their «‹ Perfil», «Afina tu menú» a «‹ Perfil» / «‹ Menú» to the app page it was opened from (`lib/navHistory.ts`, fed by RootShell on every page change; «Menú» on a fresh load), cook mode «Salir», the sign-up its back circle
+- **Every full-screen page has its own way back** (the installed app has no browser back button): the profile sub-pages and «Tu ficha» their «‹ Perfil» (avisos and suscripción «‹ Ajustes», the cookbooks and «Mis recetas» «‹ Recetas», PRO-1202), «Afina tu menú» a «‹ Perfil» / «‹ Menú» to the app page it was opened from (`lib/navHistory.ts`, fed by RootShell on every page change; «Menú» on a fresh load), cook mode «Salir», the sign-up its back circle
 - The gesture has rubber-band edge resistance, a 30% width threshold to confirm, and snaps back if released before threshold (300ms `--ease-out-expo`)
 - Vertical scroll is preserved via `touchAction: pan-y`
 - The bottom nav marks the active tab in ink with a heavier icon stroke and `aria-current="page"`; every tab shows its text label (no animated pill since 2026-10-08)
@@ -49,7 +49,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 
 ### Sharing
 
-- Users can share a recipe via the native share sheet (`navigator.share`) — a Share2 button in the recipe detail hero overlay (desktop: the action row) sends the recipe name as title + its `/recipes/<id>?ref=receta` URL, no text (catalogue recipes; private ones go as text — see [Recipes](./recipes.md) «Pásalo»)
+- Users can share a recipe via the native share sheet (`navigator.share`) — a Share2 button in the recipe detail hero overlay (desktop: the action row) sends the recipe name as title + its `/recipes/<id>?ref=receta` URL (`&invita=<code>` with the household's code, PRO-1016), no text (catalogue recipes; private ones go as text — see [Recipes](./recipes.md) «Pásalo»)
 - Users can share their shopping list as text via the native share sheet — the "Exportar" button uses Web Share when available and falls back to clipboard (the clipboard copy keeps text **and** link)
 - Users can share the week's menu ("Compartir" in the /menu week "···" sheet, both views; "Compartir semana" at lg+) as text, one line per meal, ending "— Hecho con Mimoia, el menú semanal…" + link (`menuShareText`, `/?ref=menu`)
 
@@ -141,7 +141,8 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 - [Auth](./auth.md) — `start_url` behavior depends on auth state
 - [Recipes](./recipes.md) — cooking mode wake lock attaches to recipe detail; favorite toggle is queued offline
 - [Shopping](./shopping.md) — share via Web Share, offline mutation queue
-- [Menus](./menus.md) — meal-time notifications use the per-user meal-time preferences
+- [Menus](./menus.md) — meal regeneration and slot-lock toggles go through the offline queue
+- [Notifications](./notifications.md) — server push notifications (the local meal-time reminder was removed, PRO-234)
 
 ## Source
 
@@ -149,7 +150,7 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 - [apps/web/public/manifest.webmanifest](../apps/web/public/manifest.webmanifest) — manifest
 - `apps/web/public/icons/`, `public/brand/`, `public/favicon.ico`, `public/icon.svg` — generated by `apps/web/scripts/generate-brand-icons.mjs` (see Brand assets)
 - `apps/web/src/components/brand/Mimoia.tsx` — the imagotipo (`MIMOIA_SYMBOL_PATH`, `MimoiaSymbol`, `MimoiaLogo`, `MimoAvatar`)
-- [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — manifest link, viewport, apple-touch meta tags, status bar style, theme-color, splash-image link tags, notification re-arm hook
+- [apps/web/src/app/layout.tsx](../apps/web/src/app/layout.tsx) — manifest link, viewport, apple-touch meta tags, status bar style, theme-color, splash-image link tags
 - [apps/web/src/lib/pwa/installPrompt.ts](../apps/web/src/lib/pwa/installPrompt.ts) — `beforeinstallprompt` capture, visit-count gating, dismissal persistence (localStorage)
 - [apps/web/src/lib/pwa/installedOpen.ts](../apps/web/src/lib/pwa/installedOpen.ts) — daily installed-open ping (PRO-83)
 - [apps/web/src/components/pwa/InstallSheet.tsx](../apps/web/src/components/pwa/InstallSheet.tsx) — bottom sheet with Android + iOS instructions
@@ -158,7 +159,6 @@ The `.standalone-pt` utility class applies `padding-top: var(--safe-top)` so con
 - [apps/web/src/lib/pwa/haptics.ts](../apps/web/src/lib/pwa/haptics.ts) — `navigator.vibrate` wrapper with named patterns (light/medium)
 - [apps/web/src/lib/pwa/share.ts](../apps/web/src/lib/pwa/share.ts) — `navigator.share` wrapper with clipboard fallback
 - [apps/web/src/hooks/useWakeLock.ts](../apps/web/src/hooks/useWakeLock.ts) — Wake Lock acquire/release (cooking mode)
-- [apps/web/src/lib/pwa/notifications.ts](../apps/web/src/lib/pwa/notifications.ts) — permission flow, scheduling from meal-time preferences, re-arm on app open
 - [apps/web/src/lib/pwa/sessionData.ts](../apps/web/src/lib/pwa/sessionData.ts) — `clearSessionData()`: wipes `api-cache` + the offline queue on session change
 - [apps/web/scripts/verify-sw.mjs](../apps/web/scripts/verify-sw.mjs) — post-build guard on the generated `sw.js`
 - [apps/web/src/lib/pwa/offlineQueue.ts](../apps/web/src/lib/pwa/offlineQueue.ts) — IndexedDB-backed mutation queue (idb-keyval), replay on `online` event

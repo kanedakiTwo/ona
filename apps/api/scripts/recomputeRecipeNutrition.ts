@@ -19,7 +19,7 @@ import {
   recipeIngredients,
   ingredients as ingredientsTable,
 } from '../src/db/schema.js'
-import { aggregateNutrition } from '../src/services/nutrition/aggregate.js'
+import { aggregateNutrition, catalogEntryFromRow, type IngredientCatalogEntry } from '../src/services/nutrition/aggregate.js'
 import { allergenUnion } from '../src/services/nutrition/allergens.js'
 import { eq, isNull, inArray } from 'drizzle-orm'
 
@@ -36,6 +36,7 @@ async function main() {
     .select({
       id: ingredientsTable.id,
       name: ingredientsTable.name,
+      fdcId: ingredientsTable.fdcId,
       allergenTags: ingredientsTable.allergenTags,
       density: ingredientsTable.density,
       unitWeight: ingredientsTable.unitWeight,
@@ -49,22 +50,10 @@ async function main() {
     })
     .from(ingredientsTable)
 
-  const nutritionCatalog = new Map<string, any>()
+  const nutritionCatalog = new Map<string, IngredientCatalogEntry>()
   const allergenCatalog = new Map<string, { allergenTags?: string[] | null }>()
   for (const r of ingRows) {
-    nutritionCatalog.set(r.id, {
-      id: r.id,
-      name: r.name,
-      calories: r.calories ?? 0,
-      protein: r.protein ?? 0,
-      carbs: r.carbs ?? 0,
-      fat: r.fat ?? 0,
-      fiber: r.fiber ?? 0,
-      salt: r.salt ?? 0,
-      density: r.density,
-      unitWeight: r.unitWeight,
-      edibleFraction: r.edibleFraction,
-    })
+    nutritionCatalog.set(r.id, catalogEntryFromRow(r))
     allergenCatalog.set(r.id, { allergenTags: r.allergenTags ?? [] })
   }
 

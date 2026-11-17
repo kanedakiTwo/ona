@@ -5,7 +5,7 @@
  *   - accepting the invitation opens «Tus alergias y tu dieta» (with the
  *     health-data box) before the menu;
  *   - what he says is in the household's menu: no recipe with crustaceans;
- *   - «Generar mi menú» warns when someone hasn't answered, and not once
+ *   - «Llenar con mi semana tipo» warns when someone hasn't answered, and not once
  *     the person said «ninguna».
  * 390×844.
  */
@@ -105,7 +105,7 @@ test('invitación → alergias y dieta → menú de la casa sin marisco', async 
   // A blank week: he answered, the owner didn't → names the owner, no button for him.
   const weekStart = mondayIn(1)
   await page.goto(`/menu?week=${weekStart}`)
-  await expect(page.getByRole('button', { name: 'Generar mi menú' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Llenar con mi semana tipo' })).toBeVisible({ timeout: 20_000 })
   const notice = page.getByTestId('household-allergies-notice')
   await expect(notice).toContainText(`${ownerName} aún no nos ha dicho sus alergias ni su dieta`)
   await expect(notice.getByRole('link', { name: 'Decir mis alergias' })).toHaveCount(0)
@@ -113,10 +113,10 @@ test('invitación → alergias y dieta → menú de la casa sin marisco', async 
   // The shrimp recipe is the household's: he can open it (so the menu could pick it).
   expect((await page.request.get(`${API}/recipes/${shrimpRecipeId}`, { headers })).status()).toBe(200)
 
-  // «Generar mi menú»: no shrimp in his week…
+  // «Llenar con mi semana tipo»: no shrimp in his week…
   const [generated] = await Promise.all([
     page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST' && !r.request().postDataJSON()?.empty, { timeout: 60_000 }),
-    page.getByRole('button', { name: 'Generar mi menú' }).click(),
+    page.getByRole('button', { name: 'Llenar con mi semana tipo' }).click(),
   ])
   expect(generated.status()).toBe(201)
   const week = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
@@ -133,13 +133,13 @@ test('invitación → alergias y dieta → menú de la casa sin marisco', async 
   await ownerCtx.close()
 })
 
-test('«Generar mi menú» warns until the person answers, also «ninguna»', async ({ page }) => {
+test('«Llenar con mi semana tipo» warns until the person answers, also «ninguna»', async ({ page }) => {
   test.setTimeout(90_000)
   await registerFreshUser(page)
   await completeOnboarding(page) // no health-data box: hasn't answered
   const weekStart = mondayIn(3)
   await page.goto(`/menu?week=${weekStart}`)
-  await expect(page.getByRole('button', { name: 'Generar mi menú' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Llenar con mi semana tipo' })).toBeVisible({ timeout: 20_000 })
   const notice = page.getByTestId('household-allergies-notice')
   await expect(notice).toContainText('No sabemos tus alergias ni tu dieta.')
 
@@ -151,7 +151,7 @@ test('«Generar mi menú» warns until the person answers, also «ninguna»', as
   await page.waitForURL((u) => u.pathname === '/menu', { timeout: 15_000 })
 
   await page.goto(`/menu?week=${weekStart}`)
-  await expect(page.getByRole('button', { name: 'Generar mi menú' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Llenar con mi semana tipo' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('week-plan-questions')).toBeVisible()
   await expect(page.getByTestId('household-allergies-notice')).toHaveCount(0)
 })

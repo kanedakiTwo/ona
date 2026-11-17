@@ -12,6 +12,7 @@ import {
   effectiveAllergens,
   inferAllergenTagsFromName,
   isCeleryBroth,
+  lacksPro1096Sesame,
   normalize,
 } from '../services/nutrition/allergens.js'
 import { missingNameAllergens } from '../services/nutrition/allergenBackfill.js'
@@ -361,6 +362,37 @@ describe('Tandas libros-01 y yaya-01 (2026-10-21) — ingredientes nuevos que sa
   it('no confunde la carne de buey ni otras palabras', () => {
     expect(inferAllergenTagsFromName('carne de buey')).toEqual([])
     expect(inferAllergenTagsFromName('caracolas de hojaldre')).not.toContain('moluscos')
+  })
+})
+
+// ─── PRO-1096: za'atar and the blends that carry sesame ─────────
+
+describe("inferAllergenTagsFromName — za'atar and sesame blends (PRO-1096)", () => {
+  it("za'atar in every spelling, dukkah, gomasio and halva are sesame", () => {
+    for (const name of [
+      "za'atar", 'Za’atar', 'zaatar', 'zatar', 'zahtar', "za'atar verde", 'mezcla de especias zaatar',
+      'dukkah', 'dukka', 'gomasio', 'halva', 'halwa de pistacho',
+    ]) {
+      expect(inferAllergenTagsFromName(name), name).toContain('sesamo')
+    }
+    expect(inferAllergenTagsFromName("za'atar")).toEqual(['sesamo'])
+    expect(inferAllergenTagsFromName('gomasio')).toEqual(['sesamo'])
+  })
+
+  it('whole words only: carrots and hummus get no extra sesame', () => {
+    expect(inferAllergenTagsFromName('zanahoria')).toEqual([])
+    expect(inferAllergenTagsFromName('zanahorias baby')).toEqual([])
+    // Hummus comes with sesame through its tahini, not its name.
+    expect(inferAllergenTagsFromName('hummus')).toEqual([])
+    expect(inferAllergenTagsFromName('zatarra')).toEqual([])
+  })
+
+  it('lacksPro1096Sesame flags only those names when «sesamo» is missing', () => {
+    expect(lacksPro1096Sesame("za'atar", [])).toBe(true)
+    expect(lacksPro1096Sesame('Dukkah', null)).toBe(true)
+    expect(lacksPro1096Sesame("za'atar", ['sesamo'])).toBe(false)
+    expect(lacksPro1096Sesame('tahini', [])).toBe(false)
+    expect(lacksPro1096Sesame('zanahoria', [])).toBe(false)
   })
 })
 

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { NextFunction, Request, Response } from 'express'
 import type { AuthRequest } from './auth.js'
 import { normalizeRoutePath, recordAppError, serverRelease } from '../services/appErrors.js'
+import { isApiBalanceError, noteApiBalanceError } from '../services/apiSaldo.js'
 
 /**
  * API side of the in-house error tracker (specs/errors.md): every response
@@ -126,11 +127,41 @@ export function captureConsoleErrors(target: Pick<Console, 'error'> = console): 
   }
 }
 
+/**
+ * PRO-1101: any call to Anthropic that fails for lack of credit and logs it
+ * (`console.error` or `console.warn`, inside a request or not) is noted in
+ * the `saldo_api` group (services/apiSaldo.ts; at most once an hour). Output
+ * is unchanged. Returns the restore function.
+ */
+export function watchApiBalanceLogs(
+  target: Pick<Console, 'error' | 'warn'> = console,
+  note: (arg: unknown) => boolean = noteApiBalanceError,
+): () => void {
+  const originals = { error: target.error, warn: target.warn }
+  for (const level of ['error', 'warn'] as const) {
+    const original = originals[level]
+    target[level] = function (this: unknown, ...args: unknown[]) {
+      try {
+        const hit = args.find((a) => isApiBalanceError(a))
+        if (hit !== undefined) note(hit)
+      } catch {
+        // never let the watcher break a log line
+      }
+      return original.apply(this ?? target, args)
+    }
+  }
+  return () => {
+    target.error = originals.error
+    target.warn = originals.warn
+  }
+}
+
 let consoleCaptureInstalled = false
 export function installConsoleErrorCapture(): void {
   if (consoleCaptureInstalled) return
   consoleCaptureInstalled = true
   captureConsoleErrors(console)
+  watchApiBalanceLogs(console)
 }
 
 /**

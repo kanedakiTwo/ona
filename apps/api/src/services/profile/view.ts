@@ -101,6 +101,9 @@ export function factSentence(type: string, value: unknown, who: Who, validUntil:
     }
     case 'cooking_style':
       return isCookingStyle(v.style) ? COOKING_STYLE_LABELS[v.style as keyof typeof COOKING_STYLE_LABELS] : null
+    case 'shopper':
+      // About the household, said by whoever signed up (PRO-383).
+      return ({ me: 'La compra la hace quien se dio de alta', other: 'La compra la hace otra persona de casa', shared: 'La compra la hacéis por turnos' } as Record<string, string>)[String(v.who)] ?? null
     case 'protein_minimum':
       return 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz, legumbre o pasta'
     case 'dislikes':
@@ -157,7 +160,7 @@ export function factSentence(type: string, value: unknown, who: Who, validUntil:
 const TOPIC_OF: Record<string, FichaTopic> = {
   fixed_dish: 'como_comeis', skipped_meal: 'como_comeis', dish_frequency: 'como_comeis', meal_times: 'como_comeis', cooking_style: 'como_comeis',
   equipment: 'en_la_cocina', temporary_situation: 'en_la_cocina', batch_cooking: 'en_la_cocina', cooking_skill: 'en_la_cocina', prep_habits: 'en_la_cocina',
-  time_available: 'tiempo_y_compra', effort: 'tiempo_y_compra', shopping: 'tiempo_y_compra', weekly_budget_eur: 'tiempo_y_compra',
+  time_available: 'tiempo_y_compra', effort: 'tiempo_y_compra', shopping: 'tiempo_y_compra', shopper: 'tiempo_y_compra', weekly_budget_eur: 'tiempo_y_compra',
   affinity: 'gustos', dislikes: 'gustos', novelty: 'gustos', cuisine_bias: 'gustos',
   protein_minimum: 'como_comes', nutrition_principles: 'como_comes',
   'household.adults': 'la_casa', 'household.kids_2_to_10': 'la_casa', region: 'la_casa',

@@ -8,7 +8,7 @@
  * /menu without the sign-up finished goes to /onboarding. At 390×844.
  */
 import { test, expect, type Page } from '@playwright/test'
-import { registerFreshUser, submitLoginForm } from './_helpers'
+import { answerShopper, registerFreshUser, submitLoginForm } from './_helpers'
 
 test.use({ viewport: { width: 390, height: 844 } })
 
@@ -30,45 +30,52 @@ async function logOutAndIn(page: Page, creds: { username: string; password: stri
   await submitLoginForm(page, creds)
 }
 
-test('two questions answered, log out, log in → /onboarding on the third with the answers', async ({ page }) => {
+test('three questions answered, log out, log in → /onboarding on the fourth with the answers', async ({ page }) => {
   test.setTimeout(90_000)
   const creds = await registerFreshUser(page)
   await page.goto('/onboarding')
   await startWebQuestions(page)
 
   const next = page.getByRole('button', { name: /siguiente/i })
-  // 1 de 4: three adults, one child.
+  // 1 de 5: three adults, one child.
   await page.getByRole('button', { name: 'Añadir adulto' }).click()
   await page.getByRole('button', { name: 'Añadir niño' }).click()
   await next.click()
-  // 2 de 4 (PRO-217; since 2026-11-03 no «¿Cuántas veces…?» before it): batch
-  // cooking. «Siguiente» saves the next step with both answers.
-  await expect(page.getByText('Primeros pasos · 2 de 4')).toBeVisible()
+  // 2 de 5 (PRO-383): who does the shopping, «Yo» (no invitation after it).
+  await expect(page.getByText('Primeros pasos · 2 de 5')).toBeVisible()
+  await answerShopper(page)
+  // 3 de 5 (PRO-217; since 2026-11-03 no «¿Cuántas veces…?» before it): batch
+  // cooking. «Siguiente» saves the next step with the answers.
+  await expect(page.getByText('Primeros pasos · 3 de 5')).toBeVisible()
   await page.getByRole('button', { name: /^batch cooking/i }).click()
   const saved = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/onboarding-draft$/.test(r.url()))
   await next.click()
   expect((await saved).ok()).toBe(true)
-  await expect(page.getByText('Primeros pasos · 3 de 4')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 4 de 5')).toBeVisible()
 
   await logOutAndIn(page, creds)
 
   // Not /menu with a blank week: back to the sign-up, on the weekday time question.
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 20_000 })
-  await expect(page.getByText('Primeros pasos · 3 de 4')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('Primeros pasos · 4 de 5')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('heading', { name: /entre semana, ¿cómo te gusta cocinar/i })).toBeVisible()
 
   // What they answered is still there.
   await page.getByRole('button', { name: 'Atrás' }).click()
-  await expect(page.getByText('Primeros pasos · 2 de 4')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 3 de 5')).toBeVisible()
   await expect(page.getByRole('button', { name: /^batch cooking/i })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: 'Atrás' }).click()
-  await expect(page.getByText('Primeros pasos · 1 de 4')).toBeVisible()
+  await expect(page.getByText('Primeros pasos · 2 de 5')).toBeVisible()
+  await expect(page.getByTestId('onboarding-shopper').getByRole('button', { name: 'Yo', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Atrás' }).click()
+  await expect(page.getByText('Primeros pasos · 1 de 5')).toBeVisible()
   const counters = page.locator('[aria-live="polite"]')
   await expect(counters.nth(0)).toHaveText('3')
   await expect(counters.nth(1)).toHaveText('1')
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 
   // Finishing the sign-up still lands on the menu, and /menu then stays.
+  await next.click()
   await next.click()
   await next.click()
   await page.getByRole('button', { name: /^rápido/i }).click()

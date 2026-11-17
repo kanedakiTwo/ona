@@ -168,6 +168,8 @@ export async function recordAdvisorUsage(
   db: Db = defaultDb,
   feature: 'assistant_chat' | 'whatsapp_chat' | 'telegram_chat' = chatFeatureFor(currentCostChannel()),
 ): Promise<void> {
+  // «Mimo remoto» (PRO-1102): the office answered the turn, nothing was paid.
+  if (env.MIMO_REMOTO) return
   recordCost({ feature, provider: 'anthropic', model: ADVISOR_PRICE_MODEL, units: { ...usage }, userId })
   const micros = usageCostMicros(usage, env.ADVISOR_EUR_PER_USD)
   if (micros <= 0) return

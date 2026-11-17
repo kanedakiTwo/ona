@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { DIFFICULTIES, MEALS, SEASONS, UNITS } from '../constants/enums.js'
+import { isIsoDay } from './recipeOfTheDay.js'
+import { COURSES } from './recipe.js'
 
 /**
  * Catalogue import from the admin page «Recetas pendientes»
@@ -48,6 +50,10 @@ const ingredientSchema = z
     note: z.string().max(300).nullish(),
     optional: z.boolean().optional(),
     section: z.string().max(80).nullish(),
+    /** «Cocinar ahora»: true = without it it isn't the dish; false = it can be left out. Absent = automatic rule. */
+    imprescindible: z.boolean().optional(),
+    /** «Cocinar ahora»: catalogue ingredient names that can stand in for this one (nata → leche). */
+    sustitutos: z.array(z.string().trim().min(1).max(120)).max(5).optional(),
   })
   .superRefine((i, ctx) => {
     const key = i.qty == null && i.quantity != null ? 'quantity' : 'qty'
@@ -58,9 +64,51 @@ const ingredientSchema = z
     }
   })
 
-const stepSchema = z.preprocess(toStepObject, z.object({ text: z.string().trim().min(1).max(2000) }))
+const stepSchema = z.preprocess(
+  toStepObject,
+  z.object({
+    text: z.string().trim().min(1).max(2000),
+    /** PRO-1097: only read when the batch is `reescrita` (the house steps, as the rewriter returns them). */
+    durationMin: z.number().int().min(0).max(1440).nullish(),
+    temperature: z.number().int().min(0).max(350).nullish(),
+    technique: z.string().max(60).nullish(),
+    /** 0-based indexes into the recipe's ingredient list. */
+    ingredientRefs: z.array(z.number().int().min(0)).max(80).optional(),
+  }),
+)
 
-export const cocinaRecipeSchema = z.object({
+/**
+ * PRO-373: a base the recipe uses (sofrito, verduras asadas…), by the name of
+ * a catalogue recipe or one of the same batch, and how many of its servings
+ * for the recipe's `servings`. A name that isn't found rejects the recipe.
+ */
+const baseSchema = z.object({
+  name: z.string().trim().min(1).max(150),
+  servings: z.number().positive().max(100),
+})
+
+/**
+ * PRO-1097 (D-150, C): the labels `catalogRewriter` gives a recipe, written
+ * by Cocina (Claude Code, on the subscription) in a batch with
+ * `reescrita: true`, so the import saves it without calling the model.
+ * `difficulty`, `meals`, `seasons`, `freezable` and `fridgeDays` are the
+ * recipe's own fields above. Without `reescrita` they are ignored and the
+ * rewriter labels the recipe as always.
+ */
+export const catalogRewriteLabelsSchema = z.object({
+  course: z.enum(COURSES).nullish(),
+  dishType: z.string().trim().max(60).nullish(),
+  protein: z.string().trim().max(60).nullish(),
+  techniques: z.array(z.string().trim().min(1).max(60)).max(12).optional(),
+  cuisine: z.string().trim().max(60).nullish(),
+  activeTime: z.number().int().min(0).max(1440).nullish(),
+  totalTime: z.number().int().min(0).max(2880).nullish(),
+  allergenDoubt: z.boolean().optional(),
+  allergenNote: z.string().max(300).nullish(),
+  tips: z.string().max(600).nullish(),
+})
+
+export const cocinaRecipeSchema = catalogRewriteLabelsSchema.extend({
   name: z.string().trim().min(1).max(150),
   servings: z.number().int().positive().max(100).optional(),
   prepTime: z.number().int().min(0).max(1440).nullish(),
@@ -76,14 +124,39 @@ export const cocinaRecipeSchema = z.object({
   freezable: z.boolean().nullish(),
   /** PRO-372: «Aguanta N días en nevera». Absent = the rewriter guesses it. */
   fridgeDays: z.number().int().min(1).max(30).nullish(),
+  /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día»; one recipe per day. */
+  featuredOn: z
+    .string()
+    .nullish()
+    .refine((v) => v == null || isIsoDay(v), { message: 'la fecha de la receta del día (featuredOn) tiene que ser un día AAAA-MM-DD (por ejemplo, 2026-11-05)' }),
   source: sourceSchema.optional(),
+  bases: z.array(baseSchema).max(10).optional(),
 })
 
 export const cocinaBatchFileSchema = z.preprocess(
   toFileObject,
   z.object({
     source: sourceSchema.optional(),
+    /**
+     * PRO-1097: the steps are already the house's (written by Cocina, never
+     * the source's text) and the labels come in each recipe: the import
+     * doesn't call the rewriter.
+     */
+    reescrita: z.boolean().optional(),
     recipes: z.array(cocinaRecipeSchema).min(1).max(CATALOG_IMPORT_MAX_RECIPES),
+  }).superRefine((file, ctx) => {
+    // PRO-1099: one recipe of the day per day, inside the file too.
+    const firstOn = new Map<string, number>()
+    file.recipes.forEach((r, i) => {
+      if (!r.featuredOn) return
+      const first = firstOn.get(r.featuredOn)
+      if (first == null) return void firstOn.set(r.featuredOn, i)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recipes', i, 'featuredOn'],
+        message: `la fecha de la receta del día (featuredOn) ${r.featuredOn} ya es la de la receta ${first + 1}; solo hay una receta del día por día`,
+      })
+    })
   }),
 )
 export type CocinaBatchFile = z.infer<typeof cocinaBatchFileSchema>
@@ -121,6 +194,7 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   text: { label: 'el texto' },
   freezable: { label: 'si se congela (freezable)' },
   fridgeDays: { label: 'los días en nevera (fridgeDays)', plural: true },
+  featuredOn: { label: 'la fecha de la receta del día (featuredOn)' },
   source: { label: 'source' },
   origin: { label: 'el origen (source.origin)' },
   book: { label: 'el libro (source.book)' },
@@ -128,6 +202,22 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   file: { label: 'el fichero (source.file)' },
   credit: { label: 'el crédito (source.credit)' },
   url: { label: 'el enlace al original (source.url)' },
+  reescrita: { label: 'reescrita' },
+  durationMin: { label: 'los minutos del paso (durationMin)', plural: true },
+  temperature: { label: 'la temperatura (temperature)' },
+  technique: { label: 'la técnica del paso (technique)' },
+  ingredientRefs: { label: 'los ingredientes del paso (ingredientRefs)', plural: true },
+  course: { label: 'el tipo de plato del menú (course)' },
+  dishType: { label: 'el tipo de plato (dishType)' },
+  protein: { label: 'la proteína (protein)' },
+  techniques: { label: 'las técnicas (techniques)', plural: true },
+  cuisine: { label: 'la cocina (cuisine)' },
+  activeTime: { label: 'el tiempo activo (activeTime)' },
+  totalTime: { label: 'el tiempo total (totalTime)' },
+  allergenDoubt: { label: 'la duda de alérgenos (allergenDoubt)' },
+  allergenNote: { label: 'la nota de alérgenos (allergenNote)' },
+  tips: { label: 'el consejo (tips)' },
+  bases: { label: 'las bases (bases)', plural: true },
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -170,6 +260,11 @@ function locate(path: ReadonlyArray<string | number>, json: unknown): { where: s
   } else if (rest[0] === 'steps' && typeof rest[1] === 'number') {
     where += `, paso ${rest[1] + 1}`
     rest = rest.slice(2)
+  } else if (rest[0] === 'bases' && typeof rest[1] === 'number') {
+    const b = (Array.isArray(recipe?.bases) ? recipe!.bases : [])[rest[1]] as Record<string, unknown> | undefined
+    const baseName = textOf(b?.name)
+    where += `, base ${rest[1] + 1}${baseName ? ` («${baseName}»)` : ''}`
+    rest = rest.slice(2)
   }
   return { where, rest }
 }
@@ -191,7 +286,7 @@ function phrase(issue: z.ZodIssue, rest: Array<string | number>, path: ReadonlyA
         if (parentKey === 'ingredients') return 'tiene que ser un objeto con name, qty y unit'
         return 'tiene que ser un objeto'
       }
-      if (issue.received === 'undefined' || issue.received === 'null') return `falta ${label}`
+      if (issue.received === 'undefined' || issue.received === 'null') return `${verb('falta', 'faltan')} ${label}`
       const expected = TYPE_NAMES[issue.expected] ?? issue.expected
       return elementOf ? { field: key!, text: `cada elemento tiene que ser ${expected}` } : `${label} ${verb('tiene', 'tienen')} que ser ${expected}`
     }
@@ -288,6 +383,9 @@ export function checkCocinaBatch(json: unknown): CocinaBatchCheck {
   const fromMiguel = origin === 'miguel' || file.recipes.some((r) => r.source?.origin === 'miguel')
   if (fromMiguel) {
     warnings.push('El fichero dice que hay recetas de tus fuentes (origin «miguel»): esas se pueden publicar sin pasar por tu revisión, en cuanto pasen la auditoría.')
+  }
+  if (file.reescrita) {
+    warnings.push('La tanda viene reescrita («reescrita»: true): se guardan sus pasos y etiquetas tal cual, sin reescribirlos con la IA.')
   }
   return { ok: true, file, origin, book: textOf(file.source?.book), names, warnings }
 }
@@ -418,6 +516,7 @@ export const CATALOG_IMPORT_REJECT_LABELS: Record<string, string> = {
   no_es_receta: 'no parece una receta',
   copia_del_libro: 'copia frases de la fuente',
   ingredientes: 'ingredientes que no casan con el catálogo',
+  bases: 'usa una base que no está en el catálogo ni en la tanda',
   revisor: 'el revisor la rechaza',
   error: 'error al importarla',
 }

@@ -2,8 +2,9 @@
 
 /**
  * «Familia en el mismo hogar» offer (PRO-261, D-088; specs/household.md →
- * «Ofrecer la invitación»): shown once in the sign-up (2 adults or more) and
- * once the first time the shopping list opens. «Te preparo el mensaje»
+ * «Ofrecer la invitación»): shown once the first time the shopping list
+ * opens. In the sign-up, PRO-383's «Invítale y le llegará la lista cada
+ * semana» (OnboardingFlow) took the card's place and uses the same «once». «Te preparo el mensaje»
  * creates the invitation (`source` = the moment, for PRO-263) and turns into
  * «Enviar por WhatsApp» + «Copiar» (`FamilyInviteShare`).
  *
@@ -26,13 +27,18 @@ interface FamilyOfferStatus {
 
 const KEY = ["households", "family-offer"]
 
-export function useFamilyOfferOnce(moment: FamilyOfferMoment, wanted: boolean): { show: boolean; dismiss: () => void } {
-  const qc = useQueryClient()
-  const status = useQuery<FamilyOfferStatus>({
+/** Whether each moment may still be offered (the sign-up's is PRO-383's «Invítale…» screen). */
+export function useFamilyOfferStatus() {
+  return useQuery<FamilyOfferStatus>({
     queryKey: KEY,
     queryFn: () => api.get("/households/me/family-offer"),
     staleTime: Infinity,
   })
+}
+
+export function useFamilyOfferOnce(moment: FamilyOfferMoment, wanted: boolean): { show: boolean; dismiss: () => void } {
+  const qc = useQueryClient()
+  const status = useFamilyOfferStatus()
   const [shown, setShown] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const stamped = useRef(false)

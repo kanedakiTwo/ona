@@ -1,8 +1,8 @@
 /**
  * Flow 2: browse the recipe catalog and open a detail.
  *
- * If the test DB has no recipes seeded, the test soft-skips after asserting
- * the page rendered.
+ * CI seeds the catalogue (ci.yml, «Seed catalog»), so an empty catalogue
+ * fails the test instead of skipping it.
  */
 
 import { test, expect } from '@playwright/test'
@@ -21,17 +21,11 @@ test('catalog renders + detail page opens for the first card', async ({ page }) 
 
   // Look for at least one card. Cards are `<a href="/recipes/<uuid>">`
   // inside <main>; `/recipes/new` (the "Nueva receta" header button) is not
-  // a card. If the catalog is empty the test reports it as a soft skip —
-  // the contract here is that the route renders.
+  // a card.
   const cards = page
     .getByRole('main')
     .locator('a[href^="/recipes/"]:not([href="/recipes/new"]):not([href="/recipes/mias"]):not([href="/recipes/recetarios"])')
-  try {
-    await cards.first().waitFor({ state: 'visible', timeout: 10_000 })
-  } catch {
-    test.skip(true, 'Empty catalog — seed step did not produce recipes')
-    return
-  }
+  await expect(cards.first(), 'seeded catalogue shows no recipe cards').toBeVisible({ timeout: 10_000 })
 
   await Promise.all([
     page.waitForURL(/\/recipes\/[0-9a-f-]{36}(\?|$)/, { timeout: 20_000 }),

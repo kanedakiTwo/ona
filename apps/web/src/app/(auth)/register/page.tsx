@@ -104,7 +104,7 @@ export default function RegisterPage() {
             Tu primer <Accent>menú</Accent> en 2 minutos.
           </>
         ),
-        body: "Cinco preguntas, sin tarjeta de crédito, y en pantalla un menú semanal con su lista de la compra.",
+        body: "Tres o cuatro preguntas, sin tarjeta, y en pantalla tu menú de la semana con su lista de la compra.",
       }}
       footer={
         <>

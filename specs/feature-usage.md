@@ -116,3 +116,13 @@ Para decidir qué opciones de las hojas «···» del menú se quedan a la vist
 
 - La lee el admin (`/admin/funciones`, arriba); la usará también la newsletter del n.º 4 (truco por persona).
 - Ajustes que no dejan evento (comidas fijas, menú del cole…) necesitan antes su evento.
+
+## Source
+
+- [packages/shared/src/constants/featureCatalog.ts](../packages/shared/src/constants/featureCatalog.ts) — `FEATURE_CATALOG`
+- [packages/shared/src/constants/menuSheets.ts](../packages/shared/src/constants/menuSheets.ts) — `MENU_SHEET_ACTIONS`, `isMenuSheetAction`: las hojas del menú y sus opciones (PRO-1174)
+- [apps/api/src/db/schema.ts](../apps/api/src/db/schema.ts) — tabla `household_feature_usage`
+- [apps/api/src/services/featureUsage.ts](../apps/api/src/services/featureUsage.ts) — la pasada nocturna (`runFeatureUsagePassIfDue`, llamada desde [services/notificationScheduler.ts](../apps/api/src/services/notificationScheduler.ts))
+- [apps/api/src/services/featureUsageReport.ts](../apps/api/src/services/featureUsageReport.ts) — `loadFeatureUsageReport`, servido por [routes/metrics.ts](../apps/api/src/routes/metrics.ts)
+- [apps/api/src/services/usageEvents.ts](../apps/api/src/services/usageEvents.ts) + [usageReport.ts](../apps/api/src/services/usageReport.ts) — el evento `menu_sheet_action` y `menuSheetActions` en `GET /admin/usage`
+- [apps/web/src/app/admin/sections/FeatureUsageSection.tsx](../apps/web/src/app/admin/sections/FeatureUsageSection.tsx) — `/admin/funciones`

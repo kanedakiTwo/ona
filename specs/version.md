@@ -25,3 +25,11 @@ Ask both services (the API on `/version`, the web on `/version.json`) and compar
 
 - API unit test `version.test.ts`: the file rule (valid, missing, junk) and the route (no auth, `no-store`, null).
 - e2e `version.spec.ts`: the web and the API give the same JSON shape and the same hash.
+
+## Source
+
+- [apps/api/src/routes/version.ts](../apps/api/src/routes/version.ts) — `readVersionSha` (the file rule) and `GET /version`, mounted in [apps/api/src/index.ts](../apps/api/src/index.ts)
+- [apps/web/src/lib/versionSha.ts](../apps/web/src/lib/versionSha.ts) — the same file rule on the web
+- [apps/web/src/app/version.json/route.ts](../apps/web/src/app/version.json/route.ts) — `/version.json` (`force-static`)
+- [.gitignore](../.gitignore) — keeps `VERSION_SHA` out of git
+- Tests: [apps/api/src/tests/version.test.ts](../apps/api/src/tests/version.test.ts), [apps/web/e2e/version.spec.ts](../apps/web/e2e/version.spec.ts)

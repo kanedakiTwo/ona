@@ -15,6 +15,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { answerShopper, completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -162,6 +163,8 @@ test('an account onboarded without it: «Novedad» once, then the card until «A
       ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
       : route.continue(),
   )
+  // PRO-387: the guide waits for the health notice, the taste card for «Manda la lista» / «¿Qué tal la cena de ayer?».
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page, { keepTaste: true, keepFirstSteps: true })
   await completeOnboarding(page, { keepTaste: true, keepFirstSteps: true })
 

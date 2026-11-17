@@ -12,10 +12,14 @@ import { usePendingSignUp } from "@/hooks/useOnboardingGate"
  * /onboarding opens with those answers filled in. «Ahora no» hides it for
  * this visit.
  */
-export function PendingSignUpCard() {
+/** Whether the card wants to show (PRO-387: one next step at a time, lib/nextStep.ts). */
+export function usePendingSignUpCard() {
   const pending = usePendingSignUp()
   const [hidden, setHidden] = useState(false)
-  if (!pending || hidden) return null
+  return { show: Boolean(pending) && !hidden, hide: () => setHidden(true) }
+}
+
+export function PendingSignUpCard({ onHide }: { onHide: () => void }) {
   return (
     <section
       data-testid="pending-sign-up"
@@ -33,7 +37,7 @@ export function PendingSignUpCard() {
         >
           Terminar el alta
         </Link>
-        <button type="button" onClick={() => setHidden(true)} className="text-[14px] font-semibold text-ink-muted">
+        <button type="button" onClick={onHide} className="text-[14px] font-semibold text-ink-muted">
           Ahora no
         </button>
       </div>

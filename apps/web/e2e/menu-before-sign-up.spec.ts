@@ -8,6 +8,7 @@
 import { test, expect } from '@playwright/test'
 import { e2eInvite, uniqueId } from './_helpers'
 import { madridWeekStart } from './_clock'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
 
@@ -46,6 +47,8 @@ test('menu made by Mimo → /menu shows it, the sign-up offered apart with 1 adu
   )
 
   // /menu stays on the menu, with the sign-up offered apart.
+  // PRO-387: one next step at a time; «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await page.goto('/menu')
   const card = page.getByTestId('pending-sign-up')
   await expect(card).toBeVisible({ timeout: 20_000 })

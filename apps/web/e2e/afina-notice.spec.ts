@@ -6,6 +6,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 const TEXT = '¡Hola! Un aviso rápido: si usaste «Afina tu menú» estos días, puede que te enseñara algún plato que no encaja con lo que nos dijiste (alergias o cosas que no coméis en casa).'
 
@@ -23,6 +24,8 @@ test('/menu: the notice card until «Entendido»', async ({ page }) => {
     dismissed += 1
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
   })
+  // PRO-387: one next step at a time; without the consent «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   await completeOnboarding(page)
   await page.goto('/menu')

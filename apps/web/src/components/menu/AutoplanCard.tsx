@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { ShoppingBasket, Sparkles } from "lucide-react"
 import type { AutoplanNotice } from "@ona/shared"
@@ -28,27 +28,45 @@ export function autoplanRange(n: AutoplanNotice): string {
     : `del ${d1} de ${MONTHS[m1 - 1]} al ${d2} de ${MONTHS[m2 - 1]}`
 }
 
-export function AutoplanCard({ weekStart, onOpenWeek }: { weekStart: string; onOpenWeek: (weekStart: string) => void }) {
+/**
+ * Whether the card wants to show (PRO-387: /menu shows one next step at a
+ * time, lib/nextStep.ts). Lives in the page, so the week stamped on this
+ * visit keeps its card while the picker re-renders.
+ */
+export function useAutoplanCard(weekStart: string) {
   const notice = useAutoplanNotice(true)
-  const viewed = useAutoplanViewed()
-  const weekType = useWeekType()
   // Kept for this visit: stamping the week clears the query, not the card on screen.
   const [kept, setKept] = useState<AutoplanNotice | null>(null)
-  const stamped = useRef(false)
+  const [stamped, setStamped] = useState(false)
   useEffect(() => {
     if (notice.data && !kept) setKept(notice.data)
   }, [notice.data, kept])
 
   const onItsWeek = Boolean(kept && kept.weekStart === weekStart)
+  // Once the week was opened, the card only stays on that week for this visit.
+  const show = Boolean(kept) && (!stamped || onItsWeek)
+  return { kept, onItsWeek, stamped, setStamped, show }
+}
+
+export function AutoplanCard({
+  card,
+  onOpenWeek,
+}: {
+  card: ReturnType<typeof useAutoplanCard>
+  onOpenWeek: (weekStart: string) => void
+}) {
+  const { kept, onItsWeek, stamped, setStamped, show } = card
+  const viewed = useAutoplanViewed()
+  const weekType = useWeekType()
+  // Stamped only once it is really on screen on its week.
   useEffect(() => {
-    if (!kept || !onItsWeek || stamped.current) return
-    stamped.current = true
+    if (!kept || !onItsWeek || stamped) return
+    setStamped(true)
     viewed.mutate(kept.weekStart)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kept, onItsWeek])
+  }, [kept, onItsWeek, stamped])
 
-  // Once the week was opened, the card only stays on that week for this visit.
-  if (!kept || (stamped.current && !onItsWeek)) return null
+  if (!kept || !show) return null
   const range = autoplanRange(kept)
   return (
     <section

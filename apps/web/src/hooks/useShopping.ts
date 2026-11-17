@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tansta
 import type { Aisle, BuyableUnit } from "@ona/shared"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
+import { markListUsed } from "@/lib/weekSteps"
 
 export interface ShoppingItem {
   id: string
@@ -123,7 +124,9 @@ export function useCheckItem() {
 
       return api.put(url, body)
     },
-    onSuccess: (data) => {
+    onSuccess: (data, params) => {
+      // PRO-387: ticking something is using this week's list («Manda la lista» goes away on /menu).
+      if (params.checked) markListUsed()
       // State-only mutations: don't refetch (which would re-run the rolling
       // aggregation server-side and feel like a full reload). The PUT
       // already returns the updated list — slot it into every cached

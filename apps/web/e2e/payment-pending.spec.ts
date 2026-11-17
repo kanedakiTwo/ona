@@ -8,6 +8,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 async function billingPastDue(page: Page, opts: { gratis: boolean; canManage?: boolean }) {
   const portalCalls: unknown[] = []
@@ -54,6 +55,8 @@ async function billingPastDue(page: Page, opts: { gratis: boolean; canManage?: b
 test('failed payment: /menu shows «Pago pendiente» and «Cambiar la tarjeta» opens the portal', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  // PRO-387: one next step at a time; «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
@@ -74,6 +77,8 @@ test('failed payment: /menu shows «Pago pendiente» and «Cambiar la tarjeta» 
 test('7 days later: Gratis until it pays, Mimo shows the same card', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  // PRO-387: one next step at a time; «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
@@ -100,6 +105,8 @@ test('7 days later: Gratis until it pays, Mimo shows the same card', async ({ pa
 test('a member reads who changes the card, without the button', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  // PRO-387: one next step at a time; «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 

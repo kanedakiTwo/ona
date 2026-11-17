@@ -12,8 +12,12 @@ const SEEN_KEY = "ona.health.notice.seen"
  * Without the health-data consent (PRO-21) Mimoia doesn't know the user's
  * allergies, so /menu says so once: "No tenemos tus alergias: revisa los
  * ingredientes de cada receta". Shown a single time per device.
+ *
+ * PRO-387: /menu asks the hook whether it shows (lib/nextStep.ts picks one
+ * card) and renders the card only when it is the one picked; the device is
+ * stamped when the card is actually on screen.
  */
-export function NoHealthDataNotice() {
+export function useNoHealthDataNotice() {
   const { user } = useAuth()
   const [show, setShow] = useState(false)
 
@@ -30,9 +34,6 @@ export function NoHealthDataNotice() {
       .then((s) => {
         if (cancelled || !s || s.active || s.needsPrompt) return
         setShow(true)
-        try {
-          localStorage.setItem(SEEN_KEY, "1")
-        } catch {}
       })
       .catch(() => {})
     return () => {
@@ -40,7 +41,16 @@ export function NoHealthDataNotice() {
     }
   }, [user?.id])
 
-  if (!show) return null
+  return { show, dismiss: () => setShow(false) }
+}
+
+export function NoHealthDataNotice({ onDismiss }: { onDismiss: () => void }) {
+  useEffect(() => {
+    try {
+      localStorage.setItem(SEEN_KEY, "1")
+    } catch {}
+  }, [])
+
   return (
     <div
       role="status"
@@ -53,7 +63,7 @@ export function NoHealthDataNotice() {
           Añadirlas en tu perfil
         </Link>
       </p>
-      <button type="button" onClick={() => setShow(false)} className="text-[12px] font-semibold text-[#7A7066]">
+      <button type="button" onClick={onDismiss} className="text-[12px] font-semibold text-[#7A7066]">
         Entendido
       </button>
     </div>

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { X, Share2, Plus, Smartphone } from "lucide-react"
 import { getInstallPromptState, triggerInstall, dismissForDays } from "@/lib/pwa/installPrompt"
 import { haptic } from "@/lib/pwa/haptics"
+import { NEXT_STEP_SELECTOR } from "@/lib/nextStep"
 
 export default function InstallSheet() {
   const [open, setOpen] = useState(false)
@@ -14,10 +15,11 @@ export default function InstallSheet() {
     // Re-check periodically (visits get incremented elsewhere)
     function check() {
       const s = getInstallPromptState()
-      // Never on top of another sheet (e.g. the beta price survey on /menu):
+      // Never on top of another sheet (e.g. the beta price survey on /menu)
+      // nor with a next-step card above the menu (PRO-387, lib/nextStep.ts):
       // while closed, our own dialog isn't in the DOM, so any modal found is
       // someone else's; try again on the next tick.
-      const otherModal = () => !!document.querySelector('[role="dialog"][aria-modal="true"]')
+      const otherModal = () => !!document.querySelector(`[role="dialog"][aria-modal="true"], ${NEXT_STEP_SELECTOR}`)
       setOpen((prev) => s.shouldShow && (prev || !otherModal()))
       setIsIOS(s.isIOS)
     }

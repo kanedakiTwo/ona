@@ -10,6 +10,7 @@ import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { PriceQuestionKey } from "@ona/shared"
 import { api } from "@/lib/api"
+import { NEXT_STEP_SELECTOR } from "@/lib/nextStep"
 
 type Survey =
   | { show: false }
@@ -26,11 +27,12 @@ export function PriceSurveySheet() {
   const [thanks, setThanks] = useState(false)
 
   // Let the menu paint first, and never on top of another sheet (the
-  // install prompt, first steps…): wait until no other modal is open.
+  // install prompt, first steps…) nor with a next-step card above the menu
+  // (PRO-387, lib/nextStep.ts): wait until neither is on screen.
   useEffect(() => {
     if (!survey.data?.show || open) return
     const t = setInterval(() => {
-      if (!document.querySelector('[role="dialog"][aria-modal="true"]')) {
+      if (!document.querySelector(`[role="dialog"][aria-modal="true"], ${NEXT_STEP_SELECTOR}`)) {
         setOpen(true)
         clearInterval(t)
       }

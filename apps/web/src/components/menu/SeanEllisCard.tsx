@@ -16,14 +16,23 @@ type Survey =
   | { show: false }
   | { show: true; question: string; options: Array<{ key: Answer; label: string }>; why: string }
 
-export function SeanEllisCard() {
-  const qc = useQueryClient()
-  const survey = useQuery<Survey>({
+function useSurvey() {
+  return useQuery<Survey>({
     queryKey: ["sean-ellis"],
     queryFn: () => api.get<Survey>("/sean-ellis"),
     staleTime: 5 * 60_000,
     retry: false,
   })
+}
+
+/** Whether the card wants to show (PRO-387: one next step at a time, lib/nextStep.ts). */
+export function useSeanEllisCard(): boolean {
+  return useSurvey().data?.show === true
+}
+
+export function SeanEllisCard() {
+  const qc = useQueryClient()
+  const survey = useSurvey()
   const [answer, setAnswer] = useState<Answer | null>(null)
   const [why, setWhy] = useState("")
   const [thanks, setThanks] = useState(false)

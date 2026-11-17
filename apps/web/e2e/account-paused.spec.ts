@@ -10,6 +10,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
 import { madridMondayIn } from './_clock'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 type Access = {
   state: 'beta' | 'trial' | 'gratis' | 'subscribed'
@@ -42,6 +43,8 @@ const GRATIS: Access = { state: 'gratis', trialEndsAt: '2027-01-24T23:00:00.000Z
 test('trial over: «Estás en el plan Gratis» on /menu, Mimo rests, «Elegir plan» opens the plans', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  // PRO-387: one next step at a time; without the consent «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
@@ -70,6 +73,7 @@ test('trial over: «Estás en el plan Gratis» on /menu, Mimo rests, «Elegir pl
 test('trial over: the account still generates its week from the web', async ({ page }) => {
   // Same flow as week-plan-questions.spec.ts («skipping the questions generates the week»).
   test.setTimeout(90_000)
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   await completeOnboarding(page)
   await billingAs(page, GRATIS)
@@ -89,6 +93,7 @@ test('trial over: the account still generates its week from the web', async ({ p
 test('two days left: /menu warns once, with the last day and what Gratis keeps', async ({ page }) => {
   test.setTimeout(90_000)
   await page.setViewportSize({ width: 390, height: 844 })
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 

@@ -6,6 +6,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 const SURVEY = {
   show: true,
@@ -43,6 +44,8 @@ async function stub(page: Page) {
 test('/menu: one answer and the «¿Por qué?», then thanks; it does not come back', async ({ page }) => {
   test.setTimeout(90_000)
   const calls = await stub(page)
+  // PRO-387: one next step at a time; «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   await completeOnboarding(page)
   await page.goto('/menu')
@@ -75,6 +78,8 @@ test('/menu: one answer and the «¿Por qué?», then thanks; it does not come b
 test('/menu: «Ahora no» closes it for good', async ({ page }) => {
   test.setTimeout(90_000)
   const calls = await stub(page)
+  // PRO-387: one next step at a time; «No tenemos tus alergias» goes first.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page)
   await completeOnboarding(page)
   await page.goto('/menu')

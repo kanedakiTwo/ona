@@ -3,14 +3,15 @@
  * Mimo built the first menu in the chat without allergies (health data never
  * goes through WhatsApp), so a short «Tu menú está listo» screen asks for them
  * with the separate consent box; with something added the week is rebuilt
- * without it. Then /menu with the two-step «Primeros pasos» (no step about
- * Mimo's web button: they talk to Mimo by WhatsApp). At 390×844.
+ * without it. Then /menu with «Primeros pasos», the same three steps as on
+ * the web (PRO-387). At 390×844.
  * /whatsapp/* is mocked; the chat's complete_onboarding is played through the
  * real API (onboarding without restrictions + this week's menu).
  */
 import { test, expect, type Page, type Route } from '@playwright/test'
 import { firstMenuWeeks } from '@ona/shared'
 import { registerFreshUser } from './_helpers'
+import { putAwayEarlierNextSteps } from './_nextStep'
 
 test.use({ viewport: { width: 390, height: 844 } })
 
@@ -64,6 +65,8 @@ async function mimoFinishesInTheChat(page: Page) {
 
 async function signUpByWhatsApp(page: Page) {
   const wa = await mockWhatsApp(page)
+  // PRO-387: without the consent, «No tenemos tus alergias» would go before the guide.
+  await putAwayEarlierNextSteps(page)
   await registerFreshUser(page, { keepFirstSteps: true })
   await page.goto('/onboarding')
   await page.getByRole('button', { name: /por whatsapp/i }).click()
@@ -94,7 +97,7 @@ test.afterEach(async ({ page }) => {
   await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
 
-test('WhatsApp sign-up → «Tu menú está listo» → sin gluten + consent → menu rebuilt without gluten → two-step guide', async ({ page }) => {
+test('WhatsApp sign-up → «Tu menú está listo» → sin gluten + consent → menu rebuilt without gluten → three-step guide', async ({ page }) => {
   test.setTimeout(120_000)
   await signUpByWhatsApp(page)
   const ready = page.getByTestId('onboarding-menu-ready')
@@ -127,15 +130,18 @@ test('WhatsApp sign-up → «Tu menú está listo» → sin gluten + consent →
   expect(ids.length).toBeGreaterThan(0)
   expect(ids.filter((id) => !fits.has(id))).toEqual([])
 
-  // «Primeros pasos» in two steps: the dish's «···» and the list, not Mimo's button.
+  // «Primeros pasos»: the same three steps of the way as on the web (PRO-387).
   const guide = page.getByTestId('first-steps')
   await expect(guide).toBeVisible({ timeout: 20_000 })
   const dialog = guide.getByRole('dialog')
-  await expect(dialog).toContainText('1 de 2')
-  await expect(dialog.getByRole('heading')).toHaveText('Toca «···» en un plato para cambiarlo')
+  await expect(dialog).toContainText('1 de 3')
+  await expect(dialog.getByRole('heading')).toHaveText('Tu menú ✓')
   await dialog.getByRole('button', { name: 'Siguiente' }).click()
-  await expect(dialog).toContainText('2 de 2')
-  await expect(dialog.getByRole('heading')).toHaveText('Aquí tienes la lista de la compra: se hace sola')
+  await expect(dialog).toContainText('2 de 3')
+  await expect(dialog.getByRole('heading')).toHaveText('Manda la lista')
+  await dialog.getByRole('button', { name: 'Siguiente' }).click()
+  await expect(dialog).toContainText('3 de 3')
+  await expect(dialog.getByRole('heading')).toHaveText('Cocina el primer plato')
   await dialog.getByRole('button', { name: 'Entendido' }).click()
   await expect(guide).toHaveCount(0)
 })
@@ -149,6 +155,6 @@ test('without ticking anything, «Ver mi menú» goes to /menu and keeps Mimo’
   })
   await page.getByTestId('onboarding-menu-ready').getByRole('button', { name: 'Ver mi menú' }).click()
   await expect(page).toHaveURL(/\/menu/, { timeout: 20_000 })
-  await expect(page.getByTestId('first-steps').getByRole('dialog')).toContainText('1 de 2', { timeout: 20_000 })
+  await expect(page.getByTestId('first-steps').getByRole('dialog')).toContainText('1 de 3', { timeout: 20_000 })
   expect(generated).toEqual([])
 })

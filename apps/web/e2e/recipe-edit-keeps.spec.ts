@@ -31,7 +31,7 @@ test('editing a step keeps the ingredients under each step and the truco', async
 
   const auth = await headers(page)
   const [ajo, cebolla] = [await ingredientId(page, 'ajo'), await ingredientId(page, 'cebolla')]
-  test.skip(!ajo || !cebolla, 'Catalog has no exact "ajo" / "cebolla" — seed missing or renamed.')
+  expect(ajo && cebolla, 'Catalog has no exact "ajo" / "cebolla" — seed missing or renamed.').toBeTruthy()
 
   const A = crypto.randomUUID()
   const B = crypto.randomUUID()
@@ -59,16 +59,17 @@ test('editing a step keeps the ingredients under each step and the truco', async
   const id = (await created.json()).id as string
 
   await page.goto(`/recipes/${id}/edit`)
-  const step1 = page.getByPlaceholder('Paso 1')
-  await expect(step1).toHaveValue('Pica el ajo y la cebolla.', { timeout: 15_000 })
+  // The steps box (PRO-1115): the saved steps, numbered.
+  const stepsBox = page.locator('#recipe-steps')
+  await expect(stepsBox).toHaveValue('1. Pica el ajo y la cebolla.\n2. Sofríe la cebolla a fuego lento.', { timeout: 15_000 })
   // The truco is in the notes list and the course in its select.
   await expect
     .poll(() => page.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value)))
     .toContain(TIP)
   await expect(page.locator('#recipe-course')).toHaveValue('main')
 
-  await step1.fill('Pica muy fino el ajo y la cebolla.')
-  // Enabled once the ingredient library has loaded and bound both rows.
+  await stepsBox.fill('1. Pica muy fino el ajo y la cebolla.\n2. Sofríe la cebolla a fuego lento.')
+  await expect(page.getByTestId('step-line').first()).toContainText('Pica muy fino')
   const save = page.getByRole('button', { name: /^guardar cambios$/i })
   await expect(save).toBeEnabled({ timeout: 15_000 })
   const [put] = await Promise.all([

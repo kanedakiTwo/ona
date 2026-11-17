@@ -34,7 +34,7 @@ import {
 import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import { LintFailureError } from "@/lib/api"
 import { createRecipeSchema, formatIngredientText, splitSteps, COURSES, COURSE_LABELS } from "@ona/shared"
-import type { Course, Difficulty, Meal, Season } from "@ona/shared"
+import type { Course, CreateRecipeInput, Difficulty, Meal, RecipeStep, Season } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
@@ -56,6 +56,39 @@ const DIFFICULTY_OPTIONS: { value: Difficulty; label: string }[] = [
   { value: "medium", label: "Media" },
   { value: "hard", label: "Compleja" },
 ]
+
+/** What a saved step carries that the form doesn't edit (PRO-1259). */
+type StepExtras = Pick<RecipeStep, "durationMin" | "temperature" | "technique" | "ingredientRefs">
+
+/** Paragraphs of a notes / tips blob, one per entry of the editor. */
+function splitParas(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 0)
+}
+
+/**
+ * The saved step each step of the box comes from (PRO-1259): the one with
+ * the same text, else the one in the same place when the count is the same
+ * (an edited step keeps its ingredients). A step with none is new.
+ */
+function matchSavedSteps<T extends { text: string }>(texts: string[], saved: readonly T[]): (T | null)[] {
+  const used = new Set<number>()
+  const out: (T | null)[] = texts.map((text) => {
+    const i = saved.findIndex((s, j) => !used.has(j) && s.text.trim() === text)
+    if (i < 0) return null
+    used.add(i)
+    return saved[i]
+  })
+  if (texts.length === saved.length) {
+    out.forEach((hit, i) => {
+      if (!hit && !used.has(i)) {
+        used.add(i)
+        out[i] = saved[i]
+      }
+    })
+  }
+  return out
+}
 
 export default function EditRecipePage() {
   const params = useParams<{ id: string }>()
@@ -89,20 +122,22 @@ export default function EditRecipePage() {
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   // Ingredients, one per line (PRO-1115): the saved rows written as text.
-  // A line left as it was keeps its row exactly (useIngredientLines).
+  // A line left as it was keeps its row exactly (useIngredientLines), id
+  // included, so the steps that point at it keep their ingredients (PRO-1259).
   const [savedRows, setSavedRows] = useState<SavedIngredientRow[]>([])
   const [ingredientText, setIngredientText] = useState("")
   const ingredientLines = useIngredientLines(ingredientText, savedRows)
   // Steps as one numbered text; left as it was, the saved steps go back as they are.
-  const [savedSteps, setSavedSteps] = useState<string[]>([])
+  // Durations, temperature, technique and the step → ingredient links of
+  // each saved step go back with it (PRO-1259).
+  const [savedSteps, setSavedSteps] = useState<Array<{ text: string } & StepExtras>>([])
   const [stepText, setStepText] = useState("")
   const [resolving, setResolving] = useState(false)
-  // Notes (a.k.a. tips — unified in the UI to a single multi-entry list).
-  // On load we merge any pre-existing `tips` content into the notes list
-  // so users who authored recipes under the split UI keep all their
-  // entries. On save the joined blob goes into `recipes.notes`; `tips`
-  // is cleared so the column drains over time without a migration.
+  // Notes and tips (trucos) — one multi-entry list in the UI. The
+  // paragraphs that came from `tips` and are left as they were go back to
+  // `tips` (Mimo reads them as «Trucos»); edited or new ones go to `notes`.
   const [notes, setNotes] = useState<string[]>([""])
+  const [loadedTips, setLoadedTips] = useState<string[]>([])
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Set to true after the server returns lint warnings: the next click of
@@ -138,16 +173,13 @@ export default function EditRecipePage() {
     setCourse(recipe.course ?? "")
     setTags(recipe.tags ?? [])
     // Round-trip the persisted blob(s) through split-on-blank-line so a
-    // recipe authored before the unified UI still renders one row per
-    // existing paragraph — and the legacy `tips` content gets folded in
-    // beneath the notes ones so nothing is silently dropped.
-    const splitParas = (raw: string | null | undefined): string[] => {
-      if (!raw) return []
-      return raw.split(/\n{2,}/).map((p) => p.trim()).filter((p) => p.length > 0)
-    }
+    // recipe still renders one row per existing paragraph — the `tips`
+    // ones beneath the notes ones.
     const merged = [...splitParas(recipe.notes), ...splitParas(recipe.tips)]
     setNotes(merged.length > 0 ? merged : [""])
+    setLoadedTips(splitParas(recipe.tips))
     const rows: SavedIngredientRow[] = recipe.ingredients.map((ri) => ({
+      id: ri.id,
       ingredientId: ri.ingredientId,
       ingredientName: ri.ingredientName ?? "",
       quantity: ri.quantity,
@@ -160,9 +192,16 @@ export default function EditRecipePage() {
     }))
     setSavedRows(rows)
     setIngredientText(formatIngredientText(rows.map((r) => ({ ...r, note: r.note ?? undefined }))))
-    const texts = recipe.steps.map((s) => s.text)
-    setSavedSteps(texts)
-    setStepText(stepsText(texts))
+    setSavedSteps(
+      recipe.steps.map((s) => ({
+        text: s.text,
+        durationMin: s.durationMin,
+        temperature: s.temperature,
+        technique: s.technique,
+        ingredientRefs: s.ingredientRefs ?? [],
+      })),
+    )
+    setStepText(stepsText(recipe.steps.map((s) => s.text)))
     setSeeded(true)
   }, [recipe, seeded])
 
@@ -217,8 +256,19 @@ export default function EditRecipePage() {
     setter(list.filter((_, i) => i !== idx))
   }
 
-  function buildPayload(ingredientRows: ResolvedIngredientRow[]) {
+  function buildPayload(resolvedRows: ResolvedIngredientRow[]) {
+    // An edited line keeps the id of a saved row of the same ingredient not
+    // kept by another line, so its steps keep it too (PRO-1259).
+    const taken = new Set(resolvedRows.flatMap((r) => (r.id ? [r.id] : [])))
+    const ingredientRows = resolvedRows.map((r) => {
+      if (r.id) return r
+      const prev = savedRows.find((s) => s.id && !taken.has(s.id) && s.ingredientId === r.ingredientId)
+      if (!prev?.id) return r
+      taken.add(prev.id)
+      return { ...r, id: prev.id }
+    })
     const cleanedIngredients = ingredientRows.map((r) => ({
+      ...(r.id ? { id: r.id } : {}),
       ingredientId: r.ingredientId,
       quantity: r.quantity,
       unit: r.unit || "g",
@@ -231,11 +281,20 @@ export default function EditRecipePage() {
 
     // Untouched, the saved steps go back as they are (a step with a line
     // break inside would otherwise be read again).
-    const stepTexts = stepText === stepsText(savedSteps) ? savedSteps : splitSteps(stepText)
-    const cleanedSteps = stepTexts
+    const savedTexts = savedSteps.map((s) => s.text)
+    const stepTexts = (stepText === stepsText(savedTexts) ? savedTexts : splitSteps(stepText))
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
-      .map((text, index) => ({ index, text }))
+    // A step keeps its links to the rows still in the recipe.
+    const keptRowIds = new Set(ingredientRows.flatMap((r) => (r.id ? [r.id] : [])))
+    const cleanedSteps = matchSavedSteps(stepTexts, savedSteps).map((extras, index) => ({
+      index,
+      text: stepTexts[index],
+      ...(extras?.durationMin != null ? { durationMin: extras.durationMin } : {}),
+      ...(extras?.temperature != null ? { temperature: extras.temperature } : {}),
+      ...(extras?.technique ? { technique: extras.technique } : {}),
+      ingredientRefs: (extras?.ingredientRefs ?? []).filter((id) => keptRowIds.has(id)),
+    }))
 
     const payload: Record<string, unknown> = {
       name: name.trim(),
@@ -253,8 +312,9 @@ export default function EditRecipePage() {
       ingredients: cleanedIngredients,
       steps: cleanedSteps,
     }
-    if (typeof prepTime === "number" && prepTime > 0) payload.prepTime = prepTime
-    if (typeof cookTime === "number" && cookTime > 0) payload.cookTime = cookTime
+    // Null clears it: an absent time is kept as it was (PRO-1259).
+    payload.prepTime = typeof prepTime === "number" && prepTime > 0 ? prepTime : null
+    payload.cookTime = typeof cookTime === "number" && cookTime > 0 ? cookTime : null
     // Source URL is optional. Trim + omit when empty so the schema's
     // `z.string().url()` validator doesn't reject empty strings.
     const trimmedUrl = sourceUrl.trim()
@@ -270,18 +330,24 @@ export default function EditRecipePage() {
     } else {
       payload.sourceUrl = null
     }
-    const notesText = notes
-      .map((e) => e.trim())
-      .filter((e) => e.length > 0)
-      .join("\n\n")
-    // The schema is `z.string().optional()` — undefined means "no change /
-    // not set", null is rejected. We use empty string as the explicit
-    // "clear this column" signal; the backend treats empty strings as null
-    // when persisting (see persistence helper).
-    payload.notes = notesText
-    // Always clear the legacy `tips` column so the split never re-emerges
-    // for users who authored before the unification.
-    payload.tips = ""
+    // Each loaded tips paragraph still in the list, as it was, goes back to
+    // `tips`; the rest to `notes`. The schema is `z.string().optional()` —
+    // undefined keeps the column, null is rejected. Empty string is the
+    // explicit "clear this column" signal; the backend stores it as NULL.
+    const tipsLeft = [...loadedTips]
+    const noteParas: string[] = []
+    const tipParas: string[] = []
+    for (const entry of notes.map((e) => e.trim()).filter((e) => e.length > 0)) {
+      const t = tipsLeft.indexOf(entry)
+      if (t >= 0) {
+        tipsLeft.splice(t, 1)
+        tipParas.push(entry)
+      } else {
+        noteParas.push(entry)
+      }
+    }
+    payload.notes = noteParas.join("\n\n")
+    payload.tips = tipParas.join("\n\n")
 
     return payload
   }
@@ -316,7 +382,10 @@ export default function EditRecipePage() {
       setErrors(next)
       return
     }
-    updateRecipe.mutate({ ...parsed.data, force: useForce }, {
+    // The payload as built, not `parsed.data`: the schema's defaults
+    // (`internalTags: []`, `equipment: []`…) would wipe what the form doesn't
+    // show. What it leaves out the server keeps (PRO-1259).
+    updateRecipe.mutate({ ...(payload as CreateRecipeInput), force: useForce }, {
       onSuccess: (updated) => {
         router.push(`/recipes/${updated.id}`)
       },
@@ -642,8 +711,8 @@ export default function EditRecipePage() {
 
               {/* Notes — unified list ("notas y trucos" used to be two boxes;
                   users don't actually separate the two so we merged them into
-                  a single stack). Persists into `recipes.notes`; `recipes.tips`
-                  is cleared on save. */}
+                  a single stack). New and edited entries persist into
+                  `recipes.notes`; untouched `tips` entries stay in `tips`. */}
               <FormCard title="Notas" mark={{ optional: true, plural: true }}>
                 <NotesEditor
                   title=""

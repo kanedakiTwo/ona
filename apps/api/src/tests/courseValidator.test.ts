@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { COURSES, COURSE_LABELS, courseSchema, type Course } from '@ona/shared'
+import { COURSES, COURSE_LABELS, courseSchema } from '@ona/shared'
 
 describe('Course validator', () => {
   it('accepts the 3 valid course values', () => {

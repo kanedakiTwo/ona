@@ -44,6 +44,8 @@ export interface IngredientRowState {
    * omitted when empty, which clears it on update.
    */
   note?: string
+  /** «Para la masa» (PRO-1115: a heading line in the ingredients box). Omitted when empty. */
+  section?: string
 }
 
 /** All form state needed to build the recipe payload. */
@@ -87,6 +89,8 @@ export function buildRecipePayload(form: RecipeFormState): Record<string, unknow
       if (r.optional) ingredient.optional = true
       const note = (r.note ?? '').trim()
       if (note.length > 0) ingredient.note = note
+      const section = (r.section ?? '').trim()
+      if (section.length > 0) ingredient.section = section
       return ingredient
     })
 

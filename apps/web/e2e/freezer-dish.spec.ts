@@ -1,5 +1,6 @@
 /**
  * PRO-82: «Añadir comida → Del congelador» puts a táper from the freezer in a
+ * (PRO-1177: «Añadir comida → Cena → Ya lo tengo hecho → Congelador»)
  * missing meal: it is linked to its recipe, shows «Del congelador» and the
  * shopping list doesn't change (whatever week the original was cooked in).
  * PRO-240: the same with «Táper de la nevera»; every táper shows its recipe's
@@ -19,7 +20,7 @@ async function session(page: Page) {
   return { headers: { Authorization: `Bearer ${token}` }, userId }
 }
 
-test('«Añadir comida → Del congelador» adds the táper with its label and the shopping list stays the same', async ({ page }) => {
+test('«Añadir comida → Cena → Ya lo tengo hecho → Congelador» adds the táper with its label and the shopping list stays the same', async ({ page }) => {
   test.setTimeout(120_000)
   // The page's «today» is Madrid's at midday, the same day the spec reads (PRO-273).
   const day = await pinClock(page, madridTodayIdx())
@@ -47,17 +48,14 @@ test('«Añadir comida → Del congelador» adds the táper with its label and t
 
   await page.goto('/menu')
   await expect(page.getByRole('button', { name: /^añadir comida$/i })).toBeVisible({ timeout: 20_000 })
+  // PRO-1177: «Añadir comida» → the meal → «Sin plato todavía» → «Ya lo tengo hecho» → «Congelador».
   await page.getByRole('button', { name: /^añadir comida$/i }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /^del congelador$/i }).click()
-
-  // Which meal (only when the day lacks more than one), then the recipe.
-  const mealStep = page.getByRole('dialog', { name: '¿Para qué comida?' })
-  await page.waitForTimeout(400) // the «Añadir comida» sheet is closing
-  if (await mealStep.isVisible().catch(() => false)) {
-    await mealStep.getByRole('button', { name: /^cena$/i }).click()
-  }
-  await expect(page.getByText('Cena · no suma a la compra')).toBeVisible({ timeout: 10_000 })
-  const picker = page.getByRole('dialog').filter({ has: page.getByPlaceholder('Buscar receta…') })
+  await page.getByRole('dialog', { name: /^añadir comida al/i }).getByRole('button', { name: /^cena$/i }).click()
+  await page.getByRole('dialog', { name: 'Sin plato todavía' }).getByRole('button', { name: /^ya lo tengo hecho/i }).click()
+  const picker = page.getByTestId('recipe-picker')
+  await expect(picker.getByText('Ya lo tengo hecho')).toBeVisible({ timeout: 10_000 })
+  await picker.getByRole('button', { name: 'Congelador', exact: true }).click()
+  await expect(picker.getByRole('button', { name: 'Congelador', exact: true })).toHaveAttribute('aria-pressed', 'true')
   // Any recipe will do — the list must not change, whichever it is — but not
   // one today's other meals already have: their «Empezar a cocinar» would point
   // at the same recipe and the check below would read it as the táper's.
@@ -66,7 +64,7 @@ test('«Añadir comida → Del congelador» adds the táper with its label and t
     .filter((d: { kind: string }) => d.kind === 'recipe')
     .map((d: { recipeName?: string }) => d.recipeName ?? '')
     .filter(Boolean)
-  let choices = picker.getByRole('button').filter({ hasNotText: /^$/ }).filter({ hasNot: page.getByLabel('Cerrar') })
+  let choices = picker.getByTestId('picker-results').getByRole('button')
   for (const name of todayNames) choices = choices.filter({ hasNotText: name })
   await choices.last().click()
 

@@ -4,13 +4,16 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { ShoppingBasket, Sparkles } from "lucide-react"
 import type { AutoplanNotice } from "@ona/shared"
-import { useMimo } from "@/components/mimo/MimoProvider"
 import { useAutoplanNotice, useAutoplanViewed } from "@/hooks/useAlerts"
+import { useWeekType } from "@/hooks/useWeekType"
+import { weekTypeConfigured } from "@/lib/blankWeek"
 
 /**
  * Piloto automático (PRO-381, D-158; specs/menus.md): on Thursday Mimo left
  * next week done. On /menu, at the top, the card with the week's dates, then
- * «Ver la lista» and «Cambiar algo» (opens Mimo with «Quiero cambiar…»). On another week the dates open that week. Opening that
+ * «Ver la lista» and «Cambiar algo» (opens that week in the menu, `/menu?week=`;
+ * Mimo until PRO-1180). With a semana tipo it says «Hecha con tu semana tipo».
+ * On another week the dates open that week too. Opening that
  * week stamps it (`POST /menu/autoplan/viewed`): the card stays for this
  * visit and doesn't come back. The API drops it after the week's Monday.
  */
@@ -32,6 +35,11 @@ export function autoplanRange(n: AutoplanNotice): string {
  */
 export function useAutoplanCard(weekStart: string) {
   const notice = useAutoplanNotice(true)
+<<<<<<< 3937a819bbd7fc0cd412d123c0e822d657fa7f84
+=======
+  const viewed = useAutoplanViewed()
+  const weekType = useWeekType()
+>>>>>>> 67d6c374bd573cc35af94c760b05113789d5d1d8
   // Kept for this visit: stamping the week clears the query, not the card on screen.
   const [kept, setKept] = useState<AutoplanNotice | null>(null)
   const [stamped, setStamped] = useState(false)
@@ -89,6 +97,11 @@ export function AutoplanCard({
           )}
         </span>
       </p>
+      {weekTypeConfigured(weekType.data) && (
+        <p data-testid="autoplan-week-type" className="mt-1 pl-[26px] text-[14px] text-ink-soft">
+          Hecha con tu semana tipo
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Link
           href="/shopping"
@@ -99,7 +112,11 @@ export function AutoplanCard({
         <button
           type="button"
           data-testid="autoplan-change"
-          onClick={() => mimo.open({ draft: "Quiero cambiar " })}
+          // PRO-1180: change it in the menu, not by asking Mimo.
+          onClick={() => {
+            onOpenWeek(kept.weekStart)
+            window.scrollTo({ top: 0 })
+          }}
           className="inline-flex min-h-[40px] items-center rounded-full border border-border bg-paper px-4 text-[14px] font-medium text-ink transition-colors hover:border-ink"
         >
           Cambiar algo

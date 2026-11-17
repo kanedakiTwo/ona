@@ -12,6 +12,7 @@ import {
   updateIngredientSchema,
   AISLES,
   nutritionPerServingSchema,
+  foldIngredientName,
   type Aisle,
 } from '@ona/shared'
 import {
@@ -24,6 +25,8 @@ import {
 import { recomputeRecipesUsing } from '../services/nutrition/recomputeRecipes.js'
 import { invalidateRecipeCatalogCache } from '../services/recipePersistence.js'
 import { ingredientSearch } from '../services/ingredientSearch.js'
+import { matchIngredientName, singularName } from '../services/ingredientLineMatch.js'
+import { autoCreateMissingIngredient } from '../services/recipeExtractor.js'
 import { createUsdaClient } from '../services/nutrition/usdaClient.js'
 import { fetchBedcaNutrition } from '../services/nutrition/bedcaClient.js'
 import { inferAllergenTagsFromName } from '../services/nutrition/allergens.js'
@@ -470,6 +473,71 @@ router.post(
     }
   },
 )
+
+// ─── Ingredients written one per line (PRO-1115) ─────────────────
+const lineNamesSchema = (max: number) =>
+  z.object({ names: z.array(z.string().trim().min(1).max(MAX_INGREDIENT_NAME)).min(1).max(max) })
+
+// POST /ingredients/match-lines (auth) — { names } → { results }, one per
+// name: «✓» (`match`), «¿cuál?» (`doubt`, up to 3) or «nuevo» (`new`).
+// Pure token matching against the library, no AI (ingredientLineMatch.ts).
+router.post('/ingredients/match-lines', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const parsed = lineNamesSchema(80).safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid body', issues: parsed.error.issues })
+      return
+    }
+    const catalog = await db.select({ id: ingredients.id, name: ingredients.name }).from(ingredients)
+    res.json({ results: parsed.data.names.map((name) => matchIngredientName(name, catalog)) })
+  } catch (err) {
+    console.error('Match ingredient lines error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+const ensureLimiter = rateLimit({
+  max: 30,
+  windowMs: 60 * 60 * 1000,
+  keyFn: perUser,
+  message: 'Has creado muchos ingredientes en poco tiempo. Espera un rato.',
+})
+
+// POST /ingredients/ensure (auth) — { names } → { ingredients: [{ name, id,
+// ingredientName, created }] }. The recipe form sends the lines marked
+// «nuevo» when it saves: each one is created like in the imports (USDA,
+// else BEDCA, else without nutrition; allergens from the name), without the
+// AI translation. A name that already exists (same once folded) is reused.
+router.post('/ingredients/ensure', authMiddleware, ensureLimiter, async (req: AuthRequest, res) => {
+  try {
+    const parsed = lineNamesSchema(40).safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid body', issues: parsed.error.issues })
+      return
+    }
+    const catalog = await db.select({ id: ingredients.id, name: ingredients.name }).from(ingredients)
+    const out: Array<{ name: string; id: string; ingredientName: string; created: boolean }> = []
+    for (const name of parsed.data.names) {
+      const existing = catalog.find((c) => singularName(foldIngredientName(c.name)) === singularName(foldIngredientName(name)))
+      if (existing) {
+        out.push({ name, id: existing.id, ingredientName: existing.name, created: false })
+        continue
+      }
+      const created = await autoCreateMissingIngredient(name, { translate: false })
+      if (!created) {
+        res.status(500).json({ error: `No se ha podido crear «${name}».` })
+        return
+      }
+      catalog.push({ id: created.id, name: created.name })
+      out.push({ name, id: created.id, ingredientName: created.name, created: true })
+    }
+    if (out.some((o) => o.created)) invalidateRecipeCatalogCache()
+    res.json({ ingredients: out })
+  } catch (err) {
+    console.error('Ensure ingredients error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 // GET /ingredients/:id - single ingredient with all nutritional data
 router.get('/ingredients/:id', async (req, res) => {

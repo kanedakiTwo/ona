@@ -7,10 +7,13 @@
  *
  * - `comida`: la hoja de una comida con un plato (`MealOptions`).
  * - `comida_varios`: la de una comida con varios platos o con una nota.
- * - `plato`: cada plato de la lista de esa hoja (cambiar, quitar, nota…).
+ * - `plato`: la hoja del «···» de cada plato de esa lista (PRO-1176).
  * - `vacio`: la de una comida sin plato («Añadir plato» en la tarjeta).
  * - `no_hay`: «El viernes no hay cena» → «Sin plato todavía».
- * - `dia`: el pie del día («Añadir comida», «Saltar día», «Reactivar día»,
+ *   PRO-1177: `vacio` y `no_hay` son la misma hoja, «Sin plato todavía»
+ *   (`NoDishSheets`); `vacio` tiene además «Quitar <comida> de este día».
+ * - `dia`: el pie del día («Añadir comida», «Este día no cocino» —antes
+ *   «Saltar día»—, «Volver a cocinar este día» —antes «Reactivar día»—,
  *   «Levantar veto»).
  * - `semana`: la hoja «···» de la semana (`WeekActionsSheet`).
  * - `semana_fila`: el menú «···» de cada fila de la vista semana.
@@ -19,7 +22,7 @@
  */
 
 /**
- * Las opciones de la hoja de una comida: las comparten `comida`, `comida_varios` y `vacio`.
+ * Las opciones de la hoja de una comida: las comparten `comida` y `comida_varios`.
  * PRO-1175: «Cambiar plato» sigue contando como `elegir_receta` y «Que elija
  * Mimoia» (dentro del buscador) como `cambiar_azar`, para no partir la serie.
  * `mas_opciones` y `ya_hecho` abren sus subhojas.
@@ -48,24 +51,47 @@ const MEAL_SHEET_ACTIONS = [
   'semana_tipo',
 ] as const
 
+/**
+ * PRO-1177 · «Sin plato todavía», la hoja del hueco vacío y de «no hay»:
+ * «Elegir receta» (`elegir_receta`; «Que elija Mimoia», dentro, es
+ * `cambiar_azar`), «Escribir un plato», «Ya lo tengo hecho» (abre el buscador;
+ * la receta elegida cuenta como `congelador` o `taper_nevera`, según el chip),
+ * «Quitar <comida> de este día» (solo el hueco vacío) y el enlace a la semana tipo.
+ */
+const NO_DISH_SHEET_ACTIONS = [
+  'elegir_receta',
+  'cambiar_azar',
+  'escribir_plato',
+  'ya_hecho',
+  'congelador',
+  'taper_nevera',
+  'quitar_comida',
+  'semana_tipo',
+] as const
+
 export const MENU_SHEET_ACTIONS = {
   comida: MEAL_SHEET_ACTIONS,
   comida_varios: [...MEAL_SHEET_ACTIONS, 'ordenar_platos'],
-  plato: ['ver_receta', 'cambiar_azar', 'quitar_plato', 'editar_nota'],
-  vacio: MEAL_SHEET_ACTIONS,
-  no_hay: ['elegir_receta', 'cambiar_azar', 'congelador', 'taper_nevera'],
-  dia: ['anadir_comida', 'congelador', 'taper_nevera', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
+  // PRO-1176: el «···» de cada plato. «Cambiar este plato» cuenta como `elegir_receta` y su «Que elija Mimoia», como `cambiar_azar`.
+  plato: ['ver_receta', 'elegir_receta', 'cambiar_azar', 'sobras_si', 'sobras_no', 'vetar', 'quitar_plato', 'editar_nota'],
+  vacio: NO_DISH_SHEET_ACTIONS,
+  no_hay: NO_DISH_SHEET_ACTIONS,
+  // PRO-1177: «Añadir comida» → la comida → «Sin plato todavía» (`no_hay`); ya no lleva sus tápers sueltos.
+  dia: ['anadir_comida', 'saltar_dia', 'reactivar_dia', 'levantar_veto'],
+  // PRO-1179: no ‹ › nor «Volver a esta semana» (the header has them);
+  // `rehacer` opens «Rehacer la semana…», where `regenerar` is «Con mi semana
+  // tipo», `favoritas` «Solo con mis favoritas» and `vaciar` «Vaciarla y
+  // rellenar a mano». `semana_tipo` is also the desktop header button.
   semana: [
-    'semana_anterior',
-    'semana_siguiente',
-    'volver_semana',
-    'regenerar',
-    'favoritas',
-    'compartir',
-    'imprimir',
+    'semana_tipo',
     'vista_semana',
     'vista_dia',
+    'compartir',
+    'imprimir',
     'historial',
+    'rehacer',
+    'regenerar',
+    'favoritas',
     'vaciar',
   ],
   semana_fila: ['elegir_receta', 'cambiar_azar', 'anadir_plato', 'fijar', 'desfijar', 'vetar', 'quitar_comida'],

@@ -67,11 +67,11 @@ test('no floating button covers a control at 390×844; both hide with a sheet or
   // «Añadir comida» on the menu, and its sheet.
   await page.goto('/menu')
   const addMeal = page.getByRole('button', { name: /^añadir comida$/i })
-  const skip = page.getByRole('button', { name: /^saltar día$/i })
+  const skip = page.getByRole('button', { name: /^este día no cocino$/i })
   await expect(skip).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('mimo-button')).toBeVisible()
   await expectNothingCoveredAtEnd(page, '/menu')
-  await expectClear(page, skip, '«Saltar día»')
+  await expectClear(page, skip, '«Este día no cocino»')
   if (await addMeal.count()) {
     await expectClear(page, addMeal, '«Añadir comida»')
     await addMeal.click()
@@ -101,14 +101,12 @@ test('no floating button covers a control at 390×844; both hide with a sheet or
 
   // A new recipe: the ingredient box, and the sticky «Crear receta» bar.
   await page.goto('/recipes/new')
-  const ingredient = page.getByPlaceholder(/ingrediente|cargando/i).first()
+  const ingredient = page.locator('#recipe-ingredients')
   await expect(ingredient).toBeVisible({ timeout: 20_000 })
   await expectClear(page, ingredient, 'the ingredient box')
   await ingredient.focus()
   await expectHidden(page, 'typing an ingredient (keyboard up)')
   await ingredient.blur()
-  // A tap outside closes the suggestions, as on the phone (blur() alone leaves them open).
-  await page.locator('main').click({ position: { x: 2, y: 2 } })
   await expect(page.getByTestId('feedback-button')).toBeVisible()
   const submit = page.locator('main').getByRole('button', { name: /crear receta/i })
   await expectClear(page, submit, '«Crear receta»')

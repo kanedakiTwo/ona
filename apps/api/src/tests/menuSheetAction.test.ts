@@ -25,7 +25,6 @@ const SHEET_FILES: Record<MenuSheetName, string[]> = {
   no_hay: ['DayMeals.tsx', 'NoDishSheets.tsx'],
   dia: ['DayMeals.tsx', 'BannedRecipesPanel.tsx', 'MenuDesktop.tsx', 'WeekGridView.tsx'],
   semana: ['WeekActionsSheet.tsx'],
-  semana_fila: ['WeekGridView.tsx'],
 }
 
 const req = (method: string, path: string, body: any = {}) => ({ method, path, body, query: {} as any, get: () => undefined })
@@ -34,7 +33,7 @@ describe('PRO-1174 · menu_sheet_action', () => {
   it('es un evento de la web, sin hojas ni opciones repetidas', () => {
     expect(USAGE_EVENTS).toContain('menu_sheet_action')
     expect(CLIENT_USAGE_EVENTS).toContain('menu_sheet_action')
-    expect(MENU_SHEETS).toEqual(['comida', 'comida_varios', 'plato', 'vacio', 'no_hay', 'dia', 'semana', 'semana_fila'])
+    expect(MENU_SHEETS).toEqual(['comida', 'comida_varios', 'plato', 'vacio', 'no_hay', 'dia', 'semana'])
     for (const s of MENU_SHEETS) expect(new Set(MENU_SHEET_ACTIONS[s]).size, s).toBe(MENU_SHEET_ACTIONS[s].length)
   })
 

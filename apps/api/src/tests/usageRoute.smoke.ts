@@ -179,7 +179,7 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     const before = await call('GET', '/admin/usage?days=1', undefined, metrics)
     const auto = (r: any) => Number(r.body.breakdown.meal_swapped?.how?.auto ?? 0)
     const verReceta = (r: any) => Number(r.body.menuSheetActions.comida.actions.ver_receta ?? 0)
-    expect(Object.keys(before.body.menuSheetActions)).toEqual(['comida', 'comida_varios', 'plato', 'vacio', 'no_hay', 'dia', 'semana', 'semana_fila'])
+    expect(Object.keys(before.body.menuSheetActions)).toEqual(['comida', 'comida_varios', 'plato', 'vacio', 'no_hay', 'dia', 'semana'])
 
     // «Cambiar al azar»: PUT sin receta.
     expect((await call('PUT', `/menu/${gen.body.id}/day/${d}/meal/${meal}`, {}, auth)).status).toBe(200)

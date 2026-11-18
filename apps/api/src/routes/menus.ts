@@ -11,7 +11,7 @@ import { db } from '../db/connection.js'
 import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema } from '@ona/shared'
+import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish, WeekTypeOption } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
@@ -41,7 +41,7 @@ import {
 import { dayTimeBudget, detectSeason } from '@ona/shared'
 import { schoolDinnerPool } from '../services/schoolMenu.js'
 import { slotTimeBudget } from '../services/menuHolidays.js'
-import { requestChannel } from '../services/usageEvents.js'
+import { madridToday, requestChannel } from '../services/usageEvents.js'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
@@ -679,7 +679,8 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
 // POST /menu/:menuId/day/:day/meal/:meal/week-type { option } — «Guardar en
 // mi semana tipo» (PRO-1186, design §4): that day and meal of the household's
 // week type take this option every week, and the meal on screen follows it
-// now unless it is locked, eaten or a táper (`weekTypeMealChange`). Answers
+// now unless it is locked, eaten, a táper or on a day that already went by
+// (`weekTypeMealChange`). Answers
 // the week with `weekTypeApplied`: `mark` (it already was it: now with its
 // chip), `changed`, `kept` or `missing` (no recipe of that type fits this
 // meal: it stays as it is).
@@ -741,8 +742,10 @@ router.post('/menu/:menuId/day/:day/meal/:meal/week-type', async (req: AuthReque
     )
 
     const locked = Boolean((menu.locked as LockedSlots | null)?.[String(dayIndex)]?.[meal])
+    // A day of the week on screen that already went by stays as it is: saved for every week, not redone.
+    const past = pastDayIndexes(menu.weekStart, madridToday()).includes(dayIndex)
     const change = weekTypeMealChange(slot, option, {
-      locked,
+      locked: locked || past,
       dishTypes: mainRecipeId ? byId.get(mainRecipeId)?.dishTypes : null,
       recipe: chosen ? { id: chosen.id, name: chosen.name, course: (chosen.course as RecipeDish['course']) ?? null } : null,
     })

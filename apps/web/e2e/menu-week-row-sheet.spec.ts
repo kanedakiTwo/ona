@@ -131,8 +131,19 @@ test.describe('móvil · vista semana', () => {
     await expect(dinnerRow.getByTestId('week-row-week-type')).toHaveText(/· semana tipo$/)
 
     // ── El «···» de la fila: la hoja de la vista día.
-    await dinnerRow.getByRole('button', { name: 'Más opciones de cena del martes', exact: true }).click()
+    const trigger = dinnerRow.getByRole('button', { name: 'Más opciones de cena del martes', exact: true })
+    await trigger.click()
     const fromWeek = await checkDinnerSheet(page, setup.dinner.name)
+
+    // ── Con el teclado: Intro en el «···» abre la hoja, no la receta, y Escape
+    //    la cierra aunque el foco siga en el «···» (las hojas lo escuchan en window).
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('dialog')).toContainText(/Cena · martes/)
+    await expect(page).toHaveURL(/\/menu/)
+    await trigger.focus()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     // ── Una fila vacía y una que el día no tiene: «Sin plato todavía», como en la vista día.
     await page.locator(`[data-week-row="${MONDAY}-lunch"]`).click()

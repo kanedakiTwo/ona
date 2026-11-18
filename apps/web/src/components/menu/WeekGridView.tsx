@@ -497,6 +497,8 @@ function FilledRow({
         else onSelectDay(dayIndex)
       }}
       onKeyDown={(e) => {
+        // Only keys on the card itself: Enter on the "···", a dish or a note is theirs.
+        if (e.target !== e.currentTarget) return
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
           if (!isDragging) {
@@ -544,11 +546,11 @@ function FilledRow({
             {mealLabel}
           </p>
           {menuButton && (
-            // Neither a key nor a press on the "···" reaches the card (it opens the recipe and drags).
+            // A press on the "···" doesn't drag the card. Keys go on: the
+            // sheets close with Escape from a window listener.
             <span
               data-row-menu="1"
               className="shrink-0"
-              onKeyDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >

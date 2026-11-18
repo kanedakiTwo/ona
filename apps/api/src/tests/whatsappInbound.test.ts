@@ -4,7 +4,7 @@
  * voice notes, recipe photos and the chat round-trip.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { processInbound, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { processInbound, isEmojiOnly, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
 import { weekMenuCaption, weekMenuDigest } from '../services/menuText.js'
 import { buildChatHistory } from '../services/whatsapp/history.js'
 import type { InboundMessage } from '../services/whatsapp/webhookParser.js'
@@ -367,6 +367,31 @@ describe('processInbound — chat round-trip', () => {
     const t = setup({ sendFails: true })
     await expect(processInbound(msg(), t.deps)).resolves.toBeUndefined()
     expect(t.outbound[0]).toMatchObject({ kind: 'reply', status: 'failed' })
+  })
+
+  it('never answers an emoji reaction (Miguel, 2026-11-18): no reply, no chat, kept as ignored', async () => {
+    const t = setup()
+    await processInbound(msg({ kind: 'unsupported', text: '❤️', rawType: 'reaction' }), t.deps)
+    expect(t.sent).toEqual([])
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.inboundUpdates).toEqual([{ status: 'ignored', userId: 'user-1', errorMessage: 'emoji' }])
+  })
+
+  it('never answers a message that is only emoji, but does answer text with an emoji', async () => {
+    for (const text of ['👍', '👍🏻', '❤️❤️', ' 😂😂 ', '🙏🏻!']) {
+      const t = setup()
+      await processInbound(msg({ text }), t.deps)
+      expect(t.sent, text).toEqual([])
+      expect(t.chat, text).not.toHaveBeenCalled()
+    }
+    const t = setup()
+    await processInbound(msg({ text: 'Ok 👍' }), t.deps)
+    expect(t.chat).toHaveBeenCalled()
+  })
+
+  it('isEmojiOnly: emoji with no letter or digit', () => {
+    expect(['👍', '👌🏽', '❤️', '🎉🎉', '👨‍👩‍👧'].every(isEmojiOnly)).toBe(true)
+    expect(['', ' ', '?', 'ok', 'Ok 👍', '2 🍕', '1', '#', 'sí 🙂'].some(isEmojiOnly)).toBe(false)
   })
 
   it('answers unsupported message types politely', async () => {

@@ -17,7 +17,7 @@ export interface InboundMessage {
   timestamp: number
   profileName: string | null
   kind: InboundKind
-  /** text body · image caption · tapped button/list title. */
+  /** text body · image caption · tapped button/list title · the emoji of a reaction. */
   text: string | null
   /** Media id for audio/image (download via Graph `/{media-id}`). */
   mediaId: string | null
@@ -98,6 +98,10 @@ function parseMessage(m: any, contacts: any[]): InboundMessage | null {
       if (!reply || typeof reply.title !== 'string') return base
       return { ...base, kind: 'interactive', text: reply.title, replyId: reply.id ?? null }
     }
+    case 'reaction':
+      // An emoji reaction to one of our messages (empty emoji = reaction removed).
+      // Stays 'unsupported' for every flow; processInbound drops it silently.
+      return { ...base, text: typeof m.reaction?.emoji === 'string' ? m.reaction.emoji : null }
     case 'button':
       // Quick-reply button on a template message.
       if (typeof m.button?.text !== 'string') return base

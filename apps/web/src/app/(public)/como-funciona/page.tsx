@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
+import Link from "next/link"
 import { SignupCtaLink, WaitlistOnly } from "@/components/shared/SignupCta"
 import { PLANS, PLAN_HOUSEHOLD, TRIAL_DAYS, euros, planByKey, type PlanKey } from "@ona/shared"
 import { motion, useScroll, useTransform, useInView } from "motion/react"

@@ -15,7 +15,9 @@
  *   - An empty row opens «Sin plato todavía», like Vista día: the slot's own
  *     sheet, or the «no hay» one when the day lacks that meal (`absentFor`).
  *   - Drag a row onto another to swap the two slots (`onMoveSlot`).
- *   - A past week shows no "···" (read-only, as Vista día).
+ *   - A recipe opens at the batch's servings, as from Vista día (PRO-75).
+ *   - A past week shows no "···", «Sin plato todavía» nor «Reactivar», as
+ *     Vista día; its notes still edit in place.
  */
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "motion/react"
@@ -41,7 +43,7 @@ import { NoteEditor } from "@/components/menu/NoteEditor"
 import { RecipeCover } from "@/components/menu/RecipeCover"
 import type { NoDishSheet } from "@/components/menu/NoDishSheets"
 import { AbsentMealSheets, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
-import { MealOptionsButton, MealOptionsSheets, useMealOptions } from "@/components/menu/MealOptions"
+import { MealOptionsButton, MealOptionsSheets, slotServings, useMealOptions } from "@/components/menu/MealOptions"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -66,14 +68,15 @@ interface Props {
   weekStart: string
   todayIndex: number
   skippedDays?: number[]
-  /** A past week: no "···" nor «Sin plato todavía» (as Vista día). */
+  /** A past week: no "···", «Sin plato todavía» nor «Reactivar» (as Vista día). */
   readOnly?: boolean
   /** The same slot context and handlers as Vista día (built once by /menu). */
   slotPropsFor: (day: number) => SlotPropsFn
   /** «Sin plato todavía» for a meal the day lacks, as Vista día's «no hay» card. */
   absentFor: (day: number) => Omit<AbsentMeals, "meals">
   onSelectDay: (dayIndex: number) => void
-  onSelectRecipe: (recipeId: string) => void
+  /** Opens the recipe at the batch's servings (`slotServings`, as Vista día). */
+  onSelectRecipe: (recipeId: string, servings: number) => void
   onMoveSlot?: (params: {
     fromDay: number
     fromMeal: MealKey
@@ -202,7 +205,7 @@ export function WeekGridView({
         </motion.div>
 
         <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
-          Pulsa para ir al día · arrastra una receta para moverla a otro slot
+          Pulsa para ir al día · arrastra una receta para moverla a otra comida
         </p>
       </div>
 
@@ -285,7 +288,7 @@ function DaySection({
           <span className="text-[12px] italic text-[#7A7066]">
             Día saltado en esta semana.
           </span>
-          {onUnskipDay && (
+          {onUnskipDay && !row.readOnly && (
             <button
               type="button"
               onClick={(e) => {
@@ -372,7 +375,7 @@ function SlotRow({
               <MealIcon size={12} strokeWidth={1.6} />
               {mealLabel}
             </p>
-            <p className="mt-0.5 text-[13px] italic text-[#A39A8E]">+ Añadir</p>
+            <p className="mt-0.5 text-[13px] italic text-[#A39A8E]">{readOnly ? "Sin plato" : "+ Añadir"}</p>
           </div>
         </button>
         {sheets}
@@ -422,7 +425,7 @@ function SlotRow({
             )
           }
           onSelectDay={onSelectDay}
-          onSelectRecipe={onSelectRecipe}
+          onSelectRecipe={(recipeId) => onSelectRecipe(recipeId, slotServings(ctx))}
           onEditNote={handlers.editNote}
           onRemoveDish={handlers.removeDish}
         />
@@ -547,6 +550,7 @@ function FilledRow({
               className="shrink-0"
               onKeyDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
             >
               {menuButton}
             </span>

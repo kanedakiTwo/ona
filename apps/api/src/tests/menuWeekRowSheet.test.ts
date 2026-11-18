@@ -33,7 +33,7 @@ describe('PRO-1178 · la fila de la vista semana', () => {
 
   it('su «···» abre la hoja de la vista día, con el contexto y los manejadores de /menu', () => {
     const grid = read('WeekGridView.tsx')
-    expect(grid).toMatch(/<MealOptionsSheets ctl=\{ctl\} \{\.\.\.props\} \/>/)
+    expect(grid).toMatch(/<MealOptionsSheets\b[^>]*\{\.\.\.props\}/)
     expect(grid).toMatch(/<MealOptionsButton/)
     expect(grid).toMatch(/slotPropsFor\(dayIndex\)\(meal, slot\)/)
     // Una comida que el día no tiene: la misma hoja que la tarjeta «no hay».

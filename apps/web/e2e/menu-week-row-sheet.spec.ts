@@ -6,7 +6,9 @@
  *     opciones que en la vista día (y ya no «Aleatorio», «Bloquear» ni
  *     «Quitar slot»; en «Más opciones», Comensales y la semana tipo), y la
  *     fila enseña la etiqueta de la semana tipo;
- *   - arrastrar una fila a otra sigue cambiando los dos huecos.
+ *   - una fila vacía y una que el día no tiene abren «Sin plato todavía»;
+ *   - arrastrar una fila a otra sigue cambiando los dos huecos, y tocar el
+ *     plato abre la receta con las raciones de la tanda.
  *
  * Es la semana que viene: el martes es futuro a cualquier hora, y la vista
  * semana no se va sola a hoy.
@@ -16,7 +18,9 @@ import { completeOnboarding, registerFreshUser } from './_helpers'
 import { madridMondayIn } from './_clock'
 
 const API = process.env.API_URL ?? 'http://localhost:8765'
+const MONDAY = 0
 const TUESDAY = 1
+const WEDNESDAY = 2
 
 /** A new household with next week's Tuesday lunch and dinner, two different recipes. */
 async function tuesdayMeals(page: Page) {
@@ -45,6 +49,9 @@ async function tuesdayMeals(page: Page) {
   expect(type, 'la cena tiene un tipo de plato').toBeTruthy()
   const saved = await page.request.post(`${API}/menu/${menu.id}/day/${TUESDAY}/meal/dinner/week-type`, { headers, data: { option: { kind: 'type', type } } })
   expect((await saved.json()).weekTypeApplied).toBe('mark')
+  // Wednesday without dinner: its row is «no hay» (Monday's stay empty).
+  const del = await page.request.delete(`${API}/menu/${menu.id}/day/${WEDNESDAY}/meal/dinner`, { headers })
+  expect(del.ok(), `quitar la cena del miércoles: ${del.status()}`).toBeTruthy()
   const tuesdayNow = async () => {
     const day = (await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()).days?.[TUESDAY]
     return { lunch: day?.lunch?.dishes?.[0]?.recipeId, dinner: day?.dinner?.dishes?.[0]?.recipeId }
@@ -127,6 +134,23 @@ test.describe('móvil · vista semana', () => {
     await dinnerRow.getByRole('button', { name: 'Más opciones de cena del martes', exact: true }).click()
     const fromWeek = await checkDinnerSheet(page, setup.dinner.name)
 
+    // ── Una fila vacía y una que el día no tiene: «Sin plato todavía», como en la vista día.
+    await page.locator(`[data-week-row="${MONDAY}-lunch"]`).click()
+    let sheet = page.getByRole('dialog')
+    await expect(sheet.getByRole('heading', { name: 'Sin plato todavía' })).toBeVisible()
+    await expect(sheet).toContainText(/Comida · lunes/)
+    await expect(sheet.getByRole('button', { name: 'Quitar comida de este día', exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.locator(`[data-week-row="${WEDNESDAY}-dinner"]`).click()
+    sheet = page.getByRole('dialog')
+    await expect(sheet.getByRole('heading', { name: 'Sin plato todavía' })).toBeVisible()
+    await expect(sheet).toContainText(/Cena · miércoles/)
+    await expect(sheet.getByRole('button', { name: 'Escribir un plato', exact: true })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: /^Quitar/ })).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
     // ── La misma cena en la vista día: las mismas opciones.
     await page.getByRole('button', { name: /^Ir al día Martes/ }).click()
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/martes/i)
@@ -142,6 +166,10 @@ test.describe('móvil · vista semana', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await dragLunchOntoDinner(page, lunchRow, page.locator(`[data-week-row="${TUESDAY}-dinner"]`), setup)
     await expect(page.locator(`[data-week-row="${TUESDAY}-dinner"]`).getByRole('button', { name: 'Más opciones de cena del martes', exact: true })).toBeVisible()
+
+    // ── Tocar el plato abre su receta con las raciones de la tanda, como desde la vista día.
+    await page.locator(`[data-week-row="${TUESDAY}-dinner"]`).locator(`button[title="${setup.lunch.name}"]`).click()
+    await page.waitForURL(new RegExp(`/recipes/${setup.lunch.id}\\?servings=\\d+`), { timeout: 20_000 })
   })
 })
 

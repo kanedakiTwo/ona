@@ -951,9 +951,9 @@ export default function MenuPage() {
                 setSelectedDay(d)
                 setViewMode("day")
               }}
-              onSelectRecipe={(recipeId) => {
+              onSelectRecipe={(recipeId, servings) => {
                 haptic.light()
-                router.push(menuRecipeHref(recipeId))
+                router.push(menuRecipeHref(recipeId, servings))
               }}
               onMoveSlot={onMoveSlot}
               onUnskipDay={(d) => {

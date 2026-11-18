@@ -167,6 +167,7 @@ export function initialInboundBody(msg: InboundMessage): string | null {
     case 'document':
       return msg.text ? `[pdf] ${msg.text}` : '[pdf]'
     default:
+      if (msg.rawType === 'reaction') return msg.text ? `[reacción ${msg.text}]` : '[reacción quitada]'
       return `[${msg.rawType}]`
   }
 }

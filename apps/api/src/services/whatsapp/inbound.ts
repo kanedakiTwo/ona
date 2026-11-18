@@ -549,6 +549,25 @@ const CONNECT_HINT_COOLDOWN_MS = 60 * 60 * 1000
 /** PRO-385: Mimo tells a Gratis household about the plans once a day, not on every message. */
 const GRATIS_NOTICE_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
+/**
+ * Pure: a text that is only emoji (and spaces or punctuation) — «👍», «❤️❤️»,
+ * «😂😂», «🙏🏻» —, with no letter or digit. «Ok 👍» or «2 🍕» are not.
+ */
+export function isEmojiOnly(text: string | null | undefined): boolean {
+  const t = (text ?? '').trim()
+  return t.length > 0 && !/[\p{L}\p{N}]/u.test(t) && /\p{Extended_Pictographic}/u.test(t)
+}
+
+/**
+ * Miguel, 2026-11-18: Mimo doesn't answer emoji reactions nor a message that
+ * is only emoji. Before, a reaction got «Todavía no entiendo ese tipo de
+ * mensaje…» (6 times from 20-oct to 17-nov).
+ */
+export function isSilentEmoji(msg: InboundMessage): boolean {
+  if (msg.rawType === 'reaction') return true
+  return msg.kind === 'text' && isEmojiOnly(msg.text)
+}
+
 export async function processInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
   const { store, client } = deps
   const now = deps.now()
@@ -559,6 +578,14 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   // must always stick.
   if (now.getTime() - msg.timestamp * 1000 > STALE_MESSAGE_MS && command !== 'stop') {
     await store.updateInbound(msg.wamid, { status: 'ignored', errorMessage: 'stale' })
+    return
+  }
+
+  // A reaction or a message of only emoji: kept (the daily review sees it),
+  // never answered, no «escribiendo…».
+  if (isSilentEmoji(msg)) {
+    const link = await store.getLinkByPhone(msg.from)
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId: link?.userId ?? null, errorMessage: 'emoji' })
     return
   }
 

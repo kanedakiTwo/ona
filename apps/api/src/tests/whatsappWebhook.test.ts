@@ -49,6 +49,17 @@ describe('verifySignature', () => {
 })
 
 describe('parseWebhookPayload', () => {
+  it('reads an emoji reaction as unsupported, with its emoji (Mimo stays silent)', () => {
+    const [r, removed] = parseWebhookPayload(
+      payload([
+        { from: '34600111222', id: 'wamid.R', timestamp: '1', type: 'reaction', reaction: { message_id: 'wamid.OUT', emoji: '❤️' } },
+        { from: '34600111222', id: 'wamid.R2', timestamp: '1', type: 'reaction', reaction: { message_id: 'wamid.OUT' } },
+      ]),
+    )
+    expect(r).toMatchObject({ kind: 'unsupported', rawType: 'reaction', text: '❤️' })
+    expect(removed).toMatchObject({ kind: 'unsupported', rawType: 'reaction', text: null })
+  })
+
   it('parses a text message with the contact profile name', () => {
     const [m] = parseWebhookPayload(
       payload([{ from: '34600111222', id: 'wamid.1', timestamp: '1700000000', type: 'text', text: { body: '¿Qué ceno hoy?' } }]),

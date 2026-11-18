@@ -13,7 +13,7 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 - **Misión:** cocinar debería ser divertido. Lo es cuando sabes qué vas a hacer, tienes los ingredientes y tienes tiempo. Mimoia quiere quitar de en medio todo lo que no es divertido (decidir el menú, planificar, comprar) para que tu tiempo sea para cocinar. En una línea: que en casa solo quede la parte divertida de cocinar.
 - **Visión:** con la IA vendrá más tiempo libre, y mucha gente encontrará su refugio en aficiones que obligan a estar aquí y ahora y a usar los sentidos. Pocas cosas usan tantos sentidos como cocinar. La cocina va a ser un refugio, y Mimoia quiere ayudar a que todo el mundo tenga los medios para disfrutarla.
 - **Origen:** empezó como un proyecto personal de Miguel, su fundador, para no perder tiempo en lo que no es cocinar. Lo usó en casa durante cuatro años y pensó que podía servir a más gente.
-- **Cómo cocina:** de temporada, variado y casero, con verdura todos los días, menos ultraprocesados en la semana, aprovechando lo que hay en la despensa y tirando menos comida. Sin contar calorías.
+- **Cómo cocina:** de temporada, variado y casero: intenta meter verdura cada día y aprovecha lo que hay en la despensa para tirar menos comida. Sin contar calorías.
 
 ## Qué puedes hacer con Mimoia
 

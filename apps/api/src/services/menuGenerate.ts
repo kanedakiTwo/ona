@@ -8,13 +8,13 @@
  * sign-up analysis, the fridge question, the «cuánto ha acertado» line
  * (PRO-155) and the response.
  */
-import type { DayTemplate, WeekPlan } from '@ona/shared'
+import { pastMealsOn, type DayTemplate, type WeekPlan } from '@ona/shared'
 import { db } from '../db/connection.js'
 import { menuLogs, menus } from '../db/schema.js'
 import { calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { generateMenu } from './menuGenerator.js'
 import { startShadowPlan } from './menuPlannerShadow.js'
-import { generationSkips, loadPreviousWeek, type PreviousWeek } from './menuWeek.js'
+import { generationSkips, loadPreviousWeek, withoutPastMeals, type PreviousWeek } from './menuWeek.js'
 import { enqueuePrepAlertsForMenu } from './notificationScheduler.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
 import { updateBalance } from './nutrientBalance.js'
@@ -41,7 +41,7 @@ export async function generateAndSaveMenu(input: GenerateWeekInput) {
   const carryBanned = previous.bannedRecipeIds
   const carrySkipped = previous.skippedDays
 
-  const { days, warnings, favoritesShort } = await generateMenu(
+  const generated = await generateMenu(
     userId,
     weekStart,
     input.customTemplate,
@@ -53,6 +53,9 @@ export async function generateAndSaveMenu(input: GenerateWeekInput) {
     input.weekPlan,
     { onlyFavorites: input.onlyFavorites === true },
   )
+  const { warnings, favoritesShort } = generated
+  // 19-nov: on the first menu's day, the meals already gone stay empty too.
+  const days = withoutPastMeals(generated.days, weekStart, input.fromDate, pastMealsOn(input.fromDate))
 
   // Save to menus table — carry the lists forward so the matcher honours
   // them next regeneration too.

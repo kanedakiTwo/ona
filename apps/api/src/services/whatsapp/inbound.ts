@@ -10,6 +10,8 @@ import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantRepl
 import { extractOptions, toWhatsAppMarkup } from './format.js'
 import { shoppingItemsOf, shoppingListDigest } from '../shoppingText.js'
 import { captionVariants, type WeekView } from '../menuText.js'
+import { captionWithoutInvite, signupCaption, signupWords } from './signupReply.js'
+import { createCoalescer } from './coalesce.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
@@ -317,14 +319,20 @@ export async function replyMessages(
     alt: WEEK_IMAGE_ALT,
     fallback,
   })
-  const rest = modelWordsWithWeek(response, view)
+  // 19-nov: the sign-up ends in ONE message — the picture, one line, one
+  // question at most (signupReply.ts).
+  const signup = (response.toolsUsed ?? []).includes('complete_onboarding')
+  const modelWords = modelWordsWithWeek(response, view)
+  const rest = signup ? signupWords(modelWords) : modelWords
   const shopping = shoppingDigestOf(response)
   const { text: restText, options } = extractOptions(rest)
+  // Mimo's words already ask something: no «¿Cambio algo?» under them.
+  const caption = signup ? signupCaption(image.caption, !!restText.trim()) : restText.includes('?') ? captionWithoutInvite(image.caption) : image.caption
   if (!shopping && options.length === 0) {
     // PRO-277: one message. If Mimo's words and the caption don't fit,
     // the caption's fixed lines (invite, then link) go before splitting.
     const words = toWhatsAppMarkup(restText).trim()
-    for (const fixed of captionVariants(image.caption)) {
+    for (const fixed of captionVariants(caption)) {
       const caption = [words, fixed].filter(Boolean).join('\n\n')
       if (caption.length <= WA_CAPTION_MAX) return [picture(caption, textVersion)]
     }
@@ -338,7 +346,7 @@ export async function replyMessages(
         uiHint: response.uiHint === 'menu' ? undefined : response.uiHint,
       })
     : []
-  return [picture(image.caption.slice(0, WA_CAPTION_MAX), digest ? renderPlainText(digest) : []), ...after]
+  return [picture(caption.slice(0, WA_CAPTION_MAX), digest ? renderPlainText(digest) : []), ...after]
 }
 
 /** Accents off, lower case, `*bold*` / `_italic_` marks off: what the "menú listo" match compares. */
@@ -411,14 +419,17 @@ export const humanContact = (email?: string) => `escribe a ${email?.trim() || BR
 
 /**
  * PRO-245 (D-064, Miguel 2026-10-19): the WhatsApp sign-up asks exactly these,
- * and its first message announces as many as it lists. `complete_onboarding`
- * needs nothing else (adults, kids, how they cook). Since 2026-11-03 the
- * second one is the web's «¿Cómo cocináis en casa?» instead of how often
- * (Miguel: the web questions overlapped, and both sign-ups ask the same).
+ * and its first message announces as many as it lists. Since 19-nov (Miguel)
+ * four, and all of them go to the ficha (complete_onboarding): who they are;
+ * which meals they cook («6 cenas y 1 comida» → the «semana tipo»); three
+ * dishes they make often (into the first menu); what doesn't go in (dislikes).
+ * `complete_onboarding` needs the first two.
  */
 export const WHATSAPP_ONBOARDING_QUESTIONS = [
-  '¿Cuántos sois en casa? Dime adultos y niños de 2 a 10 años.',
-  '¿Cómo cocináis en casa: cada día, unos días y aprovecháis para otros, batch cooking (una o dos veces y dejáis hecha la semana) o improvisáis cada día?',
+  '¿Quiénes sois en casa? Dime adultos y niños de 2 a 10 años.',
+  '¿Qué comidas cocináis en casa a la semana? Por ejemplo: «6 cenas y 1 comida».',
+  'Tres platos que hacéis a menudo.',
+  '¿Hay algo que no entre en casa? Un alimento o un plato que no os guste.',
 ] as const
 
 const COUNT_WORDS = ['cero', 'una', 'dos', 'tres', 'cuatro', 'cinco']
@@ -434,19 +445,17 @@ export const COPY = {
    * First message of the WhatsApp sign-up, in Miguel's words (2026-10-15). It
    * keeps the three parts of the AI disclosure (AI, can be wrong, not a health
    * professional; AI Act art. 50) and announces and lists exactly the questions
-   * of the sign-up (`WHATSAPP_ONBOARDING_QUESTIONS`, PRO-245): how many they are
-   * and how they cook. No favourite dishes here (D-064: «Afina tu menú» reads
-   * the tastes); Mimo asks for a few afterwards only when the cards got no
-   * «Me apetece» or «Me encanta» (`WHATSAPP_ONBOARDING_FAVORITES_ASK`).
+   * of the sign-up (`WHATSAPP_ONBOARDING_QUESTIONS`, PRO-245; four since
+   * 19-nov).
    */
   linkedOnboarding: (name: string | null) =>
     `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. Soy un asistente de inteligencia artificial (IA) especializado en cocina: puedo equivocarme y no sustituyo a un profesional sanitario, pero puedo encargarme de las tareas rutinarias para que cocinar vuelva a ser divertido.\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nPara entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber ${countWord(WHATSAPP_ONBOARDING_QUESTIONS.length)} cosas.\n\n${WHATSAPP_ONBOARDING_QUESTIONS.map((q, i) => `*${i + 1}.* ${q}`).join('\n')}`,
-  /** After the first menu: health data goes to the web, never through WhatsApp (PRO-24). */
+  /** ~10 min after the first menu (signupFollowUps.ts): health data goes to the web, never through WhatsApp (PRO-24). */
   healthOnWeb: (url: string) =>
     `Si en casa hay alergias, intolerancias o algo que no podáis o queráis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no me dejan guardar datos de salud.`,
   linked: (name: string | null) =>
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
-  /** Explicit opt-in for proactive messages, asked once right after linking. */
+  /** Explicit opt-in for proactive messages: right after linking an account; ~10 min after the WhatsApp sign-up's first menu, after the health link (signupFollowUps.ts). */
   optInPrompt:
     '¿Quieres que también te escriba yo? No escribo mucho, solo lo importante: un aviso antes de cocinar (congelados, tiempos) y la lista de la compra los sábados. Si quieres el menú cada mañana, pídemelo. Puedes cambiarlo cuando quieras simplemente pidiéndomelo.',
   optInDeclined: 'Vale, no te escribiré por mi cuenta. Si cambias de idea, escribe ALTA.',
@@ -1038,13 +1047,10 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     })
     const reply = await replyMessages(response, userId, deps, lastSentButtons(rows))
     await out('reply', nearCap ? withBudgetWarning(reply) : reply)
-    if ((response.toolsUsed ?? []).includes('complete_onboarding') && link.onboardingDone === false) {
-      // First menu done: health data goes to the web (with consent), then the
-      // opt-in for proactive messages that linking skipped.
-      await outText('system', COPY.healthOnWeb(`${deps.webUrl.replace(/\/$/, '')}/profile`))
-      await acker.settle()
-      await sendOptInPrompt(userId)
-    } else if (link.onboardingDone !== false && !response.offerAdded && deps.optIn && (await deps.optIn.claimReoffer(userId, now).catch(() => false))) {
+    // 19-nov: after the sign-up's first menu nothing else goes now; the
+    // health link and the avisos question come ~10 min later, one at a time
+    // (signupFollowUps.ts, from the scheduler).
+    if (link.onboardingDone !== false && !response.offerAdded && deps.optIn && (await deps.optIn.claimReoffer(userId, now).catch(() => false))) {
       // PRO-248: whoever never answered the avisos question hears it one more
       // time, in one line, after their first week with a menu and the list.
       await acker.settle()
@@ -1277,17 +1283,35 @@ async function handleImage(
 //
 // Two quick messages from the same phone must be answered in order, and the
 // second must see the first in its history. Railway runs one API instance,
-// so an in-process promise chain per phone is enough.
+// so an in-process promise chain per phone is enough. Since 19-nov the plain
+// texts sent one after another (8 s apart at most) are one turn first
+// (coalesce.ts): «2 adultos» + «Casi a diario» reach Mimo together.
 const queues = new Map<string, Promise<void>>()
+const turnDeps = new Map<string, InboundDeps>()
 
-export function enqueueInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
+function queueTurn(msg: InboundMessage, absorbed: string[], deps: InboundDeps): Promise<void> {
   const prev = queues.get(msg.from) ?? Promise.resolve()
   const next = prev
-    .then(() => processInbound(msg, deps))
+    .then(async () => {
+      // The texts joined into this turn: kept, out of the history (the turn's row has them all).
+      for (const wamid of absorbed) await deps.store.updateInbound(wamid, { status: 'ignored', errorMessage: 'merged' })
+      await processInbound(msg, deps)
+    })
     .catch((err) => console.error('[whatsapp] inbound queue error:', err))
   queues.set(msg.from, next)
   void next.finally(() => {
     if (queues.get(msg.from) === next) queues.delete(msg.from)
   })
   return next
+}
+
+const coalescer = createCoalescer({
+  run: (turn, absorbed) => queueTurn(turn, absorbed, turnDeps.get(turn.from)!),
+  // «escribiendo…» right away while the next text may still come.
+  onWait: (msg) => void turnDeps.get(msg.from)?.client.markReadWithTyping(msg.wamid).catch(() => undefined),
+})
+
+export function enqueueInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
+  turnDeps.set(msg.from, deps)
+  return coalescer.push(msg)
 }

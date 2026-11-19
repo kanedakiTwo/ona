@@ -716,6 +716,17 @@ async function tickOnce(): Promise<true> {
     console.error('[notificationScheduler] whatsapp proactive tick failed:', err)
   }
 
+  // WhatsApp sign-up (19-nov): the health link and the avisos question,
+  // ~10 min after the first menu, one at a time. Imported here: it reaches
+  // inbound.ts, whose imports reach back to this module.
+  try {
+    const { runSignupFollowUps } = await import('./whatsapp/signupFollowUps.js')
+    const n = await runSignupFollowUps(now)
+    if (n) console.log(`[whatsapp] sign-up follow-ups: ${n} sent`)
+  } catch (err) {
+    console.error('[notificationScheduler] whatsapp sign-up follow-ups failed:', err)
+  }
+
   // Daily conversation review (yesterday, once, after 07:00 Madrid).
   try {
     const review = await runDailyReviewIfDue(now)

@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
-import { pastDayIndexes, type DayMenu, type LockedSlots } from '@ona/shared'
+import { pastDayIndexes, type DayMenu, type LockedSlots, type Meal } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { menuLogs, menus } from '../db/schema.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
@@ -102,6 +102,23 @@ export async function generatedWeeksOf(userId: string, db: any = defaultDb): Pro
 export function generationSkips(skippedDays: Set<number>, weekStart: string, fromDate?: string | null): Set<number> {
   if (!fromDate) return skippedDays
   return new Set<number>([...skippedDays, ...pastDayIndexes(weekStart, fromDate)])
+}
+
+/**
+ * 19-nov: the first menu starts with the next meal that hasn't gone by. The
+ * meals of `fromDate` in `pastMeals` (a 15:00 sign-up: breakfast and lunch)
+ * are left without dishes, like the days before it. Returns a copy.
+ */
+export function withoutPastMeals(days: DayMenu[], weekStart: string, fromDate: string | null | undefined, pastMeals: readonly Meal[]): DayMenu[] {
+  if (!fromDate || pastMeals.length === 0) return days
+  const i = pastDayIndexes(weekStart, fromDate).length
+  // Only when `fromDate` falls in this week (next week's Monday is not «today»).
+  const date = new Date(`${weekStart.slice(0, 10)}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + i)
+  if (i > 6 || !days[i] || date.toISOString().slice(0, 10) !== fromDate.slice(0, 10)) return days
+  const day = { ...days[i] } as Record<string, unknown>
+  for (const meal of pastMeals) delete day[meal]
+  return days.map((d, j) => (j === i ? (day as DayMenu) : d))
 }
 
 /**

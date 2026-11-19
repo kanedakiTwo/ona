@@ -22,7 +22,6 @@ import {
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
 import { dbTurnStore, remoteMessagesClient } from './mimoRemoto.js'
-import { hasLikedRecipes } from '../tasteStore.js'
 import { noteApiCallOk } from '../apiSaldo.js'
 
 let client: Anthropic | null = null
@@ -91,14 +90,10 @@ export async function chat(
   // 2026-10-16 the time was still in the context block, which re-wrote the
   // context and the history on every message. The clock now rides on the
   // newest message (buildTurnMessages).
-  // WhatsApp sign-up: ask for a few favourite dishes only when «Afina tu menú»
-  // got no «Me apetece» / «Me encanta» (2026-11-03). On a failed read, don't ask.
-  const askFavorites = opts.onboarding === true && !(await hasLikedRecipes(userId, db).catch(() => true))
   // PRO-392: only the tools (and the «Sobre Mimoia» block) this turn needs.
   const selection = selectToolGroups({ message, history, page: opts.page, mode, onboarding: opts.onboarding === true })
   const { instructions, context } = buildSystemParts(userContext, mode, {
     onboarding: opts.onboarding === true,
-    askFavorites,
     surface: opts.surface,
     tools: selection.tools,
     about: selection.about,

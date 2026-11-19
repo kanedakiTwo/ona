@@ -63,7 +63,7 @@ const simulated = (results: Record<string, string> = {}): SkillDefinition[] =>
 const out: unknown[] = []
 let failed = 0
 type Trace = { name: string; input: string; summary?: string; error?: boolean }[]
-type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[], trace: Trace) => string[]; toolResults?: Record<string, string> }
+type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[], trace: Trace) => string[]; toolResults?: Record<string, string>; onboarding?: boolean }
 const cases: EvalCase[] = [
   ...HEALTH_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string) => healthReplyProblems(reply, c) })),
   ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => mimoReplyProblems(reply, c, tools, trace) })),
@@ -71,13 +71,15 @@ const cases: EvalCase[] = [
   ...CLAIM_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => claimReplyProblems(reply, c, tools, trace) })),
 ]
 for (const c of cases.filter((x) => !only || x.id === only)) {
-  const sel = before ? null : selectToolGroups({ message: c.message, history: c.history, mode })
-  const { instructions, context } = buildSystemParts(c.context, mode, sel ? { tools: sel.tools, about: sel.about } : {})
+  // `primer-menu`: the WhatsApp sign-up's turn (its prompt block and complete_onboarding).
+  const onboarding = c.onboarding === true
+  const sel = before ? null : selectToolGroups({ message: c.message, history: c.history, mode, onboarding })
+  const { instructions, context } = buildSystemParts(c.context, mode, { ...(sel ? { tools: sel.tools, about: sel.about } : {}), onboarding })
   for (let i = 1; i <= runs; i += 1) {
     const r = await runToolLoop({
       client: anthropic as never,
       system: [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }, { type: 'text', text: context }],
-      tools: withLastToolCached(getToolDefinitions({ mode, ...(sel ? { only: sel.tools } : {}) })),
+      tools: withLastToolCached(getToolDefinitions({ mode, onboarding, ...(sel ? { only: sel.tools } : {}) })),
       ...(sel ? { moreTools: (groups) => getToolDefinitions({ mode, only: new Set(groups.flatMap((g) => TOOL_GROUPS[g].tools)) }) } : {}),
       skills: simulated(c.toolResults),
       messages: [...c.history, { role: 'user' as const, content: c.message }],

@@ -121,12 +121,12 @@ describe('the web questions', () => {
   })
 })
 
-describe('the WhatsApp sign-up asks the same as the web', () => {
-  it('its second question is «¿Cómo cocináis en casa?» with the four answers', () => {
-    expect(WHATSAPP_ONBOARDING_QUESTIONS).toHaveLength(2)
+describe('the WhatsApp sign-up asks which meals they cook (19-nov)', () => {
+  it('its second question is which meals they cook at home, with the example «6 cenas y 1 comida»', () => {
+    expect(WHATSAPP_ONBOARDING_QUESTIONS).toHaveLength(4)
     const q = WHATSAPP_ONBOARDING_QUESTIONS[1]
-    expect(q).toMatch(/^¿Cómo cocináis en casa:/)
-    for (const way of ['cada día', 'unos días y aprovecháis para otros', 'batch cooking', 'improvisáis']) expect(q).toContain(way)
+    expect(q).toMatch(/^¿Qué comidas cocináis en casa a la semana\?/)
+    expect(q).toContain('«6 cenas y 1 comida»')
     expect(COPY.linkedOnboarding(null)).toContain(q)
   })
 })

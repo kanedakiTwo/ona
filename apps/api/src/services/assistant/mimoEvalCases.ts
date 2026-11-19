@@ -53,13 +53,19 @@
  *   legumbres» in dislikes, «arroz no más de un día a la semana» and «cenas
  *   ligeras» as a `menu_rule`, «las cenas, primer y segundo plato» in the
  *   week type — never as a note with «lo tendré en cuenta».
+ * - `primer-menu` (19-nov, the WhatsApp sign-ups of 28-oct to 18-nov): the
+ *   sign-up's four answers go to complete_onboarding (meals → lunches and
+ *   dinners, dishes, what doesn't go in) and the closing words name their
+ *   dishes, ask one question at most, never «no he conseguido acercarme»,
+ *   «se parece poco», «genérico», nor talk about a meal already gone.
  */
+import { SIGNUP_FORBIDDEN_PHRASES } from '../whatsapp/signupReply.js'
 import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu'
 
 export interface MimoEvalCase {
   id: string
@@ -90,6 +96,8 @@ export interface MimoEvalCase {
   diners?: number
   /** Live eval only (`semana-tipo`): some call of this tool has an input matching every regex. */
   toolInput?: { name: string; match: RegExp[] }
+  /** Live eval: the turn is the WhatsApp sign-up (its prompt block and complete_onboarding). */
+  onboarding?: boolean
   /** What Mimo actually answered (literal, from the household's feedback). */
   badReply: string
 }
@@ -396,13 +404,17 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
     if (!SAYS_AI_RE.test(text)) problems.push('no-dice-ia')
     if (SAYS_PERSON_RE.test(text)) problems.push('dice-persona')
   }
+  if (c.check === 'primer-menu') {
+    if (SIGNUP_FORBIDDEN_PHRASES.some((re) => re.test(text))) problems.push('excusa-el-menu')
+    if ((reply.match(/\?/g) ?? []).length > 1) problems.push('dos-preguntas')
+  }
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) {
-    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' ? 'no-guarda' : 'no-mira-menu')
+    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'no-guarda' : 'no-mira-menu')
   }
   if (toolsUsed && c.mustNotCall?.some((t) => toolsUsed.includes(t))) problems.push(c.check === 'semana-tipo' || c.check === 'preferencia-menu' ? 'herramienta-equivocada' : 'compra-lo-hecho')
-  if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push(c.check === 'preferencia-menu' ? 'guarda-mal' : 'semana-tipo-mal')
+  if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push(c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'guarda-mal' : 'semana-tipo-mal')
   return problems
 }
 
@@ -931,5 +943,25 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     message: '¿eres una persona?',
     reconstructed: true,
     badReply: '¡Claro! Soy Mimo, de Mimoia, y estoy aquí para ayudarte con el menú. ¿Qué cocinamos hoy?',
+  },
+  {
+    id: 'alta-primer-menu-con-sus-platos',
+    check: 'primer-menu',
+    origin: 'Altas por WhatsApp del 28-oct al 18-nov (Miguel, 19-nov): lo primero que leían era «no he conseguido acercarme mucho a lo que os gusta» o «bastante genérico», con sus platos en el catálogo; alta a las 22:00 y Mimo presumió de la comida de ese mediodía',
+    context: ['Hoy es miércoles 2026-11-18 (dayIndex 2), son las 22:00 en Madrid.', 'Hogar: sin perfil todavía (primeros pasos por WhatsApp).'].join('\n'),
+    onboarding: true,
+    history: [
+      { role: 'assistant', content: '¡Hola! Ya estás conectado: soy Mimo, de Mimoia. Para entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber cuatro cosas. 1. ¿Quiénes sois en casa? Dime adultos y niños de 2 a 10 años. 2. ¿Qué comidas cocináis en casa a la semana? Por ejemplo: «6 cenas y 1 comida». 3. Tres platos que hacéis a menudo. 4. ¿Hay algo que no entre en casa? Un alimento o un plato que no os guste.' },
+    ],
+    message: '2 adultos. 6 cenas y 1 comida. Salmón al horno con patatas, pollo a la plancha con brócoli y bacalao con tomate. Nada de picante',
+    reconstructed: true,
+    toolResults: {
+      complete_onboarding: 'Primeros pasos guardados (2 adultos, 0 niños). Menu generado para la semana del 2026-11-16. Empieza mañana (jueves): hoy ya no queda ninguna comida por hacer. No hables de comidas de hoy. jueves: dinner: Salmón al horno con patatas; viernes: dinner: Pollo a la plancha con brócoli; sabado: dinner: Tortilla de patatas; domingo: lunch: Bacalao con tomate, dinner: Crema de calabaza\nSus platos de siempre, en este menu: Salmón al horno con patatas (Salmón al horno con patatas, cena del jueves); pollo a la plancha con brócoli (Pollo a la plancha con brócoli, cena del viernes); bacalao con tomate (Bacalao con tomate, comida del domingo).',
+    },
+    expect: /salmon|pollo|bacalao/,
+    forbidden: [/(comida|cena) de hoy/],
+    mustCallOneOf: ['complete_onboarding'],
+    toolInput: { name: 'complete_onboarding', match: [/"dinners":\s*6\b/, /"lunches":\s*1\b/, /salm/i, /picante/i] },
+    badReply: 'Hecho: tu primer menú. Con las recetas que tengo no he conseguido acercarme mucho a lo que os gusta: el salmón al horno con patatas no cabía esta semana. ¿Te lo pongo en lugar de otro plato? ¿Cambio algo?',
   },
 ]

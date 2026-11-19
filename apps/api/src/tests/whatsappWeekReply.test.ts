@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { replyMessages, weekViewOf, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
 import { SNOWBALL_LINE, SNOWBALL_WEEKS, generatedMenuThisTurn, showsSnowball, weekMenuCaption, weekMenuDigest, withSnowballLine, type WeekMenuInput } from '../services/menuText.js'
 import type { AssistantResponse } from '../services/assistant/types.js'
+import { captionWithoutInvite } from '../services/whatsapp/signupReply.js'
 
 const WEB = 'https://mimoia.com'
 const THU = '2026-10-15'
@@ -311,6 +312,8 @@ describe('replyMessages — generating the menu is ONE message (PRO-277)', () =>
   it('buttons still go in a message of their own after the picture', async () => {
     const out = await replyMessages(generated('¿Te preparo la lista de la compra?\n[[opciones: Sí | No]]'), 'user-1', deps(), null)
     expect(out).toHaveLength(2)
-    expect(out[0].text).toBe(caption)
+    // 19-nov: Mimo already asks something, so no «¿Cambio algo?» under the picture.
+    expect(out[0].text).toBe(captionWithoutInvite(caption))
+    expect(out[0].text).not.toContain('¿Cambio algo?')
   })
 })

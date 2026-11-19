@@ -4,7 +4,7 @@
  * voice notes, recipe photos and the chat round-trip.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { processInbound, isEmojiOnly, isCourtesyOnly, awaitsAnswer, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { enqueueInbound, processInbound, isEmojiOnly, isCourtesyOnly, awaitsAnswer, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
 import { weekMenuCaption, weekMenuDigest } from '../services/menuText.js'
 import { buildChatHistory } from '../services/whatsapp/history.js'
 import type { InboundMessage } from '../services/whatsapp/webhookParser.js'
@@ -17,6 +17,8 @@ import type { AppApi } from '../services/assistant/appApi.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
 import Anthropic from '@anthropic-ai/sdk'
 import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
+import { captionWithoutInvite, signupCaption } from '../services/whatsapp/signupReply.js'
+import { COALESCE_WINDOW_MS } from '../services/whatsapp/coalesce.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -164,17 +166,19 @@ describe('processInbound — unlinked numbers', () => {
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
   })
 
-  it("the first message of the WhatsApp sign-up (Miguel's text, 2026-10-15): AI disclosure, voice notes, two questions", () => {
+  it("the first message of the WhatsApp sign-up (Miguel's text, 2026-10-15): AI disclosure, voice notes, the four questions (19-nov)", () => {
     const m = COPY.linkedOnboarding('Ana')
     // AI Act art. 50: AI, can be wrong, not a health professional.
     expect(m).toMatch(/asistente de inteligencia artificial \(IA\)/)
     expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
-    expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
-    // 2026-11-03: the web's «¿Cómo cocináis en casa?», not how often.
-    expect(m).toMatch(/\*2\.\* ¿Cómo cocináis en casa: cada día, unos días y aprovecháis para otros, batch cooking/)
-    // PRO-245 / D-064: no favourite dishes in the first message (Mimo asks later, only without «Me apetece»).
-    expect(m).not.toMatch(/platos/)
+    expect(m).toMatch(/solo necesito saber cuatro cosas/)
+    expect(m).toMatch(/\*1\.\* ¿Quiénes sois en casa\?/)
+    expect(m).toMatch(/\*2\.\* ¿Qué comidas cocináis en casa a la semana\? Por ejemplo: «6 cenas y 1 comida»/)
+    expect(m).toMatch(/\*3\.\* Tres platos que hacéis a menudo/)
+    expect(m).toMatch(/\*4\.\* ¿Hay algo que no entre en casa\?/)
+    // Health data never through WhatsApp (PRO-24): the fourth asks tastes, not allergies.
+    expect(m).not.toMatch(/alergi/)
   })
 
   it('the opt-in question says it can be changed just by asking (Mimo has the tool)', () => {
@@ -899,7 +903,9 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     })
     await processInbound(msg({ text: 'genera el menú' }), t.deps)
     expect(t.sent.map((m) => m.type)).toEqual(['image', 'buttons'])
-    expect(t.sent[0].text).toBe(CAPTION)
+    // 19-nov: one question at a time — no «¿Cambio algo?» under the picture when Mimo asks.
+    expect(t.sent[0].text).toBe(captionWithoutInvite(CAPTION))
+    expect(t.sent[0].text).not.toContain('¿Cambio algo?')
     expect(t.sent[1].text).toBe('¿Te preparo la lista de la compra?')
     expect(t.sent.map((m) => m.text).join('\n')).not.toContain('Ver menú')
   })
@@ -967,17 +973,26 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     expect(t.outbound[0].body).toBe(`⟦imagen enviada: ${WEEK_IMAGE_ALT}⟧\n${VIEW_CAPTION}`)
   })
 
-  it('the first menu of the WhatsApp sign-up is a picture too, then the health link and the opt-in', async () => {
+  it('19-nov: the sign-up ends in ONE message — the picture, one line, one question at most; the health link and the opt-in come later', async () => {
     const t = setup({
       link: { ...LINK, onboardingDone: false },
-      chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'], data: { id: 'menu-1', days: [] } },
+      chatReply: {
+        message: 'Con las recetas que tengo no he conseguido acercarme mucho a lo que os gusta. Te he puesto el salmón al horno con patatas el jueves. ¿Os gusta el pescado? ¿Qué soléis cenar un martes normal?',
+        toolsUsed: ['complete_onboarding'],
+        data: { id: 'menu-1', days: [] },
+      },
       menuDigest: async () => MENU_TEXT,
       menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
     })
-    await processInbound(msg({ text: 'Lentejas, tortilla y pescado al horno' }), t.deps)
-    expect(t.sent.map((m) => m.type)).toEqual(['image', 'text', 'buttons'])
-    expect(t.sent[0].text).toBe(CAPTION)
-    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
+    await processInbound(msg({ text: 'Salmón al horno con patatas' }), t.deps)
+    expect(t.sent.map((m) => m.type)).toEqual(['image'])
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
+    const text = t.sent[0].text!
+    expect(text).toBe(`Te he puesto el salmón al horno con patatas el jueves. ¿Qué soléis cenar un martes normal?\n\n${signupCaption(CAPTION, true)}`)
+    expect(text).not.toMatch(/acercarme|se parece poco|gen[eé]ric|acertaré menos/)
+    expect((text.match(/\?/g) ?? []).length).toBe(1)
+    expect(text).not.toContain('¿Cambio algo?')
+    expect(text).not.toContain(COPY.optInPrompt)
   })
 })
 
@@ -990,7 +1005,7 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     expect(t.sent).toEqual([{ type: 'text', text: COPY.linkedOnboarding('Miguel') }])
     // Miguel's wording (2026-10-15) keeps the disclosure's three parts (AI Act art. 50).
     expect(t.sent[0].text).toMatch(/asistente de inteligencia artificial \(IA\)[\s\S]*puedo equivocarme y no sustituyo a un profesional sanitario/)
-    expect(t.sent[0].text).toMatch(/¿Cuántos sois en casa\?/)
+    expect(t.sent[0].text).toMatch(/¿Quiénes sois en casa\?/)
     expect(t.outbound.map((o) => o.kind)).toEqual(['onboarding'])
     expect(t.chat).not.toHaveBeenCalled()
   })
@@ -1012,19 +1027,16 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     expect(done.chat).toHaveBeenCalledWith('user-1', '¿Qué ceno hoy?', [], expect.objectContaining({ onboarding: false }))
   })
 
-  it('complete_onboarding → the first menu in the chat, the web link for health data, then the opt-in', async () => {
+  it('complete_onboarding → the first menu in the chat, and nothing else in that second (19-nov: health link and opt-in later)', async () => {
     const t = setup({
       link: NEW_LINK,
       chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'], data: { id: 'menu-1', days: [] } },
       menuDigest: async (_userId, menuId) => (menuId === 'menu-1' ? 'Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas' : null),
     })
     await processInbound(msg({ text: 'Lentejas, tortilla y pescado al horno' }), t.deps)
-    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
     // The digest alone: the model's "Hecho: - Tu primer menú…" isn't stacked on top (2026-10-15).
-    expect(t.sent[0].text).toBe(`Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas`)
-    expect(t.sent[1]).toEqual({ type: 'text', text: COPY.healthOnWeb(`${WEB}/profile`) })
-    expect(t.sent[1].text).toMatch(/no me dejan guardar datos de salud/)
-    expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
+    expect(t.sent).toEqual([{ type: 'text', text: `Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas` }])
   })
 
   // PRO-07: the sign-up ends with three suggestions, once, after the opt-in answer.
@@ -1093,15 +1105,14 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       expect(t.outbound.map((o) => o.kind)).toEqual(['optin'])
     })
 
-    it('not before the opt-in question (complete_onboarding turn ends with the question)', async () => {
+    it('not with the first menu (19-nov: the opt-in question comes ~10 min later, signupFollowUps.ts)', async () => {
       const t = setup({
         link: NEW_LINK,
         chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'] },
         outboundKinds: new Map([['onboarding', at(600_000)]]),
       })
       await processInbound(msg({ text: 'Lentejas y tortilla' }), t.deps)
-      expect(t.outbound.map((o) => o.kind)).not.toContain('first_steps')
-      expect(t.outbound.at(-1)?.kind).toBe('optin_prompt')
+      expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
     })
   })
 
@@ -1324,6 +1335,42 @@ describe('processInbound — Mimo\'s monthly cap (18-nov)', () => {
       const t = setup({ spentMicros: spent, addedMicros: added })
       await processInbound(msg(), t.deps)
       expect(t.sent.map((m) => m.text).join('\n')).not.toContain(BUDGET_WARNING_LINE)
+    }
+  })
+})
+
+describe('enqueueInbound — texts sent one after another are one turn (19-nov)', () => {
+  it('«2 adultos» and «Casi a diario» 3 s apart → ONE turn to Mimo, in order; the first is kept out of history (merged)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const t = setup({ link: { ...LINK, onboardingDone: false } })
+      const a = enqueueInbound(msg({ wamid: 'w1', text: '2 adultos' }), t.deps)
+      await vi.advanceTimersByTimeAsync(3_000)
+      const b = enqueueInbound(msg({ wamid: 'w2', text: 'Casi a diario' }), t.deps)
+      await vi.advanceTimersByTimeAsync(COALESCE_WINDOW_MS)
+      await Promise.all([a, b])
+      expect(t.chat).toHaveBeenCalledTimes(1)
+      expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('2 adultos\nCasi a diario')
+      expect(t.inboundUpdates[0]).toMatchObject({ status: 'ignored', errorMessage: 'merged' })
+      expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: '2 adultos\nCasi a diario' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a button or BAJA is never joined: the waiting text goes first as its own turn, then it alone', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const t = setup()
+      const a = enqueueInbound(msg({ wamid: 'w3', text: 'y el jueves pescado' }), t.deps)
+      const b = enqueueInbound(msg({ wamid: 'w4', kind: 'interactive', text: 'Sí', rawType: 'interactive' }), t.deps)
+      const c = enqueueInbound(msg({ wamid: 'w5', text: 'BAJA' }), t.deps)
+      await vi.advanceTimersByTimeAsync(COALESCE_WINDOW_MS)
+      await Promise.all([a, b, c])
+      expect(t.chat.mock.calls.map((call) => (call as unknown[])[1])).toEqual(['y el jueves pescado', 'Sí'])
+      expect(t.setNotify).toHaveBeenCalledWith('user-1', false)
+    } finally {
+      vi.useRealTimers()
     }
   })
 })

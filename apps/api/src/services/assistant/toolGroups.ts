@@ -207,7 +207,9 @@ export function selectToolGroups(input: ToolSelectionInput): ToolSelection {
 
   const tools = new Set<string>(CORE_TOOLS)
   for (const g of groups) for (const name of TOOL_GROUPS[g].tools) tools.add(name)
-  if (input.onboarding) tools.add('complete_onboarding')
+  // 19-nov: the sign-up's dishes not in the catalogue become the household's
+  // recipe in the same turn (swap_meal with newRecipe).
+  if (input.onboarding) for (const name of ['complete_onboarding', 'swap_meal']) tools.add(name)
 
   // Only the user's words: Mimo's own replies say «Mimoia» when it introduces itself.
   const about = input.onboarding === true || ABOUT_WORDS.test(fold(input.message))

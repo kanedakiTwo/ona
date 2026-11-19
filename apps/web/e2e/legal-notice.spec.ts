@@ -78,6 +78,8 @@ test('/privacidad: AiKit only makes the recipe images, with OpenAI models', asyn
   await expect(main).not.toContainText('cuando lo pides')
   await expect(main).not.toContainText('Gemini')
   await expect(main).toContainText('Última actualización: 13 de noviembre de 2026')
+  // D-189: the daily reviewer also reads Mimo's chat in the app.
+  await expect(main).toContainText('conversaciones con Mimo, en la web y por WhatsApp, para detectar errores del asistente')
 })
 
 // PRO-1122 (Miguel, 2026-11-05, word for word): Groq, then OpenAI, transcribe; Oracle keeps the encrypted

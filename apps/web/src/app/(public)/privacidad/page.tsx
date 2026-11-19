@@ -102,7 +102,7 @@ export default function PrivacidadPage() {
               Preparar la ficha de tu hogar (vuestros gustos y costumbres a la hora de comer) a partir de lo que hablas
               con Mimo en la web y por WhatsApp, para que tus menús y sus respuestas se ajusten mejor a vosotros.
             </li>
-            <li>Revisar, de forma interna, conversaciones de WhatsApp para detectar errores del asistente y corregirlos.</li>
+            <li>Revisar, de forma interna, conversaciones con Mimo, en la web y por WhatsApp, para detectar errores del asistente y corregirlos.</li>
             <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
             <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
             <li>Si lo pides (al registrarte o en tu perfil), mandarte cada viernes el menú de la semana por email.</li>

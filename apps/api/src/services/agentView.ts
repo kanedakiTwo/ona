@@ -21,6 +21,7 @@ import { env } from '../config/env.js'
 import type { HouseholdComparison } from './blindComparison.js'
 import { madridParts } from './madridTime.js'
 import { API_ROUTE_TEMPLATES, WEB_PAGE_TEMPLATES } from './routeTemplates.js'
+import { hallazgoForAgents } from './reviewFindings.js'
 
 // ─── Routes and pages ────────────────────────────────────────────
 
@@ -462,6 +463,12 @@ export function flagsForAgents(report: object) {
         reviewerCategory: i.reviewerCategory == null ? null : (oneOf(i.reviewerCategory, REVIEWER_CATEGORY_LIST) ?? 'otro'),
         severity: oneOf(i.severity, REVIEWER_SEVERITY_LIST),
       }
+    }),
+    // D-189: the reviewer's findings as patterns — closed shapes, and the three
+    // sentences again without quotes, emails, phones or links.
+    hallazgos: (Array.isArray(r.hallazgos) ? r.hallazgos : []).flatMap((raw) => {
+      const h = hallazgoForAgents(raw, asLoose(raw).date)
+      return h ? [{ ...h, categoria: h.categoria == null ? null : (oneOf(h.categoria, REVIEWER_CATEGORY_LIST) ?? 'otro') }] : []
     }),
   }
 }

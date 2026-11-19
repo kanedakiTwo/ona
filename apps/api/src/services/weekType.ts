@@ -450,6 +450,8 @@ export interface WeekTypeSlotRequest {
   /** true = «no hay»; false = that meal is planned again. */
   off?: boolean
   diners?: number
+  /** Dishes in that meal (1–3): «las cenas, primer y segundo plato» = 2 (2026-11-19). */
+  dishes?: 1 | 2 | 3
 }
 
 /**
@@ -496,6 +498,14 @@ export function nextWeekTypeSlot(prev: WeekTypeSlot, req: WeekTypeSlotRequest): 
   }
   if (req.diners !== undefined) {
     next.diners = req.diners
+    if (next.off) {
+      delete next.off
+      delete next.offWhenFree
+    }
+  }
+  if (req.dishes !== undefined) {
+    if (req.dishes > 1) next.dishes = req.dishes
+    else delete next.dishes
     if (next.off) {
       delete next.off
       delete next.offWhenFree

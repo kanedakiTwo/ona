@@ -26,7 +26,7 @@ import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
 import { generateAndSaveMenu } from '../services/menuGenerate.js'
 import { autoplanNoticeFor, markAutoplanViewed, noteAutoplanChange } from '../services/weeklyAutoplan.js'
-import { loadSlotPickContext, slotPickOptions } from '../services/menuSlotPick.js'
+import { loadSlotPickContext, pickForSlot, slotPickOptions } from '../services/menuSlotPick.js'
 import { memoryTastes } from '../services/menuTastes.js'
 import {
   menuEditWho,
@@ -622,7 +622,9 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     // Allergies and diet of the whole household, dislikes, equipment,
     // favourites, ratings and the catalogue (shared with PRO-364's review).
     const pickCtx = await loadSlotPickContext(menu, req.userId!)
-    const { pool: recipesWithIngredients, options: matcherOptions } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds)
+    // With the week (2026-11-19): weekly limits, light meals, a working day's
+    // time, and a main food not already in the week while one fits.
+    const pick = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds, days)
 
     // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
     // Note dishes stay in place unchanged. «Semana tipo» (D-182): a dish the
@@ -638,7 +640,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       const dish = slot.dishes[i]
       if (dish.kind !== 'recipe') continue
       if (chipType && i === firstRecipeAt) {
-        const picked = findForCourse(poolOfChipType(recipesWithIngredients, chipType, dish.recipeId), null, matcherOptions)
+        const picked = pickForSlot(pick, null, (p) => poolOfChipType(p, chipType, dish.recipeId))
         if (!picked) {
           const label = dishTypeInfo(chipType)?.label ?? chipType
           res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con esta comida.`, code: 'NO_RECIPE_OF_TYPE' })
@@ -649,7 +651,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       }
       const type = await weekTypeDishTypeAt(menu.userId, menu.weekStart, dayIndex, meal, i)
       const currentCourse = type ? null : dish.course ?? null
-      const picked = findForCourse(poolOfDishType(recipesWithIngredients, type), currentCourse, matcherOptions)
+      const picked = pickForSlot(pick, currentCourse, (p) => poolOfDishType(p, type))
       if (!picked) continue  // keep the old recipe if no candidate
       newDishes[i] = {
         kind: 'recipe',
@@ -1759,61 +1761,19 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       }
     }
 
-    const [user] = await db
-      .select({ restrictions: users.restrictions })
-      .from(users)
-      .where(eq(users.id, menu.userId))
-      .limit(1)
-    const memRegen = await getMemoryForUser(menu.userId).catch(() => null)
-    // PRO-305: every member's allergies and diet, like the weekly menu.
-    const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memRegen), menu.userId)
-    const dislikesValRegen = memRegen?.dislikes?.value
-    const equipValRegen = memRegen?.equipment?.value
-    // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes: dislikesRegen, availableEquipment: availEquipRegen, unavailableEquipment: unavailEquip3, tastes: tastesRegen } = withFichaFilters(
-      {
-        dislikes: Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : [],
-        availableEquipment: Array.isArray(equipValRegen) ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment)) : undefined,
-        tastes: memoryTastes(memRegen),
-      },
-      await loadFichaMenuConstraints(menu.userId),
-    )
-    const timeBudgetRegen = slotTimeBudget(memRegen, menu.weekStart, day)
-
-    const favScopeRegen = await resolveScope(menu.userId)
-    const favRowsRegen = await db
-      .select({ recipeId: userFavorites.recipeId })
-      .from(userFavorites)
-      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeRegen))
-    const ratedRegen = withHouseholdRatings(
-      new Set<string>(favRowsRegen.map((f: any) => f.recipeId)),
-      new Set(menu.bannedRecipeIds ?? []),
-      await loadHouseholdRatingSets(req.userId!),
-    )
-
-    // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-    const recipesWithIngredientsRegen = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, day, meal)
-
-    const matcherOptionsRegen = {
-      meal: meal as Meal,
-      season: detectSeason(),
-      usedRecipeIds,
-      restrictions,
-      ...ratedRegen,
-      dislikes: dislikesRegen,
-      availableEquipment: availEquipRegen,
-      unavailableEquipment: unavailEquip3,
-      tastes: tastesRegen,
-      timeBudget: timeBudgetRegen,
-    }
+    // The same context and rules as «Cambiar» (menuSlotPick.ts): everyone's
+    // allergies and diet (PRO-305), the ficha (PRO-253, 2026-11-19: whole
+    // categories, weekly limits, light meals), ratings, a working day's time
+    // and, while one fits, a main food not already in the week.
+    const pickRegen = await slotPickOptions(await loadSlotPickContext(menu, req.userId!), menu, day, meal, usedRecipeIds, days)
 
     // «Semana tipo» (D-182): another recipe of the type the week type asks for there.
     // PRO-1176: «Que elija Mimoia» in that dish's picker, with its type chip: only that type (none → 409).
     const chipRegen = isDishType(req.body?.dishType) ? (req.body.dishType as string) : null
     const typeRegen = chipRegen ? null : await weekTypeDishTypeAt(menu.userId, menu.weekStart, day, meal, position)
     const picked = chipRegen
-      ? findForCourse(poolOfChipType(recipesWithIngredientsRegen, chipRegen, dish.recipeId), null, matcherOptionsRegen)
-      : findForCourse(poolOfDishType(recipesWithIngredientsRegen, typeRegen), typeRegen ? null : dish.course ?? null, matcherOptionsRegen)
+      ? pickForSlot(pickRegen, null, (p) => poolOfChipType(p, chipRegen, dish.recipeId))
+      : pickForSlot(pickRegen, typeRegen ? null : dish.course ?? null, (p) => poolOfDishType(p, typeRegen))
     if (!picked && chipRegen) {
       const label = dishTypeInfo(chipRegen)?.label ?? chipRegen
       res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con este plato.`, code: 'NO_RECIPE_OF_TYPE' })

@@ -219,6 +219,129 @@ export function nameHasAlcohol(normalizedName: string): boolean {
   return ALCOHOL_TERMS.some((t) => nameHasTerm(n, t))
 }
 
+// ─── Food categories (2026-11-19) ──────────────────────────────
+// «Sin legumbres», «nada de casquería», «no me gusta el cerdo»: a category
+// said as a dislike or a restriction excludes every food in it, as «marisco»
+// does through its allergen tags. Before, «legumbres» only matched an
+// ingredient literally called «legumbres», so a household that asked for no
+// legumes got chili sin carne, hummus and lentejas the next week. Whole
+// words, accent/case-insensitive, plural-tolerant (`nameHasTerm`); `unless`
+// strips phrases that name something else first («salsa de soja»,
+// «judías verdes», «lomos de salmón»).
+
+export interface FoodGroup {
+  /** The category word as said («legumbres»): a later «Me apetece» beats it by this key (PRO-1142). */
+  key: string
+  terms: readonly string[]
+  unless?: readonly RegExp[]
+}
+
+/** Every dried legume and what is made of it (Miguel, 2026-11-19: «todo tipo de legumbres»). */
+export const LEGUME_TERMS = [
+  'legumbre', 'lenteja', 'garbanzo', 'alubia', 'judion', 'judias blancas', 'judia blanca', 'judias pintas', 'judia pinta',
+  'judias rojas', 'judia roja', 'judias negras', 'judia negra', 'judias secas', 'judia seca', 'judias de careta',
+  'frijol', 'frijoles', 'poroto', 'habichuela', 'faba', 'fabe', 'fabada', 'pocha', 'verdina', 'caparron', 'mongeta',
+  'garrofon', 'guisantes secos', 'guisante seco', 'habas secas', 'haba seca', 'soja', 'edamame', 'tofu', 'tempeh',
+  'azuki', 'adzuki', 'mungo', 'altramuz', 'altramuces', 'hummus', 'humus', 'falafel', 'dal', 'dahl', 'chana', 'masoor',
+]
+const NOT_LEGUME = [
+  /(^|[^a-z0-9])(salsa|aceite|lecitina|brotes?|germinados?) de soja/g,
+  /(^|[^a-z0-9])mongetes? tendres?/g,
+]
+
+const RICE_TERMS = ['arroz', 'arroces', 'risotto', 'paella', 'sushi', 'onigiri', 'biryani', 'pilaf', 'jambalaya']
+const NOT_RICE = [/(^|[^a-z0-9])(vinagre|vino|papel|harina|leche|fideos) de arroz/g]
+
+const POTATO_TERMS = ['patata', 'papa', 'bravas', 'parmentier', 'rosti']
+const NOT_POTATO = [/(^|[^a-z0-9])(fecula|almidon|patata dulce|papa dulce)( de (patata|papa))?/g]
+
+/** Offal (vísceras, casquería). */
+export const OFFAL_TERMS = [
+  'higado', 'higadillo', 'higaditos', 'rinon', 'callos', 'molleja', 'sesos', 'oreja', 'morro', 'manitas', 'lengua',
+  'criadilla', 'asadura', 'menudillo', 'casqueria', 'visceras', 'careta', 'zarajo', 'entresijo', 'gallineja', 'tripa',
+  'mondongo', 'foie', 'corazon de pollo', 'corazones de pollo', 'corazon de ternera', 'mollejas',
+]
+const NOT_OFFAL = [/(^|[^a-z0-9])lenguas? de gato/g, /(^|[^a-z0-9])morro fino/g]
+
+const RED_MEAT_TERMS = [
+  ...PORK_TERMS, 'ternera', 'vaca', 'vacuno', 'buey', 'cordero', 'cabrito', 'jabali', 'ciervo', 'venado', 'carne picada',
+  'hamburguesa', 'chuleton', 'entrecot', 'rabo de toro', 'morcillo', 'carrillera', 'cecina', 'osobuco', 'jarrete',
+  'chuleta', 'albondiga', 'roast beef', 'rosbif', 'steak tartar',
+]
+const NOT_RED_MEAT = [/(^|[^a-z0-9])(carne picada|hamburguesas?|albondigas?|chuletas?) de (pollo|pavo|pescado|atun|salmon|merluza|bacalao|garbanzos?|lentejas?|alubias?|tofu|soja|verduras?|quinoa)/g]
+
+const SEAFOOD_TERMS = [
+  'marisco', 'gamba', 'langostino', 'cigala', 'langosta', 'cangrejo', 'bogavante', 'mejillon', 'almeja', 'berberecho',
+  'pulpo', 'calamar', 'sepia', 'chipiron', 'vieira', 'ostra', 'navaja', 'percebe', 'necora', 'centolla', 'carabinero',
+  'quisquilla', 'camaron', 'zamburina', 'erizo', 'surimi', 'chopito', 'puntilla',
+]
+
+function group(key: string, terms: readonly string[], unless?: readonly RegExp[]): FoodGroup {
+  return { key, terms, ...(unless ? { unless } : {}) }
+}
+
+/** Normalised category word → the foods it means. */
+const FOOD_CATEGORIES: Record<string, Omit<FoodGroup, 'key'>> = (() => {
+  const legume = { terms: LEGUME_TERMS, unless: NOT_LEGUME }
+  const rice = { terms: RICE_TERMS, unless: NOT_RICE }
+  const potato = { terms: POTATO_TERMS, unless: NOT_POTATO }
+  const offal = { terms: OFFAL_TERMS, unless: NOT_OFFAL }
+  const pork = { terms: PORK_TERMS, unless: NOT_HARAM }
+  const red = { terms: RED_MEAT_TERMS, unless: [...NOT_HARAM, ...NOT_RED_MEAT] }
+  const seafood = { terms: SEAFOOD_TERMS }
+  const fish = { terms: FISH_TERMS.filter((t) => !SEAFOOD_TERMS.includes(t)) }
+  const meat = { terms: MEAT_TERMS, unless: [...NOT_HARAM, ...NOT_RED_MEAT] }
+  return {
+    legumbre: legume, legumbres: legume, 'legumbres secas': legume, 'legumbre seca': legume, 'platos de legumbre': legume, 'platos de legumbres': legume,
+    arroz: rice, arroces: rice, 'platos de arroz': rice,
+    patata: potato, patatas: potato, papa: potato, papas: potato,
+    visceras: offal, viscera: offal, casqueria: offal, despojos: offal, menudencias: offal, 'carne de casqueria': offal,
+    cerdo: pork, 'carne de cerdo': pork, porcino: pork, 'cerdo y derivados': pork,
+    'carne roja': red, 'carnes rojas': red,
+    marisco: seafood, mariscos: seafood,
+    pescado: fish, pescados: fish,
+    carne: meat, carnes: meat,
+  }
+})()
+
+/** Every category word («legumbres», «casqueria», «carne roja»…), normalised. */
+export const FOOD_CATEGORY_WORDS: readonly string[] = Object.keys(FOOD_CATEGORIES)
+
+/** «el arroz», «las legumbres» → «arroz», «legumbres». */
+function categoryKey(key: string): string {
+  return key.replace(/^(el|la|los|las|de|del|nada de|platos? con) /, '').trim()
+}
+
+/** The category a dislike or restriction word names («legumbres», «casquería»…), or null. */
+export function foodCategory(entry: string): FoodGroup | null {
+  const key = categoryKey(restrictionKey(entry))
+  const found = FOOD_CATEGORIES[key]
+  return found ? group(key, found.terms, found.unless) : null
+}
+
+/** A category, or the word itself as the only food («calabacín»). */
+export function foodGroupFor(entry: string): FoodGroup | null {
+  const key = categoryKey(restrictionKey(entry))
+  if (!key) return null
+  return foodCategory(key) ?? group(key, [key])
+}
+
+/** True when a normalised name has a food of the group. */
+export function nameInGroup(normalizedName: string, g: FoodGroup): boolean {
+  let n = normalizedName
+  for (const re of g.unless ?? []) n = n.replace(re, ' ')
+  return g.terms.some((t) => nameHasTerm(n, t))
+}
+
+/** True when the recipe's name or any ingredient (what a compound one contains too) has a food of the group. */
+export function recipeHasFood(
+  recipe: { name?: string | null; ingredients: ReadonlyArray<{ ingredientName: string; containsTags?: readonly string[] | null }> },
+  g: FoodGroup,
+): boolean {
+  if (recipe.name && nameInGroup(normalizeText(recipe.name), g)) return true
+  return recipe.ingredients.some((i) => nameInGroup(normalizeText(i.ingredientName), g) || (i.containsTags ?? []).some((t) => nameInGroup(normalizeText(t), g)))
+}
+
 interface DietRule {
   allergens: AllergenTag[]
   terms: string[]
@@ -309,6 +432,8 @@ export interface CompiledRestrictions {
    * («Oreja a la plancha» never matched «oreja de cerdo»).
    */
   dishTerms?: string[]
+  /** Categories («legumbres», «casquería»…): every food in them, in the ingredients and the name. */
+  groups?: FoodGroup[]
 }
 
 /**
@@ -320,6 +445,7 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
   const terms = new Set<string>()
   let alcohol = false
   let halal = false
+  const groups: FoodGroup[] = []
   for (const raw of restrictions) {
     const key = restrictionKey(raw)
     if (!key) continue
@@ -342,16 +468,26 @@ export function compileRestrictions(restrictions: readonly string[], dislikes: r
       tags.forEach((a) => allergens.add(a))
       continue
     }
+    const category = foodCategory(key)
+    if (category) {
+      if (!groups.some((g) => g.key === category.key)) groups.push(category)
+      continue
+    }
     terms.add(key) // free text: "cilantro", "picante"…
   }
   const dishTerms = new Set<string>()
   for (const raw of dislikes) {
     const key = restrictionKey(raw)
     if (!key) continue
+    const category = foodCategory(key)
+    if (category) {
+      if (!groups.some((g) => g.key === category.key)) groups.push(category)
+      continue
+    }
     terms.add(key)
     dishTerms.add(key)
   }
-  return { allergens, terms: [...terms], alcohol, halal, dishTerms: [...dishTerms] }
+  return { allergens, terms: [...terms], alcohol, halal, dishTerms: [...dishTerms], ...(groups.length ? { groups } : {}) }
 }
 
 // nameHasTerm lives in nutrition/allergens.ts (PRO-160: the peanut rule
@@ -415,8 +551,18 @@ function stepMentionIngredients(recipe: RestrictableRecipe): RestrictableRecipe[
 
 /** True when the recipe contains something the compiled restrictions exclude. */
 export function violatesRestrictions(recipe: RestrictableRecipe, rules: CompiledRestrictions): boolean {
-  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal && !rules.dishTerms?.length) return false
+  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal && !rules.dishTerms?.length && !rules.groups?.length) return false
   if (rules.alcohol && recipe.name && nameHasAlcohol(normalizeText(recipe.name))) return true
+  // A category («legumbres»): every food in it, in the name («Hummus») and the
+  // ingredients («alubias rojas» of a chili sin carne), step mentions included.
+  if (rules.groups?.length) {
+    const withSteps = recipe.stepMentions?.length ? { ...recipe, ingredients: [...recipe.ingredients, ...stepMentionIngredients(recipe)] } : recipe
+    for (const g of rules.groups) {
+      if (recipe.dislikesOverridden?.includes(g.key)) {
+        if (recipeHasFood({ ingredients: withSteps.ingredients }, g)) return true
+      } else if (recipeHasFood(withSteps, g)) return true
+    }
+  }
   // PRO-1142: a dislike that names the dish keeps it out, unless the household
   // said it wants it after the dislike.
   if (rules.dishTerms?.length && recipe.name) {
@@ -461,6 +607,6 @@ export function recipeIdsBreakingRestrictions(
   restrictions: readonly string[],
 ): string[] {
   const rules = compileRestrictions(restrictions)
-  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal) return []
+  if (rules.allergens.size === 0 && rules.terms.length === 0 && !rules.alcohol && !rules.halal && !rules.groups?.length) return []
   return recipes.filter((r) => violatesRestrictions(r, rules)).map((r) => r.id)
 }

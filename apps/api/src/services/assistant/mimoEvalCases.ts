@@ -48,13 +48,18 @@
  * - `soy-ia` (PRO-1169, AI Act art. 50.1, LEG-34): asked «¿eres una
  *   persona?», Mimo says it is an AI («IA» or «inteligencia artificial») and
  *   never that it is a person.
+ * - `preferencia-menu` (2026-11-19, three weeks of conversations): what the
+ *   household asks for its menus is saved where the menu reads it — «sin
+ *   legumbres» in dislikes, «arroz no más de un día a la semana» and «cenas
+ *   ligeras» as a `menu_rule`, «las cenas, primer y segundo plato» in the
+ *   week type — never as a note with «lo tendré en cuenta».
  */
 import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffects } from './healthGuard.js'
 
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia'
+export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu'
 
 export interface MimoEvalCase {
   id: string
@@ -394,10 +399,10 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) {
-    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' ? 'no-guarda' : 'no-mira-menu')
+    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' ? 'no-guarda' : 'no-mira-menu')
   }
-  if (toolsUsed && c.mustNotCall?.some((t) => toolsUsed.includes(t))) problems.push(c.check === 'semana-tipo' ? 'herramienta-equivocada' : 'compra-lo-hecho')
-  if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push('semana-tipo-mal')
+  if (toolsUsed && c.mustNotCall?.some((t) => toolsUsed.includes(t))) problems.push(c.check === 'semana-tipo' || c.check === 'preferencia-menu' ? 'herramienta-equivocada' : 'compra-lo-hecho')
+  if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push(c.check === 'preferencia-menu' ? 'guarda-mal' : 'semana-tipo-mal')
   return problems
 }
 
@@ -858,6 +863,64 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     forbidden: [/^\s*hecho\b/],
     mustNotCall: ['set_week_type_slot', 'note_ficha_fact'],
     badReply: 'Hecho, en tu semana tipo: jueves, cena, ceviche cada semana.',
+  },
+  {
+    id: 'preferencia-sin-legumbres',
+    check: 'preferencia-menu',
+    origin: 'Conversaciones del 28-oct al 18-nov (análisis del 18-nov): «que no me sugieras recetas de legumbres» y la semana nueva trajo chili sin carne y hummus',
+    context: WEEK_TYPE_CONTEXT,
+    history: [],
+    message: 'por favor, que no me sugieras recetas de legumbres',
+    reconstructed: true,
+    toolResults: { update_memory: 'Apuntado. (dislikes)' },
+    expect: /legumbres/,
+    forbidden: [/\bnota\b/],
+    mustCallOneOf: ['update_memory'],
+    toolInput: { name: 'update_memory', match: [/"dislikes"/, /legumbres/] },
+    badReply: 'Entendido, lo tendré en cuenta.',
+  },
+  {
+    id: 'preferencia-arroz-una-vez',
+    check: 'preferencia-menu',
+    origin: 'Conversaciones del 28-oct al 18-nov: «arroz no más de un día a la semana»',
+    context: WEEK_TYPE_CONTEXT,
+    history: [],
+    message: 'arroz no más de un día a la semana',
+    reconstructed: true,
+    toolResults: { note_ficha_fact: 'Apuntado en la ficha (nuevo): «Arroz, como mucho una vez a la semana». Lo dijo esta persona, así que manda sobre lo que Mimoia deduzca. El menú y «Cambiar» lo respetan desde el próximo menú que se genere.' },
+    expect: /arroz[\s\S]*(una vez|un dia|1)[\s\S]*semana/,
+    mustCallOneOf: ['note_ficha_fact'],
+    toolInput: { name: 'note_ficha_fact', match: [/menu_rule/, /max_per_week/, /arroz/, /"times":\s*1\b/] },
+    badReply: '¡Anotado! Lo tendré en cuenta para tus menús.',
+  },
+  {
+    id: 'preferencia-cenas-ligeras',
+    check: 'preferencia-menu',
+    origin: 'Conversaciones del 28-oct al 18-nov: «cenas ligeras» y salieron patatas guisadas, garbanzos con chorizo y oreja',
+    context: WEEK_TYPE_CONTEXT,
+    history: [],
+    message: 'las cenas que sean ligeras, por favor',
+    reconstructed: true,
+    toolResults: { note_ficha_fact: 'Apuntado en la ficha (nuevo): «Cenas ligeras». Lo dijo esta persona, así que manda sobre lo que Mimoia deduzca. El menú y «Cambiar» lo respetan desde el próximo menú que se genere.' },
+    expect: /cenas? ligeras?/,
+    mustCallOneOf: ['note_ficha_fact'],
+    toolInput: { name: 'note_ficha_fact', match: [/menu_rule/, /"light"/, /"dinner"/] },
+    badReply: 'Perfecto, lo apunto como nota.',
+  },
+  {
+    id: 'preferencia-cenas-dos-platos',
+    check: 'preferencia-menu',
+    origin: 'Conversaciones del 28-oct al 18-nov: «las cenas, primer y segundo plato»',
+    context: WEEK_TYPE_CONTEXT,
+    history: [],
+    message: 'las cenas siempre primer y segundo plato',
+    reconstructed: true,
+    toolResults: { set_week_type_slot: 'Hecho, en tu semana tipo: de lunes a domingo, cena, cualquier receta, primero y segundo. Sale así en los menús que se generen desde ahora; la semana ya hecha no cambia. Confírmaselo en una línea, con estas palabras.' },
+    expect: /semana tipo[\s\S]*cena[\s\S]*primero y segundo/,
+    mustCallOneOf: ['set_week_type_slot'],
+    mustNotCall: ['note_ficha_fact'],
+    toolInput: { name: 'set_week_type_slot', match: [/"dinner"/, /"dishes":\s*2\b/] },
+    badReply: 'Apuntado: las cenas, primer y segundo plato. Lo tendré en cuenta.',
   },
   {
     id: 'eres-una-persona',

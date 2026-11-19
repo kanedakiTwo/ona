@@ -91,6 +91,7 @@ export function describeWeekTypeSlot(slot: WeekTypeSlot): string {
     s = options.length === 1 ? `${labels[0]} cada semana` : `${labels[0]} cada ${options.length} semanas`
   } else if (options.length === 2) s = `una semana ${labels[0]} y otra ${labels[1]}`
   else s = `por turnos, ${joinY(labels)}`
+  if (slot.dishes && slot.dishes > 1) s = `${s}, ${slot.dishes === 2 ? 'primero y segundo' : 'primero, segundo y postre'}`
   return slot.diners ? `${s}, para ${slot.diners}` : s
 }
 
@@ -136,7 +137,7 @@ interface OptionParam {
 const setWeekTypeSlot: SkillDefinition = {
   name: 'set_week_type_slot',
   description:
-    'Cambia la semana tipo del hogar, lo que suelen comer un día y una comida todas las semanas: «los viernes por la noche, pizza», «los jueves, una semana ceviche y otra carpaccio», «legumbres el sábado, cada dos semanas», «el domingo no desayunamos», «los lunes somos tres en la cena». Es lo que debes usar para las costumbres de un día y una comida (no la ficha). Uno o varios días y UNA comida por llamada. Si el usuario no ha dicho el día o la comida, no lo inventes: deja el campo vacío y la herramienta te dice qué preguntar. Sale así en los menús que se generen desde ahora (la semana ya hecha no cambia). Un gusto sin día ni comida («nos gusta mucho la pizza») no va aquí: va a la ficha.',
+    'Cambia la semana tipo del hogar, lo que suelen comer un día y una comida todas las semanas: «los viernes por la noche, pizza», «los jueves, una semana ceviche y otra carpaccio», «legumbres el sábado, cada dos semanas», «el domingo no desayunamos», «los lunes somos tres en la cena», «las cenas, primer y segundo plato» (dishes 2), «solo cenamos en casa entre semana» (off en las comidas de esos días). Es lo que debes usar para las costumbres de un día y una comida (no la ficha). Uno o varios días y UNA comida por llamada. Si el usuario no ha dicho el día o la comida, no lo inventes: deja el campo vacío y la herramienta te dice qué preguntar. Sale así en los menús que se generen desde ahora (la semana ya hecha no cambia). Un gusto sin día ni comida («nos gusta mucho la pizza») no va aquí: va a la ficha.',
   parameters: {
     type: 'object',
     properties: {
@@ -173,11 +174,12 @@ const setWeekTypeSlot: SkillDefinition = {
       every: { type: 'integer', minimum: 2, maximum: WEEK_TYPE_MAX_OPTIONS, description: '«Cada N semanas» con UNA opción («legumbres cada dos semanas» = 2). Sin esto, cada semana.' },
       off: { type: 'boolean', description: 'true = «no hay» esa comida esos días («quita el desayuno del domingo», «el sábado no cenamos en casa»); false = vuelve a planificarse.' },
       diners: { type: 'integer', minimum: 1, maximum: 24, description: 'Comensales de esa comida, si los dice.' },
+      dishes: { type: 'integer', minimum: 1, maximum: 3, description: 'Platos en esa comida: «las cenas, primer y segundo plato» = 2 (con days de lunes a domingo y meal dinner); 1 = un plato único.' },
     },
     required: [],
   },
   async handler(
-    p: { days?: unknown; meal?: unknown; options?: OptionParam[]; mode?: string; every?: number; off?: boolean; diners?: number },
+    p: { days?: unknown; meal?: unknown; options?: OptionParam[]; mode?: string; every?: number; off?: boolean; diners?: number; dishes?: number },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const meal = mealOf(p?.meal)
@@ -188,8 +190,9 @@ const setWeekTypeSlot: SkillDefinition = {
     if (!meal) return text(`No he cambiado nada: falta la comida. Pregúntale solo eso, en una frase: «¿En la comida o en la cena?» (o el desayuno o la merienda, si encaja con lo que dice).`)
     if (days.length === 0) return text(`No he cambiado nada: falta el día. Pregúntale solo eso, en una frase: «¿Qué día?».`)
     const hasOptions = Array.isArray(p.options) && p.options.length > 0
-    if (!hasOptions && p.off === undefined && p.diners === undefined) {
-      return text('No he cambiado nada: dime qué va en ese hueco (options), si no hay esa comida (off) o los comensales (diners).')
+    const dishes = typeof p.dishes === 'number' && p.dishes >= 1 && p.dishes <= 3 ? (Math.round(p.dishes) as 1 | 2 | 3) : undefined
+    if (!hasOptions && p.off === undefined && p.diners === undefined && dishes === undefined) {
+      return text('No he cambiado nada: dime qué va en ese hueco (options), si no hay esa comida (off), los comensales (diners) o cuántos platos (dishes).')
     }
 
     // Each option, resolved; a dish named goes through the phase-1 search.
@@ -230,6 +233,7 @@ const setWeekTypeSlot: SkillDefinition = {
       every: typeof p.every === 'number' && p.every > 1 ? Math.round(p.every) : undefined,
       off: typeof p.off === 'boolean' ? p.off : undefined,
       diners: typeof p.diners === 'number' ? Math.round(p.diners) : undefined,
+      dishes,
     }
     // Every slot checked before writing any: all or nothing.
     const changes: Array<{ day: number; slot: WeekTypeSlot }> = []

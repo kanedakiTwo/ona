@@ -20,7 +20,9 @@ import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } fr
 import { describeWeekPlan } from '../weekPlan.js'
 import { COOKING_STYLES, householdMultiplier, isCookingStyle } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
-import { findRecipeForSlot } from '../recipeMatcher.js'
+import { loadSlotPickContext, pickForSlot, slotPickOptions } from '../menuSlotPick.js'
+import { hasConditions, parseRecipeCriteria, searchByCriteria, type RecipeCriteria } from '../recipeCriteria.js'
+import { loadFichaMenuConstraints, withFichaFilters } from '../profile/reader.js'
 import { calculateMenuCaloriesFromDB } from '../calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../nutrientCalculator.js'
 import { updateBalance } from '../nutrientBalance.js'
@@ -69,7 +71,6 @@ import { ingredientMarksOf } from '../ingredientRoles.js'
 import { shopperInviteForSignUp } from '../shopperInvite.js'
 import { SHOPPERS, asksShopper, isShopper, shopperInvites } from '@ona/shared'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
-import { schoolDinnerPool } from '../schoolMenu.js'
 import { weekHolidaySummary } from '../menuHolidays.js'
 import { isHealthMemoryKey } from '@ona/shared'
 import { moreToolsSkill } from './toolGroups.js'
@@ -638,54 +639,64 @@ const getWeeklyNutrition: SkillDefinition = {
 // get_shopping_list lives in appSkills.ts: it reads the same rolling list
 // /shopping shows (manual items, checked / in-stock state included).
 
+/**
+ * 2026-11-19: the recipes that meet every condition of a search («calabacín
+ * rápida menos de 30 minutos», «cena ligera sin arroz sin garbanzos»), never
+ * one the household can't or won't eat (allergies and diet of everyone,
+ * dislikes with whole categories, the ficha), in season. Before, the whole
+ * sentence had to be inside a name or a tag: 10 of 17 searches found nothing.
+ */
+async function searchRecipesByCriteria(ctx: SkillContext, c: RecipeCriteria): Promise<SkillResult> {
+  const own = await restrictionsFor(ctx)
+  const restrictions = await withHouseholdRestrictions(own.restrictions, ctx.userId, ctx.db).catch(() => own.restrictions)
+  const ficha = await loadFichaMenuConstraints(ctx.userId, { db: ctx.db }).catch(() => null)
+  const dislikes = ficha ? withFichaFilters({ dislikes: own.dislikes, availableEquipment: undefined }, ficha).dislikes : own.dislikes
+  const rules = compileRestrictions(restrictions, dislikes)
+  const season = detectSeason()
+  const pool = (await loadMatchableRecipes(ctx.userId, ctx.db)).filter(
+    (r: any) => !violatesRestrictions(r, rules) && (!r.seasons?.length || r.seasons.includes(season)),
+  )
+  const { exact, partial } = searchByCriteria(pool as any[], c)
+  const said = [
+    c.words.length ? c.words.join(' ') : '',
+    c.meal ? MEAL_LABEL[c.meal] : '',
+    c.light ? 'ligera' : '',
+    c.maxMinutes != null ? `≤ ${c.maxMinutes} min` : '',
+    ...c.exclude.map((x) => `sin ${x}`),
+  ].filter(Boolean).join(', ')
+  const line = (r: any) => `${r.name} (${r.totalTime ?? r.prepTime ?? '?'} min)`
+  if (exact.length) {
+    const top = exact.slice(0, 5)
+    return { data: top, summary: `Recetas que cumplen todo (${said}): ${top.map(line).join(', ')}`, uiHint: 'recipe' }
+  }
+  if (partial.length) {
+    const top = partial.slice(0, 5)
+    return { data: top, summary: `Ninguna cumple todo (${said}). Lo más cercano, con parte de lo que pide: ${top.map(line).join(', ')}. Díselo así.`, uiHint: 'recipe' }
+  }
+  return { data: [], summary: `No hay ninguna receta con todo eso (${said}). Díselo y pregúntale qué condición puede soltar.`, uiHint: 'recipe' }
+}
+
 const suggestRecipes: SkillDefinition = {
   name: 'suggest_recipes',
-  description: 'Sugiere recetas filtradas por temporada y/o tipo de comida. Devuelve hasta 5 recetas.',
+  description: 'Busca recetas del catálogo y del hogar con varias condiciones a la vez, todas juntas: ingredientes o tipo de plato («calabacín», «pollo al horno»), tiempo («rápida», «menos de 30 minutos»), «sin X» (también familias: «sin legumbres», «sin arroz»), «ligera», comida o cena, postre. Nunca devuelve lo que la casa no puede o no quiere comer. Hasta 5 recetas.',
   parameters: {
     type: 'object',
     properties: {
-      criteria: { type: 'string', description: 'Criterio de busqueda libre (ej: "rapida", "legumbres")' },
+      criteria: { type: 'string', description: 'Lo que pide, con sus palabras: "calabacín rápida menos de 30 minutos", "cena ligera sin arroz sin garbanzos".' },
       mealType: { type: 'string', description: 'Tipo de comida: breakfast, lunch, dinner' },
+      maxMinutes: { type: 'number', description: 'Opcional: minutos como mucho, en total.' },
+      exclude: { type: 'array', items: { type: 'string' }, description: 'Opcional: lo que no debe llevar ("arroz", "legumbres").' },
+      light: { type: 'boolean', description: 'Opcional: true si la quiere ligera.' },
     },
     required: [],
   },
-  async handler(params: { criteria?: string; mealType?: string }, ctx: SkillContext): Promise<SkillResult> {
-    const { db } = ctx
-    const season = detectSeason()
-
-    // Never suggest something the user can't or won't eat.
-    const { restrictions, dislikes } = await restrictionsFor(ctx)
-    const rules = compileRestrictions(restrictions, dislikes)
-    let allRecipes: any[] = (await loadMatchableRecipes(ctx.userId, db)).filter(
-      (r) => !violatesRestrictions(r, rules),
-    )
-
-    // Filter by season
-    allRecipes = allRecipes.filter((r: any) => {
-      if (!r.seasons || r.seasons.length === 0) return true
-      return r.seasons.includes(season)
-    })
-
-    // Filter by meal type
-    if (params.mealType) {
-      allRecipes = allRecipes.filter((r: any) => r.meals?.includes(params.mealType))
-    }
-
-    // Filter by criteria (search in name and tags)
-    if (params.criteria) {
-      const q = params.criteria.toLowerCase()
-      allRecipes = allRecipes.filter((r: any) =>
-        r.name.toLowerCase().includes(q) ||
-        r.tags?.some((t: string) => t.toLowerCase().includes(q))
-      )
-    }
-
-    const top5 = allRecipes.slice(0, 5)
-    const summary = top5.length > 0
-      ? `Sugerencias: ${top5.map((r: any) => `${r.name} (${r.prepTime ?? '?'}min)`).join(', ')}`
-      : 'No he encontrado recetas con esos criterios.'
-
-    return { data: top5, summary, uiHint: 'recipe' }
+  async handler(params: { criteria?: string; mealType?: string; maxMinutes?: number; exclude?: string[]; light?: boolean }, ctx: SkillContext): Promise<SkillResult> {
+    const c = parseRecipeCriteria(params.criteria)
+    if (typeof params.maxMinutes === 'number' && params.maxMinutes > 0) c.maxMinutes = Math.min(c.maxMinutes ?? Infinity, params.maxMinutes)
+    for (const x of Array.isArray(params.exclude) ? params.exclude : []) if (typeof x === 'string' && x.trim() && !c.exclude.includes(x.trim())) c.exclude.push(x.trim())
+    if (params.light) c.light = true
+    if (params.mealType && MEAL_KEYS.includes(params.mealType)) c.meal = params.mealType as Meal
+    return searchRecipesByCriteria(ctx, c)
   },
 }
 
@@ -821,7 +832,7 @@ async function pickWhatIHaveRecipe(
 
 const searchRecipes: SkillDefinition = {
   name: 'search_recipes',
-  description: 'Busca recetas por nombre.',
+  description: 'Busca recetas por nombre. Si la búsqueda trae condiciones (tiempo, «sin X», ligera, comida o cena), busca con todas a la vez como suggest_recipes.',
   parameters: {
     type: 'object',
     properties: {
@@ -831,6 +842,9 @@ const searchRecipes: SkillDefinition = {
   },
   async handler(params: { query: string }, ctx: SkillContext): Promise<SkillResult> {
     const { db } = ctx
+    // «calabacín rápida menos de 30 minutos»: conditions, not a name (2026-11-19).
+    const criteria = parseRecipeCriteria(params.query)
+    if (hasConditions(criteria)) return searchRecipesByCriteria(ctx, criteria)
 
     const results = await db
       .select({
@@ -1421,38 +1435,27 @@ const swapMeal: SkillDefinition = {
       }
     }
 
-    // Allergies / diet (profile + memory) and dislikes — same filter as the
-    // generator, with every member's allergies and diet (PRO-305).
-    const own = await restrictionsFor(ctx)
-    const dislikes = own.dislikes
-    const restrictions = await withHouseholdRestrictions(own.restrictions, userId, db)
-
-    // Fetch favorites
-    const favRows = await db
-      .select({ recipeId: userFavorites.recipeId })
-      .from(userFavorites)
-      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, await resolveScope(userId, db)))
-
-    const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
-
-    // Load recipes with ingredients for matching (a school-day dinner skips
-    // the group of the kids' lunch, PRO-224).
-    const allRecipes = await schoolDinnerPool(await loadMatchableRecipes(userId, db), menu, dayIndex, meal, db)
-    const season = detectSeason()
+    // The same pick as «Cambiar» in the app (2026-11-19, `menuSlotPick.ts`):
+    // everyone's allergies and diet (PRO-305), the ficha (dislikes with whole
+    // categories, «sin X» saved as a note, weekly limits, light meals,
+    // equipment), favourites and ratings, the week's vetoes, a reasonable time
+    // on a working day, never a sweet as lunch or dinner and, while one fits,
+    // a main food not already in the week. Before, a random catalogue recipe
+    // with only allergies and dislikes: a khachapuri of 151 min for a Tuesday
+    // dinner, a sweet mutabbaq as a Sunday dinner, hummus for «sin legumbres».
+    const pickCtx = await loadSlotPickContext(menu, userId)
+    const pick = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds, days)
 
     // «Semana tipo» (D-182): another recipe of the type it asks for there.
     const wtType = await weekTypeDishTypeAt(userId, menu.weekStart, dayIndex, meal, 0, db)
-    const newRecipe = findRecipeForSlot(poolOfDishType(allRecipes, wtType), {
-      meal: meal as Meal,
-      season,
-      usedRecipeIds,
-      restrictions,
-      dislikes,
-      favoriteRecipeIds,
-    })
+    const newRecipe = pickForSlot(pick, null, (p) => poolOfDishType(p, wtType))
 
     if (!newRecipe) {
-      return { data: null, summary: 'No he encontrado una receta alternativa para ese hueco.', uiHint: 'text' }
+      return {
+        data: null,
+        summary: `No he cambiado nada: no hay ninguna receta que encaje en la ${slotLabel} con lo que sabemos de la casa (gustos y «sin…», reglas del menú, tiempo de ese día, lo que ya hay en la semana). Díselo así y pregúntale qué le apetece; con un plato nombrado, vuelve a llamar con recipeName.`,
+        uiHint: 'text',
+      }
     }
 
     // Update the menu (the slot keeps its «Solo hoy», PRO-102)
@@ -2978,7 +2981,7 @@ const addRecipeToMine: SkillDefinition = {
 const updateMemory: SkillDefinition = {
   name: 'update_memory',
   description:
-    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
+    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). «Sin X», «no me sugieras X», «prescindir de X», «no comemos X» van SIEMPRE en dislikes (no en notes), también las familias enteras: «legumbres», «arroz», «patata», «casquería», «cerdo», «carne roja», «marisco», «pescado» (el menú las entiende con todo lo que llevan). Las notes no cambian el menú: lo que es una regla del menú va en dislikes, en note_ficha_fact (menu_rule) o en la semana tipo. Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
   parameters: {
     type: 'object',
     properties: {

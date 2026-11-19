@@ -23,6 +23,7 @@ vi.mock('../services/menuGenerator.js', () => ({
 }))
 vi.mock('../services/recipeMatcher.js', () => ({
   findRecipeForSlot: vi.fn(() => ({ id: 'r-new', name: 'Receta nueva' })),
+  normaliseEquipment: (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim(),
 }))
 vi.mock('../services/calorieCalculator.js', () => ({
   calculateMenuCaloriesFromDB: vi.fn(async () => 12345),
@@ -66,6 +67,18 @@ vi.mock('../services/householdAllergies.js', async (importOriginal) => ({
 vi.mock('../services/menuFit.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/menuFit.js')>()),
   evaluateAndSaveMenuFit: vi.fn(async () => null),
+}))
+// The ficha (its own reads are tested in profileReader.test.ts): none here.
+vi.mock('../services/profile/reader.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../services/profile/reader.js')>()
+  return { ...orig, loadFichaMenuConstraints: vi.fn(async () => orig.fichaMenuConstraints(null)) }
+})
+// «Cambiar» without a dish (2026-11-19): the app's slot pick, whose DB reads
+// and rules are tested in menuSlotPick.test.ts; here only what swap_meal passes it.
+vi.mock('../services/menuSlotPick.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/menuSlotPick.js')>()),
+  loadSlotPickContext: vi.fn(async () => ({ restrictions: [] })),
+  slotPickOptions: vi.fn(async (_c: unknown, _m: unknown, _d: number, meal: string) => ({ pool: [], preferred: [], options: { meal, restrictions: [] } })),
 }))
 // «Semana tipo» (D-182): no slot asks for a dish type in these weeks.
 vi.mock('../services/weekType.js', () => ({
@@ -483,8 +496,8 @@ describe('suggest_recipes', () => {
       seasons: ['summer'],
       prepTime: 20,
     }))
-    // queries: user restrictions → visible recipes → menu owner (audit options) → their ingredients → step counts
-    const db = makeDb([{ restrictions: [] }], recipes, [], [], [])
+    // queries: user restrictions → visible recipes → their ingredients → step counts (the ficha is mocked)
+    const db = makeDb([{ restrictions: [] }], recipes, [], [])
     const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
     expect(r.uiHint).toBe('recipe')
     expect(r.data).toBeTruthy()
@@ -506,7 +519,8 @@ describe('suggest_recipes', () => {
       { recipeId: 'r-pollo', ingredientId: 'i1', ingredientName: 'pollo entero', quantity: 1, unit: 'u', allergenTags: [] },
       { recipeId: 'r-crema', ingredientId: 'i2', ingredientName: 'calabaza', quantity: 500, unit: 'g', allergenTags: [] },
     ]
-    const db = makeDb([{ restrictions: ['sin gluten', 'vegetariano'] }], rows, /* menu owner */ [], ingredientRows, /* step counts */ [])
+    // The ficha is mocked here (no read for the audit's options).
+    const db = makeDb([{ restrictions: ['sin gluten', 'vegetariano'] }], rows, ingredientRows, /* step counts */ [])
     const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
     expect(r.summary).toContain('Crema de calabaza')
     expect(r.summary).not.toContain('Espaguetis')
@@ -638,49 +652,39 @@ describe('swap_meal', () => {
       id: 'm-1',
       days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
-    // queries: select menu, select user(restrictions), select favorites,
-    // loadRecipesWithIngredients → select recipes, menu owner (audit
-    // options), select riRows, step counts, then update menu. The candidate is the user's own recipe, so
-    // the catalogue quality gate (PRO-73) doesn't apply to it.
-    const db = makeDb(
-      [menu],                                       // select menu
-      [{ restrictions: [] }],                       // select user restrictions
-      [],                                           // select favorites
-      [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['lunch'], seasons: [], tags: [] }],   // recipes
-      [],                                           // menu owner (audit options)
-      [],                                           // recipe ingredients
-      [],                                           // step counts
-      [], [],                                       // dislike overrides (PRO-1142): no household, no «Me apetece»
-      [{ ...menu, days: [...menu.days] }],          // returning updated
-    )
+    // queries: select menu, then update menu (the pick's own reads are menuSlotPick's).
+    const db = makeDb([menu], [{ ...menu, days: [...menu.days] }])
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
     expect(r.summary).toContain('Cambiado')
   })
 
-  // PRO-305 (Seguridad): the auto-pick reads every member's allergies, not only the caller's.
-  it('auto-picks with the restrictions of everyone in the household', async () => {
-    const { withHouseholdRestrictions } = await import('../services/householdAllergies.js')
+  // PRO-305 + 2026-11-19: the auto-pick is the app's «Cambiar» (everyone's
+  // allergies, the ficha, the week), with the week as it is.
+  it('auto-picks with the app’s slot pick and the whole week', async () => {
+    const { loadSlotPickContext, slotPickOptions } = await import('../services/menuSlotPick.js')
     const { findRecipeForSlot } = await import('../services/recipeMatcher.js')
-    vi.mocked(withHouseholdRestrictions).mockImplementationOnce(async (own) => [...own, 'marisco'])
     const menu = {
       id: 'm-1',
       days: Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
-    const db = makeDb(
-      [menu],
-      [{ restrictions: ['sin gluten'] }],
-      [],
-      [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['dinner'], seasons: [], tags: [] }],
-      [],
-      [],
-      [],
-      [], [],
-      [{ ...menu, days: [...menu.days] }],
-    )
+    vi.mocked(loadSlotPickContext).mockImplementationOnce(async () => ({ restrictions: ['sin gluten', 'marisco'] }) as any)
+    vi.mocked(slotPickOptions).mockImplementationOnce(async (c: any) => ({ pool: [], preferred: [], options: { meal: 'dinner', restrictions: c.restrictions } }) as any)
     vi.mocked(findRecipeForSlot).mockClear()
-    await skill.handler({ dayIndex: 0, meal: 'dinner' }, ctx(db))
-    expect(vi.mocked(withHouseholdRestrictions).mock.calls.at(-1)?.[0]).toEqual(['sin gluten'])
+    await skill.handler({ dayIndex: 0, meal: 'dinner' }, ctx(makeDb([menu], [{ ...menu, days: [...menu.days] }])))
+    expect(vi.mocked(loadSlotPickContext).mock.calls.at(-1)?.[1]).toBe('u-1')
+    const call = vi.mocked(slotPickOptions).mock.calls.at(-1)!
+    expect(call.slice(2, 4)).toEqual([0, 'dinner'])
+    expect(call[5]).toBe(menu.days)
     expect(vi.mocked(findRecipeForSlot).mock.calls.at(-1)?.[1].restrictions).toEqual(['sin gluten', 'marisco'])
+  })
+
+  it('says so when nothing fits, and changes nothing', async () => {
+    const { findRecipeForSlot } = await import('../services/recipeMatcher.js')
+    vi.mocked(findRecipeForSlot).mockReturnValue(undefined as any)
+    const menu = { id: 'm-1', days: Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })) }
+    const r = await skill.handler({ dayIndex: 1, meal: 'dinner' }, ctx(makeDb([menu]))).finally(() => vi.mocked(findRecipeForSlot).mockReturnValue({ id: 'r-new', name: 'Receta nueva' } as any))
+    expect(r.summary).toMatch(/^No he cambiado nada: no hay ninguna receta que encaje/)
+    expect(menu.days[1].dinner.dishes[0].recipeId).toBe('r-old')
   })
 
   // PRO-238 (Familia Ruiz, 2026-10-18): «pollo empanado» on Tuesday 20 while
@@ -741,17 +745,7 @@ describe('swap_meal', () => {
 
     it('when the system picks the new dish', async () => {
       const menu = menuWithServings()
-      const db = makeDb(
-        [menu],
-        [{ restrictions: [] }],
-        [],
-        [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['lunch'], seasons: [], tags: [] }],
-        [], // menu owner (audit options)
-        [],
-        [],
-        [], [], // dislike overrides (PRO-1142)
-        [{ ...menu, days: [...menu.days] }],
-      )
+      const db = makeDb([menu], [{ ...menu, days: [...menu.days] }])
       await skill.handler({ dayIndex: 3, meal: 'lunch' }, ctx(db))
       expect(menu.days[3].lunch).toEqual({ servings: 4, dishes: [{ kind: 'recipe', recipeId: 'r-new', recipeName: 'Receta nueva' }] })
     })

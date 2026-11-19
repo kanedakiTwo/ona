@@ -43,6 +43,16 @@ import type { MealDishCounts, Dish, RecipeDish, Course, FoodGroup } from '@ona/s
 import { dishTypeInfo } from '@ona/shared'
 import { loadSchoolDinnerAvoidGroups, withoutFoodGroup } from './schoolMenu.js'
 import { everydayPolicy, everydayTries, isDiscovery, loadIsStarting, type EverydayPolicy } from './everydayMenu.js'
+import { countsFor, isLightDish, withinLimits, type WeeklyLimit } from './menuRules.js'
+
+/**
+ * What the household said about its menu (2026-11-19, `menuRules.ts`):
+ * «arroz como mucho un día a la semana» and «cenas ligeras».
+ */
+export interface MenuRuleOptions {
+  weeklyLimits?: readonly WeeklyLimit[]
+  lightMeals?: readonly string[]
+}
 
 export { defaultTemplate, normalizeMealTemplate, extractMealDiners, extractMealDishCounts } from './legacyPlantilla.js'
 
@@ -129,6 +139,12 @@ export function buildRandomMenu(
    * most `discoveries` from outside. Absent = draw as before.
    */
   everyday?: EverydayPolicy | null,
+  /**
+   * Weekly limits (never more dishes with that food than said; a slot none
+   * fits stays without that food) and light meals (only light dishes there
+   * while one fits, `isLightDish`).
+   */
+  menuRules?: MenuRuleOptions,
 ): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
   // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
   // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
@@ -149,6 +165,14 @@ export function buildRandomMenu(
     }
     return proteinById.get(id) ?? null
   }
+  const recipeOf = (id: string) => (recipeById ??= new Map(allRecipes.map((x) => [x.id, x]))).get(id)
+  // Weekly limits: how many dishes of each the week has so far.
+  const limits = menuRules?.weeklyLimits ?? []
+  const limitCount = limits.map(() => 0)
+  const countPick = (r: RecipeWithCourse | undefined) => {
+    if (r) limits.forEach((l, i) => { if (countsFor(r, l.target)) limitCount[i]++ })
+  }
+  const capped = <T extends RecipeWithCourse>(p: T[]): T[] => (limits.length ? withinLimits(p, limits, limitCount) : p)
 
   // If there are locked slots, pre-fill them and mark as used
   if (existingDays) {
@@ -161,7 +185,10 @@ export function buildRandomMenu(
         if (dayLocks[meal] && slot) {
           // Pre-mark all recipe dishes in locked slots as used
           for (const dish of slot.dishes ?? []) {
-            if (dish.kind === 'recipe') usedRecipeIds.add(dish.recipeId)
+            if (dish.kind === 'recipe') {
+              usedRecipeIds.add(dish.recipeId)
+              if (limits.length) countPick(recipeOf(dish.recipeId))
+            }
           }
         }
       }
@@ -184,12 +211,15 @@ export function buildRandomMenu(
     const slotPool = avoidGroup ? withoutFoodGroup(allRecipes, avoidGroup) : allRecipes
     prefilled.set(key, specs.map((spec, position) => {
       if (spec.kind === 'preset') {
-        if (spec.dish.kind === 'recipe') usedRecipeIds.add(spec.dish.recipeId)
+        if (spec.dish.kind === 'recipe') {
+          usedRecipeIds.add(spec.dish.recipeId)
+          if (limits.length) countPick(recipeOf(spec.dish.recipeId))
+        }
         return { ...spec.dish } as Dish
       }
       if (spec.kind !== 'type') return undefined
-      // Only recipes of that type, with every filter as usual (the school menu too).
-      const typed = slotPool.filter((r) => r.dishTypes?.includes(spec.type))
+      // Only recipes of that type, with every filter as usual (the school menu too) and the weekly limits.
+      const typed = capped(slotPool.filter((r) => r.dishTypes?.includes(spec.type)))
       const tries = [...(onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id))] : []), ...everydayTries([typed], everyday, discoveriesLeft)]
       const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
       let picked: RecipeWithCourse | undefined
@@ -198,6 +228,7 @@ export function buildRandomMenu(
         if (onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
         usedRecipeIds.add(picked.id)
         notePick(picked.id)
+        countPick(picked)
         return { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null, fromWeekType: { type: spec.type } } as RecipeDish
       }
       warnings.push(`dish_type_missing_${spec.type}_${meal}_d${dayIndex}`)
@@ -304,10 +335,14 @@ export function buildRandomMenu(
         // Favourites first (PRO-377), even over the protein rule, which only
         // asks for another protein when there is one. «De diario» (PRO-1200)
         // also goes before the protein rule.
-        const pools = pool !== slotPool ? [pool, slotPool] : [slotPool]
-        const tries = [...(onlyFavoriteIds ? pools.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))) : []), ...everydayTries(pools, everyday, discoveriesLeft)]
+        // Weekly limits are hard; «cenas ligeras» goes first while a light dish fits.
+        const pools = (pool !== slotPool ? [pool, slotPool] : [slotPool]).map(capped)
+        const triesOf = (ps: RecipeWithCourse[][]) => [...(onlyFavoriteIds ? ps.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))) : []), ...everydayTries(ps, everyday, discoveriesLeft)]
+        const light = course !== 'dessert' && !!menuRules?.lightMeals?.includes(meal)
+        const tries = light ? [...triesOf(pools.map((p) => p.filter((r) => isLightDish(r)))), ...triesOf(pools)] : triesOf(pools)
         let picked: RecipeWithCourse | undefined
         for (const p of tries) if ((picked = findForCourse(p, course, opts) as RecipeWithCourse | undefined)) break
+        if (picked && light && !isLightDish(picked)) warnings.push(`light_short_${meal}_d${dayIndex}`)
         if (picked && onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
         if (!picked) {
           warnings.push(`no_${course ?? 'main'}_available_${meal}_d${dayIndex}`)
@@ -315,6 +350,7 @@ export function buildRandomMenu(
         }
         usedRecipeIds.add(picked.id)
         notePick(picked.id)
+        countPick(picked)
         const missing = missingType.get(slotKey(dayIndex, meal))?.get(k)
         dishes.push({
           kind: 'recipe',
@@ -492,16 +528,22 @@ export async function generateMenu(
   // equipment missing right now («sin horno hasta nuevo aviso»); the
   // cuisines they like and the cook's level weigh the draw (PRO-1201).
   const ficha = await loadFichaMenuConstraints(userId, { db })
-  const { dislikes, availableEquipment, unavailableEquipment, tastes } = withFichaFilters(
+  // What the household said about its menu (2026-11-19): «sin legumbres»
+  // joins the dislikes (a category counts with every food in it), «arroz como
+  // mucho un día a la semana» and «cenas ligeras» are rules of the draw — from
+  // the ficha's `menu_rule` and from what was saved as a note.
+  const { dislikes, availableEquipment, unavailableEquipment, tastes, weeklyLimits, lightMeals } = withFichaFilters(
     {
       dislikes: Array.isArray(dislikesValue) ? (dislikesValue as string[]) : [],
       availableEquipment: Array.isArray(equipmentValue)
         ? new Set<string>((equipmentValue as string[]).map(normaliseEquipment))
         : undefined,
       tastes: memoryTastes(memory),
+      notes: [memory?.notes?.value, memory?.nutrition_principles?.value].flatMap((v) => (Array.isArray(v) ? v : [])),
     },
     ficha,
   )
+  const menuRules: MenuRuleOptions = { weeklyLimits, lightMeals }
   // Per-day time limits (PRO-138): total or hands-on minutes; «Rapidez» /
   // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
   // Festivos (PRO-226): a weekday holiday of the household's comunidad
@@ -593,6 +635,7 @@ export async function generateMenu(
       plan.specs,
       tastes,
       everyday,
+      menuRules,
     )
 
     // Verify the menu has at least some recipes
@@ -691,6 +734,7 @@ export async function generateMenu(
     plan.specs,
     tastes,
     everyday,
+    menuRules,
   )
   wishes(fallback.warnings)
   return withShort({ days: finish(fallback.days), warnings: [...plan.warnings, ...fallback.warnings] })

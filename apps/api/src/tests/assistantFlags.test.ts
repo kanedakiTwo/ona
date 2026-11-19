@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFlagItems,
+  buildHallazgos,
   countFlags,
   detectFlags,
   isUnverifiedDone,
@@ -15,6 +16,7 @@ import {
   traceHasChange,
   type FlagRow,
 } from '../services/assistantFlags.js'
+import { flagsForAgents } from '../services/agentView.js'
 import { healthClaimWords, HEALTH_EVAL_CASES } from '../services/assistant/healthGuard.js'
 import { computeStats, buildTranscripts, type ReviewRow } from '../services/whatsapp/reviewer.js'
 
@@ -164,5 +166,48 @@ describe('buildFlagItems', () => {
     expect(reviewerCategory('accion_no_hecha')).toBe('unverified_done')
     expect(reviewerCategory('rechazo_indebido')).toBe('error_refusal')
     expect(reviewerCategory('lentitud')).toBe('other')
+  })
+})
+
+describe('hallazgos for the agents (D-189)', () => {
+  // A finding the model wrote badly on purpose: a name, a phone, an email and a quote in the
+  // sentences the agents read, and a name inside the key.
+  const leaky = {
+    severity: 'alta',
+    category: 'pregunta_innecesaria',
+    when: '21:05',
+    userMessage: 'Soy Lucía, mi número es +34 612 345 678',
+    whatHappened: 'A Lucía le preguntó dos veces',
+    expected: '',
+    suggestedFix: '',
+    canal: 'app',
+    clave: 'checkin.lucia',
+    patron: 'Con Lucía (612 345 678, lucia@correo.es) Mimo respondió «no puedo, Lucía tiene diabetes»',
+    donde: 'guia_aviso:dinner_checkin',
+    arreglo: 'Una sola pregunta; ver https://wa.me/34612345678',
+    prueba: 'Un test de la guía con "quiero lentejas" como entrada',
+    tipo: 'arreglo',
+    dias: 3,
+    regresion: true,
+  }
+  const reviews = [
+    { day: '2026-11-17', findings: [{ severity: 'media', category: 'otro', when: '', userMessage: '', whatHappened: 'sin clave', expected: '', suggestedFix: '' }] },
+    { day: '2026-11-18', findings: [leaky] },
+  ]
+
+  it('keeps the structured fields and none of the user text (name, phone, email, link, quote)', () => {
+    const out = buildHallazgos(reviews, ['Lucía'])
+    expect(out).toHaveLength(1) // the finding without a key (before D-189) stays out
+    expect(out[0]).toMatchObject({ date: '2026-11-18', canal: 'app', clave: 'checkin.x', donde: 'guia_aviso:dinner_checkin', tipo: 'arreglo', gravedad: 'alta', dias: 3, regresion: true })
+    const text = JSON.stringify(out)
+    expect(text).not.toMatch(/Luc[ií]a|lucia|612|345 678|@correo|wa\.me|lentejas|diabetes|no puedo/)
+    expect(Object.keys(out[0]).sort()).toEqual(['arreglo', 'canal', 'categoria', 'clave', 'date', 'dias', 'donde', 'gravedad', 'patron', 'prueba', 'regresion', 'tipo'])
+  })
+
+  it('the read-token view checks every value again, even without the names', () => {
+    const v = flagsForAgents({ items: [], hallazgos: [{ ...leaky, date: '2026-11-18', gravedad: 'alta', categoria: 'inventada', canal: 'fax', tipo: 'x', dias: 99, extra: 'Lucía' }] })
+    expect(v.hallazgos).toHaveLength(1)
+    expect(v.hallazgos[0]).toMatchObject({ canal: null, tipo: null, categoria: 'otro', dias: 15, regresion: true })
+    expect(JSON.stringify(v.hallazgos)).not.toMatch(/612|345 678|@correo|wa\.me|lentejas|diabetes|extra/)
   })
 })

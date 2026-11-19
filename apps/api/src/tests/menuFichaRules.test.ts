@@ -53,6 +53,7 @@ describe('a category is every food in it (legumbres as marisco)', () => {
   it.each([
     ['legumbres', chili, true], ['legumbres', hummus, true], ['legumbres', lentejas, true], ['legumbres', tofu, true],
     ['legumbres', salmonSoja, false], ['legumbres', judiasVerdes, false],
+    ['legumbres', recipe('Guisantes con jamón', ['guisantes', 'jamón serrano']), true], ['legumbres', recipe('Habas salteadas', ['habas frescas', 'cebolla']), true],
     ['arroz', cebollasArroz, true], ['el arroz', cebollasArroz, true], ['arroz', ensaladaArroz, false],
     ['casquería', higadillos, true], ['vísceras', oreja, true], ['casqueria', recipe('Lenguas de gato', ['harina', 'azúcar', 'mantequilla']), false],
     ['cerdo', oreja, true], ['cerdo', salmonSoja, false], ['carne roja', cebollasArroz, true], ['patatas', recipe('Patatas a lo pobre', ['patata', 'cebolla']), true],

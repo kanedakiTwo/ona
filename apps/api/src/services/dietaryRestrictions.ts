@@ -236,12 +236,12 @@ export interface FoodGroup {
   unless?: readonly RegExp[]
 }
 
-/** Every dried legume and what is made of it (Miguel, 2026-11-19: «todo tipo de legumbres»). */
+/** Every legume, dried or fresh (peas, broad beans), and what is made of it (Miguel, 2026-11-19: «todo tipo de legumbres»); not «judías verdes». */
 export const LEGUME_TERMS = [
   'legumbre', 'lenteja', 'garbanzo', 'alubia', 'judion', 'judias blancas', 'judia blanca', 'judias pintas', 'judia pinta',
   'judias rojas', 'judia roja', 'judias negras', 'judia negra', 'judias secas', 'judia seca', 'judias de careta',
   'frijol', 'frijoles', 'poroto', 'habichuela', 'faba', 'fabe', 'fabada', 'pocha', 'verdina', 'caparron', 'mongeta',
-  'garrofon', 'guisantes secos', 'guisante seco', 'habas secas', 'haba seca', 'soja', 'edamame', 'tofu', 'tempeh',
+  'garrofon', 'guisante', 'haba', 'soja', 'edamame', 'tofu', 'tempeh',
   'azuki', 'adzuki', 'mungo', 'altramuz', 'altramuces', 'hummus', 'humus', 'falafel', 'dal', 'dahl', 'chana', 'masoor',
 ]
 const NOT_LEGUME = [

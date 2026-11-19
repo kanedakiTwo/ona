@@ -3,7 +3,7 @@
  * sign-ups, a household sent «2 adultos» and «Casi a diario» in a row and
  * Mimo asked again; another's «No» answered another question. Now the plain
  * texts that arrive from the same number within `windowMs` of the previous
- * one (8 s) are processed together, in order, as one message to Mimo.
+ * one (5 s) are processed together, in order, as one message to Mimo.
  *
  * Only plain texts wait and join. A control word (BAJA, ALTA, «humano»), a
  * link code, a tapped button, a photo, a voice note or a document is never
@@ -22,7 +22,7 @@ import { controlCommand } from './commands.js'
 import { isLinkAttempt } from './linking.js'
 
 /** Silence after the last text before the burst is answered. */
-export const COALESCE_WINDOW_MS = 8_000
+export const COALESCE_WINDOW_MS = 5_000
 /** A burst never waits longer than this from its first text. */
 export const COALESCE_MAX_MS = 20_000
 

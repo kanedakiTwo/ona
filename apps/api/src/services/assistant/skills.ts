@@ -1233,7 +1233,7 @@ const completeOnboarding: SkillDefinition = {
         type: 'array',
         items: { type: 'string' },
         maxItems: 30,
-        description: 'Los platos que dice que hacen a menudo (o que les gustan), tal como los dice, cada uno por separado: "salmon al horno con patatas", "pollo a la plancha con brocoli". Entran en su primer menu. Si no ha dicho ninguno, omitelo.',
+        description: 'Los platos que dice que hacen a menudo (o que les gustan), todos los que diga (sin limite), tal como los dice, cada uno por separado: "salmon al horno con patatas", "pollo a la plancha con brocoli". Entran en su primer menu. Si no ha dicho ninguno, omitelo.',
       },
       dislikes: {
         type: 'array',

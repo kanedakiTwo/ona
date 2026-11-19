@@ -56,7 +56,9 @@ describe('«¿hiciste la cena?» and «¿repetimos?» are one message', () => {
     expect(m.type).toBe('buttons')
     if (m.type !== 'buttons') return
     expect(m.text).toContain('*Merluza en salsa*')
-    expect(m.text).toContain('¿La repetimos?')
+    expect(m.text).toContain('si la repetimos')
+    // 18-nov: one question only (it asked three).
+    expect(m.text.match(/\?/g)).toHaveLength(1)
     expect(m.buttons.map((b) => b.title)).toEqual(CHECKIN_RATING_BUTTONS.map((b) => b.title))
     expect(m.buttons.every((b) => b.title.length <= 20)).toBe(true)
     expect(r[0].guide?.facts.join(' ')).toContain('si la repetimos')

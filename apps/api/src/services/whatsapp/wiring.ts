@@ -24,7 +24,7 @@ import { isUserAllowed } from './config.js'
 import { isOnFreePlan } from '../accountAccess.js'
 import * as store from './store.js'
 import * as client from './client.js'
-import { writeGuided } from './outbound.js'
+import { recordDinnerCheckinAnswer, writeGuided } from './outbound.js'
 import type { InboundDeps } from './inbound.js'
 import { fillRecipeNames } from '../menuNames.js'
 import type { InboundMessage } from './webhookParser.js'
@@ -122,7 +122,9 @@ export function buildInboundDeps(): InboundDeps {
       await note({ cap: 'ia', spentEur: cap.spentEur, capEur: cap.capEur })
       return { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) }
     },
-    recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
+    recordUsage: (userId, usage, opts) => recordAdvisorUsage(userId, usage, db, undefined, opts),
+    // 18-nov: a tapped «¿hiciste la cena?» button, recorded without the model.
+    recordDinnerCheckin: (userId, answer, checkinAt) => recordDinnerCheckinAnswer(userId, answer, checkinAt),
     isPaused: (userId) => isOnFreePlan(userId),
     // The week the turn generated or read (or the user's latest), read back
     // after the whole turn, scoped to the caller's household like every menu read.

@@ -49,7 +49,7 @@ describe('dinner check-in (PRO-274)', () => {
         expect(g.dishes).toEqual([name])
         expect(g.facts.some((f) => f.startsWith(`«${name}» es `))).toBe(true)
       }
-      expect(cookingReminderGuide(name, 60, '21:00').dishes).toEqual([name])
+      expect(cookingReminderGuide(name, 60, '21:00', { hour: 19, minute: 50 }).dishes).toEqual([name])
     })
 
     it(`«${name}»: no button carries a gender`, () => {

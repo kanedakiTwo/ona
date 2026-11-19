@@ -28,6 +28,8 @@ import {
   withText,
   parseTemplateMap,
   PROACTIVE_KINDS,
+  BUTTONS_NEED_MIMO,
+  withoutMimoButtonAvisos,
   type ChannelOutcome,
   type MadridParts,
   type PlannedMessage,
@@ -179,7 +181,8 @@ async function loadTodayDay(userId: string, parts: MadridParts): Promise<DayMenu
 }
 
 async function loadTodayDinner(userId: string, parts: MadridParts): Promise<TodayDinner | null> {
-  const day = await loadTodayDay(userId, parts)
+  const menu = await latestMenuForWeek(userId, mondayOf(parts.isoDate, parts.weekday))
+  const day = (menu?.days as DayMenu[] | undefined)?.[parts.weekday] ?? null
   const dishes = (day?.dinner?.dishes ?? []) as Array<{ kind: string; recipeId?: string; recipeName?: string; text?: string }>
   const recipeDishes = dishes.filter((d) => d.kind === 'recipe' && d.recipeId)
   if (recipeDishes.length === 0) return null
@@ -194,7 +197,43 @@ async function loadTodayDinner(userId: string, parts: MadridParts): Promise<Toda
     names: recipeDishes.map((d) => d.recipeName ?? 'la cena'),
     recipeIds: recipeDishes.map((d) => d.recipeId!),
     totalMinutes: minutes.length ? Math.max(...minutes) : null,
+    ...(menu ? { menuId: menu.id } : {}),
   }
+}
+
+/**
+ * 18-nov: a tapped «¿hiciste la cena?» button, recorded without the model
+ * (it cost a turn, and over the monthly cap the answer was lost). On the day
+ * the check-in went out: «Sí» logs that dinner as cooked (once: not if
+ * something was logged since the check-in), and «¡a repetir!» / «estuvo
+ * bien» rate it 5 / 3, through the same app routes as `log_cooked` and
+ * `update_recipe_notes`. Null when that day has no dinner recipe (the tap
+ * then goes to Mimo as before).
+ */
+export async function recordDinnerCheckinAnswer(
+  userId: string,
+  answer: { cooked: boolean; rating: number | null },
+  checkinAt: Date,
+): Promise<{ name: string } | null> {
+  const parts = madridParts(checkinAt)
+  const dinner = await loadTodayDinner(userId, parts)
+  const recipeId = dinner?.recipeIds?.[0]
+  if (!dinner || !recipeId) return null
+  if (!answer.cooked) return { name: dinner.names[0] }
+  const api = appApiFor(userId, { channel: 'whatsapp' })
+  const [logged] = await db
+    .select({ id: cookLogs.id })
+    .from(cookLogs)
+    .where(and(eq(cookLogs.userId, userId), gte(cookLogs.cookedAt, checkinAt)))
+    .limit(1)
+  if (!logged) {
+    await api('POST', '/cook-logs', {
+      recipeId,
+      ...(dinner.menuId ? { menuId: dinner.menuId, dayIndex: parts.weekday, meal: 'dinner' } : {}),
+    })
+  }
+  if (answer.rating) await api('PUT', `/recipes/${recipeId}/notes`, { rating: answer.rating })
+  return { name: dinner.names[0] }
 }
 
 async function cookedToday(userId: string, parts: MadridParts): Promise<boolean> {
@@ -450,8 +489,12 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
           freezerItemsDue(await listPantryForUser(link.userId, undefined, { location: 'congelador' }), now),
         webUrl: env.WEB_PUBLIC_URL,
       })
-      if (planned.length === 0) continue
-      await sendMoment(link, planned, parts.isoDate, now)
+      // 18-nov: over the monthly cap, no avisos whose buttons need Mimo.
+      const toSend = planned.some((p) => BUTTONS_NEED_MIMO.has(p.kind))
+        ? withoutMimoButtonAvisos(planned, await guidedOverBudget(link.userId))
+        : planned
+      if (toSend.length === 0) continue
+      await sendMoment(link, toSend, parts.isoDate, now)
     } catch (err: any) {
       console.error(`[whatsapp] proactive tick failed for ${link.userId}:`, err?.message ?? err)
     }

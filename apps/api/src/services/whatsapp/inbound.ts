@@ -1,6 +1,6 @@
 import type { AssistantResponse, ChatMessage, ToolTrace } from '../assistant/types.js'
 import type { ChatOptions } from '../assistant/engine.js'
-import type { TokenUsage } from '../advisorBudget.js'
+import { BUDGET_WARNING_LINE, crossesBudgetWarning, type TokenUsage } from '../advisorBudget.js'
 import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
@@ -8,14 +8,15 @@ import { lateDinnerCheckinNote } from './lateCheckin.js'
 import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
 import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, WA_CAPTION_MAX, type OutboundMessage } from './render.js'
 import { extractOptions, toWhatsAppMarkup } from './format.js'
-import { isShoppingItemList, shoppingListDigest } from '../shoppingText.js'
+import { shoppingItemsOf, shoppingListDigest } from '../shoppingText.js'
 import { captionVariants, type WeekView } from '../menuText.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
-import { needsReturnDisclosure, withReturnDisclosure } from './aiNotice.js'
+import { needsReturnDisclosure, stripAiSignature, withReturnDisclosure } from './aiNotice.js'
+import { CHECKIN_ANSWER_WINDOW_MS, checkinAnswerOf, checkinConfirmation, type CheckinAnswer } from './checkinButtons.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
 import {
   ASK_SOURCE_COPY,
@@ -96,14 +97,26 @@ export interface InboundDeps {
     history: ChatMessage[],
     opts: ChatOptions,
   ) => Promise<AssistantResponse & { usage: TokenUsage }>
-  checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number }>
+  /** `spentMicros`: Mimo's spend so far this month (for the 80 % notice); absent → no notice. */
+  checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number; spentMicros?: number }>
   /**
    * PRO-385: the household is on Gratis (trial over, no plan; never before
    * launch day). No Mimo: its messages get, once a day, the notice to choose
    * a plan. Absent → never on Gratis.
    */
   isPaused?: (userId: string) => Promise<boolean>
-  recordUsage: (userId: string, usage: TokenUsage) => Promise<void>
+  /**
+   * Meters a turn: always in the cost ledger; in Mimo's monthly total unless
+   * `countsTowardBudget` is false (the WhatsApp sign-up and its first menu,
+   * 18-nov). Returns the micro-euros added to that total (void → 0).
+   */
+  recordUsage: (userId: string, usage: TokenUsage, opts?: { countsTowardBudget?: boolean }) => Promise<number | void>
+  /**
+   * 18-nov: a tapped «¿hiciste la cena?» button, recorded on the day the
+   * check-in went out (`checkinAt`) without the model. Null = that day has no
+   * dinner recipe to record (the tap goes to Mimo). Absent → always Mimo.
+   */
+  recordDinnerCheckin?: (userId: string, answer: CheckinAnswer, checkinAt: Date) => Promise<{ name: string } | null>
   /** Speech-to-text for voice notes. Absent → voice notes get a polite "escríbemelo". */
   transcribe?: (audio: Buffer, mimeType: string) => Promise<string>
   /** Silence before the generic "me pongo con ello" (ms). Tests shorten it. */
@@ -219,9 +232,9 @@ async function loadMenuDigest(
 
 function shoppingDigestOf(response: AssistantResponse): string | null {
   const tools = response.toolsUsed ?? []
-  return tools.some((t) => SHOPPING_DIGEST_TOOLS.has(t)) && isShoppingItemList(response.data)
-    ? shoppingListDigest(response.data)
-    : null
+  if (!tools.some((t) => SHOPPING_DIGEST_TOOLS.has(t))) return null
+  const items = shoppingItemsOf(response.data)
+  return items ? shoppingListDigest(items) : null
 }
 
 /**
@@ -568,6 +581,67 @@ export function isSilentEmoji(msg: InboundMessage): boolean {
   return msg.kind === 'text' && isEmojiOnly(msg.text)
 }
 
+/**
+ * Words of a message that only thanks or acknowledges («gracias», «muchas
+ * gracias», «vale», «ok», «genial», «perfecto», «muy bien»…). `CORE`: at
+ * least one of these, so «de» or «muy» alone aren't one.
+ */
+const COURTESY_CORE = new Set([
+  'gracias', 'vale', 'ok', 'okay', 'okey', 'oki', 'genial', 'perfecto', 'perfecta', 'bien', 'estupendo', 'estupenda',
+  'guay', 'fenomenal', 'entendido', 'acuerdo', 'super', 'buenisimo',
+])
+const COURTESY_EXTRA = new Set(['muchas', 'muchisimas', 'mil', 'muy', 'de', 'mimo'])
+
+/**
+ * Pure: a text that is only thanks or an acknowledgement, in any mix, with
+ * emoji or punctuation: «Gracias!», «vale, gracias 👍», «Perfecto, muchas
+ * gracias Mimo». «Sí», «No» or anything that asks for something are not.
+ */
+export function isCourtesyOnly(text: string | null | undefined): boolean {
+  const words = (text ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-zñ0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    // «graciass», «vaaale», «okk»: no word of the list has a doubled letter.
+    .map((w) => w.replace(/([a-z])\1+/g, '$1'))
+  return words.length > 0 && words.every((w) => COURTESY_CORE.has(w) || COURTESY_EXTRA.has(w)) && words.some((w) => COURTESY_CORE.has(w))
+}
+
+/** How recent Mimo's question has to be for «vale» / «ok» to answer it. */
+export const COURTESY_ANSWER_WINDOW_MS = 30 * 60 * 1000
+
+/**
+ * Pure: Mimo's last message (in `rows`, oldest first) went out in the last
+ * 30 min and ends in a question or carries buttons: a «vale» / «ok» now is
+ * its answer and goes to Mimo.
+ */
+export function awaitsAnswer(rows: readonly HistoryRow[], now: Date): boolean {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]
+    if (r.direction !== 'out' || r.status !== 'sent' || r.kind === 'ack') continue
+    if (now.getTime() - r.createdAt.getTime() > COURTESY_ANSWER_WINDOW_MS) return false
+    const body = stripAiSignature(r.body ?? '')
+    if (/⟦botones:/.test(body)) return true
+    const lines = body.split('\n').map((l) => l.trim()).filter(Boolean)
+    return (lines.at(-1) ?? '').includes('?')
+  }
+  return false
+}
+
+/**
+ * 18-nov (6b): the reply of the turn that takes Mimo's spend past 80 % of the
+ * month's cap carries one fixed line (once a month: the spend only grows).
+ */
+export function withBudgetWarning(messages: OutboundMessage[]): OutboundMessage[] {
+  const last = messages.at(-1)
+  if (last?.type === 'text') return [...messages.slice(0, -1), { ...last, text: `${last.text}\n\n${BUDGET_WARNING_LINE}` }]
+  return [...messages, { type: 'text', text: BUDGET_WARNING_LINE }]
+}
+
 export async function processInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
   const { store, client } = deps
   const now = deps.now()
@@ -587,6 +661,22 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const link = await store.getLinkByPhone(msg.from)
     await store.updateInbound(msg.wamid, { status: 'ignored', userId: link?.userId ?? null, errorMessage: 'emoji' })
     return
+  }
+
+  // 18-nov: only thanks or an acknowledgement («gracias», «vale», «ok»…):
+  // kept, never answered, no model — unless Mimo's last message (≤ 30 min)
+  // asked something or has buttons waiting: then «vale» is a «sí» for Mimo.
+  if (!command && msg.kind === 'text' && isCourtesyOnly(msg.text)) {
+    const link = await store.getLinkByPhone(msg.from)
+    if (link) {
+      const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - COURTESY_ANSWER_WINDOW_MS), link.userId)
+      if (!awaitsAnswer(rows, now)) {
+        // It still opens Meta's 24 h window (but a return after 30+ days keeps its AI notice for the next reply).
+        if (!needsReturnDisclosure(link.lastInboundAt, now)) await store.touchInbound(msg.from, now)
+        await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId, errorMessage: 'courtesy' })
+        return
+      }
+    }
   }
 
   // PRO-1169: set once the sender is known to be back after 30+ days; the
@@ -804,8 +894,35 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       if (await attachSourceLink(msg, userId, now, deps, outText)) return
     }
 
+    // ── 1c. A «¿hiciste la cena?» button (18-nov): recorded here with a
+    // fixed confirmation, no model, also with the monthly cap used up.
+    const checkin = msg.kind === 'interactive' ? checkinAnswerOf(msg.replyId) : null
+    if (checkin && deps.recordDinnerCheckin) {
+      const sentAt = (await store.recentOutboundKinds(msg.from, new Date(now.getTime() - CHECKIN_ANSWER_WINDOW_MS))).get('dinner_checkin')
+      const done = sentAt
+        ? await deps.recordDinnerCheckin(userId, checkin, sentAt).catch((err) => {
+            console.warn('[whatsapp] check-in button not recorded (Mimo answers instead):', err?.message ?? err)
+            return null
+          })
+        : null
+      if (done) {
+        const tools = checkin.cooked ? ['log_cooked', ...(checkin.rating ? ['update_recipe_notes'] : [])] : []
+        const reply = checkinConfirmation(checkin, done.name)
+        await store.updateInbound(msg.wamid, {
+          status: 'processed',
+          userId,
+          body: msg.text,
+          meta: { tools, toolTrace: tools.map((name) => ({ name, input: JSON.stringify({ boton: msg.replyId }), summary: reply })) },
+        })
+        await outText('reply', reply)
+        return
+      }
+    }
+
     // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
     // transcription, photo extraction and the chat itself.
+    let spentBefore: number | null = null
+    let budgetLimit = 0
     if (msg.kind !== 'unsupported') {
       const budget = await deps.checkBudget(userId)
       if (budget.exceeded) {
@@ -813,6 +930,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         await outText('system', COPY.budget((budget.budgetMicros / 1_000_000).toFixed(0)))
         return
       }
+      spentBefore = budget.spentMicros ?? null
+      budgetLimit = budget.budgetMicros
     }
     acker.arm()
 
@@ -890,11 +1009,15 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         if (ack) acker.now(ack)
       },
     })
+    // 18-nov: the WhatsApp sign-up (and the first menu it ends with) doesn't
+    // count toward Mimo's monthly cap; the cost ledger still sees it.
+    let added = 0
     try {
-      await deps.recordUsage(userId, usage)
+      added = (await deps.recordUsage(userId, usage, { countsTowardBudget: link.onboardingDone !== false })) || 0
     } catch (err) {
       console.warn('[whatsapp] recordUsage failed (continuing):', err)
     }
+    const nearCap = spentBefore !== null && crossesBudgetWarning(spentBefore, added, budgetLimit)
     trackEvent('mimo_message', { userId, channel: 'whatsapp', props: { kind: msg.kind === 'audio' ? 'voice_note' : images ? 'photo' : 'text' } })
 
     // Mark the inbound processed BEFORE replying so it precedes the reply in
@@ -913,7 +1036,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         ...(images ? { photo: true } : {}),
       },
     })
-    await out('reply', await replyMessages(response, userId, deps, lastSentButtons(rows)))
+    const reply = await replyMessages(response, userId, deps, lastSentButtons(rows))
+    await out('reply', nearCap ? withBudgetWarning(reply) : reply)
     if ((response.toolsUsed ?? []).includes('complete_onboarding') && link.onboardingDone === false) {
       // First menu done: health data goes to the web (with consent), then the
       // opt-in for proactive messages that linking skipped.

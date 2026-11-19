@@ -58,6 +58,8 @@ export interface MessageGuide {
   maxChars: number
   /** Must end by asking something (the buttons answer it). */
   asks?: boolean
+  /** At most one «?» (18-nov: the check-in asked two or three things at once). */
+  oneQuestion?: boolean
 }
 
 export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
@@ -70,16 +72,17 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
   },
   cooking_reminder: {
     purpose: 'Avisar de que toca empezar a cocinar la cena para cenar a su hora.',
-    mustCarry: 'El nombre exacto del plato, la hora de la cena y los minutos que lleva.',
+    mustCarry: 'El nombre exacto del plato, la hora de la cena y los minutos que lleva. Horas y minutos, solo los de los datos (la hora de ahora, la de empezar y la de la cena), sin calcular otros.',
     tone: 'Breve y práctico, una o dos frases. Puede dar un empujón amable.',
     maxChars: 280,
   },
   dinner_checkin: {
-    purpose: 'Preguntar si hicieron hoy la cena del menú, para apuntarlo (los botones responden). Si los datos lo piden, en el mismo mensaje también qué tal estuvo y si la repetimos (PRO-235).',
-    mustCarry: 'El nombre exacto del plato y la pregunta de si lo hicieron (y, si los datos lo piden, si la repetimos).',
+    purpose: 'Preguntar si hicieron hoy la cena del menú, para apuntarlo. Los botones responden (y, si los datos lo piden, dicen también qué tal estuvo, PRO-235).',
+    mustCarry: 'El nombre exacto del plato y UNA sola pregunta, con un único «?»: si la hicieron. Nada más que preguntar: lo de qué tal estuvo ya lo dicen los botones.',
     tone: 'Una o dos frases, ligero, sin presionar ni sonar a control.',
     maxChars: 280,
     asks: true,
+    oneQuestion: true,
   },
   shopping_reminder: {
     purpose: 'Recordar el sábado que hay cosas pendientes en la lista de la compra.',
@@ -133,6 +136,10 @@ export interface GuideSpec {
   required: string[]
   /** PRO-274: dish names whose article must agree with them (gender and number). */
   dishes?: string[]
+  /** 18-nov: the only clock times («20:00») the message may say, as HH:MM. */
+  allowedTimes?: string[]
+  /** 18-nov: the only minute counts («80 min») the message may say. */
+  allowedMinutes?: number[]
 }
 
 export interface GuidedContext {
@@ -203,6 +210,15 @@ export function sentencesOf(text: string): string[] {
     .filter((s) => s.split(' ').length >= 4)
 }
 
+/** Clock times a text says («20:00», «8:05», «20.30», «20h30»), as HH:MM. Links aside. */
+export function clockTimesOf(text: string): string[] {
+  return [...text.replace(URL_RE, ' ').matchAll(/\b([01]?\d|2[0-3])[:.h]([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, '0')}:${m[2]}`)
+}
+/** Minute counts a text says («80 min», «unos 45 minutos»). */
+export function minuteCountsOf(text: string): number[] {
+  return [...text.matchAll(/(\d+)\s*(?:min\b|mins\b|minutos?\b)/gi)].map((m) => Number(m[1]))
+}
+
 /**
  * Pure: is a written message safe to send in place of the fixed text?
  * `fallback` is today's fixed text: its links are the only ones allowed and
@@ -233,6 +249,9 @@ export function validateGuided(
   const allowed = new Set([...(fallback.match(URL_RE) ?? []), ...spec.required.flatMap((r) => r.match(URL_RE) ?? [])].map(trimUrl))
   for (const u of t.match(URL_RE) ?? []) if (!allowed.has(trimUrl(u))) return { ok: false, reason: 'unknown_link' }
   if (guide.asks && !t.includes('?')) return { ok: false, reason: 'no_question' }
+  if (guide.oneQuestion && (t.match(/\?/g) ?? []).length > 1) return { ok: false, reason: 'too_many_questions' }
+  if (spec.allowedTimes && clockTimesOf(t).some((h) => !spec.allowedTimes!.includes(h))) return { ok: false, reason: 'wrong_time' }
+  if (spec.allowedMinutes && minuteCountsOf(t).some((m) => !spec.allowedMinutes!.includes(m))) return { ok: false, reason: 'wrong_minutes' }
   if (/^["«“]|["»”]$/.test(t)) return { ok: false, reason: 'quoted' }
   const seen = new Set(previous.flatMap(sentencesOf))
   if (sentencesOf(t).some((s) => seen.has(s))) return { ok: false, reason: 'repeats' }

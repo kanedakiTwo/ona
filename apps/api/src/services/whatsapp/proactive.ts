@@ -77,7 +77,7 @@ export function minutesOf(time: string | null | undefined, fallback: number): nu
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(time ?? '')
   return m ? Number(m[1]) * 60 + Number(m[2]) : fallback
 }
-const nowMinutes = (p: MadridParts) => p.hour * 60 + p.minute
+const nowMinutes = (p: Pick<MadridParts, 'hour' | 'minute'>) => p.hour * 60 + p.minute
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
 
 export const DEFAULT_DINNER_MIN = 21 * 60
@@ -190,13 +190,40 @@ export function dailyBriefGuide(day: DayMenu | null | undefined, webUrl: string)
   return { kind: 'daily_brief', facts, required: [...new Set(required)], dishes }
 }
 
-export function cookingReminderGuide(name: string, totalMinutes: number, dinnerTime: string | null): GuideSpec {
-  const at = hhmm(minutesOf(dinnerTime, DEFAULT_DINNER_MIN))
+/**
+ * 18-nov: the writer used to get only the dinner time and the dish's minutes,
+ * and did its own sums («son casi las 20:12» sent at 19:56, «83 min por
+ * delante» with 100 to go). Now it gets the time the message goes out, the
+ * time to start and the real minutes, and the validator lets through no other
+ * hour or minute count (`allowedTimes` / `allowedMinutes`).
+ */
+export function cookingReminderGuide(
+  name: string,
+  totalMinutes: number,
+  dinnerTime: string | null,
+  now: Pick<MadridParts, 'hour' | 'minute'>,
+): GuideSpec {
+  const dinner = minutesOf(dinnerTime, DEFAULT_DINNER_MIN)
+  const at = hhmm(dinner)
+  const start = dinner - totalMinutes - 10
+  const current = nowMinutes(now)
+  const untilStart = start - current
+  const untilDinner = dinner - current
   return {
     kind: 'cooking_reminder',
-    facts: [`Plato de la cena: ${name}`, ...agreementFacts([name]), `Hora de la cena: ${at}`, `Lleva unos ${totalMinutes} min`],
+    facts: [
+      `Plato de la cena: ${name}`,
+      ...agreementFacts([name]),
+      `Hora a la que sale este mensaje: ${hhmm(current)}`,
+      untilStart > 0 ? `Empieza a cocinar a las ${hhmm(start)} (dentro de ${untilStart} min)` : `Empieza a cocinar ya (tocaba a las ${hhmm(start)})`,
+      `Hora de la cena: ${at} (faltan ${untilDinner} min)`,
+      `Lleva unos ${totalMinutes} min`,
+      'Horas y minutos: solo los de estos datos, tal cual. No calcules ni redondees otros.',
+    ],
     required: [name, at, String(totalMinutes)],
     dishes: [name],
+    allowedTimes: [hhmm(current), hhmm(start), at],
+    allowedMinutes: [totalMinutes, untilDinner, ...(untilStart > 0 ? [untilStart] : [])],
   }
 }
 
@@ -207,7 +234,8 @@ export function dinnerCheckinGuide(name: string, askRating = false): GuideSpec {
       facts: [
         `Cena de hoy en el menú: ${name}`,
         ...agreementFacts([name]),
-        'En el mismo mensaje: si la hizo, qué tal estuvo y si la repetimos; si no les gustó, que lo diga y no vuelve a salir sola.',
+        // 18-nov (reviewer, 11 days; «me has hecho dos preguntas»): ONE question.
+        'Una sola pregunta, con un único «?»: si hizo hoy esa cena. Los botones de debajo ya dicen qué tal estuvo y si la repetimos: no lo preguntes aparte ni digas qué pasa si no les gustó.',
         `Botones debajo: «${CHECKIN_RATING_BUTTONS[0].title}» / «${CHECKIN_RATING_BUTTONS[1].title}» / «${CHECKIN_RATING_BUTTONS[2].title}»`,
       ],
       required: [name],
@@ -253,7 +281,8 @@ export function formatDinnerCheckin(name: string, askRating: boolean): OutboundM
   }
   return {
     type: 'buttons',
-    text: `¿Hiciste hoy la cena (*${name}*)? Si la hiciste, ¿qué tal? ¿La repetimos? Si no os gustó, dímelo y no vuelve a salir sola.`,
+    // 18-nov: one question (it asked three); the buttons say how it went.
+    text: `¿Hiciste hoy la cena (*${name}*)? Así lo apunto y sé si la repetimos.`,
     buttons: CHECKIN_RATING_BUTTONS.map((b) => ({ ...b })),
   }
 }
@@ -299,6 +328,8 @@ export interface TodayDinner {
   names: string[]
   /** Recipe ids, same order as `names` (PRO-235: to ask «¿repetimos?» about the first). */
   recipeIds?: string[]
+  /** The menu the dinner comes from (a tapped check-in button records it there). */
+  menuId?: string
   /** Longest total time among today's dinner recipes (min), null if unknown. */
   totalMinutes: number | null
 }
@@ -355,7 +386,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
       out.push({
         kind: 'cooking_reminder',
         messages: [{ type: 'text', text: formatCookingReminder(dinner.names[0], dinner.totalMinutes, input.dinnerTime) }],
-        guide: cookingReminderGuide(dinner.names[0], dinner.totalMinutes, input.dinnerTime),
+        guide: cookingReminderGuide(dinner.names[0], dinner.totalMinutes, input.dinnerTime, p),
       })
     }
   }
@@ -433,6 +464,17 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   }
 
   return out
+}
+
+/**
+ * 18-nov: avisos whose buttons only Mimo (the model) can answer. With the
+ * monthly cap used up, a tap got «Has alcanzado tu límite», so these don't go
+ * then. The «¿hiciste la cena?» buttons are recorded without the model
+ * (checkinButtons.ts), so the check-in still goes.
+ */
+export const BUTTONS_NEED_MIMO: ReadonlySet<ProactiveKind> = new Set<ProactiveKind>(['weekly_nudge', 'freezer_review'])
+export function withoutMimoButtonAvisos(planned: PlannedMessage[], overCap: boolean): PlannedMessage[] {
+  return overCap ? planned.filter((p) => !BUTTONS_NEED_MIMO.has(p.kind)) : planned
 }
 
 /** Any proactive window that could fire now (cheap pre-check before DB work). */

@@ -4,7 +4,7 @@ import { db } from '../db/connection.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
-import { checkAdvisorBudget, recordAdvisorUsage } from '../services/advisorBudget.js'
+import { BUDGET_WARNING_LINE, checkAdvisorBudget, crossesBudgetWarning, recordAdvisorUsage } from '../services/advisorBudget.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { recordCapHit } from '../services/capHits.js'
 import { API_SALDO_REPLY, API_SALDO_TYPE, noteApiBalanceError } from '../services/apiSaldo.js'
@@ -103,7 +103,11 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     // the next request sees the updated total, but a metering failure must not
     // fail the chat the user already paid for — swallow and log.
     try {
-      await recordAdvisorUsage(userId, usage, db)
+      const added = await recordAdvisorUsage(userId, usage, db)
+      // 18-nov: the turn that takes the month past 80 % of the cap says so, once.
+      if (crossesBudgetWarning(budget.spentMicros, added, budget.budgetMicros)) {
+        response.message = `${response.message}\n\n${BUDGET_WARNING_LINE}`
+      }
     } catch (e) {
       console.warn('[assistant] recordAdvisorUsage failed (continuing):', e)
     }

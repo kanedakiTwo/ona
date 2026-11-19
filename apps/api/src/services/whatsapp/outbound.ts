@@ -2,7 +2,7 @@ import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 import { isHealthMemoryKey, shouldAskRating, type DayMenu } from '@ona/shared'
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { chatMessages, cookLogs, householdMembers, households, menus, recipes, userMemories, users, whatsappMessages } from '../../db/schema.js'
+import { activityEvents, chatMessages, cookLogs, householdMembers, households, menus, recipes, userFeedback, userMemories, users, whatsappMessages } from '../../db/schema.js'
 import { getRecipeNotesForUser } from '../recipeNotesStore.js'
 import { madridMidnightUtc } from '../madridTime.js'
 import { appApiFor } from '../assistant/appApi.js'
@@ -30,6 +30,9 @@ import {
   PROACTIVE_KINDS,
   BUTTONS_NEED_MIMO,
   withoutMimoButtonAvisos,
+  shoppingUseFrom,
+  todayDinnerOf,
+  type ShoppingUse,
   type ChannelOutcome,
   type MadridParts,
   type PlannedMessage,
@@ -51,7 +54,11 @@ import { listPantryForUser } from '../pantryStore.js'
 import { freezerItemsDue } from '@ona/shared'
 import { quietAfterSignUp } from './signUpQuiet.js'
 import { isShoppingReminderWindow } from './proactive.js'
-import { loadUserAlertPrefs, mergeAlertPrefs } from '../notifications/alertPrefs.js'
+import { loadUserAlertPrefs, mergeAlertPrefs, setAlertPrefs } from '../notifications/alertPrefs.js'
+import { ratingToSave } from './checkinButtons.js'
+import { detectLanguage, type Lang } from './language.js'
+import { FATIGUE_STREAK, fatigueAskKind, fatigueQuestion, fatiguedKind, type FatigueKind } from './fatigue.js'
+import { OPT_OUT_REASON_TAG, type OptOutReason } from './optOutReason.js'
 import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
 import { fillRecipeNames } from '../menuNames.js'
 import { stripAiSignature, withAiSignature } from './aiNotice.js'
@@ -71,10 +78,11 @@ export async function sendProactive(
   messages: OutboundMessage[],
   kind: string,
   now: Date = new Date(),
-  opts: { meta?: ReturnType<typeof guidedMeta> } = {},
+  opts: { meta?: ReturnType<typeof guidedMeta>; templateKind?: string } = {},
 ): Promise<ChannelOutcome> {
   const meta = opts.meta
-  const { delivery, template } = deliveryFor(kind, link.lastInboundAt, now, TEMPLATES, env.WHATSAPP_TEMPLATE_NAME)
+  // 19-nov: the pause question goes, outside the window, by its aviso's own template.
+  const { delivery, template } = deliveryFor(opts.templateKind ?? kind, link.lastInboundAt, now, TEMPLATES, env.WHATSAPP_TEMPLATE_NAME)
   if (delivery === 'skip') return { status: 'skipped', error: 'outside-24h-window' }
   try {
     if (delivery === 'session') {
@@ -184,21 +192,22 @@ async function loadTodayDinner(userId: string, parts: MadridParts): Promise<Toda
   const menu = await latestMenuForWeek(userId, mondayOf(parts.isoDate, parts.weekday))
   const day = (menu?.days as DayMenu[] | undefined)?.[parts.weekday] ?? null
   const dishes = (day?.dinner?.dishes ?? []) as Array<{ kind: string; recipeId?: string; recipeName?: string; text?: string }>
-  const recipeDishes = dishes.filter((d) => d.kind === 'recipe' && d.recipeId)
-  if (recipeDishes.length === 0) return null
+  const ids = dishes.filter((d) => d.kind === 'recipe' && d.recipeId).map((d) => d.recipeId!)
+  if (ids.length === 0) return null
   const rows = await db
-    .select({ id: recipes.id, totalTime: recipes.totalTime, prepTime: recipes.prepTime, cookTime: recipes.cookTime })
+    .select({
+      id: recipes.id,
+      totalTime: recipes.totalTime,
+      prepTime: recipes.prepTime,
+      cookTime: recipes.cookTime,
+      course: recipes.course,
+      tags: recipes.tags,
+      dishTypes: recipes.dishTypes,
+    })
     .from(recipes)
-    .where(inArray(recipes.id, recipeDishes.map((d) => d.recipeId!)))
-  const minutes = rows
-    .map((r) => r.totalTime ?? ((r.prepTime ?? 0) + (r.cookTime ?? 0) || null))
-    .filter((m): m is number => typeof m === 'number' && m > 0)
-  return {
-    names: recipeDishes.map((d) => d.recipeName ?? 'la cena'),
-    recipeIds: recipeDishes.map((d) => d.recipeId!),
-    totalMinutes: minutes.length ? Math.max(...minutes) : null,
-    ...(menu ? { menuId: menu.id } : {}),
-  }
+    .where(inArray(recipes.id, ids))
+  // 19-nov: desserts left out (no check-in about a flan, no minutes of one).
+  return todayDinnerOf(dishes, rows, menu?.id)
 }
 
 /**
@@ -232,7 +241,9 @@ export async function recordDinnerCheckinAnswer(
       ...(dinner.menuId ? { menuId: dinner.menuId, dayIndex: parts.weekday, meal: 'dinner' } : {}),
     })
   }
-  if (answer.rating) await api('PUT', `/recipes/${recipeId}/notes`, { rating: answer.rating })
+  // 19-nov: 👍 never lowers a 5 nor writes the same rating again.
+  const rating = answer.rating ? ratingToSave((await getRecipeNotesForUser(userId, recipeId))?.rating ?? null, answer.rating) : null
+  if (rating) await api('PUT', `/recipes/${recipeId}/notes`, { rating })
   return { name: dinner.names[0] }
 }
 
@@ -247,9 +258,81 @@ async function cookedToday(userId: string, parts: MadridParts): Promise<boolean>
   return Boolean(row)
 }
 
-async function pendingShopping(userId: string): Promise<string[]> {
-  const list = await appApiFor(userId)<{ items?: Array<{ name: string; checked?: boolean; inStock?: boolean; skipped?: boolean }> }>('GET', '/shopping-list')
-  return (list?.items ?? []).filter((i) => !i.checked && !i.inStock && !i.skipped).map((i) => i.name)
+async function pendingShopping(userId: string): Promise<Array<{ name: string; aisle?: string | null }>> {
+  const list = await appApiFor(userId)<{ items?: Array<{ name: string; aisle?: string | null; checked?: boolean; inStock?: boolean; skipped?: boolean }> }>('GET', '/shopping-list')
+  return (list?.items ?? []).filter((i) => !i.checked && !i.inStock && !i.skipped).map((i) => ({ name: i.name, aisle: i.aisle ?? null }))
+}
+
+/**
+ * 19-nov: how this household uses the shopping list (its ticks of the last
+ * 4 weeks, `shoppingUseFrom`), read once a day per person: the tick runs
+ * every 5 minutes and needs it before deciding to touch the DB.
+ */
+const shoppingUseCache = new Map<string, { day: string; use: Promise<ShoppingUse> }>()
+function shoppingUseFor(userId: string, parts: MadridParts, now: Date): Promise<ShoppingUse> {
+  const hit = shoppingUseCache.get(userId)
+  if (hit && hit.day === parts.isoDate) return hit.use
+  const use = (async () => {
+    const [u] = await db.select({ householdId: users.primaryHouseholdId }).from(users).where(eq(users.id, userId)).limit(1)
+    const since = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000)
+    const who = u?.householdId ? eq(activityEvents.householdId, u.householdId) : eq(activityEvents.userId, userId)
+    const rows = await db
+      .select({ at: activityEvents.createdAt })
+      .from(activityEvents)
+      .where(and(who, inArray(activityEvents.kind, ['shopping_check', 'shopping_stock']), gte(activityEvents.createdAt, since)))
+    return shoppingUseFrom(rows.map((r) => r.at).filter((d): d is Date => d instanceof Date), now, madridParts)
+  })().catch((err) => {
+    console.warn('[whatsapp] shopping use not read (Saturday as before):', err?.message ?? err)
+    shoppingUseCache.delete(userId)
+    return { usedRecently: true, day: null, hour: null } as ShoppingUse
+  })
+  shoppingUseCache.set(userId, { day: parts.isoDate, use })
+  return use
+}
+
+/** 19-nov: tonight's dish was cooked in the last 4 days and is already rated: leftovers, no check-in. */
+async function isRatedLeftover(userId: string, recipeId: string, now: Date): Promise<boolean> {
+  if (shouldAskRating(await getRecipeNotesForUser(userId, recipeId), now)) return false
+  const [row] = await db
+    .select({ id: cookLogs.id })
+    .from(cookLogs)
+    .where(and(eq(cookLogs.userId, userId), eq(cookLogs.recipeId, recipeId), gte(cookLogs.cookedAt, new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000))))
+    .limit(1)
+  return Boolean(row)
+}
+
+/** 19-nov: the language this number writes in (language.ts). Never throws: Spanish. */
+export async function languageForPhone(phone: string): Promise<Lang> {
+  try {
+    return detectLanguage(await store.recentInboundTexts(phone))
+  } catch {
+    return 'es'
+  }
+}
+
+/** 19-nov (fatigue.ts): «Sí» switches the kind back on; «No» leaves it off. */
+export async function setAvisoKind(userId: string, kind: FatigueKind, on: boolean): Promise<void> {
+  await setAlertPrefs(userId, { [kind]: on } as Record<string, boolean>)
+}
+
+/** 19-nov (optOutReason.ts): why they wrote BAJA, as an opinion tagged `baja_avisos`. */
+export async function saveOptOutReason(userId: string, reason: OptOutReason, text: string): Promise<void> {
+  await db.insert(userFeedback).values({ userId, channel: 'whatsapp', text: text.slice(0, 2000), tag: OPT_OUT_REASON_TAG, answer: reason })
+}
+
+/**
+ * 19-nov: before an aviso goes, has this number stopped answering that kind
+ * (5 in a row)? Then the kind is switched off and the question goes instead
+ * of it, once per kind. Returns the kind paused (dropped from `planned`).
+ */
+async function pauseFatiguedKind(link: LinkWithUser, planned: PlannedMessage[], now: Date): Promise<FatigueKind | null> {
+  const rows = await store.avisoActivity(link.phone, new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000))
+  const kind = fatiguedKind(rows, planned.map((p) => p.kind), now)
+  if (!kind) return null
+  await setAvisoKind(link.userId, kind, false)
+  console.info(`[whatsapp] ${kind} paused for ${link.userId}: ${FATIGUE_STREAK}+ unanswered in a row`)
+  await sendProactive(link, [fatigueQuestion(kind, await languageForPhone(link.phone))], fatigueAskKind(kind), now, { templateKind: kind })
+  return kind
 }
 
 /** PRO-235: did today's menu come up in a conversation (WhatsApp or the web chat) since midnight? */
@@ -438,8 +521,9 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       // PRO-385 (D-158): Mimo writing first isn't in the Gratis plan (never before launch day).
       if (await isOnFreePlan(link.userId, now)) continue
       const times = await loadMealTimes(link.userId)
+      const shoppingUse = await shoppingUseFor(link.userId, parts, now)
       // Only touch the DB for cooldowns inside a window that could fire.
-      if (!anyProactiveWindow(parts, times.breakfast, times.dinner)) continue
+      if (!anyProactiveWindow(parts, times.breakfast, times.dinner, shoppingUse)) continue
       const since = new Date(now.getTime() - WEEKLY_NUDGE_COOLDOWN_MS)
       const [recent, noticed, fellBack, userPrefs] = await Promise.all([
         store.recentOutboundKinds(link.phone, since),
@@ -458,7 +542,7 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         sentRecently[k] = Boolean(at && now.getTime() - at.getTime() < COOLDOWN_MS[k]) || fellBack.has(k)
       }
       // PRO-244: no shopping reminder in the first hours after the sign-up.
-      if (isShoppingReminderWindow(parts) && !sentRecently.shopping_reminder) {
+      if (isShoppingReminderWindow(parts, shoppingUse) && !sentRecently.shopping_reminder) {
         const [u] = await db.select({ at: users.onboardingCompletedAt }).from(users).where(eq(users.id, link.userId)).limit(1)
         if (quietAfterSignUp('shopping_reminder', u?.at ?? null, now)) sentRecently.shopping_reminder = true
       }
@@ -475,10 +559,12 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         todayDinner: () => (dinnerCache ??= loadTodayDinner(link.userId, parts)),
         cookedToday: () => cookedToday(link.userId, parts),
         pendingShopping: () => pendingShopping(link.userId),
+        shoppingUse,
         hasNextWeekMenu: async () =>
           Boolean(await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday, 1))),
         sawTodaysMenu: () => sawMenuThisMorning(link.userId, parts, now),
-        askRating: async (recipeId) => shouldAskRating(await getRecipeNotesForUser(link.userId, recipeId)),
+        ratedLeftover: (recipeId) => isRatedLeftover(link.userId, recipeId, now),
+        language: () => languageForPhone(link.phone),
         taperTonight: async () => {
           const menu = await latestMenuForWeek(link.userId, mondayOf(parts.isoDate, parts.weekday))
           return menu ? taperTomorrow(menu.days as DayMenu[], parts.weekday) : null
@@ -490,9 +576,13 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         webUrl: env.WEB_PUBLIC_URL,
       })
       // 18-nov: over the monthly cap, no avisos whose buttons need Mimo.
-      const toSend = planned.some((p) => BUTTONS_NEED_MIMO.has(p.kind))
+      const capped = planned.some((p) => BUTTONS_NEED_MIMO.has(p.kind) || p.kind === 'cooking_reminder')
         ? withoutMimoButtonAvisos(planned, await guidedOverBudget(link.userId))
         : planned
+      if (capped.length === 0) continue
+      // 19-nov: a kind left unanswered 5 times in a row pauses; the question goes instead.
+      const paused = await pauseFatiguedKind(link, capped, now)
+      const toSend = paused ? capped.filter((p) => p.kind !== paused) : capped
       if (toSend.length === 0) continue
       await sendMoment(link, toSend, parts.isoDate, now)
     } catch (err: any) {

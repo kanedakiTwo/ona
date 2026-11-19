@@ -21,7 +21,7 @@ import {
   SEAN_ELLIS_TAG,
   SEAN_ELLIS_WHATSAPP,
   isSeanEllisReply,
-  maybeAppendSeanEllis,
+  maybeSeanEllisQuestion,
   parseSeanEllisAnswer,
   recordSeanEllisReply,
   seanEllisChannel,
@@ -120,45 +120,45 @@ describe('the answer in words', () => {
   })
 })
 
-describe('on WhatsApp: once, at the end of a reply', () => {
+describe('on WhatsApp: once, after a reply, as a message of its own (19-nov)', () => {
   const inbound = { lastInboundAt: new Date(NOW.getTime() - HOUR) }
 
-  it('goes once at the end of a reply; never again', async () => {
+  it('due once after a reply; never again', async () => {
     const { store, state: s } = memoryStore(inbound)
-    expect(await maybeAppendSeanEllis('u1', 'Hecho.', { mode: 'whatsapp', otherOffer: false, store, now: NOW, ...RULES })).toBe(`Hecho.\n\n${SEAN_ELLIS_WHATSAPP}`)
+    expect(await maybeSeanEllisQuestion('u1', { mode: 'whatsapp', otherOffer: false, store, now: NOW, ...RULES })).toBe(SEAN_ELLIS_WHATSAPP)
     expect(s.askedAt).toEqual(NOW)
-    expect(await maybeAppendSeanEllis('u1', 'Hecho.', { mode: 'whatsapp', otherOffer: false, store, now: NOW, ...RULES })).toBe('Hecho.')
+    expect(await maybeSeanEllisQuestion('u1', { mode: 'whatsapp', otherOffer: false, store, now: NOW, ...RULES })).toBeNull()
   })
 
   it('not in the web chat, not with another offer, not outside the 24 h window, not when the card is the channel', async () => {
     for (const opts of [{ mode: 'text', otherOffer: false }, { mode: 'whatsapp', otherOffer: true }]) {
       const { store, state: s } = memoryStore(inbound)
-      expect(await maybeAppendSeanEllis('u1', 'Hola', { ...opts, store, now: NOW, ...RULES })).toBe('Hola')
+      expect(await maybeSeanEllisQuestion('u1', { ...opts, store, now: NOW, ...RULES })).toBeNull()
       expect(s.askedAt).toBeNull()
     }
     const late = memoryStore({ lastInboundAt: new Date(NOW.getTime() - 25 * HOUR) })
-    expect(await maybeAppendSeanEllis('u1', 'Hola', { mode: 'whatsapp', otherOffer: false, store: late.store, now: NOW, ...RULES })).toBe('Hola')
+    expect(await maybeSeanEllisQuestion('u1', { mode: 'whatsapp', otherOffer: false, store: late.store, now: NOW, ...RULES })).toBeNull()
     expect(late.state.askedAt).toBeNull()
   })
 
-  it('a failing store leaves the reply as it was', async () => {
+  it('a failing store asks nothing', async () => {
     const store = { load: async () => { throw new Error('db down') } } as unknown as SeanEllisStore
-    expect(await maybeAppendSeanEllis('u1', 'Hola', { mode: 'whatsapp', otherOffer: false, store, now: NOW, ...RULES })).toBe('Hola')
+    expect(await maybeSeanEllisQuestion('u1', { mode: 'whatsapp', otherOffer: false, store, now: NOW, ...RULES })).toBeNull()
   })
 
-  it('last in the line of offers: only when no other went', async () => {
+  it('last in the line of offers: only when no other went; never stuck to the reply', async () => {
     const { store } = memoryStore(inbound)
     const steps = (over: Partial<ReplyOfferSteps> = {}): ReplyOfferSteps => ({
       family: async (_u, r) => r,
       invite: async (_u, r) => r,
-      leftovers: async (_u, r) => r,
-      seanEllis: (u, r, o) => maybeAppendSeanEllis(u, r, { ...o, store, now: NOW, ...RULES }),
+      leftovers: async () => null,
+      seanEllis: (u, o) => maybeSeanEllisQuestion(u, { ...o, store, now: NOW, ...RULES }),
       ...over,
     })
-    const sobras = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps({ leftovers: async (_u, r) => `${r}\n\nSOBRAS` }))
-    expect(sobras).toEqual({ message: 'Hecho.\n\nSOBRAS', offerAdded: true })
+    const sobras = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps({ leftovers: async () => 'SOBRAS' }))
+    expect(sobras).toEqual({ message: 'Hecho.', offerAdded: true, survey: 'SOBRAS' })
     const r = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps())
-    expect(r).toEqual({ message: `Hecho.\n\n${SEAN_ELLIS_WHATSAPP}`, offerAdded: true })
+    expect(r).toEqual({ message: 'Hecho.', offerAdded: true, survey: SEAN_ELLIS_WHATSAPP })
   })
 
   it('the next message is the answer: saved once, verbatim, with its option', async () => {

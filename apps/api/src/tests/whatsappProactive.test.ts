@@ -123,7 +123,12 @@ describe('planProactive', () => {
     todayDay: async () => day,
     todayDinner: async () => dinner,
     cookedToday: async () => false,
-    pendingShopping: async () => ['leche', 'pan', 'huevos', 'tomates'],
+    pendingShopping: async () => [
+      { name: 'leche', aisle: 'lacteos' },
+      { name: 'pan', aisle: 'panaderia' },
+      { name: 'huevos', aisle: 'proteinas' },
+      { name: 'tomates', aisle: 'produce' },
+    ],
     hasNextWeekMenu: async () => false,
     webUrl: WEB,
   }
@@ -146,7 +151,14 @@ describe('planProactive', () => {
   it('reminds to start cooking a long dinner in time (90 min recipe, dinner 20:00 → ~18:20)', async () => {
     const r = await planProactive({ ...base, parts: parts({ weekday: 2, hour: 18, minute: 20 }) })
     expect(kinds(r)).toEqual(['cooking_reminder'])
-    expect(r[0].messages[0].text).toBe('Si quieres cenar a las 20:00, toca empezar con *Carrilleras de ternera* (unos 90 min).')
+    expect(r[0].messages[0]).toEqual({
+      type: 'buttons',
+      text: 'Si quieres cenar a las 20:00, toca empezar con *Carrilleras de ternera* (unos 90 min).',
+      buttons: [
+        { id: 'cooking:ok', title: 'Lo hago' },
+        { id: 'cooking:swap', title: 'Cambia a algo rápido' },
+      ],
+    })
     // Short dinners never trigger it.
     expect(await planProactive({ ...base, todayDinner: async () => ({ names: ['Tortilla'], totalMinutes: 20 }), parts: parts({ weekday: 2, hour: 19, minute: 30 }) })).toEqual([])
   })
@@ -157,7 +169,13 @@ describe('planProactive', () => {
     expect(r).toEqual([
       {
         kind: 'dinner_checkin',
-        messages: [{ type: 'buttons', text: '¿Hiciste hoy la cena (*Carrilleras de ternera*)? Así lo apunto.', buttons: [{ id: 'checkin:yes', title: 'Sí, hecho' }, { id: 'checkin:no', title: 'No' }] }],
+        messages: [
+          {
+            type: 'buttons',
+            text: '¿Qué tal ha salido hoy la cena (*Carrilleras de ternera*)? Así lo apunto.',
+            buttons: [{ id: 'checkin:up', title: '👍' }, { id: 'checkin:down', title: '👎' }, { id: 'checkin:no', title: 'No la hice' }],
+          },
+        ],
         // PRO-156: the text above is the safety net; the guide says what a written one must carry.
         guide: expect.objectContaining({ kind: 'dinner_checkin', required: ['Carrilleras de ternera'] }),
       },
@@ -169,8 +187,9 @@ describe('planProactive', () => {
     const sat = parts({ weekday: 5, hour: 10, minute: 30 })
     const r = await planProactive({ ...base, parts: sat })
     expect(kinds(r)).toEqual(['shopping_reminder'])
-    expect(r[0].messages[0].text).toContain('Te faltan 4 cosas: leche, pan, huevos, tomates')
-    expect(await planProactive({ ...base, pendingShopping: async () => ['leche'], parts: sat })).toEqual([])
+    // 19-nov: no count and no list — the link and the fresh things only.
+    expect(r[0].messages[0].text).toBe(`¿Hoy toca compra? De lo fresco te falta: huevos, tomates.\n\nTu lista: ${WEB}/shopping`)
+    expect(await planProactive({ ...base, pendingShopping: async () => [{ name: 'leche', aisle: 'lacteos' }], parts: sat })).toEqual([])
   })
 
   it('PRO-381: with the Thursday autopilot on (missing = on) the Sunday nudge does not go', async () => {

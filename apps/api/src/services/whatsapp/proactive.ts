@@ -1,10 +1,11 @@
 import { alertKindOn, type DayMenu } from '@ona/shared'
 import { mealEntriesForDay, recipeLinkLines, recipesOfDay, shortRecipeLink } from '../menuText.js'
 import type { OutboundMessage } from './render.js'
-import type { GuideSpec } from './guided.js'
+import { guideInLanguage, type GuideSpec } from './guided.js'
 import { taperReminderLine } from '../taper.js'
 import { agreementFacts } from './dishAgreement.js'
 import { freezerReviewDue, freezerReviewGuide, freezerReviewMessages, isFreezerReviewWindow, type FreezerItem } from './freezerReview.js'
+import { localizeButtons, type Lang } from './language.js'
 
 /**
  * Pure planning for messages Mimoia sends first (the Instinct-style "it texts
@@ -83,12 +84,14 @@ const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:
 export const DEFAULT_DINNER_MIN = 21 * 60
 
 /**
- * Long dinners only (≥ 40 min): a 20-minute window ending when the user
- * should start so dinner is ready at their dinner time (10-min buffer).
+ * 19-nov (55 «hora de cocinar» → 3 answers): only dishes that make you start
+ * early, more than 45 min (marinar, descongelar and remojo keep their own
+ * prep alerts). A 20-minute window ending when the user should start so
+ * dinner is ready at their dinner time (10-min buffer).
  */
-export const COOKING_REMINDER_MIN_TOTAL = 40
+export const COOKING_REMINDER_MIN_TOTAL = 45
 export function isCookingReminderWindow(p: MadridParts, dinnerTime: string | null, totalMinutes: number): boolean {
-  if (totalMinutes < COOKING_REMINDER_MIN_TOTAL) return false
+  if (totalMinutes <= COOKING_REMINDER_MIN_TOTAL) return false
   const start = minutesOf(dinnerTime, DEFAULT_DINNER_MIN) - totalMinutes - 10
   return nowMinutes(p) >= start - 10 && nowMinutes(p) < start + 10
 }
@@ -104,8 +107,44 @@ export function isDinnerCheckinWindow(p: MadridParts, dinnerTime: string | null)
   if (start < d + 60) return false
   return nowMinutes(p) >= start && nowMinutes(p) < end
 }
-/** Saturday 10:00–12:59 Madrid. */
-export function isShoppingReminderWindow(p: MadridParts): boolean {
+/**
+ * 19-nov: how a household uses the shopping list, from its ticks on it
+ * (`activity_events` shopping_check / shopping_stock). The reminder only goes
+ * to whoever used it in the last 14 days; when they tick it on the same
+ * weekday at least twice in the last 4 weeks, it goes that day, an hour
+ * before they usually start (`day`/`hour`); otherwise Saturday 10:00–12:59.
+ */
+export interface ShoppingUse {
+  usedRecently: boolean
+  /** Madrid weekday (0 = Monday) and hour the reminder goes; null = Saturday 10:00. */
+  day: number | null
+  hour: number | null
+}
+export const SHOPPING_USE_DAYS = 14
+export const SHOPPING_HABIT_DAYS = 28
+export function shoppingUseFrom(checks: readonly Date[], now: Date, partsOf: (d: Date) => MadridParts): ShoppingUse {
+  const DAY = 24 * 60 * 60 * 1000
+  const recent = checks.filter((d) => now.getTime() - d.getTime() <= SHOPPING_HABIT_DAYS * DAY && d.getTime() <= now.getTime())
+  const usedRecently = recent.some((d) => now.getTime() - d.getTime() <= SHOPPING_USE_DAYS * DAY)
+  // Earliest tick of each Madrid day.
+  const firstOfDay = new Map<string, MadridParts>()
+  for (const d of recent) {
+    const p = partsOf(d)
+    const prev = firstOfDay.get(p.isoDate)
+    if (!prev || p.hour * 60 + p.minute < prev.hour * 60 + prev.minute) firstOfDay.set(p.isoDate, p)
+  }
+  const byWeekday = new Map<number, number[]>()
+  for (const p of firstOfDay.values()) byWeekday.set(p.weekday, [...(byWeekday.get(p.weekday) ?? []), p.hour])
+  const ranked = [...byWeekday.entries()].sort((a, b) => b[1].length - a[1].length)
+  const [top, second] = ranked
+  if (!usedRecently || !top || top[1].length < 2 || (second && second[1].length === top[1].length)) return { usedRecently, day: null, hour: null }
+  const hours = [...top[1]].sort((a, b) => a - b)
+  const median = hours[Math.floor((hours.length - 1) / 2)]
+  return { usedRecently, day: top[0], hour: Math.min(20, Math.max(9, median - 1)) }
+}
+/** The household's shopping time (two hours from `hour` on `day`), else Saturday 10:00–12:59 Madrid. */
+export function isShoppingReminderWindow(p: MadridParts, use?: ShoppingUse | null): boolean {
+  if (use && use.day !== null && use.hour !== null) return p.weekday === use.day && p.hour >= use.hour && p.hour < use.hour + 2
   return p.weekday === 5 && p.hour >= 10 && p.hour < 13
 }
 /** Cooking reminders can only fire in the afternoon/evening; cheap pre-check. */
@@ -114,12 +153,54 @@ export function couldNeedCookingReminder(p: MadridParts, dinnerTime: string | nu
   return nowMinutes(p) >= d - 4 * 60 && nowMinutes(p) < d
 }
 
-export function formatCookingReminder(name: string, totalMinutes: number, dinnerTime: string | null): string {
-  return `Si quieres cenar a las ${hhmm(minutesOf(dinnerTime, DEFAULT_DINNER_MIN))}, toca empezar con *${name}* (unos ${totalMinutes} min).`
+/**
+ * 19-nov: two buttons under «hora de cocinar». «Lo hago» is recorded without
+ * the model; «Cambia a algo rápido» reaches Mimo as `COOKING_SWAP_REQUEST`,
+ * so it swaps tonight's dinner with its own tool. (WhatsApp: ≤ 20 chars.)
+ */
+export const COOKING_BUTTONS = [
+  { id: 'cooking:ok', title: 'Lo hago' },
+  { id: 'cooking:swap', title: 'Cambia a algo rápido' },
+] as const
+export const COOKING_SWAP_REQUEST: Record<Lang, string> = {
+  es: 'Cámbiame la cena de hoy por algo rápido',
+  en: "Swap tonight's dinner for something quick",
 }
-export function formatShoppingReminder(pending: string[], webUrl: string): string {
-  const shown = pending.slice(0, 8).join(', ')
-  return `¿Toca compra? Te faltan ${pending.length} cosas: ${shown}${pending.length > 8 ? '…' : ''}.\n\nVer lista de la compra: ${webUrl}/shopping`
+export const COOKING_OK_REPLY: Record<Lang, string> = {
+  es: '¡Genial! Que salga rica la cena.',
+  en: 'Great, enjoy cooking!',
+}
+
+export function formatCookingReminder(name: string, totalMinutes: number, dinnerTime: string | null, lang: Lang = 'es'): OutboundMessage {
+  const at = hhmm(minutesOf(dinnerTime, DEFAULT_DINNER_MIN))
+  const text =
+    lang === 'en'
+      ? `To have dinner at ${at}, it's time to start *${name}* (about ${totalMinutes} min).`
+      : `Si quieres cenar a las ${at}, toca empezar con *${name}* (unos ${totalMinutes} min).`
+  return { type: 'buttons', text, buttons: COOKING_BUTTONS.map((b) => ({ ...b })) }
+}
+
+/**
+ * 19-nov (21 Saturday reminders → 1 answer: «quedan 139 cosas», «ajo,
+ * albahaca, apio…»): no count and no alphabetical list. The link to the list
+ * and, if any, the fresh things still to buy (fruit, veg, meat, fish), five
+ * at most.
+ */
+export const FRESH_AISLES: ReadonlySet<string> = new Set(['produce', 'proteinas'])
+export const FRESH_MAX = 5
+export function freshPending(items: ReadonlyArray<{ name: string; aisle?: string | null }>): string[] {
+  return [...new Set(items.filter((i) => i.aisle && FRESH_AISLES.has(i.aisle)).map((i) => i.name))].slice(0, FRESH_MAX)
+}
+export function formatShoppingReminder(fresh: readonly string[], webUrl: string, lang: Lang = 'es'): string {
+  const link = `${webUrl}/shopping`
+  if (lang === 'en') {
+    return fresh.length
+      ? `Shopping today? Fresh things still on your list: ${fresh.join(', ')}.\n\nYour list: ${link}`
+      : `Shopping today? Your list is ready: ${link}`
+  }
+  return fresh.length
+    ? `¿Hoy toca compra? De lo fresco te falta: ${fresh.join(', ')}.\n\nTu lista: ${link}`
+    : `¿Hoy toca compra? Aquí tienes tu lista: ${link}`
 }
 
 /** Sunday 18:00–21:59 Madrid. */
@@ -219,6 +300,7 @@ export function cookingReminderGuide(
       `Hora de la cena: ${at} (faltan ${untilDinner} min)`,
       `Lleva unos ${totalMinutes} min`,
       'Horas y minutos: solo los de estos datos, tal cual. No calcules ni redondees otros.',
+      `Botones debajo: «${COOKING_BUTTONS[0].title}» / «${COOKING_BUTTONS[1].title}» (cambiarla por algo rápido). No los repitas en el texto.`,
     ],
     required: [name, at, String(totalMinutes)],
     dishes: [name],
@@ -227,63 +309,74 @@ export function cookingReminderGuide(
   }
 }
 
-export function dinnerCheckinGuide(name: string, askRating = false): GuideSpec {
-  if (askRating) {
-    return {
-      kind: 'dinner_checkin',
-      facts: [
-        `Cena de hoy en el menú: ${name}`,
-        ...agreementFacts([name]),
-        // 18-nov (reviewer, 11 days; «me has hecho dos preguntas»): ONE question.
-        'Una sola pregunta, con un único «?»: si hizo hoy esa cena. Los botones de debajo ya dicen qué tal estuvo y si la repetimos: no lo preguntes aparte ni digas qué pasa si no les gustó.',
-        `Botones debajo: «${CHECKIN_RATING_BUTTONS[0].title}» / «${CHECKIN_RATING_BUTTONS[1].title}» / «${CHECKIN_RATING_BUTTONS[2].title}»`,
-      ],
-      required: [name],
-      dishes: [name],
-    }
-  }
+/**
+ * 19-nov (47 check-ins → 12 answers): ONE question, «¿qué tal la cena?»,
+ * and three buttons that answer it without the model (checkinButtons.ts):
+ * 👍 (made, liked: rating 4), 👎 (made, not again: rating 1 — it no longer
+ * comes out on its own) and «No la hice».
+ */
+export const CHECKIN_BUTTONS = [
+  { id: 'checkin:up', title: '👍' },
+  { id: 'checkin:down', title: '👎' },
+  { id: 'checkin:no', title: 'No la hice' },
+] as const
+
+export function dinnerCheckinGuide(name: string): GuideSpec {
   return {
     kind: 'dinner_checkin',
-    facts: [`Cena de hoy en el menú: ${name}`, ...agreementFacts([name]), `Botones debajo: «${CHECKIN_BUTTONS[0].title}» / «${CHECKIN_BUTTONS[1].title}»`],
+    facts: [
+      `Cena de hoy en el menú: ${name}`,
+      ...agreementFacts([name]),
+      'Una sola pregunta, con un único «?»: qué tal salió hoy esa cena. Los botones de debajo dicen si gustó, si no, o si no la hicieron: no preguntes nada más.',
+      'Habla de «la cena» (el botón dice «No la hice»), con el nombre del plato al lado.',
+      `Botones debajo: «${CHECKIN_BUTTONS[0].title}» / «${CHECKIN_BUTTONS[1].title}» / «${CHECKIN_BUTTONS[2].title}»`,
+    ],
     required: [name],
     dishes: [name],
   }
 }
 
-/**
- * PRO-274: the buttons don't carry the dish's gender («Sí, la hice» read
- * wrong under «Sándwich vegetal»): «Sí, hecho» fits any dish. The ids are
- * what counts; the reply's title reaches Mimo as the user's words.
- */
-export const CHECKIN_BUTTONS = [
-  { id: 'checkin:yes', title: 'Sí, hecho' },
-  { id: 'checkin:no', title: 'No' },
-] as const
-
-/**
- * PRO-235: «¿hiciste la cena?» and «¿repetimos?» (PRO-110) are ONE message.
- * When the household hasn't rated tonight's recipe (30-day rule,
- * `shouldAskRating`), the check-in asks both and its buttons answer both
- * (5 = «Repetir a menudo», 3 = «Bien»); «mejor no» (1) by text.
- */
-export const CHECKIN_RATING_BUTTONS = [
-  { id: 'checkin:yes:5', title: 'Sí, ¡a repetir!' },
-  { id: 'checkin:yes:3', title: 'Sí, estuvo bien' },
-  { id: 'checkin:no', title: 'No' },
-] as const
-export function formatDinnerCheckin(name: string, askRating: boolean): OutboundMessage {
-  if (!askRating) {
-    return {
-      type: 'buttons',
-      text: `¿Hiciste hoy la cena (*${name}*)? Así lo apunto.`,
-      buttons: CHECKIN_BUTTONS.map((b) => ({ ...b })),
-    }
-  }
+export function formatDinnerCheckin(name: string, lang: Lang = 'es'): OutboundMessage {
   return {
     type: 'buttons',
-    // 18-nov: one question (it asked three); the buttons say how it went.
-    text: `¿Hiciste hoy la cena (*${name}*)? Así lo apunto y sé si la repetimos.`,
-    buttons: CHECKIN_RATING_BUTTONS.map((b) => ({ ...b })),
+    text: lang === 'en' ? `How did tonight's dinner go (*${name}*)? I'll note it down.` : `¿Qué tal ha salido hoy la cena (*${name}*)? Así lo apunto.`,
+    buttons: CHECKIN_BUTTONS.map((b) => ({ ...b })),
+  }
+}
+
+/**
+ * 19-nov: never ask about a dessert («¿hiciste la cena?» about a flan) nor
+ * a dessert's minutes in «hora de cocinar». Pure.
+ */
+export function isDessert(r: { course?: string | null; tags?: readonly string[] | null; dishTypes?: readonly string[] | null }): boolean {
+  if (r.course === 'dessert') return true
+  const tags = (r.tags ?? []).map((t) => t.toLowerCase())
+  if (tags.includes('postre') || tags.includes('dulce')) return true
+  return (r.dishTypes ?? []).includes('dulce-finde')
+}
+
+/**
+ * Pure: tonight's dinner from its dishes and their recipes, desserts left
+ * out (names, ids and the longest time are the savoury dishes'). Null when
+ * nothing is left.
+ */
+export function todayDinnerOf(
+  dishes: ReadonlyArray<{ kind: string; recipeId?: string; recipeName?: string }>,
+  recipeRows: ReadonlyArray<{ id: string; totalTime: number | null; prepTime: number | null; cookTime: number | null; course?: string | null; tags?: string[] | null; dishTypes?: string[] | null }>,
+  menuId?: string,
+): TodayDinner | null {
+  const byId = new Map(recipeRows.map((r) => [r.id, r]))
+  const mains = dishes.filter((d) => d.kind === 'recipe' && d.recipeId && !(byId.get(d.recipeId) && isDessert(byId.get(d.recipeId)!)))
+  if (mains.length === 0) return null
+  const minutes = mains
+    .map((d) => byId.get(d.recipeId!))
+    .map((r) => (r ? r.totalTime ?? ((r.prepTime ?? 0) + (r.cookTime ?? 0) || null) : null))
+    .filter((m): m is number => typeof m === 'number' && m > 0)
+  return {
+    names: mains.map((d) => d.recipeName ?? 'la cena'),
+    recipeIds: mains.map((d) => d.recipeId!),
+    totalMinutes: minutes.length ? Math.max(...minutes) : null,
+    ...(menuId ? { menuId } : {}),
   }
 }
 
@@ -297,11 +390,15 @@ export function sawTodaysMenu(turns: ReadonlyArray<{ tools?: readonly string[] |
   return turns.some((t) => (t.tools ?? []).some((name) => MENU_VIEW_TOOLS.has(name)))
 }
 
-export function shoppingReminderGuide(pending: string[], webUrl: string): GuideSpec {
+export function shoppingReminderGuide(fresh: readonly string[], webUrl: string): GuideSpec {
   return {
     kind: 'shopping_reminder',
-    facts: [`Cosas pendientes en la lista: ${pending.length}`, `Algunas: ${pending.slice(0, 8).join(', ')}`, `Enlace a la lista: ${webUrl}/shopping`],
-    required: [String(pending.length), `${webUrl}/shopping`],
+    facts: [
+      fresh.length ? `Lo fresco que aún falta (frutas, verduras, carne, pescado), tal cual: ${fresh.join(', ')}` : 'No falta nada fresco: solo recuerda la lista.',
+      'No digas cuántas cosas quedan ni enumeres el resto de la lista.',
+      `Enlace a la lista: ${webUrl}/shopping`,
+    ],
+    required: [...fresh, `${webUrl}/shopping`],
   }
 }
 
@@ -345,12 +442,17 @@ export interface ProactiveInput {
   todayDay: () => Promise<DayMenu | null>
   todayDinner: () => Promise<TodayDinner | null>
   cookedToday: () => Promise<boolean>
-  pendingShopping: () => Promise<string[]>
+  /** What is still to buy on the list, with its aisle (19-nov: for the fresh things). */
+  pendingShopping: () => Promise<Array<{ name: string; aisle?: string | null }>>
+  /** 19-nov: whether and when the household uses the list (null/absent = Saturday, as before). */
+  shoppingUse?: ShoppingUse | null
   hasNextWeekMenu: () => Promise<boolean>
   /** PRO-235: the person already saw today's menu this morning in a conversation. */
   sawTodaysMenu?: () => Promise<boolean>
-  /** PRO-235: ask «¿qué tal? ¿repetimos?» about this recipe (not rated in the last 30 days). */
-  askRating?: (recipeId: string) => Promise<boolean>
+  /** 19-nov: tonight's dish is leftovers of one already cooked and rated → no check-in. */
+  ratedLeftover?: (recipeId: string) => Promise<boolean>
+  /** 19-nov: the person's language (lazy: only read when something goes out). Absent → Spanish. */
+  language?: () => Promise<Lang>
   /** PRO-223: tápers of tomorrow that come from tonight's dinner (null if none). */
   taperTonight?: () => Promise<{ recipeNames: string[]; count: number } | null>
   /** PRO-228: when the last freezer review went out (any time), null if never. */
@@ -372,6 +474,8 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   const out: PlannedMessage[] = []
   const can = (k: ProactiveKind) => kindEnabled(input.prefs, k) && !input.sentRecently[k]
   const p = input.parts
+  let langP: Promise<Lang> | null = null
+  const lang = () => (langP ??= input.language ? input.language().catch(() => 'es' as const) : Promise.resolve('es' as const))
 
   if (can('daily_brief') && isDailyBriefWindow(p, input.breakfastTime)) {
     const day = await input.todayDay()
@@ -385,7 +489,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     if (dinner?.totalMinutes && dinner.names.length && isCookingReminderWindow(p, input.dinnerTime, dinner.totalMinutes)) {
       out.push({
         kind: 'cooking_reminder',
-        messages: [{ type: 'text', text: formatCookingReminder(dinner.names[0], dinner.totalMinutes, input.dinnerTime) }],
+        messages: [formatCookingReminder(dinner.names[0], dinner.totalMinutes, input.dinnerTime, await lang())],
         guide: cookingReminderGuide(dinner.names[0], dinner.totalMinutes, input.dinnerTime, p),
       })
     }
@@ -393,24 +497,27 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
 
   if (can('dinner_checkin') && isDinnerCheckinWindow(p, input.dinnerTime)) {
     const dinner = await input.todayDinner()
-    if (dinner?.names.length && !(await input.cookedToday())) {
-      const recipeId = dinner.recipeIds?.[0]
-      const rate = Boolean(recipeId && input.askRating && (await input.askRating(recipeId)))
+    const recipeId = dinner?.recipeIds?.[0]
+    // 19-nov: never about leftovers already rated (the check-in asked about them again).
+    if (dinner?.names.length && !(await input.cookedToday()) && !(recipeId && (await input.ratedLeftover?.(recipeId)))) {
       out.push({
         kind: 'dinner_checkin',
-        messages: [formatDinnerCheckin(dinner.names[0], rate)],
-        guide: dinnerCheckinGuide(dinner.names[0], rate),
+        messages: [formatDinnerCheckin(dinner.names[0], await lang())],
+        guide: dinnerCheckinGuide(dinner.names[0]),
       })
     }
   }
 
-  if (can('shopping_reminder') && isShoppingReminderWindow(p)) {
+  // 19-nov: only to households that use the list (ticked it in the last 14 days).
+  const shopUse = input.shoppingUse
+  if (can('shopping_reminder') && shopUse?.usedRecently !== false && isShoppingReminderWindow(p, shopUse)) {
     const pending = await input.pendingShopping()
     if (pending.length >= 3) {
+      const fresh = freshPending(pending)
       out.push({
         kind: 'shopping_reminder',
-        messages: [{ type: 'text', text: formatShoppingReminder(pending, input.webUrl) }],
-        guide: shoppingReminderGuide(pending, input.webUrl),
+        messages: [{ type: 'text', text: formatShoppingReminder(fresh, input.webUrl, await lang()) }],
+        guide: shoppingReminderGuide(fresh, input.webUrl),
       })
     }
   }
@@ -463,27 +570,40 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     })
   }
 
-  return out
+  // 19-nov: in the person's language — English button titles and an English
+  // writer; the fixed texts that have an English version already use it.
+  if (out.length === 0) return out
+  const l = await lang()
+  if (l === 'es') return out
+  return out.map((m) => ({ ...m, messages: localizeButtons(m.messages, l), ...(m.guide ? { guide: guideInLanguage(m.guide, l) } : {}) }))
 }
 
 /**
  * 18-nov: avisos whose buttons only Mimo (the model) can answer. With the
  * monthly cap used up, a tap got «Has alcanzado tu límite», so these don't go
  * then. The «¿hiciste la cena?» buttons are recorded without the model
- * (checkinButtons.ts), so the check-in still goes.
+ * (checkinButtons.ts), so the check-in still goes. 19-nov: «hora de cocinar»
+ * still goes, without «Cambia a algo rápido» (that one is Mimo's).
  */
 export const BUTTONS_NEED_MIMO: ReadonlySet<ProactiveKind> = new Set<ProactiveKind>(['weekly_nudge', 'freezer_review'])
+export const MIMO_BUTTON_IDS: ReadonlySet<string> = new Set(['cooking:swap'])
 export function withoutMimoButtonAvisos(planned: PlannedMessage[], overCap: boolean): PlannedMessage[] {
-  return overCap ? planned.filter((p) => !BUTTONS_NEED_MIMO.has(p.kind)) : planned
+  if (!overCap) return planned
+  return planned
+    .filter((p) => !BUTTONS_NEED_MIMO.has(p.kind))
+    .map((p) => ({
+      ...p,
+      messages: p.messages.map((m) => (m.type === 'buttons' ? { ...m, buttons: m.buttons.filter((b) => !MIMO_BUTTON_IDS.has(b.id)) } : m)),
+    }))
 }
 
 /** Any proactive window that could fire now (cheap pre-check before DB work). */
-export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null, dinnerTime: string | null): boolean {
+export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null, dinnerTime: string | null, shoppingUse?: ShoppingUse | null): boolean {
   return (
     isDailyBriefWindow(p, breakfastTime) ||
     couldNeedCookingReminder(p, dinnerTime) ||
     isDinnerCheckinWindow(p, dinnerTime) ||
-    isShoppingReminderWindow(p) ||
+    isShoppingReminderWindow(p, shoppingUse) ||
     isWeeklyNudgeWindow(p) ||
     isFreezerReviewWindow(p)
   )

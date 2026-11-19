@@ -4,7 +4,7 @@ import { BUDGET_WARNING_LINE, crossesBudgetWarning, type TokenUsage } from '../a
 import type { InboundMessage } from './webhookParser.js'
 import type { LinkWithUser } from './store.js'
 import { buildChatHistory, HISTORY_WINDOW_MS, type HistoryRow } from './history.js'
-import { lateDinnerCheckinNote } from './lateCheckin.js'
+import { LATE_CHECKIN_LOOKBACK_MS, lateDinnerCheckinNote } from './lateCheckin.js'
 import { connectUrl, extractLinkCodeCandidates, isLinkAttempt } from './linking.js'
 import { dropRepeatedButtons, lastSentButtons, outboundBody, renderAssistantReply, renderPlainText, WA_CAPTION_MAX, type OutboundMessage } from './render.js'
 import { extractOptions, toWhatsAppMarkup } from './format.js'
@@ -19,6 +19,10 @@ import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
 import { needsReturnDisclosure, stripAiSignature, withReturnDisclosure } from './aiNotice.js'
 import { CHECKIN_ANSWER_WINDOW_MS, checkinAnswerOf, checkinConfirmation, type CheckinAnswer } from './checkinButtons.js'
+import { COOKING_OK_REPLY, COOKING_SWAP_REQUEST } from './proactive.js'
+import { fatigueAnswerOf, fatigueConfirmation, type FatigueKind } from './fatigue.js'
+import { optOutReasonOf, optOutReasonThanks, optOutWithReason, type OptOutReason } from './optOutReason.js'
+import type { Lang } from './language.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
 import {
   ASK_SOURCE_COPY,
@@ -119,6 +123,12 @@ export interface InboundDeps {
    * dinner recipe to record (the tap goes to Mimo). Absent → always Mimo.
    */
   recordDinnerCheckin?: (userId: string, answer: CheckinAnswer, checkinAt: Date) => Promise<{ name: string } | null>
+  /** 19-nov: the language this number writes in, for the fixed lines (language.ts). Absent → Spanish. */
+  language?: (phone: string) => Promise<Lang>
+  /** 19-nov: «¿Te sigo avisando de…?» answered (fatigue.ts): the kind on or off. Absent → Mimo answers. */
+  setAvisoKind?: (userId: string, kind: FatigueKind, on: boolean) => Promise<void>
+  /** 19-nov: why they wrote BAJA (optOutReason.ts), as an opinion. Absent → no question, no record. */
+  saveOptOutReason?: (userId: string, reason: OptOutReason, text: string) => Promise<void>
   /** Speech-to-text for voice notes. Absent → voice notes get a polite "escríbemelo". */
   transcribe?: (audio: Buffer, mimeType: string) => Promise<string>
   /** Silence before the generic "me pongo con ello" (ms). Tests shorten it. */
@@ -474,6 +484,7 @@ export const COPY = {
     'Ese código no es válido o ha caducado (duran 10 minutos). Este WhatsApp sigue conectado a tu cuenta de siempre. Si querías conectarlo a otra cuenta, saca un código nuevo desde esa cuenta y mándamelo.',
   stopped:
     'Hecho: no te enviaré más avisos por WhatsApp. Puedes seguir escribiéndome cuando quieras. Para volver a recibirlos, escribe ALTA.',
+  stoppedEn: "Done: I won't send you any more notifications on WhatsApp. You can still write to me whenever you like. To get them back, write START.",
   stoppedUnlinked: 'De acuerdo, no te volveré a escribir.',
   started:
     'Hecho: vuelvo a enviarte avisos (aviso antes de cocinar, lista de la compra). Escribe BAJA para dejar de recibirlos.',
@@ -751,6 +762,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   }
 
   await client.markReadWithTyping(msg.wamid)
+  let langP: Promise<Lang> | null = null
+  const languageOf = () => (langP ??= deps.language ? deps.language(msg.from).catch(() => 'es' as const) : Promise.resolve('es' as const))
 
   // ── 0. Control words ───────────────────────────────────────────
   const link = await store.getLinkByPhone(msg.from)
@@ -760,7 +773,14 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     if (command === 'stop') {
       if (link) await store.setNotify(link.userId, false)
       if (link) await deps.optIn?.markDeclined(link.userId)
-      await sendText(userId, 'optout', link ? COPY.stopped : COPY.stoppedUnlinked)
+      // 19-nov: the first BAJA of a number also asks why, with three buttons.
+      const firstStop = link && deps.saveOptOutReason ? !(await store.recentOutboundKinds(msg.from, new Date(0))).has('optout') : false
+      if (link && firstStop) {
+        const lang = await languageOf()
+        await send(userId, 'optout', [optOutWithReason(lang === 'en' ? COPY.stoppedEn : COPY.stopped, lang)])
+      } else {
+        await sendText(userId, 'optout', link ? COPY.stopped : COPY.stoppedUnlinked)
+      }
     } else if (command === 'start') {
       if (link) {
         await store.setNotify(link.userId, true)
@@ -916,7 +936,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         : null
       if (done) {
         const tools = checkin.cooked ? ['log_cooked', ...(checkin.rating ? ['update_recipe_notes'] : [])] : []
-        const reply = checkinConfirmation(checkin, done.name)
+        const reply = checkinConfirmation(checkin, done.name, await languageOf())
         await store.updateInbound(msg.wamid, {
           status: 'processed',
           userId,
@@ -927,6 +947,10 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         return
       }
     }
+
+    // ── 1d. The other avisos' buttons answered without the model (19-nov):
+    // «Lo hago» under «hora de cocinar», «¿Te sigo avisando…?» and why BAJA.
+    if (msg.kind === 'interactive' && (await answerAvisoButton(msg, userId, deps, languageOf, outText))) return
 
     // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
     // transcription, photo extraction and the chat itself.
@@ -951,8 +975,11 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     let historyBody: string | null = null
     switch (msg.kind) {
       case 'text':
-      case 'interactive':
         text = msg.text?.trim() || null
+        break
+      case 'interactive':
+        // 19-nov: «Cambia a algo rápido» reaches Mimo as a clear request, so it swaps tonight's dinner.
+        text = msg.replyId === 'cooking:swap' ? COOKING_SWAP_REQUEST[await languageOf()] : msg.text?.trim() || null
         break
       case 'audio': {
         if (!deps.transcribe || !msg.mediaId) {
@@ -1003,7 +1030,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     }
 
     // ── 4. Chat ────────────────────────────────────────────────
-    const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - HISTORY_WINDOW_MS), userId)
+    // 19-nov: far enough back for last night's check-in (the late-answer note, until 13:00).
+    const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - Math.max(HISTORY_WINDOW_MS, LATE_CHECKIN_LOOKBACK_MS)), userId)
     const history = buildChatHistory(rows, now)
     // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
     const lateCheckin = lateDinnerCheckinNote(rows, now)
@@ -1047,6 +1075,9 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     })
     const reply = await replyMessages(response, userId, deps, lastSentButtons(rows))
     await out('reply', nearCap ? withBudgetWarning(reply) : reply)
+    // 19-nov: a survey always goes as a message of its own (never stuck to the
+    // reply nor under another question's buttons).
+    if (response.survey) await out('survey', renderPlainText(response.survey))
     // 19-nov: after the sign-up's first menu nothing else goes now; the
     // health link and the avisos question come ~10 min later, one at a time
     // (signupFollowUps.ts, from the scheduler).
@@ -1078,6 +1109,46 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // Whatever path ended the turn, no "me pongo con ello" after this point.
     await acker.settle()
   }
+}
+
+/**
+ * 19-nov: the avisos' buttons answered with a fixed line and no model (they
+ * cost no turn and work with the monthly cap used up). True = handled.
+ *   - «Lo hago» (`cooking:ok`) under «hora de cocinar»;
+ *   - «¿Te sigo avisando de…?» Sí / No (fatigue.ts): the kind on or off;
+ *   - why BAJA (optOutReason.ts): an opinion tagged `baja_avisos`.
+ */
+async function answerAvisoButton(
+  msg: InboundMessage,
+  userId: string,
+  deps: InboundDeps,
+  languageOf: () => Promise<Lang>,
+  outText: (kind: string, text: string) => Promise<void>,
+): Promise<boolean> {
+  const processed = (tools: string[] = []) =>
+    deps.store.updateInbound(msg.wamid, { status: 'processed', userId, body: msg.text, meta: { tools } })
+  if (msg.replyId === 'cooking:ok') {
+    await processed()
+    await outText('reply', COOKING_OK_REPLY[await languageOf()])
+    return true
+  }
+  const fatigue = fatigueAnswerOf(msg.replyId)
+  if (fatigue && deps.setAvisoKind) {
+    await deps.setAvisoKind(userId, fatigue.kind, fatigue.keep)
+    await processed(['update_alert_prefs'])
+    await outText('reply', fatigueConfirmation(fatigue.keep, await languageOf()))
+    return true
+  }
+  const reason = optOutReasonOf(msg.replyId)
+  if (reason && deps.saveOptOutReason) {
+    await deps.saveOptOutReason(userId, reason, msg.text ?? reason).catch((err) =>
+      console.warn('[whatsapp] BAJA reason not saved:', err?.message ?? err),
+    )
+    await processed()
+    await outText('system', optOutReasonThanks(await languageOf()))
+    return true
+  }
+  return false
 }
 
 /**

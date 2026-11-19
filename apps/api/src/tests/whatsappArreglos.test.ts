@@ -28,15 +28,13 @@ describe('shoppingItemsOf', () => {
 describe('«¿hiciste la cena?»: one question', () => {
   const name = 'Merluza en salsa'
   it('the fixed text asks one thing and no longer repeats «no vuelve a salir sola»', () => {
-    for (const rate of [false, true]) {
-      const m = formatDinnerCheckin(name, rate)
-      expect(m.text.match(/\?/g)).toHaveLength(1)
-      expect(m.text).not.toMatch(/no vuelve a salir/)
-      expect(dinnerCheckinGuide(name, rate).facts.join(' ')).not.toMatch(/no vuelve a salir sola/)
-    }
+    const m = formatDinnerCheckin(name)
+    expect(m.text.match(/\?/g)).toHaveLength(1)
+    expect(m.text).not.toMatch(/no vuelve a salir/)
+    expect(dinnerCheckinGuide(name).facts.join(' ')).not.toMatch(/no vuelve a salir sola/)
   })
   it('a written check-in with more than one «?» goes out as the fixed text', () => {
-    const spec = dinnerCheckinGuide(name, true)
+    const spec = dinnerCheckinGuide(name)
     expect(validateGuided(`¿Hiciste hoy la ${name}? ¿Qué tal estuvo?`, spec, 'x')).toEqual({ ok: false, reason: 'too_many_questions' })
     expect(validateGuided(`¿Salió hoy la ${name}? Así lo apunto.`, spec, 'x')).toEqual({ ok: true })
   })

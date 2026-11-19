@@ -58,7 +58,7 @@ function setup(overrides: {
   history?: HistoryRow[]
   recentLinkHint?: boolean
   allowed?: boolean
-  chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[] }
+  chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[]; survey?: string }
   menuDigest?: InboundDeps['menuDigest']
   menuImage?: InboundDeps['menuImage']
   /** Only picture messages fail (e.g. the media upload). */
@@ -75,6 +75,8 @@ function setup(overrides: {
   spentMicros?: number
   addedMicros?: number
   recordDinnerCheckin?: InboundDeps['recordDinnerCheckin']
+  /** Any other dep (19-nov: language, setAvisoKind, saveOptOutReason). */
+  extra?: Partial<InboundDeps>
 } = {}) {
   const sent: OutboundMessage[] = []
   const outbound: { kind: string; body: string; status: string; meta?: unknown }[] = []
@@ -136,6 +138,7 @@ function setup(overrides: {
     guided: overrides.guided,
     recordDinnerCheckin: overrides.recordDinnerCheckin,
     ...(overrides.paused !== undefined ? { isPaused: async () => overrides.paused! } : {}),
+    ...overrides.extra,
   }
   return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
 }
@@ -1276,6 +1279,81 @@ describe('processInbound — «¿hiciste la cena?» buttons, no model (18-nov)',
     const empty = setup({ outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin: vi.fn(async () => null) })
     await processInbound(tap('checkin:yes', 'Sí, hecho'), empty.deps)
     expect(empty.chat).toHaveBeenCalled()
+  })
+})
+
+describe('processInbound — the avisos of 19-nov', () => {
+  const tap = (replyId: string, text: string) => msg({ kind: 'interactive', text, replyId, rawType: 'interactive' })
+
+  it('«Lo hago» under «hora de cocinar»: a fixed line, no model, even with the cap used up', async () => {
+    const t = setup({ budgetExceeded: true })
+    await processInbound(tap('cooking:ok', 'Lo hago'), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([{ type: 'text', text: '¡Genial! Que salga rica la cena.' }])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: 'Lo hago' })
+  })
+
+  it('«Cambia a algo rápido» reaches Mimo as a clear request to swap tonight’s dinner', async () => {
+    const t = setup()
+    await processInbound(tap('cooking:swap', 'Cambia a algo rápido'), t.deps)
+    expect(t.chat).toHaveBeenCalledTimes(1)
+    expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('Cámbiame la cena de hoy por algo rápido')
+  })
+
+  it('«¿Te sigo avisando…?»: «No» leaves the kind off, «Sí» switches it on; no model', async () => {
+    const setAvisoKind = vi.fn(async () => {})
+    const no = setup({ budgetExceeded: true, extra: { setAvisoKind } })
+    await processInbound(tap('avisos:no:cooking_reminder', 'No'), no.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'cooking_reminder', false)
+    expect(no.chat).not.toHaveBeenCalled()
+    expect(no.sent[0].text).toContain('no te aviso más')
+    const yes = setup({ extra: { setAvisoKind } })
+    await processInbound(tap('avisos:si:dinner_checkin', 'Sí'), yes.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'dinner_checkin', true)
+    expect(yes.sent).toEqual([{ type: 'text', text: 'Hecho, te sigo avisando.' }])
+  })
+
+  it('BAJA: the first time it also asks why, with three buttons; the answer is an opinion, no model', async () => {
+    const saveOptOutReason = vi.fn(async () => {})
+    const first = setup({ extra: { saveOptOutReason } })
+    await processInbound(msg({ text: 'BAJA' }), first.deps)
+    expect(first.setNotify).toHaveBeenCalledWith('user-1', false)
+    expect(first.sent).toHaveLength(1)
+    const m = first.sent[0]
+    expect(m.type).toBe('buttons')
+    expect(m.text).toContain(COPY.stopped)
+    expect(m.type === 'buttons' && m.buttons.map((b) => b.title)).toEqual(['Demasiados mensajes', 'No me sirven', 'Otra cosa'])
+    expect(first.outbound[0]).toMatchObject({ kind: 'optout' })
+
+    const again = setup({ extra: { saveOptOutReason }, outboundKinds: new Map([['optout', new Date(NOW.getTime() - 86_400_000)]]) })
+    await processInbound(msg({ text: 'BAJA' }), again.deps)
+    expect(again.sent).toEqual([{ type: 'text', text: COPY.stopped }])
+
+    const answer = setup({ budgetExceeded: true, extra: { saveOptOutReason } })
+    await processInbound(tap('baja:demasiados', 'Demasiados mensajes'), answer.deps)
+    expect(saveOptOutReason).toHaveBeenCalledWith('user-1', 'demasiados', 'Demasiados mensajes')
+    expect(answer.chat).not.toHaveBeenCalled()
+    expect(answer.sent).toEqual([{ type: 'text', text: 'Gracias, lo apunto.' }])
+  })
+
+  it('a survey goes as a message of its own after the reply, never under the reply’s buttons', async () => {
+    const t = setup({ chatReply: { message: '¿Te cambio la cena? [[opciones: Sí | No]]', survey: 'Una cosa rápida, si te apetece: ¿cómo te sentirías?' } })
+    await processInbound(msg({ text: 'qué cenamos' }), t.deps)
+    expect(t.sent).toHaveLength(2)
+    expect(t.sent[0].type).toBe('buttons')
+    expect(t.sent[0].text).not.toContain('Una cosa rápida')
+    expect(t.sent[1]).toEqual({ type: 'text', text: 'Una cosa rápida, si te apetece: ¿cómo te sentirías?' })
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'survey'])
+  })
+
+  it('in English for a household that writes in English', async () => {
+    const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+    const sentAt = new Date(NOW.getTime() - 60 * 60 * 1000)
+    const t = setup({ outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin, extra: { language: async () => 'en' } })
+    await processInbound(tap('checkin:up', '👍'), t.deps)
+    expect(recordDinnerCheckin).toHaveBeenCalledWith('user-1', { cooked: true, rating: 4 }, sentAt)
+    expect(t.sent).toEqual([{ type: 'text', text: 'Noted: *Merluza en salsa*, and that you liked it.' }])
   })
 })
 

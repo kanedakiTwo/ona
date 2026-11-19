@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { agreementFacts, agreementMismatch, dishAgreement } from '../services/whatsapp/dishAgreement.js'
 import { composeGuided, guidedUserPrompt, openingOf, validateGuided, type GuidedWriter } from '../services/whatsapp/guided.js'
-import { CHECKIN_RATING_BUTTONS, cookingReminderGuide, dinnerCheckinGuide, formatDinnerCheckin } from '../services/whatsapp/proactive.js'
+import { CHECKIN_BUTTONS, cookingReminderGuide, dinnerCheckinGuide, formatDinnerCheckin } from '../services/whatsapp/proactive.js'
 
 const COSTILLAS = 'Costillas a la riojana'
 const SANDWICH = 'Sándwich vegetal'
@@ -44,28 +44,24 @@ describe('dishAgreement', () => {
 describe('dinner check-in (PRO-274)', () => {
   for (const name of [COSTILLAS, SANDWICH]) {
     it(`«${name}»: the guide carries the agreement and the dish to check`, () => {
-      for (const rate of [false, true]) {
-        const g = dinnerCheckinGuide(name, rate)
-        expect(g.dishes).toEqual([name])
-        expect(g.facts.some((f) => f.startsWith(`«${name}» es `))).toBe(true)
-      }
+      const g = dinnerCheckinGuide(name)
+      expect(g.dishes).toEqual([name])
+      expect(g.facts.some((f) => f.startsWith(`«${name}» es `))).toBe(true)
       expect(cookingReminderGuide(name, 60, '21:00', { hour: 19, minute: 50 }).dishes).toEqual([name])
     })
 
-    it(`«${name}»: no button carries a gender`, () => {
-      for (const rate of [false, true]) {
-        const m = formatDinnerCheckin(name, rate)
-        expect(m.type).toBe('buttons')
-        const titles = m.type === 'buttons' ? m.buttons.map((b) => b.title) : []
-        for (const t of titles) expect(t).not.toMatch(/\b(la|lo|las|los)\b|hech[ao]s\b|\bhecha\b/i)
-      }
-      const plain = formatDinnerCheckin(name, false)
-      expect(plain.type === 'buttons' && plain.buttons.map((b) => b.title)).toEqual(['Sí, hecho', 'No'])
+    it(`«${name}»: the buttons are 👍 / 👎 / «No la hice», under a question about «la cena» (19-nov)`, () => {
+      const m = formatDinnerCheckin(name)
+      expect(m.type).toBe('buttons')
+      expect(m.type === 'buttons' && m.buttons.map((b) => b.title)).toEqual(['👍', '👎', 'No la hice'])
+      // «la» in «No la hice» is «la cena», which the question names whatever the dish.
+      expect(m.text).toContain('la cena')
+      expect(dinnerCheckinGuide(name).facts.join(' ')).toContain('«la cena»')
     })
   }
 
-  it('the rating buttons are neutral too', () => {
-    expect(CHECKIN_RATING_BUTTONS.map((b) => b.title)).toEqual(['Sí, ¡a repetir!', 'Sí, estuvo bien', 'No'])
+  it('the ids are what counts', () => {
+    expect(CHECKIN_BUTTONS.map((b) => b.id)).toEqual(['checkin:up', 'checkin:down', 'checkin:no'])
   })
 
   it('a written message that does not agree goes out as the fixed text; one that agrees goes out', async () => {
@@ -74,9 +70,9 @@ describe('dinner check-in (PRO-274)', () => {
       [SANDWICH, '¿Ya está lista la Sándwich vegetal? Dime y lo apunto.', '¿Ya está listo el Sándwich vegetal? Dime y lo apunto.'],
     ]
     for (const [name, wrong, right] of cases) {
-      const fixed = formatDinnerCheckin(name, false)
+      const fixed = formatDinnerCheckin(name)
       const fallback = fixed.type === 'buttons' ? fixed.text : ''
-      const spec = dinnerCheckinGuide(name, false)
+      const spec = dinnerCheckinGuide(name)
       const run = (text: string) => {
         const writer: GuidedWriter = async () => ({ text })
         return composeGuided(spec, fallback, { writer, userId: null, overBudget: async () => false, context: async () => ({ memory: [], recent: [], previous: [] }) })
@@ -90,7 +86,7 @@ describe('dinner check-in (PRO-274)', () => {
 })
 
 describe('Spanish from Spain and openings (PRO-274)', () => {
-  const spec = dinnerCheckinGuide(SANDWICH, false)
+  const spec = dinnerCheckinGuide(SANDWICH)
 
   it('rejects Latin-American expressions', () => {
     expect(validateGuided('¿Te late así? ¿Hiciste el Sándwich vegetal?', spec, 'x')).toEqual({ ok: false, reason: 'banned_word' })

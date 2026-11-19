@@ -4,7 +4,7 @@
  * «¿hiciste la cena?» + «¿repetimos?» in one message.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { CHECKIN_RATING_BUTTONS, planProactive, sawTodaysMenu, type MadridParts } from '../services/whatsapp/proactive.js'
+import { CHECKIN_BUTTONS, planProactive, sawTodaysMenu, type MadridParts } from '../services/whatsapp/proactive.js'
 
 const parts = (over: Partial<MadridParts>): MadridParts => ({ isoDate: '2026-10-20', weekday: 1, hour: 9, minute: 10, ...over })
 const base = {
@@ -42,31 +42,25 @@ describe('the morning brief does not repeat a menu already seen', () => {
   })
 })
 
-describe('«¿hiciste la cena?» and «¿repetimos?» are one message', () => {
+describe('«¿qué tal la cena?»: one question, three buttons (19-nov)', () => {
   const at22 = parts({ hour: 22, minute: 10 })
 
-  it('asks both, with buttons that answer both, when the recipe has no recent rating', async () => {
-    const askRating = vi.fn(async () => true)
-    const r = await planProactive({ ...base, prefs: {}, parts: at22, askRating })
-    expect(askRating).toHaveBeenCalledWith('r1')
+  it('one question with 👍 / 👎 / «No la hice», whatever the rating history', async () => {
+    const r = await planProactive({ ...base, prefs: {}, parts: at22 })
     expect(r).toHaveLength(1)
     expect(r[0].kind).toBe('dinner_checkin')
-    expect(r[0].messages).toHaveLength(1)
     const m = r[0].messages[0]
     expect(m.type).toBe('buttons')
     if (m.type !== 'buttons') return
     expect(m.text).toContain('*Merluza en salsa*')
-    expect(m.text).toContain('si la repetimos')
-    // 18-nov: one question only (it asked three).
     expect(m.text.match(/\?/g)).toHaveLength(1)
-    expect(m.buttons.map((b) => b.title)).toEqual(CHECKIN_RATING_BUTTONS.map((b) => b.title))
+    expect(m.buttons.map((b) => b.title)).toEqual(CHECKIN_BUTTONS.map((b) => b.title))
     expect(m.buttons.every((b) => b.title.length <= 20)).toBe(true)
-    expect(r[0].guide?.facts.join(' ')).toContain('si la repetimos')
   })
 
-  it('keeps the plain question when the household rated it in the last 30 days', async () => {
-    const r = await planProactive({ ...base, prefs: {}, parts: at22, askRating: async () => false })
-    const m = r[0].messages[0]
-    expect(m.type === 'buttons' && m.buttons.map((b) => b.title)).toEqual(['Sí, hecho', 'No'])
+  it('never about leftovers already rated', async () => {
+    const ratedLeftover = vi.fn(async () => true)
+    expect(await planProactive({ ...base, prefs: {}, parts: at22, ratedLeftover })).toEqual([])
+    expect(ratedLeftover).toHaveBeenCalledWith('r1')
   })
 })

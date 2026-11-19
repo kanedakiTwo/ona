@@ -55,6 +55,12 @@ export interface AssistantResponse {
   toolTrace?: ToolTrace[]
   /** An offer line went at the end of this reply (PRO-262 / PRO-164 invites, PRO-285 leftovers question): no other offer line this turn (PRO-248). */
   offerAdded?: boolean
+  /**
+   * 19-nov: a survey (PRO-285 leftovers, PRO-334 Sean Ellis) due this turn,
+   * sent by WhatsApp as a message of its own after the reply — never stuck to
+   * it nor under another question's buttons.
+   */
+  survey?: string
 }
 
 export interface ToolTrace {

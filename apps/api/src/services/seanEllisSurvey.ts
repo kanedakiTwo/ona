@@ -7,8 +7,9 @@
  *     more since sign-up, a menu, Mimoia used on 2 different Madrid days in
  *     the last 14 (app or WhatsApp), during the beta. Never an internal or
  *     test household (same rules as the «pregunta única», PRO-1091).
- *   - Where: on WhatsApp, at the end of one of Mimo's replies (a reply, so
- *     inside the 24 h window; never with another offer), when the person
+ *   - Where: on WhatsApp, right after one of Mimo's replies, as a message of
+ *     its own (19-nov; inside the 24 h window; never with another offer and
+ *     at most one survey a week per household), when the person
  *     wrote to Mimo there in the last 7 days; otherwise a card on /menu that
  *     can be closed. Mimo also files it when the answer comes in the chat
  *     (tool `answer_sean_ellis`, D-051).
@@ -111,12 +112,6 @@ export function isSeanEllisReply(message: string, history: readonly ChatMessage[
   const last = [...history].reverse().find((m) => m.role === 'assistant')
   if (!last || !last.content.includes(SEAN_ELLIS_MARKER)) return false
   return message.trim().length >= 1
-}
-
-/** Pure: the reply with the question at the end. */
-export function withSeanEllisQuestion(message: string): string {
-  const body = message.trimEnd()
-  return body ? `${body}\n\n${SEAN_ELLIS_WHATSAPP}` : SEAN_ELLIS_WHATSAPP
 }
 
 // ─── Store (DB) ───────────────────────────────────────────────────
@@ -224,28 +219,27 @@ export async function seanEllisChannelFor(userId: string, deps: SeanEllisDeps = 
 }
 
 /**
- * The WhatsApp reply, with the question at the end when it is due there
- * (and stamped so it never repeats). Only for WhatsApp replies that carry no
- * other offer. Never throws: on any failure the reply goes as it was.
+ * The WhatsApp question, when it is due there after this reply (and stamped
+ * so it never repeats), else null. Only for replies that carry no other
+ * offer; it goes as a message of its own (19-nov). Never throws.
  */
-export async function maybeAppendSeanEllis(
+export async function maybeSeanEllisQuestion(
   userId: string,
-  reply: string,
   opts: { mode: string; otherOffer: boolean } & SeanEllisDeps,
-): Promise<string> {
-  if (opts.mode !== 'whatsapp' || opts.otherOffer || !reply.trim()) return reply
+): Promise<string | null> {
+  if (opts.mode !== 'whatsapp' || opts.otherOffer) return null
   const now = opts.now ?? new Date()
   try {
     const store = opts.store ?? createDbSeanEllisStore()
     const state = await store.load(userId, now)
-    if (!state || seanEllisChannel(state, { ...opts, now }) !== 'whatsapp') return reply
+    if (!state || seanEllisChannel(state, { ...opts, now }) !== 'whatsapp') return null
     // A reply, so inside Meta's 24 h window; the stamp makes it once.
-    if (!state.lastInboundAt || now.getTime() - state.lastInboundAt.getTime() >= SERVICE_WINDOW_MS) return reply
-    if (!(await store.claim(userId, now))) return reply
-    return withSeanEllisQuestion(reply)
+    if (!state.lastInboundAt || now.getTime() - state.lastInboundAt.getTime() >= SERVICE_WINDOW_MS) return null
+    if (!(await store.claim(userId, now))) return null
+    return SEAN_ELLIS_WHATSAPP
   } catch (err) {
     console.warn('[sean-ellis] skipped:', (err as Error)?.message ?? err)
-    return reply
+    return null
   }
 }
 

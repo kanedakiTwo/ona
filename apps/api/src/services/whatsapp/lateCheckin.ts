@@ -10,8 +10,16 @@ import type { HistoryRow } from './history.js'
  * check-in, with nothing answered since, is an answer to THAT check-in: Mimo
  * gets this note with the turn (never stored in history) and records it on
  * the check-in's day. Pure.
+ *
+ * 19-nov: a reply at noon to the check-in of the night before was recorded on
+ * the wrong day. Until 13:00 a reply still counts for the previous day's
+ * dinner; from 06:00 the note is conditional (the morning's message may be
+ * about something else).
  */
-export const LATE_CHECKIN_UNTIL_HOUR = 6
+export const LATE_CHECKIN_UNTIL_HOUR = 13
+const SURE_UNTIL_HOUR = 6
+/** How far back the inbound turn must load rows for the note (check-in from 21:00 → 13:00). */
+export const LATE_CHECKIN_LOOKBACK_MS = 18 * 60 * 60 * 1000
 
 export function lateDinnerCheckinNote(rows: readonly HistoryRow[], now: Date): string | null {
   const p = madridParts(now)
@@ -31,6 +39,12 @@ export function lateDinnerCheckinNote(rows: readonly HistoryRow[], now: Date): s
   if (rows.slice(at + 1).some((r) => r.direction === 'in' && r.status === 'processed')) return null
   const day = dateLabel(sentParts.isoDate)
   const hh = `${String(sentParts.hour).padStart(2, '0')}:${String(sentParts.minute).padStart(2, '0')}`
+  if (p.hour >= SURE_UNTIL_HOUR) {
+    return (
+      `[Nota del sistema, no la menciones] El ${day} a las ${hh} le preguntaste que tal la cena y no ha contestado hasta ahora. ` +
+      `Si este mensaje contesta a eso (que la hizo, que no, que tal estuvo), es la cena del ${day}: apuntala en ese dia (day "${sentParts.isoDate}"), no en el de hoy. Si habla de otra cosa, ignora esta nota.`
+    )
+  }
   return (
     `[Nota del sistema, no la menciones] Este mensaje contesta al aviso de la cena del ${day} (enviado ese dia a las ${hh}). ` +
     `Aunque ya sea pasada la medianoche, "hoy" y "la cena" en su respuesta son la cena del ${day}: si dice que la hizo, apuntala en ese dia (day "${sentParts.isoDate}"), no en el de hoy, y no hables del menu de hoy salvo que lo pida.`

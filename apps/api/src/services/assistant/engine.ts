@@ -12,9 +12,10 @@ import { admitsNotDone, claimsAction, toolMadeChange, unconfirmedCalls } from '.
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
-import { maybeAppendLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
+import { maybeLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
+import { surveyedThisWeek } from '../surveyCap.js'
 import { recordQuestionAnswer } from '../whatsapp/oneOffQuestion.js'
-import { maybeAppendSeanEllis, recordSeanEllisReply } from '../seanEllisSurvey.js'
+import { maybeSeanEllisQuestion, recordSeanEllisReply } from '../seanEllisSurvey.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
@@ -152,6 +153,7 @@ export async function chat(
     const done = await appendReplyOffers(userId, result.message, { mode: familyOfferMode, invite: offerApplies })
     result.message = done.message
     if (done.offerAdded) result.offerAdded = true
+    if (done.survey) result.survey = done.survey
   }
   return result
 }
@@ -159,36 +161,42 @@ export async function chat(
 export interface ReplyOfferSteps {
   family: (userId: string, reply: string, channel: 'text' | 'whatsapp') => Promise<string>
   invite: (userId: string, reply: string) => Promise<string>
-  leftovers: typeof maybeAppendLeftoversQuestion
-  seanEllis: typeof maybeAppendSeanEllis
+  leftovers: typeof maybeLeftoversQuestion
+  seanEllis: typeof maybeSeanEllisQuestion
+  /** 19-nov: the household already got a survey in the last 7 days (absent → never). */
+  surveyedThisWeek?: (userId: string) => Promise<boolean>
 }
 
 const REPLY_OFFER_STEPS: ReplyOfferSteps = {
   family: (userId, reply, channel) => maybeAppendFamilyInviteOffer(userId, reply, channel),
   invite: (userId, reply) => maybeAppendInviteOffer(userId, reply),
-  leftovers: maybeAppendLeftoversQuestion,
-  seanEllis: maybeAppendSeanEllis,
+  leftovers: maybeLeftoversQuestion,
+  seanEllis: maybeSeanEllisQuestion,
+  surveyedThisWeek: (userId) => surveyedThisWeek(userId),
 }
 
 /**
- * At most ONE line at the end of a reply (never two offers together): the
- * family offer (PRO-262) first; the other-household offer (PRO-164) only
- * when that one didn't go; Mimo's leftovers question (PRO-285, WhatsApp only)
- * only when neither did; the Sean Ellis survey (PRO-334, WhatsApp only) last.
- * `offerAdded` then holds back the avisos re-offer
- * (PRO-248) for this turn.
+ * At most ONE offer per reply (never two together): the family offer
+ * (PRO-262) first; the other-household offer (PRO-164) only when that one
+ * didn't go; then, WhatsApp only, Mimo's leftovers question (PRO-285) or the
+ * Sean Ellis survey (PRO-334). The invites go at the end of the reply; a
+ * survey comes back apart (`survey`) and goes as a message of its own, at
+ * most one a week per household (19-nov). `offerAdded` then holds back the
+ * avisos re-offer (PRO-248) for this turn.
  */
 export async function appendReplyOffers(
   userId: string,
   reply: string,
   opts: { mode: 'text' | 'whatsapp'; invite: boolean },
   steps: ReplyOfferSteps = REPLY_OFFER_STEPS,
-): Promise<{ message: string; offerAdded: boolean }> {
+): Promise<{ message: string; offerAdded: boolean; survey: string | null }> {
   let message = await steps.family(userId, reply, opts.mode)
   if (opts.invite && message === reply) message = await steps.invite(userId, message)
-  if (message === reply) message = await steps.leftovers(userId, message, { mode: opts.mode, otherOffer: false })
-  if (message === reply) message = await steps.seanEllis(userId, message, { mode: opts.mode, otherOffer: false })
-  return { message, offerAdded: message !== reply }
+  let survey: string | null = null
+  if (message === reply && opts.mode === 'whatsapp' && !(await steps.surveyedThisWeek?.(userId).catch(() => true))) {
+    survey = (await steps.leftovers(userId, { mode: opts.mode, otherOffer: false })) ?? (await steps.seanEllis(userId, { mode: opts.mode, otherOffer: false }))
+  }
+  return { message, offerAdded: message !== reply || survey !== null, survey }
 }
 
 /**

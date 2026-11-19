@@ -108,7 +108,7 @@ D-080 (PRO-234, `services/notifications/channels.ts`, tests in `notificationChan
 
 | Alert | With WhatsApp linked and avisos on | Without WhatsApp |
 |---|---|---|
-| Morning menu (only if asked for), start cooking, «¿hiciste la cena?», Saturday shopping, Sunday planning (only with the Thursday week off), monthly freezer review | WhatsApp only | Doesn't go out |
+| Morning menu (only if asked for), start cooking (dishes of more than 45 min), «¿qué tal la cena?», shopping (households that use the list, on their shopping day or Saturday), Sunday planning (only with the Thursday week off), monthly freezer review | WhatsApp only | Doesn't go out |
 | The Thursday week (PRO-381) | In the app (the week and a card on /menu) | In the app |
 | Prep alerts (freezer, soak…) | WhatsApp only | Phone notification (Web Push) |
 | Welcome, password, invitations, newsletter, trial day 12, legal notice 15 days before the first charge | Email (the legal notice also in the app) | Email |
@@ -124,7 +124,7 @@ D-080 (PRO-234, `services/notifications/channels.ts`, tests in `notificationChan
 PRO-237 (D-080). `/profile/avisos`, linked from Perfil → Recordatorios → «Avisos». Users can:
 - see every alert Mimo sends first — Menú del día (off until asked for, PRO-215), Hora de empezar a cocinar, Sacar del congelador y poner en remojo, ¿Hiciste la cena?, ¿Toca compra?, **La semana, hecha cada jueves** (PRO-381), Domingo de planificar, Repaso del congelador — with one line on **where it arrives** («Por WhatsApp · si no sale, notificación del móvil», «Notificación del móvil», «En tu menú, en la app», «Apagado», or why it doesn't: «Solo llega por WhatsApp.», «Conecta WhatsApp o activa las notificaciones del móvil.», «Activa los avisos por WhatsApp.», «No hace falta: Mimo os deja hecha la semana cada jueves.»);
 - **La semana, hecha cada jueves** (`weekly_autoplan`, D-158): on for everyone (missing key = on). Every Thursday from 18:00 Mimo leaves next week done in the menu (channel `app`: it's the week itself and a card on `/menu`, not a message; see [Menus → Piloto automático](./menus.md)). Switching it off stops it for the whole house. While it's on, **Domingo de planificar** (`weekly_nudge`) doesn't go and its row says «No hace falta: Mimo os deja hecha la semana cada jueves.»; it comes back for whoever switches the autopilot off;
-- switch each one on or off (saved on tap; off = off on every channel);
+- switch each one on or off (saved on tap; off = off on every channel); since 2026-11-19 Mimo also switches one off by itself when the household left 5 of that kind in a row unanswered, and asks once on WhatsApp whether to keep sending it — «Sí» switches it back on (see [WhatsApp](./whatsapp.md) → «Unanswered avisos pause themselves»);
 - see the state of WhatsApp and the phone notification (link back to Perfil), and that email only carries the account plus the Friday menu (its switch, the same as in Perfil).
 
 The rows come from `buildAlertRows` (`@ona/shared`, `types/alerts.ts`), the same rules as *Channels*. Switches live in `users.alert_prefs` (migration `0087_alert_prefs`, missing key = on — except the morning menu `daily_brief`, which is opt-in (PRO-215: on only if some store says on, `ALERT_OPT_IN_KINDS`)) and are mirrored into `whatsapp_links.prefs` when WhatsApp is linked; a kind is off if either says off (`mergeAlertPrefs`, read by `runProactiveTick` and the prep-alert tick). Turning a kind on with WhatsApp linked also turns on «Avisos por WhatsApp». `PATCH /whatsapp/link { prefs }` goes through the same code.

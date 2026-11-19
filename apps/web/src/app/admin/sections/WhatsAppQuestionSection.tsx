@@ -16,7 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 
-type Reason = "ya_enviada" | "baja" | "interna" | "prueba" | "sin_whatsapp"
+type Reason = "ya_enviada" | "encuesta_semana" | "baja" | "interna" | "prueba" | "sin_whatsapp"
 
 interface Preview {
   count: number
@@ -43,6 +43,7 @@ interface Question {
 
 const REASON_LABEL: Record<Reason, [string, string]> = {
   ya_enviada: ["ya la recibió", "ya la recibieron"],
+  encuesta_semana: ["recibió otra encuesta esta semana", "recibieron otra encuesta esta semana"],
   baja: ["pidió BAJA", "pidieron BAJA"],
   interna: ["cuenta interna", "cuentas internas"],
   prueba: ["hogar de prueba", "hogares de prueba"],

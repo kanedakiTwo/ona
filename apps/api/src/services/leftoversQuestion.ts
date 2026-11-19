@@ -3,7 +3,8 @@
  * mande Mimo por WhatsApp»), to decide PRO-227 (D-069).
  *
  * To each beta user with WhatsApp linked, the next time they write to Mimo on
- * WhatsApp, Mimo adds the question ONCE at the end of its reply. A reply, so
+ * WhatsApp, Mimo asks it ONCE right after its reply, as a message of its own
+ * (19-nov: never stuck to the reply). Right after a reply, so
  * always inside Meta's 24 h window: no template, no message of its own, and
  * it doesn't count towards the weekly aviso budget (D-069).
  *
@@ -56,12 +57,6 @@ export function shouldAskLeftovers(i: LeftoversQuestionInput): boolean {
   if (madridParts(i.now).isoDate >= LEFTOVERS_QUESTION_OFF_FROM) return false
   if (!i.linked || !i.lastInboundAt) return false
   return i.now.getTime() - i.lastInboundAt.getTime() < SERVICE_WINDOW_MS
-}
-
-/** Pure: the reply with the question at the end. */
-export function withLeftoversQuestion(message: string): string {
-  const body = message.trimEnd()
-  return body ? `${body}\n\n${LEFTOVERS_QUESTION}` : LEFTOVERS_QUESTION
 }
 
 /** Pure: is this message the answer to the question Mimo just asked? */
@@ -123,26 +118,25 @@ export function createDbLeftoversQuestionStore(db: Db = defaultDb): LeftoversQue
 // ─── Glue ─────────────────────────────────────────────────────────
 
 /**
- * The reply, with the question at the end when it is due (and stamped so it
- * never repeats). Only for WhatsApp replies that carry no other offer. Never
- * throws: on any failure the reply goes as it was.
+ * The question, when it is due after this WhatsApp reply (and stamped so it
+ * never repeats), else null. Only for replies that carry no other offer. It
+ * goes as a message of its own (19-nov). Never throws.
  */
-export async function maybeAppendLeftoversQuestion(
+export async function maybeLeftoversQuestion(
   userId: string,
-  reply: string,
   opts: { mode: string; otherOffer: boolean; onboarding?: boolean; store?: LeftoversQuestionStore; now?: Date },
-): Promise<string> {
-  if (opts.mode !== 'whatsapp' || opts.otherOffer || opts.onboarding || !reply.trim()) return reply
+): Promise<string | null> {
+  if (opts.mode !== 'whatsapp' || opts.otherOffer || opts.onboarding) return null
   const now = opts.now ?? new Date()
   try {
     const store = opts.store ?? createDbLeftoversQuestionStore()
     const state = await store.load(userId)
-    if (!state || !shouldAskLeftovers({ ...state, now })) return reply
-    if (!(await store.claim(userId, now))) return reply
-    return withLeftoversQuestion(reply)
+    if (!state || !shouldAskLeftovers({ ...state, now })) return null
+    if (!(await store.claim(userId, now))) return null
+    return LEFTOVERS_QUESTION
   } catch (err) {
     console.warn('[leftovers-question] skipped:', (err as Error)?.message ?? err)
-    return reply
+    return null
   }
 }
 

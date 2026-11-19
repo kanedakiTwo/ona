@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, isNull, or, inArray } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, isNull, like, or, inArray } from 'drizzle-orm'
 import { db } from '../../db/connection.js'
 import { users, whatsappLinkCodes, whatsappLinks, whatsappMessages } from '../../db/schema.js'
 import type { InboundMessage } from './webhookParser.js'
@@ -299,4 +299,26 @@ export async function setNotify(userId: string, notify: boolean): Promise<boolea
     .where(eq(whatsappLinks.userId, userId))
     .returning({ id: whatsappLinks.id })
   return rows.length > 0
+}
+
+/**
+ * 19-nov (fatigue.ts): every message to and from `phone` since `since`
+ * (no bodies), plus the «¿Te sigo avisando…?» questions of any date.
+ */
+export async function avisoActivity(phone: string, since: Date): Promise<Array<{ direction: string; kind: string; status: string; createdAt: Date }>> {
+  return db
+    .select({ direction: whatsappMessages.direction, kind: whatsappMessages.kind, status: whatsappMessages.status, createdAt: whatsappMessages.createdAt })
+    .from(whatsappMessages)
+    .where(and(eq(whatsappMessages.phone, phone), or(gte(whatsappMessages.createdAt, since), like(whatsappMessages.kind, 'pausa:%'))))
+}
+
+/** 19-nov (language.ts): the bodies of the last messages this number wrote, newest first. */
+export async function recentInboundTexts(phone: string, limit = 15): Promise<string[]> {
+  const rows = await db
+    .select({ body: whatsappMessages.body })
+    .from(whatsappMessages)
+    .where(and(eq(whatsappMessages.phone, phone), eq(whatsappMessages.direction, 'in')))
+    .orderBy(desc(whatsappMessages.createdAt))
+    .limit(limit)
+  return rows.map((r) => r.body ?? '').filter(Boolean)
 }

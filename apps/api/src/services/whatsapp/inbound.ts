@@ -18,7 +18,14 @@ import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
 import { needsReturnDisclosure, stripAiSignature, withReturnDisclosure } from './aiNotice.js'
-import { CHECKIN_ANSWER_WINDOW_MS, checkinAnswerOf, checkinConfirmation, type CheckinAnswer } from './checkinButtons.js'
+import {
+  CHECKIN_ANSWER_WINDOW_MS,
+  checkinAnswerOf,
+  checkinConfirmation,
+  checkinReplyIdOfEmoji,
+  dinnerCheckinPending,
+  type CheckinAnswer,
+} from './checkinButtons.js'
 import { COOKING_OK_REPLY, COOKING_SWAP_REQUEST } from './proactive.js'
 import { fatigueAnswerOf, fatigueConfirmation, type FatigueKind } from './fatigue.js'
 import { optOutReasonOf, optOutReasonThanks, optOutWithReason, type OptOutReason } from './optOutReason.js'
@@ -676,11 +683,23 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
   }
 
   // A reaction or a message of only emoji: kept (the daily review sees it),
-  // never answered, no «escribiendo…».
+  // never answered, no «escribiendo…». 20-nov: unless it is an answer — a
+  // typed 👍 / 👎 right after the dinner check-in counts as that button (1c),
+  // and an emoji right after Mimo asked something (≤ 30 min) goes to Mimo,
+  // like a «vale». A reaction never answers.
+  let typedCheckin: CheckinAnswer | null = null
   if (isSilentEmoji(msg)) {
     const link = await store.getLinkByPhone(msg.from)
-    await store.updateInbound(msg.wamid, { status: 'ignored', userId: link?.userId ?? null, errorMessage: 'emoji' })
-    return
+    let answers = false
+    if (link && msg.rawType !== 'reaction') {
+      const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - CHECKIN_ANSWER_WINDOW_MS), link.userId)
+      typedCheckin = dinnerCheckinPending(rows, now) ? checkinAnswerOf(checkinReplyIdOfEmoji(msg.text)) : null
+      answers = typedCheckin != null || awaitsAnswer(rows, now)
+    }
+    if (!answers) {
+      await store.updateInbound(msg.wamid, { status: 'ignored', userId: link?.userId ?? null, errorMessage: 'emoji' })
+      return
+    }
   }
 
   // 18-nov: only thanks or an acknowledgement («gracias», «vale», «ok»…):
@@ -923,9 +942,10 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       if (await attachSourceLink(msg, userId, now, deps, outText)) return
     }
 
-    // ── 1c. A «¿hiciste la cena?» button (18-nov): recorded here with a
-    // fixed confirmation, no model, also with the monthly cap used up.
-    const checkin = msg.kind === 'interactive' ? checkinAnswerOf(msg.replyId) : null
+    // ── 1c. A «¿hiciste la cena?» button (18-nov), or its 👍 / 👎 typed
+    // (20-nov): recorded here with a fixed confirmation, no model, also with
+    // the monthly cap used up.
+    const checkin = msg.kind === 'interactive' ? checkinAnswerOf(msg.replyId) : typedCheckin
     if (checkin && deps.recordDinnerCheckin) {
       const sentAt = (await store.recentOutboundKinds(msg.from, new Date(now.getTime() - CHECKIN_ANSWER_WINDOW_MS))).get('dinner_checkin')
       const done = sentAt
@@ -941,7 +961,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
           status: 'processed',
           userId,
           body: msg.text,
-          meta: { tools, toolTrace: tools.map((name) => ({ name, input: JSON.stringify({ boton: msg.replyId }), summary: reply })) },
+          meta: { tools, toolTrace: tools.map((name) => ({ name, input: JSON.stringify({ boton: msg.replyId ?? msg.text }), summary: reply })) },
         })
         await outText('reply', reply)
         return

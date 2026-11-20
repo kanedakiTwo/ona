@@ -90,9 +90,11 @@ export const DEFAULT_DINNER_MIN = 21 * 60
  * dinner is ready at their dinner time (10-min buffer).
  */
 export const COOKING_REMINDER_MIN_TOTAL = 45
+/** Minutes between «empieza a cocinar» + the dish's minutes and dinner time. */
+export const COOKING_MARGIN_MIN = 10
 export function isCookingReminderWindow(p: MadridParts, dinnerTime: string | null, totalMinutes: number): boolean {
   if (totalMinutes <= COOKING_REMINDER_MIN_TOTAL) return false
-  const start = minutesOf(dinnerTime, DEFAULT_DINNER_MIN) - totalMinutes - 10
+  const start = minutesOf(dinnerTime, DEFAULT_DINNER_MIN) - totalMinutes - COOKING_MARGIN_MIN
   return nowMinutes(p) >= start - 10 && nowMinutes(p) < start + 10
 }
 /**
@@ -286,10 +288,12 @@ export function cookingReminderGuide(
 ): GuideSpec {
   const dinner = minutesOf(dinnerTime, DEFAULT_DINNER_MIN)
   const at = hhmm(dinner)
-  const start = dinner - totalMinutes - 10
+  const start = dinner - totalMinutes - COOKING_MARGIN_MIN
   const current = nowMinutes(now)
   const untilStart = start - current
   const untilDinner = dinner - current
+  // 20-nov (reviewer): «en 7 min… lleva 48 min y la cena es a las 21:00» read
+  // as a wrong sum (19:55 + 7 + 48 ≠ 21:00): the 10 min of margin were silent.
   return {
     kind: 'cooking_reminder',
     facts: [
@@ -298,14 +302,15 @@ export function cookingReminderGuide(
       `Hora a la que sale este mensaje: ${hhmm(current)}`,
       untilStart > 0 ? `Empieza a cocinar a las ${hhmm(start)} (dentro de ${untilStart} min)` : `Empieza a cocinar ya (tocaba a las ${hhmm(start)})`,
       `Hora de la cena: ${at} (faltan ${untilDinner} min)`,
-      `Lleva unos ${totalMinutes} min`,
+      `Lleva unos ${totalMinutes} min, y la hora de empezar deja ${COOKING_MARGIN_MIN} min de margen antes de la cena`,
+      `Si das la hora de empezar y los minutos del plato, di también los ${COOKING_MARGIN_MIN} min de margen, para que las cuentas cuadren.`,
       'Horas y minutos: solo los de estos datos, tal cual. No calcules ni redondees otros.',
       `Botones debajo: «${COOKING_BUTTONS[0].title}» / «${COOKING_BUTTONS[1].title}» (cambiarla por algo rápido). No los repitas en el texto.`,
     ],
     required: [name, at, String(totalMinutes)],
     dishes: [name],
     allowedTimes: [hhmm(current), hhmm(start), at],
-    allowedMinutes: [totalMinutes, untilDinner, ...(untilStart > 0 ? [untilStart] : [])],
+    allowedMinutes: [totalMinutes, untilDinner, COOKING_MARGIN_MIN, ...(untilStart > 0 ? [untilStart] : [])],
   }
 }
 

@@ -51,7 +51,16 @@ describe('«hora de cocinar»: the real hours and minutes', () => {
     expect(facts).toContain('Empieza a cocinar a las 20:00 (dentro de 4 min)')
     expect(facts).toContain('Hora de la cena: 21:30 (faltan 94 min)')
     expect(spec.allowedTimes).toEqual(['19:56', '20:00', '21:30'])
-    expect(spec.allowedMinutes).toEqual([80, 94, 4])
+    expect(spec.allowedMinutes).toEqual([80, 94, 10, 4])
+  })
+
+  it('says the 10 min of margin, so «en 7 min» + the dish adds up to dinner (reviewer, 20-nov)', () => {
+    // 19-nov: 19:55, Sepia 48 min, dinner 21:00 → «en 7 min» read as a wrong sum (it is 48 + 10 of margin).
+    const s = cookingReminderGuide('Sepia con guisantes', 48, '21:00', { hour: 19, minute: 55 })
+    const facts = s.facts.join('\n')
+    expect(facts).toContain('dentro de 7 min')
+    expect(facts).toContain('10 min de margen')
+    expect(validateGuided('En 7 min toca la Sepia con guisantes: unos 48 min y 10 de margen, para cenar a las 21:00.', s, 'x')).toEqual({ ok: true })
   })
 
   it('a made-up hour or minute count is rejected (the cases the review found)', () => {

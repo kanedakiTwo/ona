@@ -19,6 +19,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
 import { captionWithoutInvite, signupCaption } from '../services/whatsapp/signupReply.js'
 import { COALESCE_WINDOW_MS } from '../services/whatsapp/coalesce.js'
+import { checkinReplyIdOfEmoji } from '../services/whatsapp/checkinButtons.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -1270,6 +1271,60 @@ describe('processInbound — «¿hiciste la cena?» buttons, no model (18-nov)',
       expect(t.chat, id).not.toHaveBeenCalled()
       expect(t.sent, id).toEqual([{ type: 'text', text: line }])
     }
+  })
+
+  it('a typed 👍🏻 / 👎🏽 right after the check-in counts as the button (reviewer 20-nov: it was dropped as a lone emoji)', async () => {
+    const checkinRow: HistoryRow = { direction: 'out', kind: 'dinner_checkin', body: '¿Qué tal ha salido hoy la cena?\n⟦botones: 👍 | 👎 | No la hice⟧', status: 'sent', createdAt: sentAt }
+    const cases: Array<[string, object, string]> = [
+      ['👍🏻', { cooked: true, rating: 4 }, 'Apuntada la cena: *Merluza en salsa*, y que os gustó.'],
+      ['👍👍 ', { cooked: true, rating: 4 }, 'Apuntada la cena: *Merluza en salsa*, y que os gustó.'],
+      ['👎🏽', { cooked: true, rating: 1 }, 'Apuntada la cena: *Merluza en salsa*. No la vuelvo a poner sola en el menú.'],
+    ]
+    for (const [text, answer, line] of cases) {
+      const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+      const t = setup({ history: [checkinRow], outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin })
+      await processInbound(msg({ text }), t.deps)
+      expect(recordDinnerCheckin, text).toHaveBeenCalledWith('user-1', answer, sentAt)
+      expect(t.chat, text).not.toHaveBeenCalled()
+      expect(t.sent, text).toEqual([{ type: 'text', text: line }])
+      expect(t.inboundUpdates.at(-1), text).toMatchObject({ status: 'processed', meta: { tools: ['log_cooked', 'update_recipe_notes'] } })
+    }
+  })
+
+  it('a typed 👍 that is not answering the check-in stays silent; a reaction never answers', async () => {
+    const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+    const checkinRow: HistoryRow = { direction: 'out', kind: 'dinner_checkin', body: '¿Qué tal la cena?', status: 'sent', createdAt: sentAt }
+    // The household already answered and Mimo replied since (more than 30 min ago).
+    const answered = setup({
+      history: [
+        checkinRow,
+        { direction: 'in', body: 'Riquísima', status: 'processed', createdAt: new Date(sentAt.getTime() + 60_000) },
+        { direction: 'out', kind: 'reply', body: 'Apuntada.', status: 'sent', createdAt: new Date(sentAt.getTime() + 120_000) },
+      ],
+      outboundKinds: new Map([['dinner_checkin', sentAt]]),
+      recordDinnerCheckin,
+    })
+    await processInbound(msg({ text: '👍🏻' }), answered.deps)
+    const reaction = setup({ history: [checkinRow], outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin })
+    await processInbound(msg({ kind: 'unsupported', text: '👍', rawType: 'reaction' }), reaction.deps)
+    for (const t of [answered, reaction]) {
+      expect(t.sent).toEqual([])
+      expect(t.chat).not.toHaveBeenCalled()
+      expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', errorMessage: 'emoji' })
+    }
+    expect(recordDinnerCheckin).not.toHaveBeenCalled()
+  })
+
+  it('another emoji right after Mimo asked something goes to Mimo, like a «vale»', async () => {
+    const t = setup({ history: [{ direction: 'out', kind: 'reply', body: '¿Te cambio la cena del jueves por merluza?', status: 'sent', createdAt: new Date(NOW.getTime() - 5 * 60_000) }] })
+    await processInbound(msg({ text: '❤️' }), t.deps)
+    expect(t.chat).toHaveBeenCalled()
+  })
+
+  it('checkinReplyIdOfEmoji: 👍 / 👎 with any skin tone, repeated or with «!»; nothing else', () => {
+    expect(['👍', '👍🏻', '👍🏿!', '👍 👍', '👍️'].map(checkinReplyIdOfEmoji)).toEqual(Array(5).fill('checkin:up'))
+    expect(['👎', '👎🏼'].map(checkinReplyIdOfEmoji)).toEqual(['checkin:down', 'checkin:down'])
+    expect(['', '❤️', '👍👎', 'ok 👍', '👌', null].map(checkinReplyIdOfEmoji)).toEqual(Array(6).fill(null))
   })
 
   it('no check-in in the last 30 h, or nothing to record that day → Mimo answers as before', async () => {

@@ -1564,11 +1564,21 @@ const addDishSchema = z.union([
   }),
 ])
 
-/** A recipe dish without a name gets its recipe's (PRO-240). Notes and named dishes pass through. */
-async function withRecipeNameStored(dish: Dish): Promise<Dish> {
-  if (dish.kind !== 'recipe' || dish.recipeName?.trim()) return dish
-  const [row] = await db.select({ name: recipes.name }).from(recipes).where(eq(recipes.id, dish.recipeId)).limit(1)
-  return row ? { ...dish, recipeName: row.name } : dish
+/**
+ * A recipe dish only with a recipe the caller can see (PRO-1274: another
+ * household's private recipe used to go in, and its name, photo and
+ * ingredients showed in the menu and the shopping list); null if not.
+ * Without a name, it gets its recipe's (PRO-240). Notes pass through.
+ */
+async function visibleDishWithName(dish: Dish, userId: string): Promise<Dish | null> {
+  if (dish.kind !== 'recipe') return dish
+  const [row] = await db
+    .select({ name: recipes.name })
+    .from(recipes)
+    .where(and(eq(recipes.id, dish.recipeId), visibleRecipeWhere(await visibleAuthorIds(userId))))
+    .limit(1)
+  if (!row) return null
+  return dish.recipeName?.trim() ? dish : { ...dish, recipeName: row.name }
 }
 
 // B.1: POST /menu/:menuId/day/:day/meal/:meal/dish — append a dish to a slot.
@@ -1587,8 +1597,10 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     const days = menu.days as DayMenu[]
     const slot = days[day]?.[meal] ?? { servings: null, dishes: [] }
     // PRO-240: the dish is stored with its recipe's name (Mimo's tápers
-    // came without one and the menu showed «Receta»).
-    const named = await withRecipeNameStored(parsed.data as Dish)
+    // came without one and the menu showed «Receta»). PRO-1274: 404, as
+    // GET /recipes/:id, when the caller can't see that recipe.
+    const named = await visibleDishWithName(parsed.data as Dish, req.userId!)
+    if (!named) { res.status(404).json({ error: 'Recipe not found' }); return }
     const next = addDish(slot.dishes, named)
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }

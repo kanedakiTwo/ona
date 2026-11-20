@@ -34,6 +34,14 @@ const BANNED = [
 ]
 
 describe('kb/sobre-mimoia.md', () => {
+  // PRO-1230: the registration opens on Monday 23 November (D-184), not the 16th.
+  it('gives the 23rd as the opening day and never the 16th', () => {
+    expect(about()).toContain('Hasta el 22 de noviembre de 2026 Mimoia está en beta cerrada')
+    expect(about()).toContain('Desde el 23 de noviembre de 2026 el registro está abierto')
+    expect(about()).toContain('Mientras hay lista de espera (hasta el 22 de noviembre)')
+    expect(about()).not.toMatch(/16 de noviembre/)
+  })
+
   it('exists and states the intended purpose word for word', () => {
     expect(existsSync(ABOUT_PATH)).toBe(true)
     expect(about().startsWith('# Sobre Mimoia')).toBe(true)
@@ -84,6 +92,7 @@ describe("Mimo's prompt carries the public facts and today's prices", () => {
       const p = buildSystemPrompt('Usuario de prueba', mode)
       expect(p).toContain(INTENDED_PURPOSE)
       expect(p).toContain('que en casa solo quede la parte divertida de cocinar')
+      expect(p).toContain('Desde el 23 de noviembre de 2026 el registro está abierto') // PRO-1230
       for (const plan of PAID_PLANS) for (const period of ['mensual', 'anual'] as const) expect(p).toContain(plan.prices[period].label)
     })
   }

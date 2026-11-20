@@ -52,7 +52,7 @@ Notes are excluded from the matcher and added only via manual UI (`+ Añadir pla
 
 All under `/menu/:menuId/day/:day/meal/:meal/dish` and gated by the `:menuId` IDOR guard (400 non-UUID / 404 unknown / 403 foreign — see "Access control" below):
 
-- `POST` — append a dish. Body discriminated by `kind`: `{kind:'recipe', recipeId, course?, variant?}` or `{kind:'note', text}` (text ≤120 chars).
+- `POST` — append a dish. Body discriminated by `kind`: `{kind:'recipe', recipeId, course?, variant?}` or `{kind:'note', text}` (text ≤120 chars). A recipe dish only with a recipe the household can see (`visibleRecipeWhere`), else 404 — also from Mimo's `add_dish`, which uses this route (PRO-1274, 2026-11-20).
 - `DELETE /:position` — remove. Subsequent positions decrement; empty `dishes[]` is allowed (slot remains, UI shows "+ Añadir plato" placeholder).
 - `PATCH /:position` — `{text?, newPosition?, course?, variant?}`. Precedence: if `newPosition` is present, it's the only operation (pure reorder); otherwise patches text/course/variant. Fields that don't apply to the dish kind are silently ignored.
 - `POST /:position/regenerate` — Aleatorio on one dish; respects its `course` (and the semana tipo's type there). 400 on note dishes; 409 when no candidates match. Body (all optional, PRO-1176): `{ recipeId }` — «Cambiar este plato»: that recipe (one the household can see, else 404) on that dish only, the meal's other dishes kept, and the meal locked (chosen by hand); `{ dishType }` — «Que elija Mimoia» with a chip: only a recipe of that type, never the one there, none → **409 `NO_RECIPE_OF_TYPE`**; `{ expect }` as in the other dish routes.

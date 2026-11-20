@@ -229,9 +229,8 @@ export default function PrivacidadPage() {
             (art. 21 de la LSSI).
           </p>
           <p data-testid="privacy-waitlist-retention">
-            <strong>Cuánto tiempo:</strong> hasta el 16 de mayo de 2027 (seis meses después de abrir el registro a
-            todo el mundo, el 16 de noviembre de 2026) o hasta que te des de baja, lo que ocurra antes. Si pediste el
-            menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y
+            <strong>Cuánto tiempo:</strong> hasta el 16 de mayo de 2027 o hasta que te des de baja, lo que ocurra
+            antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y
             creas una cuenta, desde ese momento se aplica el resto de esta política.
           </p>
           <p>

@@ -55,13 +55,13 @@ The `users` table holds the canonical scalar fields (`sex`, `age`, `weight`, `he
 
 ## Roles and suspension
 
-- `users.role` is `'user' | 'admin'`. Default `'user'`. On every login the server reconciles role against the `ADMIN_EMAILS` env var (case-insensitive): matches are upgraded to admin, ex-admins removed from the env are downgraded.
+- `users.role` is `'user' | 'admin'`. Default `'user'`. On every login the server reconciles role against the `ADMIN_EMAILS` env var (lowercased): the account whose stored email is exactly a listed one is upgraded to admin, ex-admins removed from the env are downgraded. An account whose email differs from a listed one only in its capitals never becomes admin (PRO-1271, 2026-11-20).
 - `users.suspended_at` is set by the admin via `/admin/users` (see [User Management](./user-management.md)). Login rejects suspended users with `code: 'SUSPENDED'`. Existing JWTs of a suspended user are invalidated at the per-request `authMiddleware` check.
 - The auth context client-side carries `role` next to `userId` so the navbar can render the admin entry without an extra fetch. The server still re-checks role on every privileged request — the client value is decoration.
 
 ## Constraints
 
-- Username and email are both unique across users (registration returns 409 if either exists)
+- Username and email are both unique across users (registration returns 409 if either exists). The email is unique **whatever its capitals** (PRO-1271, 2026-11-20): sign-up trims and lowercases it (`registerSchema`), the duplicate check and the login compare `lower(email)`, and the unique index `uq_users_email_lower` backs it. So `Ana@Casa.es` and `ana@casa.es` are one account, and you can log in typing either.
 - Passwords are stored hashed with bcrypt (10 rounds)
 - JWT tokens are signed with `JWT_SECRET` and expire after `JWT_EXPIRES_IN` (default `90d` — "long but not infinite"). On expiry the API returns `401` with `code: 'TOKEN_EXPIRED'`; the web client treats that like `USER_NOT_FOUND` (wipes local auth, bounces to `/login`). Tokens issued before expiry was introduced never expire — they age out as users re-login. A token with a bad signature or malformed (e.g. after `JWT_SECRET` is rotated) returns `401` with `code: 'INVALID_TOKEN'`, handled the same way.
 - A deployed API (`NODE_ENV=production` or running on Railway) **refuses to boot** when `JWT_SECRET` is missing or shorter than 32 characters (`config/jwtSecret.ts`); locally it falls back to `ona-dev-secret`. Rotating the secret logs every user out once.

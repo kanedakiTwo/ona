@@ -179,7 +179,7 @@ Population:
 - `DELETE /recipes/:id` (auth, author only)
 - `GET /user/:id/recipes` (auth) — user's own + favorited recipes
 - `POST /user/:id/recipes/:recipeId/favorite` (auth) — toggle favorite. **PR 1B:** each user toggles their own `user_favorites` row, but `GET /user/:id/recipes` returns the household-wide union of favorites when `SHARED_HOUSEHOLD_SCOPE` is on. See [Household](./household.md)
-- `POST /recipes/:id/copy` (auth) — clone a recipe into the caller's catalog. Refuses with 409 if the user already owns the source. Returns the new recipe
+- `POST /recipes/:id/copy` (auth) — clone a recipe into the caller's catalog. Only a recipe the caller can open (`canViewRecipe`: the catalogue or their household's); another household's private recipe is a 404, like `GET /recipes/:id` (PRO-1273, 2026-11-20). Refuses with 409 if the user already owns the source. Returns the new recipe
 
 ## Constraints
 

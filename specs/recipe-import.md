@@ -86,6 +86,7 @@ Idempotent: re-running populate overwrites the JSONL; re-running apply overwrite
 
 ## Constraints
 
+- **A page can't hold the API** (PRO-1272, 2026-11-20): the JSON-LD blocks and the `og:image`/`twitter:image`/`image_src` fallbacks are read tag by tag with `indexOf`, never with a regular expression over the whole page (one crafted 2 MB page of `<script type=x ` used to block the API for minutes). Each tag is cut at 4 000 characters; a 2 MB crafted page takes milliseconds (`articleRedos.test.ts`).
 - A photo's `looksLikeScreenshot` is the vision model's own judgement (no extra call); a model that leaves the field out counts as `false`, so Mimo never asks by mistake. On WhatsApp the link question stays open for 30 minutes and only for the latest photo; after that a link is a normal message (a new import if it's a recipe)
 
 - Instagram / TikTok: only the caption is read; the audio and on-screen text of the video are not (out of scope). Instagram often serves a login wall to server requests, in which case the user always gets the screenshot answer

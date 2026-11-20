@@ -1075,14 +1075,20 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
       .from(recipes)
       .where(eq(recipes.id, sourceId))
       .limit(1)
-    if (!source || isHiddenDraft(source, req.user?.role === 'admin')) {
+    // Only what the caller can open (PRO-1273): another household's private
+    // recipe is a 404, like GET /recipes/:id, so the copy can't leak it.
+    if (
+      !source ||
+      isHiddenDraft(source, req.user?.role === 'admin') ||
+      !(await canViewRecipe(req.userId, source.authorId))
+    ) {
       res.status(404).json({ error: 'Recipe not found' })
       return
     }
 
     // Refuse silently if the user already owns this very row (we'd dup their
-    // own recipe). Copying someone else's user recipe is fine — it becomes
-    // theirs from then on.
+    // own recipe). Copying a recipe of someone in your household is fine — it
+    // becomes yours from then on.
     if (source.authorId === req.userId) {
       res.status(409).json({ error: 'Esta receta ya es tuya.' })
       return

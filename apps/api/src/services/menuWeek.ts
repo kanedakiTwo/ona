@@ -12,6 +12,8 @@ import { resolveScope, scopeWhere } from './scopeResolver.js'
  * generate_weekly_menu so both keep the same promises.
  */
 export interface PreviousWeek {
+  /** The week's current menu row (none → undefined). */
+  menuId?: string
   days: DayMenu[] | undefined
   locked: LockedSlots
   bannedRecipeIds: Set<string>
@@ -22,6 +24,7 @@ export async function loadPreviousWeek(userId: string, weekStart: string, db: an
   const scope = await resolveScope(userId, db)
   const [previous] = await db
     .select({
+      id: menus.id,
       days: menus.days,
       locked: menus.locked,
       bannedRecipeIds: menus.bannedRecipeIds,
@@ -32,6 +35,7 @@ export async function loadPreviousWeek(userId: string, weekStart: string, db: an
     .orderBy(desc(menus.createdAt))
     .limit(1)
   return {
+    ...(typeof previous?.id === 'string' ? { menuId: previous.id } : {}),
     days: Array.isArray(previous?.days) ? (previous.days as DayMenu[]) : undefined,
     locked: lockedThatExist((previous?.locked as LockedSlots | null) ?? {}, previous?.days as DayMenu[] | undefined),
     bannedRecipeIds: new Set<string>(previous?.bannedRecipeIds ?? []),

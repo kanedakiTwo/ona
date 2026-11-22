@@ -70,6 +70,8 @@ export interface ToolTrace {
   /** What the tool told the model, bounded. */
   summary: string
   error?: boolean
+  /** 21-nov: the tool said it changed nothing (`data.replaced === false`, e.g. the week already had a menu). */
+  unchanged?: boolean
 }
 
 export interface ChatMessage {

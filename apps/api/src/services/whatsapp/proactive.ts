@@ -716,11 +716,13 @@ export function deliveryFor(
  * Template body parameters can't contain newlines, tabs or 4+ consecutive
  * spaces (Meta rejects the send). Buttons are folded into the text.
  */
-export function templateParamFrom(messages: OutboundMessage[]): string {
+export function templateParamFrom(messages: OutboundMessage[], lang: Lang = 'es'): string {
+  // 21-nov (reviewer, `aviso.pausa.idioma_mezclado`): the folded buttons in the household's language.
+  const reply = lang === 'en' ? 'Reply' : 'Responde'
   const text = messages
     .map((m) =>
       m.type === 'buttons'
-        ? `${m.text} Responde: ${m.buttons.map((b) => b.title).join(' / ')}.`
+        ? `${m.text} ${reply}: ${m.buttons.map((b) => b.title).join(' / ')}.`
         : m.text,
     )
     .join(' ')

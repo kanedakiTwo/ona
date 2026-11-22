@@ -476,6 +476,7 @@ export function traceOf(executed: ExecutedTool[]): ToolTrace[] {
     input: compactJson(e.input, 300),
     summary: String(e.result.summary ?? '').replace(/\s+/g, ' ').slice(0, 400),
     ...(e.isError ? { error: true } : {}),
+    ...((e.result.data as { replaced?: unknown } | null | undefined)?.replaced === false ? { unchanged: true } : {}),
   }))
 }
 

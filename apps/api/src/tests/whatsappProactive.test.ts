@@ -87,6 +87,15 @@ describe('templateParamFrom', () => {
     expect(p).toBe('Buenos días. Hoy toca: - Comida: Lentejas ¿Cambio algo? Responde: Sí / No.')
     expect(p).not.toMatch(/\n|\t| {4,}/)
   })
+
+  it('21-nov (reviewer): in English the folded buttons say «Reply», never «Responde»', () => {
+    const p = templateParamFrom(
+      [{ type: 'buttons', text: "I've paused my messages about each morning's menu. Turn them back on?", buttons: [{ id: 'a', title: 'Yes' }, { id: 'b', title: 'No' }] }],
+      'en',
+    )
+    expect(p).toBe("I've paused my messages about each morning's menu. Turn them back on? Reply: Yes / No.")
+    expect(p).not.toContain('Responde')
+  })
 })
 
 describe('daily brief', () => {

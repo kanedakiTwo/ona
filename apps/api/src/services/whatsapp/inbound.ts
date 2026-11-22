@@ -217,10 +217,18 @@ export interface WeekImage {
  */
 export function weekViewOf(response: AssistantResponse): WeekView | null {
   const tools = response.toolsUsed ?? []
-  if (tools.some((t) => MENU_DIGEST_TOOLS.has(t))) return 'generated'
+  const digestTools = tools.filter((t) => MENU_DIGEST_TOOLS.has(t))
+  // 21-nov (reviewer, `menu.tarjeta_listo_sin_generar`): a call that changed
+  // nothing (the week already had a menu, a question first) or failed is no
+  // «Listo». Without a trace (older callers), any call counts, as before.
+  const generated = response.toolTrace
+    ? response.toolTrace.some((t) => MENU_DIGEST_TOOLS.has(t.name) && !t.error && !t.unchanged)
+    : digestTools.length > 0
+  if (generated) return 'generated'
   // A week with nothing planned answers without menu data: no picture, the
-  // model's words as before.
-  if (tools.includes(WEEK_READ_TOOL) && menuIdOf(response)) return 'viewing'
+  // model's words as before. The week a generation left as it was is shown
+  // as a read («Tu menú de la semana…»), with Mimo's question.
+  if ((tools.includes(WEEK_READ_TOOL) || digestTools.length > 0) && menuIdOf(response)) return 'viewing'
   return null
 }
 

@@ -1024,7 +1024,8 @@ const generateWeeklyMenu: SkillDefinition = {
     // week and Laura lost her planned leftovers (PRO-63, 2026-10-11).
     if (params?.replaceExisting !== true && weekHasDishes(previous.days)) {
       return {
-        data: { weekStart, replaced: false },
+        // 21-nov: the menu it kept, so WhatsApp shows it («Tu menú…», never «Listo»).
+        data: { weekStart, replaced: false, ...(previous.menuId ? { menuId: previous.menuId } : {}) },
         summary: `No he cambiado nada: la semana del ${dateLabel(weekStart)} ya tiene menu. Para cambiar o poner platos concretos usa swap_meal, add_dish o set_meal_note. Solo si el usuario quiere rehacer la semana entera, confirmalo con el y vuelve a llamar con replaceExisting: true.`,
         uiHint: 'text',
       }

@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { replyMessages, weekViewOf, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
 import { SNOWBALL_LINE, SNOWBALL_WEEKS, generatedMenuThisTurn, showsSnowball, weekMenuCaption, weekMenuDigest, withSnowballLine, type WeekMenuInput } from '../services/menuText.js'
 import type { AssistantResponse } from '../services/assistant/types.js'
+import { traceOf } from '../services/assistant/engine.js'
 import { captionWithoutInvite } from '../services/whatsapp/signupReply.js'
 
 const WEB = 'https://mimoia.com'
@@ -315,5 +316,59 @@ describe('replyMessages — generating the menu is ONE message (PRO-277)', () =>
     // 19-nov: Mimo already asks something, so no «¿Cambio algo?» under the picture.
     expect(out[0].text).toBe(captionWithoutInvite(caption))
     expect(out[0].text).not.toContain('¿Cambio algo?')
+  })
+})
+
+// 21-nov (reviewer, `menu.tarjeta_listo_sin_generar`): Mimo asked for the
+// week of the 23rd, generate_weekly_menu said it already had a menu and
+// changed nothing, and WhatsApp still sent the picture with «Listo: tu menú…»,
+// then Mimo's «ya tiene menú, ¿lo rehago?». One message, shown as a read.
+describe('a generation that changed nothing is no «Listo»', () => {
+  const KEPT = 'No he cambiado nada: la semana del lunes 23 de noviembre ya tiene menu.'
+  const unchanged = (data: Record<string, unknown> | null): AssistantResponse => ({
+    message: 'La semana del lunes 23 ya tiene menú. ¿Lo rehago entero o cambio algunos platos?',
+    actionTaken: true,
+    uiHint: 'text',
+    data,
+    toolsUsed: ['generate_weekly_menu'],
+    toolTrace: traceOf([{ name: 'generate_weekly_menu', input: { nextWeek: true }, result: { data, summary: KEPT, uiHint: 'text' } } as any]),
+  })
+
+  it('the trace marks a tool that changed nothing', () => {
+    const [t] = traceOf([{ name: 'generate_weekly_menu', input: {}, result: { data: { replaced: false }, summary: KEPT } } as any])
+    expect(t.unchanged).toBe(true)
+    const [made] = traceOf([{ name: 'generate_weekly_menu', input: {}, result: { data: { menuId: 'm-1' }, summary: 'ok' } } as any])
+    expect(made.unchanged).toBeUndefined()
+  })
+
+  it('the week it kept is a read («viewing»); a stop with no menu (the fridge question) is no week at all', () => {
+    expect(weekViewOf(unchanged({ weekStart: '2026-11-23', replaced: false, menuId: 'm-23' }))).toBe('viewing')
+    expect(weekViewOf(unchanged({ weekStart: '2026-11-23', replaced: false }))).toBeNull()
+  })
+
+  it('a failed call is no «Listo» either; a real generation still is', () => {
+    const failed: AssistantResponse = {
+      message: 'No he podido.', actionTaken: true, toolsUsed: ['generate_weekly_menu'],
+      toolTrace: [{ name: 'generate_weekly_menu', input: '{}', summary: 'Error', error: true }],
+    }
+    expect(weekViewOf(failed)).toBeNull()
+    const made: AssistantResponse = {
+      message: 'Hecho.', actionTaken: true, uiHint: 'menu', data: { menuId: 'm-23' }, toolsUsed: ['generate_weekly_menu'],
+      toolTrace: [{ name: 'generate_weekly_menu', input: '{}', summary: 'Menu generado' }],
+    }
+    expect(weekViewOf(made)).toBe('generated')
+  })
+
+  it('WhatsApp sends ONE picture captioned «Tu menú de la semana…» with Mimo\'s question, no «Listo»', async () => {
+    const caption = weekMenuCaption(NEXT_WEEK, { today: THU, webUrl: WEB, view: 'viewing' })
+    const menuImage = vi.fn<NonNullable<InboundDeps['menuImage']>>(async () => ({ jpeg: JPEG, caption }))
+    const menuDigest = vi.fn<NonNullable<InboundDeps['menuDigest']>>(async () => 'digest')
+    const out = await replyMessages(unchanged({ weekStart: '2026-11-23', replaced: false, menuId: 'm-23' }), 'user-1', { webUrl: WEB, menuDigest, menuImage }, null)
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-23', 'viewing')
+    expect(out).toHaveLength(1)
+    expect(out[0].type).toBe('image')
+    expect(out[0].text).toContain('¿Lo rehago entero o cambio algunos platos?')
+    expect(out[0].text).toContain('Tu menú de la semana')
+    expect(out[0].text).not.toMatch(/Listo/)
   })
 })

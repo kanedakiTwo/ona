@@ -94,7 +94,10 @@ export async function sendProactive(
         await store.insertOutbound({ phone: link.phone, userId: link.userId, kind, body: m.text, status: 'sent', wamid, meta })
       }
     } else {
-      const text = templateParamFrom(messages)
+      const lang: Lang = messages.some((m) => m.type === 'buttons')
+        ? await languageForPhone(link.phone).catch((): Lang => 'es')
+        : 'es'
+      const text = templateParamFrom(messages, lang)
       const wamid = await client.sendTemplate(link.phone, template!, env.WHATSAPP_TEMPLATE_LANG, text)
       // Every template is billed, inside or outside the 24 h window.
       recordCost({ feature: 'whatsapp_template', provider: 'meta_whatsapp', model: 'utility_template', units: { messages: 1 }, userId: link.userId })

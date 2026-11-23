@@ -11,7 +11,7 @@ import { API_SALDO_REPLY, API_SALDO_TYPE, noteApiBalanceError } from '../service
 import { requirePaidPlan } from '../services/accountAccess.js'
 import { eq } from 'drizzle-orm'
 import { recipes } from '../db/schema.js'
-import { describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
+import { cookStepOf, describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import type { AssistantMode } from '../services/assistant/systemPrompt.js'
 import { recordWebChatTurn } from '../services/chatMessages.js'
@@ -41,6 +41,7 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     const { message, history } = req.body
     const mode: AssistantMode = WEB_MODES.includes(req.body?.mode) ? req.body.mode : 'text'
     const path = typeof req.body?.context?.path === 'string' ? req.body.context.path.slice(0, 200) : null
+    const cookStep = cookStepOf(req.body?.context?.cookStep)
 
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required' })
@@ -71,7 +72,7 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
       // Only recipes this user may see: someone else's private recipe stays unnamed.
       recipeName = r && (await canViewRecipe(userId, r.authorId)) ? r.name : null
     }
-    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName))
+    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
 
     const startedAt = Date.now()
     const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })

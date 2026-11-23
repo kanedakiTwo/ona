@@ -58,6 +58,8 @@ import { generationSkips, loadPreviousWeek, unskipDay, withoutPastMeals } from '
 import { cookingFreqForMealCounts, placeSignupDishes, recipeForDish, weekTypeForMealCounts, type PlacedDish, type SignupDish } from '../signupFirstMenu.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
+import { withMenuOnlyRestrictions } from '../menuOnlyRestrictions.js'
+import { loadRecentUserTexts, saidRestrictionsForMenu, saidRestrictionsLine, type SaidRestrictions } from '../saidRestrictions.js'
 import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser, type AddPantryInput } from '../pantryStore.js'
@@ -66,7 +68,7 @@ import { NotARecipeError, NeedsScreenshotError } from '../recipeUrlExtractor.js'
 import { NoExtractableContentError } from '../sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
-import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
 import { ingredientMarksOf } from '../ingredientRoles.js'
 import { shopperInviteForSignUp } from '../shopperInvite.js'
@@ -181,6 +183,24 @@ async function visibleWhere(ctx: SkillContext) {
 async function restrictionsFor(ctx: SkillContext): Promise<{ restrictions: string[]; dislikes: string[] }> {
   return loadUserRestrictions(ctx.userId, ctx.db)
 }
+
+/**
+ * PRO-1041 (Seguridad): the allergies said to Mimo (`restrictions_said`, and
+ * the person's own messages) that aren't saved for anyone in the household.
+ * The menu tools apply them to that menu only and hand Mimo the link to save
+ * them on the web with the consent.
+ */
+async function saidForMenu(ctx: SkillContext, fromModel: unknown): Promise<SaidRestrictions | null> {
+  const saved = () => restrictionsFor(ctx).then((own) => withHouseholdRestrictions(own.restrictions, ctx.userId, ctx.db))
+  return saidRestrictionsForMenu(ctx.userId, ctx.db, fromModel, saved, loadRecentUserTexts)
+}
+
+const RESTRICTIONS_SAID_PROP = {
+  type: 'array',
+  items: { type: 'string' },
+  description:
+    'Alergias, intolerancias o restricciones de salud que el usuario (o alguien de su casa) ha dicho en esta conversacion y que no estan guardadas, con sus palabras cortas: ["sin gluten"], ["frutos secos"], ["marisco"]. Se aplican solo a este menu y no se guardan. Si no ha dicho ninguna, omitelo.',
+} as const
 
 /** Which of the user's allergies / diets (not dislikes) a recipe breaks. */
 async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promise<string[]> {
@@ -1004,11 +1024,12 @@ const generateWeeklyMenu: SkillDefinition = {
       },
       answer: { type: 'string', description: 'El texto tal cual del usuario cuando contesta a las preguntas de antes de planificar (p. ej. «el jueves cenamos fuera y el sabado somos 6»). Se usa solo si no pasas mealsOut ni guests.' },
       only_favorites: { type: 'boolean', description: 'true cuando pide la semana con sus favoritas («hazme la semana con mis favoritas»): los platos salen de las recetas que el hogar tiene en favoritos; lo que no llenen sale del catalogo y te digo cuantos.' },
+      restrictions_said: RESTRICTIONS_SAID_PROP,
     },
     required: [],
   },
   async handler(
-    params: { nextWeek?: boolean; replaceExisting?: boolean; diners?: number; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; fridge_text?: string; fridge_health?: 'save' | 'skip'; fridge_restrictions?: string[]; answer?: string; only_favorites?: boolean },
+    params: { nextWeek?: boolean; replaceExisting?: boolean; diners?: number; mealsOut?: WeekPlan['mealsOut']; guests?: WeekPlan['guests']; fridge?: string[]; fridge_text?: string; fridge_health?: 'save' | 'skip'; fridge_restrictions?: string[]; answer?: string; only_favorites?: boolean; restrictions_said?: string[] },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -1034,8 +1055,13 @@ const generateWeeklyMenu: SkillDefinition = {
     // until the person says whether to save it.
     const fridge = await fridgeGateForSkill(ctx, weekPlan)
     if (fridge.stop) return { data: { weekStart, replaced: false }, summary: fridge.stop, uiHint: 'text' }
-    const result = await generateAndSaveWeek(ctx, weekStart, previous, undefined, fridge.plan, params?.only_favorites === true)
-    return fridge.saved ? { ...result, summary: `${result.summary}\n${fridge.saved.trim()}` } : result
+    // PRO-1041: an allergy said and not saved goes into this menu anyway.
+    const said = await saidForMenu(ctx, params?.restrictions_said)
+    const result = await withMenuOnlyRestrictions(said?.apply ?? [], () =>
+      generateAndSaveWeek(ctx, weekStart, previous, undefined, fridge.plan, params?.only_favorites === true),
+    )
+    const lines = [result.summary, fridge.saved?.trim(), said && saidRestrictionsLine(said, ctx.channel)].filter(Boolean)
+    return { ...result, summary: lines.join('\n') }
   },
 }
 
@@ -1193,6 +1219,32 @@ function signupDishesLine(placed: readonly PlacedDish[], weekStart: string): str
   return lines.join('\n')
 }
 
+/**
+ * The sign-up's dishes with the recipe each comes in as (PRO-1041 + the
+ * sign-up's dishes of 19-nov): never one with what someone in the household
+ * can't eat, saved or said to Mimo in the conversation (`said`) — the same
+ * list the generator's own picks go through. `blocked`: the dishes whose
+ * recipe has it. They are left out, not turned into a note: Mimo's
+ * `swap_meal` by name would bring that same recipe back.
+ */
+async function signupDishes(ctx: SkillContext, said: readonly string[], favoriteDishes: readonly string[]): Promise<{ dishes: SignupDish[]; blocked: string[] }> {
+  if (favoriteDishes.length === 0) return { dishes: [], blocked: [] }
+  const pool = await loadMatchableRecipes(ctx.userId, ctx.db).catch(() => [])
+  const cantEat = await withMenuOnlyRestrictions(said, () =>
+    restrictionsFor(ctx).then((own) => withHouseholdRestrictions(own.restrictions, ctx.userId, ctx.db)),
+  ).catch(() => [...said])
+  const rules = compileRestrictions(cantEat)
+  const allowed = pool.filter((r) => !violatesRestrictions(r, rules))
+  const dishes: SignupDish[] = []
+  const blocked: string[] = []
+  for (const dish of favoriteDishes) {
+    const recipe = recipeForDish(dish, allowed, ctx.userId)
+    if (!recipe && recipeForDish(dish, pool, ctx.userId)) blocked.push(dish)
+    else dishes.push({ dish, recipe })
+  }
+  return { dishes, blocked }
+}
+
 const COOKING_FREQS = ['daily', '3_4_times', 'rarely'] as const
 const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 
@@ -1252,11 +1304,12 @@ const completeOnboarding: SkillDefinition = {
         enum: [...SHOPPERS],
         description: 'Solo si con 2 adultos o mas ha dicho quien hace la compra (no lo preguntes): me = el usuario; other = otra persona de casa; shared = se turnan. Con other o shared la herramienta devuelve el mensaje con el enlace de invitacion para esa persona.',
       },
+      restrictions_said: RESTRICTIONS_SAID_PROP,
     },
     required: ['adults', 'kidsCount'],
   },
   async handler(
-    params: { adults?: number; kidsCount?: number; lunches?: number; dinners?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; dislikes?: string[]; priority?: string; shopper?: string },
+    params: { adults?: number; kidsCount?: number; lunches?: number; dinners?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; dislikes?: string[]; priority?: string; shopper?: string; restrictions_said?: string[] },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -1326,22 +1379,36 @@ const completeOnboarding: SkillDefinition = {
     // waiting in the app. Their dishes go in the first week (what doesn't
     // fit, in the next).
     const plan = firstMenuWeeks(new Date(), { fromNextMeal: true })
-    const pool = favoriteDishes.length > 0 ? await loadMatchableRecipes(userId, db).catch(() => []) : []
-    let dishes: SignupDish[] = favoriteDishes.map((dish) => ({ dish, recipe: recipeForDish(dish, pool, userId) }))
+    // PRO-1041: «soy celíaca» in the first message is not saved here, but the first menu applies it.
+    const said = await saidForMenu(ctx, params?.restrictions_said)
+    // Their dishes, but never as a recipe with what the household can't eat (said or saved).
+    const theirs = await signupDishes(ctx, said?.apply ?? [], favoriteDishes)
+    let dishes = theirs.dishes
+    const blockedLine = theirs.blocked.length > 0
+      ? `\nNo he puesto ${theirs.blocked.map((d) => `«${d}»`).join(', ')}: su receta lleva algo que en casa no pueden comer. No lo pongas tu con swap_meal; diselo en una linea.`
+      : ''
+    // A dish without a recipe is a note Mimo turns into the household's recipe in this turn.
+    const ownVersionLine = said && dishes.some((d) => !d.recipe)
+      ? `\nLas recetas de la casa que crees en este turno tienen que respetarlo tambien (${said.apply.join(', ')}).`
+      : ''
     const results: SkillResult[] = []
     for (const weekStart of plan.weeks) {
       const previous = await loadPreviousWeek(userId, weekStart, db)
       if (weekHasDishes(previous.days)) continue
-      const week = await generateAndSaveWeek(ctx, weekStart, previous, plan.today, undefined, false, { pastMeals: plan.pastMeals, dishes })
+      const signup = { pastMeals: plan.pastMeals, dishes }
+      const week = await withMenuOnlyRestrictions(said?.apply ?? [], () =>
+        generateAndSaveWeek(ctx, weekStart, previous, plan.today, undefined, false, signup),
+      )
       dishes = week.left ?? []
       results.push(week)
     }
-    const menu = results[0] ?? (await generateWeeklyMenu.handler({}, ctx))
+    const menu = results[0] ?? (await generateWeeklyMenu.handler({ restrictions_said: params?.restrictions_said }, ctx))
     const nextLine = results.length > 1 ? ` Tambien he generado la semana que viene (${results[1].summary})` : ''
+    const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.channel)}${ownVersionLine}` : ''
     return {
       data: menu.data,
       uiHint: menu.uiHint,
-      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}`,
+      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}${blockedLine}${saidLine}`,
     }
   },
 }
@@ -3122,9 +3189,16 @@ const updateMemory: SkillDefinition = {
     const { userId } = ctx
     // Over WhatsApp health data is never stored (PRO-24): drop those facts
     // and point to the web profile.
+    // PRO-1041: the allergies among them go to the web link, already marked.
+    const saidAllergies = params.facts
+      .filter((f) => f.key === 'restrictions')
+      .flatMap((f) => (Array.isArray(f.value) ? f.value : [f.value]))
+      .filter((v): v is string => typeof v === 'string')
     if (ctx.channel === 'whatsapp' && params.facts.some((f) => isHealthMemoryKey(f.key))) {
       params = { facts: params.facts.filter((f) => !isHealthMemoryKey(f.key)) }
-      if (params.facts.length === 0) return { data: null, summary: WHATSAPP_HEALTH_DATA_REPLY, uiHint: 'text' }
+      if (params.facts.length === 0) {
+        return { data: null, summary: saidAllergies.length ? saidAllergyReply(saidAllergies, 'whatsapp') : WHATSAPP_HEALTH_DATA_REPLY, uiHint: 'text' }
+      }
     }
     const { setMemoryBatch, getMemoryForUser, UnknownMemoryKeyError, MemoryValueValidationError, HealthConsentRequiredError } = await import('../userMemoryStore.js')
     const current = await getMemoryForUser(userId).catch(() => ({}))
@@ -3147,7 +3221,12 @@ const updateMemory: SkillDefinition = {
       if (err instanceof HealthConsentRequiredError) {
         return {
           data: null,
-          summary: err.code === 'RELIGION_CONSENT_REQUIRED' ? RELIGION_CONSENT_SKILL_REPLY : HEALTH_CONSENT_SKILL_REPLY,
+          summary:
+            err.code === 'RELIGION_CONSENT_REQUIRED'
+              ? RELIGION_CONSENT_SKILL_REPLY
+              : saidAllergies.length
+                ? saidAllergyReply(saidAllergies, ctx.channel)
+                : HEALTH_CONSENT_SKILL_REPLY,
           uiHint: 'text',
         }
       }

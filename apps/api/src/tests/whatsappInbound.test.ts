@@ -17,7 +17,7 @@ import type { AppApi } from '../services/assistant/appApi.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
 import Anthropic from '@anthropic-ai/sdk'
 import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
-import { captionWithoutInvite, signupCaption } from '../services/whatsapp/signupReply.js'
+import { captionWithoutInvite, signupCaption, signupWords } from '../services/whatsapp/signupReply.js'
 import { COALESCE_WINDOW_MS } from '../services/whatsapp/coalesce.js'
 import { checkinReplyIdOfEmoji } from '../services/whatsapp/checkinButtons.js'
 
@@ -997,6 +997,37 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     expect((text.match(/\?/g) ?? []).length).toBe(1)
     expect(text).not.toContain('¿Cambio algo?')
     expect(text).not.toContain(COPY.optInPrompt)
+  })
+
+  it('PRO-1041: an allergy told in the sign-up — the link to save it on the web stays in that one message (the «?» of a link is not a question)', async () => {
+    const ALLERGY_LINK = 'https://mimoia.com/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten'
+    const t = setup({
+      link: { ...LINK, onboardingDone: false },
+      chatReply: {
+        message: `Te he puesto el salmón al horno con patatas el jueves. Por WhatsApp no guardo datos de salud: guarda lo del gluten aquí, ya va marcado: ${ALLERGY_LINK}\n¿Os gusta el pescado? ¿Qué soléis cenar un martes normal?`,
+        toolsUsed: ['complete_onboarding'],
+        data: { id: 'menu-1', days: [] },
+      },
+      menuDigest: async () => MENU_TEXT,
+      menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
+    })
+    await processInbound(msg({ text: 'Soy celíaca. Somos dos y cocinamos todas las cenas' }), t.deps)
+    expect(t.sent.map((m) => m.type)).toEqual(['image'])
+    const text = t.sent[0].text!
+    expect(text).toContain(ALLERGY_LINK)
+    // Still one question at most: the last one.
+    expect(text).not.toContain('¿Os gusta el pescado?')
+    expect(text).toContain('¿Qué soléis cenar un martes normal?')
+  })
+
+  it('PRO-1041: signupWords keeps a sentence whose only «?» is inside a link, wherever the question is', () => {
+    const link = 'https://mimoia.com/profile/casa/alergias?next=%2Fmenu#marcar=marisco'
+    expect(signupWords(`Ya tenéis el menú. Guárdalo aquí: ${link}\n¿Qué soléis cenar un martes normal?`)).toBe(
+      `Ya tenéis el menú. Guárdalo aquí: ${link} ¿Qué soléis cenar un martes normal?`,
+    )
+    expect(signupWords(`Ya tenéis el menú. ¿Qué soléis cenar un martes normal? Guárdalo aquí: ${link}`)).toBe(
+      `Ya tenéis el menú. ¿Qué soléis cenar un martes normal? Guárdalo aquí: ${link}`,
+    )
   })
 })
 

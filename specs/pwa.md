@@ -9,7 +9,7 @@ Premium Progressive Web App layer that makes Mimoia feel like a native iOS/Andro
 - Users can install Mimoia to their home screen on Android (Chrome) and iOS (Safari) and launch it as a standalone app
 - After 3 visits, OR the second time the user reaches `/menu`, a bottom sheet appears: "Añade Mimoia a tu inicio" ("…abre Mimoia con un toque desde tu pantalla de inicio")
 - On Android the prompt uses the browser's native install flow (`beforeinstallprompt`)
-- On iOS Safari the bottom sheet shows visual instructions ("Toca compartir → Añadir a pantalla de inicio") since iOS doesn't fire `beforeinstallprompt`
+- On iOS the bottom sheet shows visual instructions ("Toca Compartir en tu navegador (en Chrome y Edge está en la barra de la dirección) → Añadir a pantalla de inicio"; until 2026-11-23 it said «en la barra de Safari» to Chrome and Edge users too) since iOS doesn't fire `beforeinstallprompt`
 - If the user dismisses the prompt, it isn't shown again for 30 days; if the user installs the app, the prompt isn't shown again for 365 days
 - Once installed, the app launches in standalone mode (no browser chrome), with the OS static splash image (cream, see Asset Requirements), and the status bar tinted to match the active section
 - On Android there is also an app (Google Play and an internal build), a TWA of this same web: see [Android app](./android-app.md)

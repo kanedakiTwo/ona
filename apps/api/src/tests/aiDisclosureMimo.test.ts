@@ -202,3 +202,13 @@ describe('evaluation case «¿eres una persona?»', () => {
     expect(mimoReplyProblems('Sí, soy una persona del equipo y uso IA.', c)).toEqual(['dice-persona'])
   })
 })
+
+// 23-nov (a friend cooking by voice): asked for the recipe's ingredients, Mimo
+// offered the week's 67-item list and read it out («ajo, 35 unidades…»).
+describe('voice: a recipe\'s ingredients are that recipe\'s, never the week\'s list read out', () => {
+  it('the voice prompt says so', () => {
+    const p = buildSystemPrompt('', 'voice')
+    expect(p).toContain('no consultes ni ofrezcas la lista de la compra de la semana')
+    expect(p).toContain('por voz nunca la leas entera')
+  })
+})

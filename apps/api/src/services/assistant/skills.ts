@@ -1219,6 +1219,32 @@ function signupDishesLine(placed: readonly PlacedDish[], weekStart: string): str
   return lines.join('\n')
 }
 
+/**
+ * The sign-up's dishes with the recipe each comes in as (PRO-1041 + the
+ * sign-up's dishes of 19-nov): never one with what someone in the household
+ * can't eat, saved or said to Mimo in the conversation (`said`) — the same
+ * list the generator's own picks go through. `blocked`: the dishes whose
+ * recipe has it. They are left out, not turned into a note: Mimo's
+ * `swap_meal` by name would bring that same recipe back.
+ */
+async function signupDishes(ctx: SkillContext, said: readonly string[], favoriteDishes: readonly string[]): Promise<{ dishes: SignupDish[]; blocked: string[] }> {
+  if (favoriteDishes.length === 0) return { dishes: [], blocked: [] }
+  const pool = await loadMatchableRecipes(ctx.userId, ctx.db).catch(() => [])
+  const cantEat = await withMenuOnlyRestrictions(said, () =>
+    restrictionsFor(ctx).then((own) => withHouseholdRestrictions(own.restrictions, ctx.userId, ctx.db)),
+  ).catch(() => [...said])
+  const rules = compileRestrictions(cantEat)
+  const allowed = pool.filter((r) => !violatesRestrictions(r, rules))
+  const dishes: SignupDish[] = []
+  const blocked: string[] = []
+  for (const dish of favoriteDishes) {
+    const recipe = recipeForDish(dish, allowed, ctx.userId)
+    if (!recipe && recipeForDish(dish, pool, ctx.userId)) blocked.push(dish)
+    else dishes.push({ dish, recipe })
+  }
+  return { dishes, blocked }
+}
+
 const COOKING_FREQS = ['daily', '3_4_times', 'rarely'] as const
 const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 
@@ -1353,11 +1379,19 @@ const completeOnboarding: SkillDefinition = {
     // waiting in the app. Their dishes go in the first week (what doesn't
     // fit, in the next).
     const plan = firstMenuWeeks(new Date(), { fromNextMeal: true })
-    const pool = favoriteDishes.length > 0 ? await loadMatchableRecipes(userId, db).catch(() => []) : []
-    let dishes: SignupDish[] = favoriteDishes.map((dish) => ({ dish, recipe: recipeForDish(dish, pool, userId) }))
-    const results: SkillResult[] = []
     // PRO-1041: «soy celíaca» in the first message is not saved here, but the first menu applies it.
     const said = await saidForMenu(ctx, params?.restrictions_said)
+    // Their dishes, but never as a recipe with what the household can't eat (said or saved).
+    const theirs = await signupDishes(ctx, said?.apply ?? [], favoriteDishes)
+    let dishes = theirs.dishes
+    const blockedLine = theirs.blocked.length > 0
+      ? `\nNo he puesto ${theirs.blocked.map((d) => `«${d}»`).join(', ')}: su receta lleva algo que en casa no pueden comer. No lo pongas tu con swap_meal; diselo en una linea.`
+      : ''
+    // A dish without a recipe is a note Mimo turns into the household's recipe in this turn.
+    const ownVersionLine = said && dishes.some((d) => !d.recipe)
+      ? `\nLas recetas de la casa que crees en este turno tienen que respetarlo tambien (${said.apply.join(', ')}).`
+      : ''
+    const results: SkillResult[] = []
     for (const weekStart of plan.weeks) {
       const previous = await loadPreviousWeek(userId, weekStart, db)
       if (weekHasDishes(previous.days)) continue
@@ -1370,11 +1404,11 @@ const completeOnboarding: SkillDefinition = {
     }
     const menu = results[0] ?? (await generateWeeklyMenu.handler({ restrictions_said: params?.restrictions_said }, ctx))
     const nextLine = results.length > 1 ? ` Tambien he generado la semana que viene (${results[1].summary})` : ''
-    const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.channel)}` : ''
+    const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.channel)}${ownVersionLine}` : ''
     return {
       data: menu.data,
       uiHint: menu.uiHint,
-      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}${saidLine}`,
+      summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}${blockedLine}${saidLine}`,
     }
   },
 }

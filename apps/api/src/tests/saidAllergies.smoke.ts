@@ -6,7 +6,9 @@
  *     complete_onboarding without passing it (the model forgot): the first
  *     menu still has no gluten, read from the person's own message; nothing
  *     is stored (`restrictions: []`, `healthConsentAt: null`, no memory) and
- *     the tool hands Mimo the link with «sin gluten» marked.
+ *     the tool hands Mimo the link with «sin gluten» marked. A dish they make
+ *     often whose catalogue recipe has gluten (the sign-up's dishes of
+ *     19-nov) is left out of that menu and Mimo is told.
  *   - Web chat: generate_weekly_menu with `restrictions_said` applies it the
  *     same way, and stores nothing either.
  *
@@ -69,9 +71,14 @@ describe.skipIf(!reachable)('allergies said without the consent (PRO-1041)', () 
     await db.insert(whatsappLinks).values({ userId, phone })
     await db.insert(whatsappMessages).values({ phone, direction: 'in', kind: 'text', body: 'Hola! Soy celíaca. Somos dos en casa y cocinamos cada día', status: 'processed' })
 
-    const r = await completeOnboarding.handler({ adults: 2, kidsCount: 0, cookingStyle: 'daily' }, { userId, db, channel: 'whatsapp' })
+    // «Albóndigas en salsa española» is in the seed catalogue, with gluten.
+    const r = await completeOnboarding.handler(
+      { adults: 2, kidsCount: 0, cookingStyle: 'daily', favoriteDishes: ['albóndigas en salsa española', 'lentejas guisadas'] },
+      { userId, db, channel: 'whatsapp' },
+    )
 
     expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
+    expect(r.summary).toMatch(/No he puesto «albóndigas en salsa española»: su receta lleva algo que en casa no pueden comer/)
     expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
     const { count, withGluten } = await menuAllergens(userId)
     expect(count).toBeGreaterThan(0)

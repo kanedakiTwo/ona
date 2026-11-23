@@ -52,6 +52,15 @@ describe('WhatsApp onboarding prompt', () => {
     expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/ni hables de una comida que ya ha pasado/)
     expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/crea su receta de la casa con swap_meal/)
   })
+
+  it('PRO-1041 + 19-nov: an allergy told in the sign-up is the one thing about allergies the closing reply carries — the link, in one more line', () => {
+    // The closing rule keeps its «no los menciones», with the way out to the next rule.
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/no los menciones, salvo lo que diga la regla siguiente/)
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/pasalas a complete_onboarding en restrictions_said/)
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/mandale el enlace que te da la herramienta, que ya las lleva marcadas: va en una linea mas de tu respuesta al terminar/)
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/no ha puesto un plato suyo por lo que no pueden comer, diselo ahi tambien/)
+    expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/Nunca dejes de hacerle el menu por eso/)
+  })
 })
 
 describe('complete_onboarding', () => {

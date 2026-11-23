@@ -106,6 +106,20 @@ const HAS_ALCOHOL = [
 /** «Vinagre de vino» is not alcohol: these stay. */
 const WINE_VINEGAR_ONLY = ['Garbanzos con espinacas', 'Onigirazu', 'Pollo agridulce']
 
+/**
+ * PRO-1038: a very salty ingredient (soy sauce, cured meats, olives, capers,
+ * pickles, feta, parmesan, miso, Worcestershire) — read by hand. Plain
+ * «bacalao», stock and bread are not on the list.
+ */
+const VERY_SALTY = [
+  'Alitas de pollo al horno', 'Alubias rojas con entraña y embutidos', 'Arroz al horno', 'Arroz tres delicias',
+  'Berenjenas con queso', 'Berenjenas rellenas', 'Coliflor gratinada', 'Crema de zanahoria con pollo, aguacate y granada',
+  'Dorada a la marsellesa', 'Ensalada griega', 'Ensalada thai', 'Espaguetis con ajo y aceite', 'Espinacas a la crema',
+  'Guisantes lagrima', 'Lasaña de verduras', 'Melón con jamón', 'Onigirazu', 'Pisto con huevo frito a la Thermomix',
+  'Pizza de colores con verduras', 'Pollo agridulce', 'Ramen casero', 'Saam de pollo, mango y mandarina',
+  'Salteado de verduras con salmón marinado', 'Sopa miso', 'Steak Tartar', 'Sándwich mixto', 'Wrap de lechuga con noodles',
+]
+
 const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter']
 
 function generatedNames(restrictions: string[], season: Season): string[] {
@@ -122,7 +136,39 @@ function generatedNames(restrictions: string[], season: Season): string[] {
 describe('fixture', () => {
   it('every hand-written name is in the catalogue', () => {
     const names = new Set(fixture.map((r) => r.name))
-    for (const n of [...NOT_VEGETARIAN, ...VEGETARIAN, ...HAS_GLUTEN, ...GLUTEN_FREE, ...HAS_ALCOHOL, ...WINE_VINEGAR_ONLY]) expect(names.has(n), n).toBe(true)
+    for (const n of [...NOT_VEGETARIAN, ...VEGETARIAN, ...HAS_GLUTEN, ...GLUTEN_FREE, ...HAS_ALCOHOL, ...WINE_VINEGAR_ONLY, ...VERY_SALTY]) expect(names.has(n), n).toBe(true)
+  })
+})
+
+describe('PRO-1038 — a «poca sal» household over the whole catalogue', () => {
+  const rules = compileRestrictions(['poca sal'])
+
+  it('hides exactly the recipes with a very salty ingredient', () => {
+    const hidden = pool.filter((r) => violatesRestrictions(r, rules)).map((r) => r.name).sort()
+    expect(hidden).toEqual([...VERY_SALTY].sort())
+  })
+
+  it('generated weeks (every season, several tries) never bring soy sauce, ham, olives…', () => {
+    for (const season of SEASONS) {
+      for (let i = 0; i < 5; i++) {
+        const names = generatedNames(['diabetes', 'poca sal'], season)
+        expect(names.length).toBeGreaterThan(0)
+        expect(names.filter((n) => VERY_SALTY.includes(n)), `${season} #${i}`).toEqual([])
+      }
+    }
+  })
+
+  it('the «Elegir otra receta» list (fitsMe) hides the same recipes', () => {
+    const hidden = new Set(recipeIdsBreakingRestrictions(pool, ['poca sal']))
+    expect(pool.filter((r) => hidden.has(r.id)).map((r) => r.name).sort()).toEqual([...VERY_SALTY].sort())
+  })
+
+  it('the catalogue of 2026-10-22: the salteado with soy and the sopa de cocido with ham and panceta are out', () => {
+    const now = catalog1022 as Array<{ name: string; allergens: string[]; ingredients: string[] }>
+    for (const name of ['Salteado de verduras con salmón marinado', 'Sopa de cocido con fideos', 'Crema de champiñones de la Yaya', 'Cocido madrileño']) {
+      const r = now.find((x) => x.name === name)!
+      expect(violatesRestrictions({ name: r.name, ingredients: r.ingredients.map((n) => ({ ingredientName: n })) }, rules), name).toBe(true)
+    }
   })
 })
 

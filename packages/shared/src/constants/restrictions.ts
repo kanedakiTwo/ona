@@ -26,6 +26,9 @@ export const RESTRICTION_PRESETS = [
   'halal',
   // PRO-144: skips recipes with wine, sherry, beer… (not health data per se).
   'sin alcohol',
+  // PRO-1038: skips recipes with very salty ingredients (soy sauce, stock
+  // cubes, cured meats, salted fish, pickles…). The chip never says why.
+  'poca sal',
 ] as const
 
 export type RestrictionPreset = (typeof RESTRICTION_PRESETS)[number]

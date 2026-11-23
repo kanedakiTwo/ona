@@ -219,6 +219,35 @@ export function nameHasAlcohol(normalizedName: string): boolean {
   return ALCOHOL_TERMS.some((t) => nameHasTerm(n, t))
 }
 
+// PRO-1038 (Seguridad de la dieta; hogares de prueba, 2026-10-24: a profile
+// with «poca sal» got «Salsa de soja» and a sopa de cocido with jamón serrano
+// and panceta). «Poca sal» skips the recipes with a very salty ingredient:
+// soy and fish sauces, stock cubes and meat extract, cured meats and sausages,
+// salted and smoked fish, pickles and olives, the saltiest cheeses, and
+// anything «salado». Salt itself («sal», «sal gorda») stays: the cook decides
+// how much. Bread is not here. Cocina and Legal review the list; the screens
+// never say why (§6).
+export const SALTY_TERMS = [
+  // Sauces, stock cubes and seasonings.
+  'salsa de soja', 'salsa soja', 'soja salada', 'tamari', 'shoyu', 'miso', 'salsa de ostras', 'salsa teriyaki',
+  'teriyaki', 'salsa de pescado', 'nuoc mam', 'worcestershire', 'perrins', 'caldo en pastilla', 'pastilla de caldo',
+  'pastillas de caldo', 'cubito de caldo', 'cubitos de caldo', 'avecrem', 'maggi', 'caldo concentrado', 'concentrado de caldo',
+  'extracto de carne', 'sazonador', 'glutamato', 'sal de ajo', 'sal de apio', 'caldo de jamon', 'caldo de cocido',
+  // Cured meats and sausages.
+  'jamon', 'chorizo', 'salchichon', 'fuet', 'lomo embuchado', 'sobrasada', 'morcilla', 'butifarra', 'longaniza',
+  'chistorra', 'cecina', 'lacon', 'panceta', 'pancetta', 'bacon', 'beicon', 'tocino', 'torrezno', 'guanciale',
+  'prosciutto', 'salami', 'pepperoni', 'mortadela', 'salchicha', 'frankfurt', 'embutido', 'fiambre',
+  // Salted and smoked fish.
+  'salazon', 'anchoa', 'mojama', 'huevas', 'arenque', 'bacalao salado', 'salmon ahumado', 'bacalao ahumado',
+  'trucha ahumada', 'sardina ahumada', 'anguila ahumada', 'pescado ahumado', 'salmon marinado',
+  // Pickles and olives.
+  'encurtido', 'encurtida', 'pepinillo', 'alcaparra', 'alcaparron', 'aceituna', 'banderilla', 'chucrut', 'kimchi',
+  // The saltiest cheeses.
+  'parmesano', 'pecorino', 'grana padano', 'feta', 'roquefort', 'cabrales', 'queso azul', 'queso curado',
+  // «almendras saladas», «mantequilla salada», «panceta salada curada»…
+  'salado', 'salada',
+]
+
 interface DietRule {
   allergens: AllergenTag[]
   terms: string[]
@@ -229,6 +258,7 @@ interface DietRule {
 }
 
 const HALAL: DietRule = { allergens: [], terms: [], alcohol: true, halal: true }
+const LOW_SALT: DietRule = { allergens: [], terms: SALTY_TERMS }
 
 const DIETS: Record<string, DietRule> = {
   vegetariano: { allergens: FISH_AND_SEAFOOD, terms: [...MEAT_TERMS, ...FISH_TERMS] },
@@ -250,6 +280,20 @@ const DIETS: Record<string, DietRule> = {
   musulmanas: HALAL,
   alcohol: { allergens: [], terms: [], alcohol: true }, // "sin alcohol"
   'bebidas alcoholicas': { allergens: [], terms: [], alcohol: true },
+  'poca sal': LOW_SALT,
+  'menos sal': LOW_SALT,
+  'bajo en sal': LOW_SALT,
+  'baja en sal': LOW_SALT,
+  'bajo de sal': LOW_SALT,
+  'baja de sal': LOW_SALT,
+  'con poca sal': LOW_SALT,
+  hiposodica: LOW_SALT,
+  hiposodico: LOW_SALT,
+  'poco sodio': LOW_SALT,
+  'bajo en sodio': LOW_SALT,
+  'baja en sodio': LOW_SALT,
+  sodio: LOW_SALT, // "sin sodio"
+  sal: { allergens: [], terms: ['sal', ...SALTY_TERMS] }, // "sin sal": also the salt itself, as before
 }
 
 const PREFIXES = [

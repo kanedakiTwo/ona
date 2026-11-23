@@ -10,9 +10,11 @@ import { registerFreshUser } from './_helpers'
 
 test('the password manager saves the email with the password', async ({ page }) => {
   await page.goto('/register')
-  await expect(page.getByLabel('Email')).toHaveAttribute('autocomplete', 'username')
-  await expect(page.getByLabel('Nombre de usuario')).toHaveAttribute('autocomplete', 'nickname')
-  await expect(page.getByLabel('Contraseña')).toHaveAttribute('autocomplete', 'new-password')
+  // By type and position, like `submitRegisterForm`: «Email» is also in the newsletter box's label.
+  const form = page.locator('form')
+  await expect(form.locator('input[type="email"]')).toHaveAttribute('autocomplete', 'username')
+  await expect(form.locator('input').nth(0)).toHaveAttribute('autocomplete', 'nickname')
+  await expect(form.locator('input[type="password"]')).toHaveAttribute('autocomplete', 'new-password')
 })
 
 test('«¿Ya tienes cuenta? Entra» at the top goes to login', async ({ page }) => {

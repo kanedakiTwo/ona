@@ -64,7 +64,8 @@ export interface OnboardingAnswers {
 // Zod schemas for validation
 export const registerSchema = z.object({
   username: z.string().min(3).max(30),
-  email: z.string().email(),
+  /** Trimmed and lowercased (PRO-1271): one account per email whatever its capitals. */
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(6),
   /** «Tengo 14 años o más» (LOPDGDD art. 7, PRO-23): required, must be ticked. */
   ageConfirmed: z.literal(true, {

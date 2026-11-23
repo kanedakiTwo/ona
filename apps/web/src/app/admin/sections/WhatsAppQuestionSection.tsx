@@ -14,8 +14,9 @@ import { useState } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 
-type Reason = "ya_enviada" | "baja" | "interna" | "prueba" | "sin_whatsapp"
+type Reason = "ya_enviada" | "encuesta_semana" | "baja" | "interna" | "prueba" | "sin_whatsapp"
 
 interface Preview {
   count: number
@@ -42,6 +43,7 @@ interface Question {
 
 const REASON_LABEL: Record<Reason, [string, string]> = {
   ya_enviada: ["ya la recibió", "ya la recibieron"],
+  encuesta_semana: ["recibió otra encuesta esta semana", "recibieron otra encuesta esta semana"],
   baja: ["pidió BAJA", "pidieron BAJA"],
   interna: ["cuenta interna", "cuentas internas"],
   prueba: ["hogar de prueba", "hogares de prueba"],
@@ -113,8 +115,9 @@ export function WhatsAppQuestionSection() {
         className="space-y-4 rounded-2xl border border-border-soft bg-paper p-4"
       >
         <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
-          Pregunta (va dentro de la plantilla aprobada en Meta)
+          <FieldLabel as="span" required>Pregunta (va dentro de la plantilla aprobada en Meta)</FieldLabel>
           <textarea
+            required
             value={text}
             onChange={(e) => edit(setText)(e.target.value)}
             rows={3}
@@ -129,15 +132,15 @@ export function WhatsAppQuestionSection() {
         <fieldset className="grid gap-3 md:grid-cols-3">
           <legend className="mb-2 text-[12px] font-semibold text-ink">El grupo</legend>
           <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
-            Alta desde
-            <input type="date" value={from} max={to} onChange={(e) => edit(setFrom)(e.target.value)} className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink" />
+            <FieldLabel as="span" required>Alta desde</FieldLabel>
+            <input type="date" required value={from} max={to} onChange={(e) => edit(setFrom)(e.target.value)} className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink" />
           </label>
           <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
-            Alta hasta
-            <input type="date" value={to} min={from} onChange={(e) => edit(setTo)(e.target.value)} className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink" />
+            <FieldLabel as="span" required>Alta hasta</FieldLabel>
+            <input type="date" required value={to} min={from} onChange={(e) => edit(setTo)(e.target.value)} className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink" />
           </label>
           <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
-            Días sin actividad (0 = da igual)
+            <FieldLabel as="span" optional>Días sin actividad (0 = da igual)</FieldLabel>
             <input
               type="number"
               min={0}
@@ -148,6 +151,7 @@ export function WhatsAppQuestionSection() {
             />
           </label>
         </fieldset>
+        <RequiredNote />
         <button
           type="submit"
           disabled={!validText || !from || !to || count.isPending}

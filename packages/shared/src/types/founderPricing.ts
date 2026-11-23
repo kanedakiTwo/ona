@@ -5,7 +5,7 @@
  * charged. No struck-through prices, no fake quotas (constitution §8.3).
  */
 import { z } from 'zod'
-import { BILLING_PERIODS, PLANS, type BillingPeriod, type PlanKey } from './plans.js'
+import { BILLING_PERIODS, PAID_PLANS, type BillingPeriod, type PlanKey } from './plans.js'
 
 /** The four questions, asked before the plans so the prices don't anchor them. */
 export const PRICE_QUESTIONS = [
@@ -33,11 +33,11 @@ export interface FounderPlan {
 }
 
 /**
- * Derived from `PLANS` (specs/billing.md): Esencial first and featured
+ * Derived from `PAID_PLANS` (specs/billing.md): Esencial first and featured
  * (Miguel, 2026-10-15, replacing D-021's featured Plus anual), each plan
  * monthly or yearly. The screen shows two cards and a monthly/yearly switch.
  */
-export const FOUNDER_PLANS: readonly FounderPlan[] = PLANS.flatMap((p) =>
+export const FOUNDER_PLANS: readonly FounderPlan[] = PAID_PLANS.flatMap((p) =>
   BILLING_PERIODS.map((period) => ({
     id: `${p.key}-${period}` as FounderPlanId,
     plan: p.key,

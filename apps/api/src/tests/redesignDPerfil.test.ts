@@ -11,7 +11,8 @@ const PROFILE_FILES = [
   'apps/web/src/app/profile/sections',
   'apps/web/src/components/profile/WhatsAppCard.tsx',
   'apps/web/src/components/profile/DeleteAccountCard.tsx',
-  'apps/web/src/components/profile/MealDishCountControls.tsx',
+  'apps/web/src/app/profile/semana-tipo',
+  'apps/web/src/components/weekType',
 ]
 
 describe('redesign D · Perfil (PRO-39)', () => {

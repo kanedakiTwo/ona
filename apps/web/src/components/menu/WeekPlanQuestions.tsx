@@ -9,7 +9,7 @@ const DAY_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 const MEAL_LABEL: Record<string, string> = { breakfast: "Desayuno", lunch: "Comida", snack: "Merienda", dinner: "Cena" }
 
 /**
- * PRO-225 · «Antes de planificar»: optional taps above «Generar mi menú»
+ * PRO-225 · «Antes de planificar»: optional taps above «Llenar con mi semana tipo»
  * («¿Alguna comida fuera de casa?», «¿Viene alguien?» and, PRO-229, «¿Qué te
  * queda en la nevera?»). Closed by default: skipping them is just generating.
  * What's answered shapes only this week; the fridge goes into the despensa.
@@ -66,7 +66,7 @@ export function WeekPlanQuestions({
 
   return (
     <div className="mx-auto mt-5 max-w-sm text-left" data-testid="week-plan-questions">
-      {/* PRO-271: nobody's allergies known → say so before «Generar mi menú». */}
+      {/* PRO-271: nobody's allergies known → say so before «Llenar con mi semana tipo». */}
       <HouseholdAllergiesNotice />
       <p className="text-center text-[12.5px] uppercase tracking-[0.08em] text-ink-soft">Antes de generar · opcional</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">

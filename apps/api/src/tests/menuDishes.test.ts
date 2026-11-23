@@ -64,19 +64,9 @@ describe('patchDish', () => {
     const after = patchDish(before, 0, { text: 'new' })
     expect((after[0] as { text: string }).text).toBe('new')
   })
-  it('updates pinnedType on a recipe dish', () => {
-    const before: Dish[] = [r('a')]
-    const after = patchDish(before, 0, { pinnedType: 'legumbres' })
-    expect((after[0] as RecipeDish).pinnedType).toBe('legumbres')
-  })
   it('ignores text on a recipe dish', () => {
     const before: Dish[] = [r('a')]
     const after = patchDish(before, 0, { text: 'nope' })
-    expect(after[0]).toEqual(before[0])
-  })
-  it('ignores pinnedType on a note dish', () => {
-    const before: Dish[] = [{ kind: 'note', text: 'x' }]
-    const after = patchDish(before, 0, { pinnedType: 'legumbres' })
     expect(after[0]).toEqual(before[0])
   })
   // Miguel, 2026-10-20: a dish already in the menu can be marked «del congelador».

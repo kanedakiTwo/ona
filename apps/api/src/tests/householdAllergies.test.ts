@@ -111,13 +111,15 @@ describe('withHouseholdRestrictions (PRO-305)', () => {
   it('every pick in routes/menus.ts and Mimo’s swap_meal reads the household’s restrictions', () => {
     const read = (rel: string) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8')
     const menus = read('routes/menus.ts')
-    // POST meal (añadir una comida), regenerate dish, random dish.
-    expect(menus.match(/const restrictions = await withHouseholdRestrictions\(/g)?.length).toBe(3)
+    // POST meal (añadir una comida), random dish; regenerate dish goes through «Cambiar»'s context (2026-11-19).
+    expect(menus.match(/const restrictions = await withHouseholdRestrictions\(/g)?.length).toBe(2)
+    expect(menus).toContain('await slotPickOptions(await loadSlotPickContext(menu, req.userId!), menu, day, meal, usedRecipeIds, days)')
     expect(menus).not.toMatch(/const restrictions = mergeRestrictions\(/)
     // PUT meal (Cambiar al azar), through the context it shares with PRO-364's review.
     expect(menus).toContain('await loadSlotPickContext(menu, req.userId!)')
     expect(read('services/menuSlotPick.ts')).toContain('const restrictions = await withHouseholdRestrictions(')
     expect(read('services/menuGenerator.ts')).toContain('withHouseholdRestrictions(')
-    expect(read('services/assistant/skills.ts')).toContain('const restrictions = await withHouseholdRestrictions(own.restrictions, userId, db)')
+    // Mimo's swap_meal without a dish is the app's «Cambiar» (2026-11-19).
+    expect(read('services/assistant/skills.ts')).toContain('await loadSlotPickContext(menu, userId)')
   })
 })

@@ -15,16 +15,21 @@
  *   - `error_refusal`: the turn failed, the reply didn't go out, or the engine
  *     flagged a refusal / truncated reply.
  * Plus the daily reviewer's own findings (`assistant_reviews.findings`),
- * mapped onto those categories (`other` for the rest).
+ * mapped onto those categories (`other` for the rest), and (D-189) their
+ * structured part as `hallazgos[]` — key, pattern, where, one fix, its test,
+ * type, severity, days, regression — scrubbed of quotes and known names
+ * (`buildHallazgos`). The reviewer also reads the app's chat; its users' names
+ * are masked too.
  */
-import { and, asc, desc, gte, inArray, lte } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
-import { assistantReviews, households, users, whatsappLinks, whatsappMessages } from '../db/schema.js'
+import { assistantReviews, chatMessages, households, users, whatsappLinks, whatsappMessages } from '../db/schema.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { claimsAction, READ_ONLY_TOOLS, toolMadeChange } from './assistant/claims.js'
 import { healthClaimWords, talksHealthEffects } from './assistant/healthGuard.js'
 import type { ToolTrace } from './assistant/types.js'
 import { anonymise, discoverNames, nameTokens } from './anonymise.js'
+import { hallazgoForAgents, type AgentHallazgo } from './reviewFindings.js'
 
 export const FLAG_CATEGORIES = ['health_talk', 'health_claim', 'unverified_done', 'error_refusal', 'other'] as const
 export type FlagCategory = (typeof FLAG_CATEGORIES)[number]
@@ -253,6 +258,23 @@ export function buildFlagItems(
     .map(({ minute: _m, ...i }) => i)
 }
 
+/**
+ * Pure: the structured part of the reviewer's findings (D-189), one per keyed
+ * finding (older findings have no key and stay out), newest day first. Names
+ * found in the findings' own Admin text are masked too.
+ */
+export function buildHallazgos(reviews: ReadonlyArray<{ day: string; findings: unknown }>, knownNames: ReadonlyArray<string>): AgentHallazgo[] {
+  const findings = reviews.flatMap((r) => (Array.isArray(r.findings) ? (r.findings as Array<Record<string, unknown>>) : []))
+  const names = nameTokens([
+    ...knownNames,
+    ...findings.flatMap((f) => ['userMessage', 'whatHappened', 'expected', 'suggestedFix'].flatMap((k) => discoverNames(typeof f?.[k] === 'string' ? (f[k] as string) : null))),
+  ])
+  return [...reviews]
+    .sort((a, b) => b.day.localeCompare(a.day))
+    .flatMap((r) => (Array.isArray(r.findings) ? r.findings : []).map((f) => hallazgoForAgents(f, r.day, names)))
+    .filter((h): h is AgentHallazgo => h !== null)
+}
+
 export function countFlags(items: ReadonlyArray<FlagItem>) {
   const byCategory = Object.fromEntries(FLAG_CATEGORIES.map((c) => [c, 0])) as Record<FlagCategory, number>
   const reviewerByCategory: Record<string, number> = {}
@@ -298,7 +320,12 @@ export async function loadAssistantFlags(opts: { days: number; now?: Date }, db:
 
   // Every name that could show up: the people in the window, their WhatsApp
   // profile names, their households' names and the other members' usernames.
-  const userIds = [...new Set(rows.map((r) => r.userId).filter((u): u is string => !!u))]
+  // The reviewer also reads the app's chat (D-189): its users' names are masked too.
+  const appRows = await db
+    .select({ userId: chatMessages.userId, body: chatMessages.body })
+    .from(chatMessages)
+    .where(and(gte(chatMessages.createdAt, from), eq(chatMessages.role, 'user')))
+  const userIds = [...new Set([...rows.map((r) => r.userId), ...appRows.map((a) => a.userId)].filter((u): u is string => !!u))]
   const names: Array<string | null> = []
   if (userIds.length) {
     const people = await db
@@ -316,6 +343,7 @@ export async function loadAssistantFlags(opts: { days: number; now?: Date }, db:
   }
   // Names the users themselves mention ("para Antonio") — their messages never leave.
   names.push(...rows.filter((r) => r.direction === 'in').flatMap((r) => discoverNames(r.body)))
+  names.push(...appRows.flatMap((r) => discoverNames(r.body)))
   const knownNames = nameTokens(names)
 
   const { turns, flags } = detectFlags(rows)
@@ -334,5 +362,6 @@ export async function loadAssistantFlags(opts: { days: number; now?: Date }, db:
     },
     counts: countFlags(items),
     items,
+    hallazgos: buildHallazgos(reviews, knownNames),
   }
 }

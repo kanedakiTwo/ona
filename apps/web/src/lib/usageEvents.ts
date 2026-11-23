@@ -9,6 +9,7 @@ import { api } from "@/lib/api"
  * Fire-and-forget: it never fails the app.
  */
 
+import type { MenuSheetAction, MenuSheetName } from "@ona/shared"
 import {
   onboardingStepKey,
   recipeFromPath,
@@ -37,6 +38,11 @@ export function trackUsage(name: ClientUsageEvent, props: Record<string, string 
   } catch {
     /* analytics never breaks the app */
   }
+}
+
+/** PRO-1174: an option tapped in one of the menu's «···» sheets (closed list, MENU_SHEET_ACTIONS). */
+export function trackSheetAction(sheet: MenuSheetName, action: MenuSheetAction): void {
+  trackUsage("menu_sheet_action", { sheet, action })
 }
 
 // In memory only (gone on reload): the next recipe opened came from a Mimo link.

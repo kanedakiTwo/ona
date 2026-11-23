@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../assistant/types.js'
+import { stripAiSignature } from './aiNotice.js'
 
 /**
  * Pure: stored WhatsApp rows → the `history` array `chat()` expects.
@@ -91,7 +92,8 @@ export function buildChatHistory(
   let pendingTrace: string | null = null
   for (const r of usable) {
     const role: ChatMessage['role'] = r.direction === 'in' ? 'user' : 'assistant'
-    let content = role === 'assistant' ? r.body!.trim().replace(SHOP_LINK, OLD_SHOP_LINK) : r.body!.trim()
+    // PRO-1169: the AI line under an aviso is the code's; the model never writes it.
+    let content = role === 'assistant' ? stripAiSignature(r.body!.trim()).replace(SHOP_LINK, OLD_SHOP_LINK) : r.body!.trim()
     if (role === 'user') {
       pendingTrace = traceLine(r.meta)
     } else if (pendingTrace && r.kind === 'reply') {

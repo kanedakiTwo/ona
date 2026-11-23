@@ -104,7 +104,7 @@ Experimento cerrado. En la tarjeta del súper, **«Enviar a <cadena>»** manda l
 
 ## API
 
-All auth'd and scoped to the caller's primary household unless noted.
+All auth'd and scoped to the caller's primary household unless noted. Shop orders aren't in the **Gratis** plan (PRO-385, D-158, [Billing](./billing.md)): `POST /shop-orders/prepare` and `POST /shop-orders/:id/quote` answer **402 `PLAN_GRATIS`** «Los pedidos a tiendas no entran en el plan Gratis…» after a trial without a plan (admins exempt); the shops and the orders already made stay readable.
 
 | Method | Path | Notes |
 |---|---|---|

@@ -175,12 +175,13 @@ describe('validateGuided — legal and other rules', () => {
     expect(validateGuided('Soy una inteligencia artificial y hoy toca cocinar ya.', s, 'sin aviso')).toEqual({ ok: false, reason: 'ai_paraphrase' })
   })
 
-  it('the shopping reminder needs the count and the list link', () => {
-    const items = ['leche', 'pan', 'huevos', 'tomates']
-    const g = shoppingReminderGuide(items, WEB)
-    const fixed = formatShoppingReminder(items, WEB)
-    expect(validateGuided(`Sábado de compra: te quedan 4 cosas, entre ellas leche y pan.\n\nLa lista: ${WEB}/shopping`, g, fixed)).toEqual({ ok: true })
-    expect(validateGuided('Sábado de compra: te quedan unas cuantas cosas, como leche y pan.', g, fixed)).toMatchObject({ ok: false })
+  it('the shopping reminder needs the fresh things and the list link, and never a count (19-nov)', () => {
+    const fresh = ['tomates', 'merluza']
+    const g = shoppingReminderGuide(fresh, WEB)
+    const fixed = formatShoppingReminder(fresh, WEB)
+    expect(validateGuided(`¿Vas a la compra? De lo fresco te faltan tomates y merluza.\n\nLa lista: ${WEB}/shopping`, g, fixed)).toEqual({ ok: true })
+    expect(validateGuided('¿Vas a la compra? De lo fresco te faltan tomates y merluza.', g, fixed)).toMatchObject({ ok: false, reason: 'missing_required' })
+    expect(validateGuided(`Te quedan 139 cosas: tomates, merluza…\n\nLa lista: ${WEB}/shopping`, g, fixed)).toEqual({ ok: false, reason: 'count' })
   })
 })
 

@@ -1,6 +1,6 @@
 /**
  * «Rehacer la semana con mis favoritas» (PRO-377, specs/menus.md): from the
- * week's «···» sheet, the week comes out of the household's favourites; with
+ * week's «···» sheet («Rehacer la semana…» → «Solo con mis favoritas», PRO-1179), the week comes out of the household's favourites; with
  * only two, the rest comes from the catalogue and the page says how many.
  */
 import { test, expect } from '@playwright/test'
@@ -35,7 +35,8 @@ test('the week with my favourites: both come out and the page says how many are 
   await page.goto('/menu')
   await page.getByRole('button', { name: 'Opciones de la semana' }).click()
   const generated = page.waitForResponse((r) => r.url().endsWith('/menu/generate') && r.request().method() === 'POST')
-  await page.getByRole('dialog').getByRole('button', { name: /rehacer la semana con mis favoritas/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Rehacer la semana…' }).click()
+  await page.getByTestId('week-redo-sheet').getByRole('button', { name: 'Solo con mis favoritas' }).click()
   const res = await generated
   expect(res.status()).toBe(201)
   const body = await res.json()

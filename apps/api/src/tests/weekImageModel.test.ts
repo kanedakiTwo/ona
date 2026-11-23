@@ -5,7 +5,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { buildWeekImageModel, photoRecipeIds, stripEmoji } from '../services/weekImage/model.js'
-import { weekMenuCaption, weekMenuDigest } from '../services/menuText.js'
+import { captionVariants, weekMenuCaption, weekMenuDigest } from '../services/menuText.js'
+import { weekImageTree } from '../services/weekImage/render.js'
 
 const r = (recipeName: string, extra: Record<string, unknown> = {}) =>
   ({ kind: 'recipe' as const, recipeId: `id-${recipeName}`, recipeName, ...extra })
@@ -180,6 +181,46 @@ describe('weekMenuCaption — the text that goes with the image', () => {
   })
 
   it('stays far below WhatsApp’s 1024-character caption limit', () => {
-    expect(weekMenuCaption(week(LUIS), { today: '2026-10-15', webUrl: 'https://www.mimoia.com' }).length).toBeLessThan(300)
+    expect(weekMenuCaption(week(LUIS), { today: '2026-10-15', webUrl: 'https://www.mimoia.com', inviteCode: 'abcd2345' }).length).toBeLessThan(300)
+  })
+})
+
+describe('the household’s invitation on the forwarded week (PRO-1016, D-132)', () => {
+  const OPTS = { today: '2026-10-15', webUrl: 'https://www.mimoia.com', inviteCode: 'abcd2345' }
+  const FOOT = 'Hecho con Mimo · mimoia.com/i/abcd2345'
+
+  it('the caption ends with «Hecho con Mimo · mimoia.com/i/<code>» of the household', () => {
+    const caption = weekMenuCaption(week(LUIS), OPTS)
+    expect(caption.split('\n').at(-1)).toBe(FOOT)
+    expect(caption.split('\n').at(-2)).toBe('¿Cambio algo? Dímelo, p. ej. «el sábado, pescado».')
+  })
+
+  it('the text fallback carries the same foot, under the invite', () => {
+    const digest = weekMenuDigest(week(LUIS), OPTS)
+    expect(digest.endsWith(`¿Cambio algo? Dímelo, p. ej. «el sábado, pescado».\n${FOOT}`)).toBe(true)
+  })
+
+  it('without a code, no foot (as before)', () => {
+    expect(weekMenuCaption(week(LUIS), { ...OPTS, inviteCode: null })).not.toContain('Hecho con Mimo')
+    expect(weekMenuDigest(week(LUIS), { ...OPTS, inviteCode: undefined })).not.toContain('Hecho con Mimo')
+  })
+
+  it('a long reply drops the foot first (the picture carries it), then the invite, then the link', () => {
+    const variants = captionVariants(weekMenuCaption(week(LUIS), OPTS))
+    expect(variants).toHaveLength(4)
+    expect(variants[1]).not.toContain(FOOT)
+    expect(variants[1]).toContain('¿Cambio algo?')
+    expect(variants[3]).toBe('Listo: tu menú hasta el domingo 🍽️')
+  })
+
+  it('the picture carries the foot under everything else, and none without a code', () => {
+    const m = buildWeekImageModel(week(LUIS), { today: '2026-10-15', madeWith: FOOT })!
+    expect(m.madeWith).toBe(FOOT)
+    const tree = JSON.stringify(weekImageTree(m, () => null))
+    expect(tree).toContain(FOOT)
+    expect(tree.lastIndexOf(FOOT)).toBeGreaterThan(tree.lastIndexOf('/menu'))
+    const plain = buildWeekImageModel(week(LUIS), { today: '2026-10-15' })!
+    expect(plain.madeWith).toBeNull()
+    expect(JSON.stringify(weekImageTree(plain, () => null))).not.toContain('Hecho con Mimo')
   })
 })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -13,6 +13,7 @@ import {
 import { ApiError, apiPublic } from "@/lib/api"
 import { ArrowRight } from "lucide-react"
 import { Accent, AUTH_PILL, AuthError, AuthField, AuthFooterLink, AuthHeading, AuthShell } from "@/components/auth/AuthShell"
+import { FieldMark, RequiredNote } from "@/components/FieldLabel"
 import { useAuth } from "@/lib/auth"
 import { NEWSLETTER_OPT_IN_HINT, NEWSLETTER_OPT_IN_LABEL } from "@ona/shared"
 import { signupAttributionForRegister } from "@/lib/signupAttribution"
@@ -20,7 +21,7 @@ import { signupAttributionForRegister } from "@/lib/signupAttribution"
 const HERO_IMG = "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=1200&q=85&auto=format&fit=crop"
 
 export default function RegisterPage() {
-  const { register } = useAuth()
+  const { register, user, isLoading } = useAuth()
   const router = useRouter()
 
   const [username, setUsername] = useState("")
@@ -29,6 +30,15 @@ export default function RegisterPage() {
   const [ageConfirmed, setAgeConfirmed] = useState(false)
   const [newsletterOptIn, setNewsletterOptIn] = useState(false)
   const nextSuffix = useNextSuffix()
+  // 23-nov: an invitation link (`/i/<code>` → here) opened by someone who already
+  // has a session in this browser goes in, not to a second sign-up.
+  // Only the session found on arrival: the one this form creates goes on to onboarding as before.
+  const sessionChecked = useRef(false)
+  useEffect(() => {
+    if (isLoading || sessionChecked.current) return
+    sessionChecked.current = true
+    if (user) router.replace(nextFromLocation() ?? "/menu")
+  }, [isLoading, user, router])
   const [error, setError] = useState<string | null>(null)
   // Closed beta (PRO-27): no invitation → point to the waitlist.
   const [closedBeta, setClosedBeta] = useState(false)
@@ -103,7 +113,7 @@ export default function RegisterPage() {
             Tu primer <Accent>menú</Accent> en 2 minutos.
           </>
         ),
-        body: "Cinco preguntas, sin tarjeta de crédito, y en pantalla un menú semanal con su lista de la compra.",
+        body: "Tres o cuatro preguntas, sin tarjeta, y en pantalla tu menú de la semana con su lista de la compra.",
       }}
       footer={
         <>
@@ -119,7 +129,14 @@ export default function RegisterPage() {
             Crea tu <Accent>primer menú</Accent>.
           </>
         }
-        lead="Sin tarjeta. Sin compromiso. Dos minutos."
+        lead={
+          <>
+            Sin tarjeta. Sin compromiso. Dos minutos.{" "}
+            <Link href={`/login${nextSuffix}`} data-testid="register-login-link" className="font-semibold text-terracotta-deep underline underline-offset-4">
+              ¿Ya tienes cuenta? Entra
+            </Link>
+          </>
+        }
       />
 
       <form onSubmit={handleSubmit} className="mt-7 flex flex-col gap-5">
@@ -170,7 +187,10 @@ export default function RegisterPage() {
         )}
         {error && <AuthError>{error}</AuthError>}
 
-        <AuthField label="Nombre de usuario" value={username} onChange={setUsername} autoFocus autoComplete="username" />
+        {/* 23-nov: the email is what people type to log in, so it is the «username» the
+            password manager saves with the password (with the nickname there, iPhone's
+            Keychain never filled the login form). */}
+        <AuthField label="Nombre de usuario" value={username} onChange={setUsername} autoFocus autoComplete="nickname" />
 
         <AuthField
           label="Email"
@@ -179,7 +199,7 @@ export default function RegisterPage() {
           onChange={(v) => {
             if (!emailFixed) setEmail(v)
           }}
-          autoComplete="email"
+          autoComplete="username"
           readOnly={emailFixed}
           hint={emailFixed ? "Es el correo de tu invitación: no se puede cambiar." : undefined}
         />
@@ -199,9 +219,13 @@ export default function RegisterPage() {
             name="ageConfirmed"
             checked={ageConfirmed}
             onChange={(e) => setAgeConfirmed(e.target.checked)}
+            required
             className="h-5 w-5 shrink-0 accent-ink"
           />
-          <span>Tengo 14 años o más</span>
+          <span>
+            Tengo 14 años o más
+            <FieldMark required />
+          </span>
         </label>
 
         {/* Friday menu email (PRO-95): separate, optional, unticked (LSSI art. 21). */}
@@ -216,11 +240,14 @@ export default function RegisterPage() {
           />
           <span>
             {NEWSLETTER_OPT_IN_LABEL}
+            <FieldMark optional />
             <span id="register-newsletter-hint" className="mt-0.5 block text-[12px] text-ink-muted">
               {NEWSLETTER_OPT_IN_HINT} Opcional; te das de baja con un clic.
             </span>
           </span>
         </label>
+
+        <RequiredNote className="-mt-2" />
 
         <button
           type="submit"

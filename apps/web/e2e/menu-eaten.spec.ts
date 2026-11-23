@@ -89,3 +89,46 @@ test('a written dish («Cenamos fuera») shows once on its row', async ({ page }
   await expect(page.getByRole('main').getByText('Cenamos fuera')).toHaveCount(1)
   await expect(page.getByRole('main').getByText(/\+ Cenamos fuera/)).toHaveCount(0)
 })
+
+test('cooking from the menu: «Terminar» logs it with its menuId, leaves «✓ Comido» and comes back to /menu (PRO-1108)', async ({ page }) => {
+  test.setTimeout(150_000)
+  const { headers, userId, weekStart, menu, today } = await todayMenu(page)
+
+  await page.goto('/menu')
+  const hero = page.getByTestId('menu-hero')
+  await expect(hero).toBeVisible({ timeout: 20_000 })
+  // Today only: the quiet way to «Cocinar».
+  await expect(hero.getByTestId('menu-cook-now')).toHaveAttribute('href', '/cocinar')
+
+  // «Empezar a cocinar» carries the menu slot.
+  const start = hero.getByRole('link', { name: /empezar a cocinar/i })
+  const href = new URL((await start.getAttribute('href'))!, 'http://x')
+  expect(href.searchParams.get('menu')).toBe(menu.id)
+  expect(href.searchParams.get('day')).toBe(String(today))
+  const meal = href.searchParams.get('meal')!
+  expect(MEAL_ORDER).toContain(meal)
+  await start.click()
+  await page.waitForURL((u) => u.pathname.endsWith('/cook'), { timeout: 15_000 })
+
+  const next = page.getByRole('button', { name: 'Paso siguiente' })
+  const finish = page.getByRole('button', { name: /^terminar$/i })
+  await expect(next.or(finish)).toBeVisible({ timeout: 15_000 })
+  for (let i = 0; i < 40 && !(await finish.isVisible()); i++) await next.click()
+
+  const cooked = page.waitForRequest((r) => r.url().endsWith('/cook-logs') && r.method() === 'POST')
+  await finish.click()
+  expect((await cooked).postDataJSON()).toMatchObject({ menuId: menu.id, dayIndex: today, meal })
+  // First time: «¿Qué tal?»; closing it goes to the menu too.
+  const prompt = page.getByTestId('rating-prompt')
+  await expect(prompt.or(page.getByTestId('menu-hero'))).toBeVisible({ timeout: 15_000 })
+  if (await prompt.isVisible()) await prompt.getByRole('button', { name: 'Bien' }).click()
+  await page.waitForURL((u) => u.pathname === '/menu', { timeout: 15_000 })
+
+  await expect
+    .poll(async () => {
+      const m = await (await page.request.get(`${API}/menu/${userId}/${weekStart}`, { headers })).json()
+      return m.days[today]?.[meal]?.eaten ?? false
+    }, { timeout: 10_000 })
+    .toBe(true)
+  await expect(page.getByTestId('menu-hero').getByTestId('meal-eaten')).toBeVisible({ timeout: 20_000 })
+})

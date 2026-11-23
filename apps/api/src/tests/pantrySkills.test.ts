@@ -19,6 +19,11 @@ vi.mock('../services/pantryStore.js', () => ({
     if (i >= 0) pantry.splice(i, 1)
     return i >= 0
   }),
+  patchPantryForUser: vi.fn(async (_u: string, id: string, patch: any) => {
+    const row = pantry.find((p) => p.id === id)
+    if (row) Object.assign(row, patch)
+    return row ?? null
+  }),
 }))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
@@ -27,7 +32,7 @@ vi.mock('../services/scopeResolver.js', () => ({
 }))
 
 import { skills } from '../services/assistant/skills.js'
-import { addPantryForUser, deletePantryForUser } from '../services/pantryStore.js'
+import { addPantryForUser, deletePantryForUser, patchPantryForUser } from '../services/pantryStore.js'
 
 const get = (n: string) => skills.find((s) => s.name === n)!
 /** Chainable fake db: every awaited query returns the next queued value. */
@@ -67,6 +72,7 @@ describe('mark_in_stock', () => {
     pantry.length = 0
     vi.mocked(addPantryForUser).mockClear()
     vi.mocked(deletePantryForUser).mockClear()
+    vi.mocked(patchPantryForUser).mockClear()
   })
 
   it('"tengo garbanzos" with no list → straight into the pantry', async () => {
@@ -85,12 +91,34 @@ describe('mark_in_stock', () => {
   })
 
   // PRO-182: «nos queda una cebolla y medio pimiento» marked the week's 7 onions «en casa».
-  it('"nos queda una cebolla" → the list buys only the rest', async () => {
+  it('"nos queda una cebolla" → the list buys only the rest, and the pantry keeps that one (PRO-349)', async () => {
     const cebolla = { id: 'menu:ceb:u', ingredientId: 'ceb', name: 'Cebolla', quantity: 7, unit: 'u', inStock: false, checked: false }
     const r = await get('mark_in_stock').handler({ ingredient: 'cebolla', quantity: 1 }, ctx(makeDb([{ id: 'sl-1', items: [cebolla] }], undefined)))
     expect(cebolla).toMatchObject({ inStock: false, haveQuantity: 1, haveSource: 'inStock' })
     expect(r.summary).toContain('quedan 6 u por comprar')
-    expect(addPantryForUser).not.toHaveBeenCalled()
+    expect(addPantryForUser).toHaveBeenCalledWith('u-1', { name: 'Cebolla', quantity: 1, unit: 'u', location: undefined }, expect.anything())
+    expect(r.summary).toContain('En la despensa queda apuntado: Cebolla: 1 u.')
+  })
+
+  // PRO-349, Dani y Sara 2026-10-22: Mimo said both were in the pantry, and it
+  // had «huevos 1 u» and no broccoli.
+  it('"nos quedan 4 huevos y medio brócoli" → the pantry holds 4 huevos and 0.5 brócoli, and the summary says so', async () => {
+    pantry.push({ id: 'p-1', name: 'Huevos', quantity: 1, unit: 'u', expiresAt: null })
+    const huevos = { id: 'menu:hue:u', ingredientId: 'hue', name: 'Huevos', quantity: 6, unit: 'u', inStock: false, checked: false }
+    const brocoli = { id: 'menu:bro:u', ingredientId: 'bro', name: 'Brócoli', quantity: 1, unit: 'u', inStock: false, checked: false }
+    const list = { id: 'sl-1', items: [huevos, brocoli] }
+    const r1 = await get('mark_in_stock').handler({ ingredient: 'huevos', quantity: 4 }, ctx(makeDb([list], undefined)))
+    const r2 = await get('mark_in_stock').handler({ ingredient: 'brócoli', quantity: 0.5 }, ctx(makeDb([list], undefined)))
+    expect(patchPantryForUser).toHaveBeenCalledWith('u-1', 'p-1', { quantity: 4, unit: 'u' }, expect.anything())
+    expect(pantry.map((p) => [p.name, p.quantity, p.unit])).toEqual([['Huevos', 4, 'u'], ['Brócoli', 0.5, 'u']])
+    expect(r1.summary).toContain('En la despensa queda apuntado: Huevos: 4 u.')
+    expect(r2.summary).toContain('En la despensa queda apuntado: Brócoli: 0.5 u.')
+  })
+
+  it('"tengo 4 huevos" with no list → the pantry gets 4, not «1 u»', async () => {
+    const r = await get('mark_in_stock').handler({ ingredient: 'huevos', inStock: true, quantity: 4 }, ctx(makeDb([])))
+    expect(addPantryForUser).toHaveBeenCalledWith('u-1', { name: 'huevos', quantity: 4, unit: 'u', location: undefined }, expect.anything())
+    expect(r.summary).toBe('huevos marcado como en casa. En la despensa queda apuntado: huevos: 4 u.')
   })
 
   it('an amount in another unit is converted with the catalogue (1 pimiento → 150 g)', async () => {

@@ -68,9 +68,11 @@ export default function TerminosPage() {
 
           <h2 className="text-h3 mt-10 text-[#1A1A1A]">8. Precio y pagos</h2>
           <p>
-            Mimoia se ofrece por suscripción, por hogar, con dos planes, Esencial y Plus, que pueden
-            pagarse al mes o al año. Los precios vigentes, con el IVA incluido, y lo que incluye cada
-            plan están en la página de <Link href="/precios" className="underline">Precios</Link>.
+            Mimoia se ofrece por suscripción, por hogar, con dos planes de pago, Esencial y Plus, que
+            pueden pagarse al mes o al año, y un plan Gratis, sin pago, que es el que tienes al acabar
+            la prueba sin elegir plan o al terminar un plan cancelado. Los precios vigentes, con el IVA
+            incluido, y lo que incluye cada plan están en la página de{" "}
+            <Link href="/precios" className="underline">Precios</Link>.
             La suscripción se renueva sola al final de cada periodo hasta que la canceles.
           </p>
           <p>

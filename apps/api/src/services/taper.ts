@@ -57,10 +57,10 @@ export function removeTaper(days: DayMenu[], day: number, meal: string): TaperRe
 }
 
 /**
- * Template «días de táper» (`template.taperDays`: Spanish day names, e.g.
- * ['martes', 'jueves']): after generating, each of those days' lunch is a
- * táper of the dinner before. Skips Monday, locked lunches, skipped days and
- * days whose dinner before has no recipe.
+ * The old plantilla's «días de táper» (`template.taperDays`: Spanish day
+ * names, e.g. ['martes', 'jueves']), read only by the week type's migration
+ * (D-182): those lunches are now a «Táper de la cena» slot of the week type
+ * (`applyWeekTypeTapers`).
  */
 const SPANISH_DAY: Record<string, number> = { lunes: 0, martes: 1, miercoles: 2, miércoles: 2, jueves: 3, viernes: 4, sabado: 5, sábado: 5, domingo: 6 }
 
@@ -68,17 +68,6 @@ export function taperDaysOf(rawTemplate: unknown): number[] {
   const list = (rawTemplate as { taperDays?: unknown } | null)?.taperDays
   if (!Array.isArray(list)) return []
   return [...new Set(list.map((d) => SPANISH_DAY[String(d).toLowerCase()]).filter((d): d is number => d !== undefined))].sort()
-}
-
-export function applyTemplateTapers(days: DayMenu[], rawTemplate: unknown, locked: LockedSlots = {}, skippedDays: ReadonlySet<number> | readonly number[] = []): DayMenu[] {
-  const skipped = new Set(skippedDays)
-  let out = days
-  for (const day of taperDaysOf(rawTemplate)) {
-    if (skipped.has(day) || skipped.has(day - 1)) continue
-    const r = applyTaper(out, day, 'lunch', 1, locked)
-    if (r.ok) out = r.days
-  }
-  return out
 }
 
 /** Tápers of `day + 1` that come from `day`'s dinner: what to remind tonight. */

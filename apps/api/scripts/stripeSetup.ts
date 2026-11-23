@@ -19,7 +19,7 @@
  */
 import { writeFileSync } from 'node:fs'
 import Stripe from 'stripe'
-import { BILLING_PERIODS, PLANS, stripeLookupKey } from '@ona/shared'
+import { BILLING_PERIODS, PAID_PLANS, stripeLookupKey } from '@ona/shared'
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=')
 const key = process.env.STRIPE_SECRET_KEY
@@ -36,9 +36,11 @@ const WEBHOOK_EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
   'customer.subscription.deleted',
   'customer.subscription.paused',
   'customer.subscription.resumed',
+  // PRO-386: the failed-payment notice and the 7 days.
+  'invoice.payment_failed',
 ]
 
-async function product(plan: (typeof PLANS)[number]): Promise<Stripe.Product> {
+async function product(plan: (typeof PAID_PLANS)[number]): Promise<Stripe.Product> {
   const found = await stripe.products.search({ query: `metadata['mimoia_plan']:'${plan.key}'` })
   const fields = {
     name: `Mimoia ${plan.name}`,
@@ -114,7 +116,7 @@ async function portal(webUrl: string, products: { product: string; prices: strin
 async function main() {
   console.log(`Stripe account mode: ${live ? 'LIVE' : 'test'}`)
   const portalProducts: { product: string; prices: string[] }[] = []
-  for (const plan of PLANS) {
+  for (const plan of PAID_PLANS) {
     const p = await product(plan)
     const ids: string[] = []
     for (const period of BILLING_PERIODS) {

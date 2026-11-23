@@ -4,7 +4,7 @@
  * remove recipes. Recipes can live in many cookbooks at once.
  */
 
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { cookbooks, cookbookRecipes, recipes } from '../db/schema.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'

@@ -4,14 +4,14 @@ import { db } from '../db/connection.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
-import { checkAdvisorBudget, recordAdvisorUsage } from '../services/advisorBudget.js'
+import { BUDGET_WARNING_LINE, checkAdvisorBudget, crossesBudgetWarning, recordAdvisorUsage } from '../services/advisorBudget.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { recordCapHit } from '../services/capHits.js'
 import { API_SALDO_REPLY, API_SALDO_TYPE, noteApiBalanceError } from '../services/apiSaldo.js'
-import { requireActiveAccount } from '../services/accountAccess.js'
+import { requirePaidPlan } from '../services/accountAccess.js'
 import { eq } from 'drizzle-orm'
 import { recipes } from '../db/schema.js'
-import { describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
+import { cookStepOf, describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import type { AssistantMode } from '../services/assistant/systemPrompt.js'
 import { recordWebChatTurn } from '../services/chatMessages.js'
@@ -27,7 +27,7 @@ const router = Router()
 router.use(authMiddleware)
 
 // POST /assistant/:userId/chat
-router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapacity(), async (req: AuthRequest, res) => {
+router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity(), async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
 
@@ -41,6 +41,7 @@ router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapac
     const { message, history } = req.body
     const mode: AssistantMode = WEB_MODES.includes(req.body?.mode) ? req.body.mode : 'text'
     const path = typeof req.body?.context?.path === 'string' ? req.body.context.path.slice(0, 200) : null
+    const cookStep = cookStepOf(req.body?.context?.cookStep)
 
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required' })
@@ -71,10 +72,10 @@ router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapac
       // Only recipes this user may see: someone else's private recipe stays unnamed.
       recipeName = r && (await canViewRecipe(userId, r.authorId)) ? r.name : null
     }
-    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName))
+    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
 
     const startedAt = Date.now()
-    const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode })
+    const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
 
     // «Efecto bola de nieve» (PRO-170): after generating a menu in the
     // household's first generated weeks, the reply opens with the same line
@@ -103,7 +104,11 @@ router.post('/assistant/:userId/chat', requireActiveAccount(), requireSpendCapac
     // the next request sees the updated total, but a metering failure must not
     // fail the chat the user already paid for — swallow and log.
     try {
-      await recordAdvisorUsage(userId, usage, db)
+      const added = await recordAdvisorUsage(userId, usage, db)
+      // 18-nov: the turn that takes the month past 80 % of the cap says so, once.
+      if (crossesBudgetWarning(budget.spentMicros, added, budget.budgetMicros)) {
+        response.message = `${response.message}\n\n${BUDGET_WARNING_LINE}`
+      }
     } catch (e) {
       console.warn('[assistant] recordAdvisorUsage failed (continuing):', e)
     }

@@ -16,6 +16,8 @@ export interface RecipeFilters {
   mine?: boolean
   /** PRO-375: «Este mes» — recipes with this ingredient (by name: «Calabaza»). */
   ingredient?: string
+  /** PRO-1175: the menu picker's type chip (`DISH_TYPES` key: «legumbres»…). */
+  dishType?: string
 }
 
 export function buildQueryString(filters?: RecipeFilters): string {
@@ -28,6 +30,7 @@ export function buildQueryString(filters?: RecipeFilters): string {
   if (filters.fitsMe) params.set("fitsMe", "1")
   if (filters.mine) params.set("mine", "1")
   if (filters.ingredient) params.set("ingredient", filters.ingredient)
+  if (filters.dishType) params.set("dishType", filters.dishType)
   for (const tag of filters.customTags ?? []) {
     params.append("customTag", tag)
   }

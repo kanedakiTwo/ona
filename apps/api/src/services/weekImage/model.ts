@@ -60,6 +60,11 @@ export interface WeekImageModel {
   subtitle: string
   columns: WeekImageColumn[]
   rows: WeekImageRow[]
+  /**
+   * PRO-1016 (D-132): «Hecho con Mimo · mimoia.com/i/<code>», the sharing
+   * household's invitation, at the very foot; null → no such line.
+   */
+  madeWith: string | null
 }
 
 /** More than this many meal columns don't fit on a phone-sized picture. */
@@ -118,7 +123,7 @@ function joinEs(items: string[]): string {
  * week has nothing to show (no dish and no skipped day): the caller sends
  * the text instead.
  */
-export function buildWeekImageModel(menu: WeekMenuInput, opts: { today: string }): WeekImageModel | null {
+export function buildWeekImageModel(menu: WeekMenuInput, opts: { today: string; madeWith?: string | null }): WeekImageModel | null {
   const days = Array.isArray(menu.days) ? menu.days : []
   const weekStart = menu.weekStart.slice(0, 10)
   const today = opts.today.slice(0, 10)
@@ -174,7 +179,7 @@ export function buildWeekImageModel(menu: WeekMenuInput, opts: { today: string }
   const subtitle = columns.length > 0
     ? `${range} · ${joinEs(columns.map((c) => c.label.toLowerCase()))}`
     : range
-  return { format, subtitle, columns, rows }
+  return { format, subtitle, columns, rows, madeWith: opts.madeWith || null }
 }
 
 /** Recipe ids whose photo the image shows (first dish of a cell in B, every dish in A). */

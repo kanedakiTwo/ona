@@ -20,6 +20,7 @@ import {
   validateRating,
 } from '../services/recipeNotesStore.js'
 import { ingredientOverrideSchema } from '@ona/shared'
+import { isInternalCall, recipeNoteEvents, requestChannel, trackEvent } from '../services/usageEvents.js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -87,7 +88,12 @@ router.put('/recipes/:recipeId/notes', async (req: AuthRequest, res) => {
         return
       }
     }
+    const before = await getRecipeNotesForUser(req.userId!, recipeId)
     const row = await upsertRecipeNotes(req.userId!, recipeId, parsed.data)
+    // PRO-1024: stars that changed and the parts written (web, «¿Qué tal?» or Mimo's update_recipe_notes). Never the text.
+    const channel = requestChannel(req)
+    const evs = recipeNoteEvents(before, row, req.body, { internal: isInternalCall(req) })
+    for (const ev of evs) trackEvent(ev.name, { userId: req.userId!, channel, props: ev.props })
     res.json(row)
   } catch (err) {
     if (err instanceof NoHouseholdError) {

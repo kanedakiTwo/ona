@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react"
 import { Ban, ChevronDown } from "lucide-react"
+import { trackSheetAction } from "@/lib/usageEvents"
 
 export function BannedRecipesPanel({
   bannedRecipeIds,
@@ -59,7 +60,10 @@ export function BannedRecipesPanel({
               <span>{names[id] ?? "Cargando…"}</span>
               <button
                 type="button"
-                onClick={() => onUnban(id)}
+                onClick={() => {
+                  trackSheetAction("dia", "levantar_veto")
+                  onUnban(id)
+                }}
                 className="min-h-[44px] text-[13px] font-medium text-forest hover:text-ink"
               >
                 Levantar veto

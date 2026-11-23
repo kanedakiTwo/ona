@@ -6,7 +6,8 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { CLAUDE_MODEL } from '../config/models.js'
-import { runToolLoop, MAX_TOOL_ROUNDS, ASSISTANT_MODEL, TRUNCATED_NOTE, UNBACKED_CLAIM_NOTE, claimsAction, withLastMessageCached } from '../services/assistant/engine.js'
+import { runToolLoop, MAX_TOOL_ROUNDS, ASSISTANT_MODEL, TRUNCATED_NOTE, UNBACKED_CLAIM_NOTE, claimsAction, partialClaimNote, withLastMessageCached } from '../services/assistant/engine.js'
+import { toolMadeChange, unconfirmedCalls } from '../services/assistant/claims.js'
 import type { SkillDefinition } from '../services/assistant/types.js'
 
 const usage = { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
@@ -205,6 +206,27 @@ describe('claimsAction', () => {
   })
 })
 
+describe('which tool calls back a «Hecho» (PRO-349)', () => {
+  it('a summary opening with «Hecho» is a change even if it says «No hay una receta…» later', () => {
+    expect(toolMadeChange('add_freezer_dish', 'Hecho: la cena del jueves queda como "Hecho en casa: Crema de puerros"; no suma nada a la compra. No hay una receta que se llame igual, asi que va como nota.', false)).toBe(true)
+  })
+
+  it('«No encontre…» and «no estaba en la despensa» are no change', () => {
+    expect(toolMadeChange('update_recipe_notes', 'No encontre "butter chicken"; no he anotado nada.', false)).toBe(false)
+    expect(toolMadeChange('update_pantry', '"brócoli" no estaba en la despensa.', false)).toBe(false)
+  })
+
+  it('unconfirmedCalls: changing tools that failed, unless the same tool did it later; reads never count', () => {
+    const calls = [
+      { name: 'get_todays_menu', summary: 'No hay comidas planificadas', error: false },
+      { name: 'swap_meal', summary: 'No he encontrado la receta', error: false },
+      { name: 'swap_meal', summary: 'Hecho. He puesto "Arroz"', error: false },
+      { name: 'update_pantry', summary: 'boom', error: true },
+    ]
+    expect(unconfirmedCalls(calls).map((c) => c.name)).toEqual(['update_pantry'])
+  })
+})
+
 describe('claims without a changing tool get one more round (PRO-239)', () => {
   it('a claim with no tool at all: one more round with the note; a second claim is flagged', async () => {
     const f = fakeClient([text('Perfecto, he cambiado la cena de hoy.'), text('Hecho: cambiada.')])
@@ -267,6 +289,72 @@ describe('claims without a changing tool get one more round (PRO-239)', () => {
     const r = await runToolLoop(base(f.client, [broken]))
     expect(f.calls).toHaveLength(3)
     expect(r.message).toContain('No he podido')
+  })
+
+  // PRO-349 (Laura, 2026-10-22): «quita el cilantro del butter chicken» got
+  // «Hecho» while the recipe stayed as it was: another tool of the turn had
+  // changed something, so the claim passed.
+  it('something changed but another changing tool did not: one more round naming what failed', async () => {
+    const mem = skill('update_memory', 'confirmation')
+    const edit: SkillDefinition = {
+      ...skill('edit_recipe', 'text'),
+      handler: vi.fn(async () => ({ data: null, summary: 'No he cambiado nada: "Butter chicken" es una receta del catálogo de Mimoia, no tuya.', uiHint: 'text' as const })),
+    }
+    const f = fakeClient([
+      tools({ id: 'a', name: 'update_memory' }, { id: 'b', name: 'edit_recipe' }),
+      text('Hecho: he quitado el cilantro del butter chicken.'),
+      text('He apuntado que no os gusta el cilantro. El butter chicken es del catálogo y no lo he cambiado: ¿lo copio a tus recetas y se lo quito?'),
+    ])
+    const r = await runToolLoop(base(f.client, [mem, edit]))
+    expect(f.calls).toHaveLength(3)
+    const note = JSON.stringify(f.calls[2].messages.at(-1))
+    expect(note).toContain(partialClaimNote(['x']).slice(0, 60))
+    expect(note).toContain('Butter chicken')
+    expect(r.message).toContain('no lo he cambiado')
+    // The second reply says what wasn't done: an honest partial answer, not flagged.
+    expect(r.corrections).toEqual(['claim_retry'])
+  })
+
+  it('a second half-true «Hecho» is flagged partial_claim', async () => {
+    const mem = skill('update_memory', 'confirmation')
+    const edit: SkillDefinition = { ...skill('edit_recipe', 'text'), handler: vi.fn(async () => ({ data: null, summary: 'No he cambiado nada.', uiHint: 'text' as const })) }
+    const f = fakeClient([
+      tools({ id: 'a', name: 'update_memory' }, { id: 'b', name: 'edit_recipe' }),
+      text('Hecho: sin cilantro.'),
+      text('Hecho: quitado el cilantro.'),
+    ])
+    const r = await runToolLoop(base(f.client, [mem, edit]))
+    expect(r.corrections).toEqual(['claim_retry', 'partial_claim'])
+  })
+
+  it('a partial answer that already says what failed goes out with no extra round', async () => {
+    const mem = skill('update_memory', 'confirmation')
+    const edit: SkillDefinition = { ...skill('edit_recipe', 'text'), handler: vi.fn(async () => ({ data: null, summary: 'No he cambiado nada.', uiHint: 'text' as const })) }
+    const f = fakeClient([
+      tools({ id: 'a', name: 'update_memory' }, { id: 'b', name: 'edit_recipe' }),
+      text('He apuntado que no te gusta el cilantro; la receta no la he podido cambiar.'),
+    ])
+    const r = await runToolLoop(base(f.client, [mem, edit]))
+    expect(f.calls).toHaveLength(2)
+    expect(r.corrections).toEqual([])
+  })
+
+  it('a failed call fixed later in the turn by the same tool backs the claim', async () => {
+    let n = 0
+    const swap: SkillDefinition = {
+      ...skill('swap_meal', 'menu'),
+      handler: vi.fn(async () => (++n === 1
+        ? { data: null, summary: 'No he encontrado la receta "arroz"; no he cambiado nada.', uiHint: 'text' as const }
+        : { data: null, summary: 'Hecho. He puesto "Arroz de limpieza" en la comida del sábado 24 de octubre.', uiHint: 'menu' as const })),
+    }
+    const f = fakeClient([
+      tools({ id: 'a', name: 'swap_meal' }),
+      tools({ id: 'b', name: 'swap_meal' }),
+      text('Hecho: el sábado 24 coméis arroz de limpieza.'),
+    ])
+    const r = await runToolLoop(base(f.client, [swap]))
+    expect(f.calls).toHaveLength(3)
+    expect(r.corrections).toEqual([])
   })
 
   it('returns an honest "no se puede" as it is (no refusal round)', async () => {

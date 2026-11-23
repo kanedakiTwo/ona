@@ -29,7 +29,7 @@ Before PRO-197 the cards ignored allergies and diets. Miguel (2026-10-18): an au
 
 ## Menu generator
 
-- A recipe with «No para mí» from **anyone in the household** never comes out in the automatic menu (weekly generator, «Cambiar al azar», added meal, regenerated dish: everything that reads `loadHouseholdRatingSets`); it can still be picked by hand. It beats a 5-star rating and another member's «Me encanta»
+- A recipe with «No para mí» from **anyone in the household** never comes out in the automatic menu (weekly generator, «Que elija Mimoia», added meal, regenerated dish: everything that reads `loadHouseholdRatingSets`); it can still be picked by hand. It beats a 5-star rating and another member's «Me encanta»
 - «Me encanta» weighs like a favourite (2×); «Me apetece» gets a small extra (×1.5 on the recipe's rounded weight, weekly generator only); «Si sale, vale» / «No la conozco» (`skip`) change nothing: the dish keeps its normal chance
 - Mimo's `generate_weekly_menu` goes through the same generator, so it respects them; Mimo's single-dish swap (`skills.ts`) does not yet (see Known limitations)
 

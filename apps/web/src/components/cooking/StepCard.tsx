@@ -92,7 +92,7 @@ export function StepCard({
   const hasTimer = step.durationMin != null && step.durationMin > 0
 
   return (
-    <article className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col gap-6 px-5 pt-5 pb-6 lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:items-start lg:gap-12 lg:px-10 lg:pt-10">
+    <article className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col gap-6 px-5 pt-5 pb-24 lg:grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:items-start lg:gap-12 lg:px-10 lg:pt-10">
       <div className="flex flex-col gap-5">
         {/* Step number (solid terracotta) + meta pills */}
         <header className="flex flex-col gap-4">

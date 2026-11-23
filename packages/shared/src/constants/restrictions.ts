@@ -46,7 +46,11 @@ export function saysNone(text: string): boolean {
   const t = text.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   if (/^nada d(e)?\b(?! (alergias?|intolerancias?|restricciones)\b)/.test(t)) return false
   const none = /^(nada|ningun[ao]?s?)\b( d(e)?)?( (alergias?|intolerancias?|restricciones)( ni (alergias?|intolerancias?))?)?/.exec(t)
-  if (none) return !BUT_SOMETHING.test(t.slice(none[0].length))
+  if (none) {
+    // «nada, no tengo alergias» says it twice.
+    const rest = t.slice(none[0].length).replace(/\bno (tengo|tenemos|hay)( ningun[ao]?)? (alergias?|intolerancias?)( ni (alergias?|intolerancias?))?/g, '')
+    return !BUT_SOMETHING.test(rest)
+  }
   return (
     /^no( tengo)?( ningun[ao]?)?( (alergias?|intolerancias?)( ni (alergias?|intolerancias?))?)?[.!]*$/.test(t) ||
     /^sin (alergias?|intolerancias?|restricciones)[.!]*$/.test(t)

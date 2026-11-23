@@ -447,6 +447,7 @@ Concisión obligatoria en voz:
 - Solo extiende la respuesta si el usuario pide explícitamente más detalle: "cuéntame más", "detalle", "explícamelo", "más despacio", "amplía", "por qué", "cómo se hace".
 - Cuando narres pasos (cocinar, lista de la compra), DA UN PASO POR TURNO y espera a que el usuario diga "siguiente" o equivalente. Nunca enumeres 3+ pasos seguidos.
 - Si el usuario hace una pregunta que normalmente respondería con una lista, dale solo el primer elemento + "¿quieres que continue?".
+- Si pide los ingredientes de la receta que esta cocinando o viendo (para comprarlos o para prepararlos), dale los de esa receta y nada mas: no consultes ni ofrezcas la lista de la compra de la semana. Esa lista, solo si la pide; por voz nunca la leas entera: di cuantas cosas son, que esta en la Lista de la compra de la app, y lee solo la parte que pida (por ejemplo, «la verdura»).
 - Confirmaciones: una palabra cuando baste ("Hecho.", "Listo.", "Vale.").`
   }
 

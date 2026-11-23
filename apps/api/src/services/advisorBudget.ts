@@ -16,6 +16,7 @@ import { eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { env } from '../config/env.js'
+import { capOverrideEur } from './capOverrides.js'
 import { ACTIVE_PRICES } from '../config/pricing.js'
 import { attributeCostToUser, currentCostChannel, recordCost } from './costLedger.js'
 import { CLAUDE_MODEL } from '../config/models.js'
@@ -100,9 +101,9 @@ export function currentMonthKey(now: Date = new Date()): string {
   return now.toISOString().slice(0, 7)
 }
 
-/** The configured monthly budget expressed in micro-euros. */
-export function budgetMicros(): number {
-  return Math.round(env.ADVISOR_MONTHLY_BUDGET_EUR * 1_000_000)
+/** The monthly budget in micro-euros: the user's own cap if they have one (capOverrides.ts), else the configured one. */
+export function budgetMicros(userId?: string): number {
+  return Math.round((capOverrideEur(userId) ?? env.ADVISOR_MONTHLY_BUDGET_EUR) * 1_000_000)
 }
 
 /** 18-nov: the share of the month's cap at which Mimo says it's running low. */
@@ -157,7 +158,7 @@ export async function checkAdvisorBudget(
   db: Db = defaultDb,
 ): Promise<{ exceeded: boolean; spentMicros: number; budgetMicros: number }> {
   attributeCostToUser(userId)
-  const limit = budgetMicros()
+  const limit = budgetMicros(userId)
   const spentMicros = await getMonthlySpendMicros(userId, db)
   return { exceeded: spentMicros >= limit, spentMicros, budgetMicros: limit }
 }

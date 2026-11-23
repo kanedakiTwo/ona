@@ -1,6 +1,7 @@
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { getUserMonthlySpendEur } from './costLedger.js'
+import { capOverrideEur } from './capOverrides.js'
 
 export interface SpendCapStatus {
   exceeded: boolean
@@ -19,7 +20,7 @@ export async function spendCapStatus(
   userId: string,
   opts: { capEur?: number; now?: Date; db?: any; spent?: (userId: string, now: Date) => Promise<number> } = {},
 ): Promise<SpendCapStatus> {
-  const capEur = opts.capEur ?? env.USER_MONTHLY_SPEND_CAP_EUR
+  const capEur = opts.capEur ?? capOverrideEur(userId) ?? env.USER_MONTHLY_SPEND_CAP_EUR
   if (!(capEur > 0)) return { exceeded: false, spentEur: 0, capEur }
   const now = opts.now ?? new Date()
   try {

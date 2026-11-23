@@ -30,17 +30,24 @@ export const RESTRICTION_PRESETS = [
 
 export type RestrictionPreset = (typeof RESTRICTION_PRESETS)[number]
 
+/** After a «nada»: someone who doesn't eat something after all. */
+const BUT_SOMETHING =
+  /\b(no (come|comen|comemos|como|toma|toman|tomamos|tomo|le gustan?|les gustan?|nos gustan?|me gustan?|puede|pueden|soporta|soportan)|tampoco|excepto|salvo|menos|pero|alergi\w*|intoleran\w*|celiac\w*)\b/
+
 /**
  * «nada», «ninguna», «no tengo» — or «nada. como d todo, el crio tb», as a
  * test household wrote (2026-10-22) — say there is none: not a restriction.
- * «nada de cerdo» and «no como cerdo» are one. Shared by the allergies box
+ * «nada de cerdo» and «no como cerdo» are one. Neither is «nada d alergias.
+ * la abuela no come higado ni ver y el peque las acelgas tampoco» (PRO-1263):
+ * after the «nada», what someone doesn't eat. Shared by the allergies box
  * (web) and the API's reading of it (PRO-347, `restrictionReader`).
  */
 export function saysNone(text: string): boolean {
   const t = text.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  if (/^nada de\b/.test(t)) return false
+  if (/^nada d(e)?\b(?! (alergias?|intolerancias?|restricciones)\b)/.test(t)) return false
+  const none = /^(nada|ningun[ao]?s?)\b( d(e)?)?( (alergias?|intolerancias?|restricciones)( ni (alergias?|intolerancias?))?)?/.exec(t)
+  if (none) return !BUT_SOMETHING.test(t.slice(none[0].length))
   return (
-    /^(nada|ningun[ao]?s?)\b/.test(t) ||
     /^no( tengo)?( ningun[ao]?)?( (alergias?|intolerancias?)( ni (alergias?|intolerancias?))?)?[.!]*$/.test(t) ||
     /^sin (alergias?|intolerancias?|restricciones)[.!]*$/.test(t)
   )

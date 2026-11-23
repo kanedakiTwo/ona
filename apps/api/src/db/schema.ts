@@ -181,6 +181,9 @@ export const users = pgTable('users', {
   check('users_role_check', sql.raw("role IN ('user','admin')")),
   uniqueIndex('uq_users_referral_code').on(table.referralCode),
   index('idx_users_suspended').on(table.suspendedAt),
+  // PRO-1271: one account per email whatever its capitals (an admin email with
+  // another capital used to be a different account that the login made admin).
+  uniqueIndex('uq_users_email_lower').on(sql`lower(${table.email})`),
 ])
 
 // ─── 1b. user_memories ──────────────────────────────────────

@@ -424,6 +424,7 @@ describe('flagsForAgents', () => {
         { date: '2026-10-20', channel: 'whatsapp', category: 'other', source: 'reviewer', reviewerCategory: 'proactividad', severity: 'alta' },
         { date: null, channel: 'whatsapp', category: 'other', source: null, reviewerCategory: 'otro', severity: null },
       ],
+      hallazgos: [],
     })
     expect(JSON.stringify(v)).not.toMatch(LEAK)
   })

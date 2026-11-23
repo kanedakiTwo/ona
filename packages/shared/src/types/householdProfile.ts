@@ -78,6 +78,7 @@ export const NEW_PROFILE_FACT_TYPES = [
   'cooking_style',
   'protein_minimum',
   'shopper',
+  'menu_rule',
 ] as const
 
 export const PROFILE_FACT_TYPES = [...MEMORY_KEYS, ...NEW_PROFILE_FACT_TYPES] as const
@@ -152,6 +153,17 @@ export const NEW_PROFILE_FACT_VALUE_SCHEMAS = {
   }).strict(),
   /** «¿Quién hace la compra?» in the sign-up (PRO-383): yo, otra persona de casa, nos turnamos. About the household. */
   shopper: shopperFactValueSchema,
+  /**
+   * A rule the weekly menu and «Cambiar» keep (2026-11-19): «arroz como
+   * mucho un día a la semana» (`max_per_week`: a food or a category —
+   * «legumbres», «arroz», «patata»… — at most `times` dishes a week) or
+   * «cenas ligeras» (`light`: that meal only gets light dishes).
+   * «Sin X» is not a rule: it goes to `dislikes`.
+   */
+  menu_rule: z.discriminatedUnion('rule', [
+    z.object({ rule: z.literal('max_per_week'), target: shortText, times: z.number().int().min(1).max(13) }).strict(),
+    z.object({ rule: z.literal('light'), meal: z.enum(['lunch', 'dinner']) }).strict(),
+  ]),
 } satisfies Record<(typeof NEW_PROFILE_FACT_TYPES)[number], z.ZodTypeAny>
 
 export const PROFILE_FACT_VALUE_SCHEMAS: Record<ProfileFactType, z.ZodTypeAny> = {
@@ -165,7 +177,7 @@ export const PROFILE_FACT_VALUE_SCHEMAS: Record<ProfileFactType, z.ZodTypeAny> =
  * habits — is single-valued: a second write updates the first.
  */
 export const MULTI_VALUED_PROFILE_FACT_TYPES: readonly ProfileFactType[] = [
-  'fixed_dish', 'skipped_meal', 'dish_frequency', 'affinity', 'effort', 'temporary_situation',
+  'fixed_dish', 'skipped_meal', 'dish_frequency', 'affinity', 'effort', 'temporary_situation', 'menu_rule',
 ]
 
 export function isMultiValuedProfileFactType(type: string): boolean {

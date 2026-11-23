@@ -415,7 +415,7 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
     // week's variety sees the first. The first menu starts today: the
     // days already gone are not generated (PRO-244, `fromDate`).
     // With a menu already made by Mimo (PRO-1042), that one stays: /menu.
-    const { weeks, open, today } = known.hasMenu ? { weeks: [], open: "", today: "" } : firstMenuWeeks()
+    const { weeks, open, today } = known.hasMenu ? { weeks: [], open: "", today: "" } : firstMenuWeeks(new Date(), { fromNextMeal: true })
     if (weeks.length) setPreparingMenu(true)
     for (const weekStart of weeks) {
       await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today }).catch(() => undefined)

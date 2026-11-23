@@ -235,13 +235,47 @@ function findRecipeNode(value: unknown): Record<string, unknown> | null {
   return null
 }
 
+// PRO-1272 (E-93, hallazgo 2): the page is walked with indexOf, never with a
+// regular expression over the whole HTML. `<script[^>]*type…` and
+// `<meta[^>]+…` backtrack quadratically on `<script type=x ` repeated without
+// `>`: a 2 MB page held the API for minutes. Small regexes only ever see one
+// tag, cut at MAX_TAG_CHARS.
+const MAX_TAG_CHARS = 4_000
+
+/** ASCII-only lowercase: keeps every index equal to the original's (`toLowerCase` may not). */
+function asciiLower(html: string): string {
+  return html.replace(/[A-Z]+/g, (s) => s.toLowerCase())
+}
+
+/** The opening tags `<name …>` of the page, in order (each cut at its first `>`, like the old regexes). */
+function openingTags(html: string, lower: string, name: string): string[] {
+  const out: string[] = []
+  const needle = `<${name}`
+  let i = 0
+  while ((i = lower.indexOf(needle, i)) !== -1) {
+    const gt = lower.indexOf('>', i)
+    if (gt === -1) break // no `>` after here: no more tags can close
+    const next = lower.charCodeAt(i + needle.length)
+    const isThisTag = next === 0x3e || next === 0x2f || /\s/.test(lower[i + needle.length] ?? '')
+    if (isThisTag && gt - i <= MAX_TAG_CHARS) out.push(html.slice(i, gt + 1))
+    i = gt + 1
+  }
+  return out
+}
+
 function extractScriptBlocks(html: string): string[] {
   const out: string[] = []
-  const re =
-    /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(html))) {
-    out.push(m[1])
+  const lower = asciiLower(html)
+  let i = 0
+  while ((i = lower.indexOf('<script', i)) !== -1) {
+    const gt = lower.indexOf('>', i)
+    if (gt === -1) break
+    const close = lower.indexOf('</script', gt + 1)
+    if (close === -1) break
+    if (gt - i <= MAX_TAG_CHARS && /type\s*=\s*["']application\/ld\+json["']/.test(lower.slice(i, gt + 1))) {
+      out.push(html.slice(gt + 1, close))
+    }
+    i = close + '</script'.length
   }
   return out
 }
@@ -321,20 +355,28 @@ export function parseSchemaImage(value: unknown): string | null {
  * cover photo for the recipe row.
  */
 export function extractOgImage(html: string): string | null {
-  // Strip ordering matters: match `property|name` either way and tolerate
-  // single vs double-quoted attributes.
-  const patterns = [
-    /<meta[^>]+(?:property|name)=["'](?:og:image:secure_url|og:image)["'][^>]*content=["']([^"']+)["']/i,
-    /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image:secure_url|og:image)["']/i,
-    /<meta[^>]+(?:property|name)=["']twitter:image["'][^>]*content=["']([^"']+)["']/i,
-    /<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']twitter:image["']/i,
-    /<link[^>]+rel=["']image_src["'][^>]*href=["']([^"']+)["']/i,
-  ]
-  for (const p of patterns) {
-    const m = html.match(p)
-    if (m && /^https?:\/\//.test(m[1].trim())) return m[1].trim()
+  // Tag by tag (PRO-1272), so the attributes can come in any order and
+  // single or double quotes, without a regex over the whole page.
+  const lower = asciiLower(html)
+  const metas = openingTags(html, lower, 'meta')
+  const attr = (tag: string, name: string) =>
+    tag.match(new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, 'i'))?.[1]?.trim()
+  const metaImage = (keys: RegExp) => {
+    for (const tag of metas) {
+      const key = attr(tag, 'property') ?? attr(tag, 'name')
+      const url = key && keys.test(key) ? attr(tag, 'content') : undefined
+      if (url && /^https?:\/\//.test(url)) return url
+    }
+    return null
   }
-  return null
+  const linkImage = () => {
+    for (const tag of openingTags(html, lower, 'link')) {
+      const url = /^image_src$/i.test(attr(tag, 'rel') ?? '') ? attr(tag, 'href') : undefined
+      if (url && /^https?:\/\//.test(url)) return url
+    }
+    return null
+  }
+  return metaImage(/^og:image(:secure_url)?$/i) ?? metaImage(/^twitter:image$/i) ?? linkImage()
 }
 
 // ─── Network + Readability fallback ──────────────────────────────

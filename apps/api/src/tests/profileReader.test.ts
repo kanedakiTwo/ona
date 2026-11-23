@@ -154,7 +154,7 @@ describe('the menu respects the ficha', () => {
 
   it('without a ficha nothing changes', () => {
     const filters = withFichaFilters({ dislikes: ['hígado'], availableEquipment: new Set(['horno']) }, fichaMenuConstraints(null))
-    expect(filters).toEqual({ dislikes: ['hígado'], availableEquipment: new Set(['horno']), unavailableEquipment: undefined, tastes: {} })
+    expect(filters).toEqual({ dislikes: ['hígado'], availableEquipment: new Set(['horno']), unavailableEquipment: undefined, tastes: {}, weeklyLimits: [], lightMeals: [], efforts: [] })
   })
 
   it('PRO-1201: every member\'s cuisines (a low one wins), the level of whoever generates, else the household\'s', () => {

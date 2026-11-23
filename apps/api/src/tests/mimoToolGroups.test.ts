@@ -60,12 +60,14 @@ describe('every case of the battery gets the tools it needs (whatsapp and web)',
     history: { role: 'user' | 'assistant'; content: string }[]
     toolResults?: Record<string, string>
     mustCallOneOf?: string[]
+    onboarding?: boolean
   }[]
   for (const mode of ['whatsapp', 'text'] as const) {
     for (const c of cases) {
       it(`${mode} · ${c.id}`, () => {
         const needs = new Set([...Object.keys(c.toolResults ?? {}), ...(c.mustCallOneOf ?? []), ...(EXTRA_NEEDS[c.id] ?? [])])
-        const got = selectToolGroups({ message: c.message, history: c.history, mode }).tools
+        // `primer-menu`: the sign-up's turn (as the live eval runs it).
+        const got = selectToolGroups({ message: c.message, history: c.history, mode, onboarding: c.onboarding === true }).tools
         expect([...needs].filter((n) => !got.has(n))).toEqual([])
       })
     }
@@ -135,6 +137,8 @@ describe('selectToolGroups', () => {
   it('gives the voice onboarding only update_memory, and the WhatsApp sign-up complete_onboarding', () => {
     expect([...selectToolGroups({ message: 'treinta y cinco', mode: 'onboarding' }).tools]).toEqual(['update_memory'])
     expect(select('somos 3', { onboarding: true }).tools.has('complete_onboarding')).toBe(true)
+    // 19-nov: a dish of the sign-up not in the catalogue becomes their recipe in the same turn.
+    expect(select('somos 3', { onboarding: true }).tools.has('swap_meal')).toBe(true)
     expect(select('somos 3').tools.has('complete_onboarding')).toBe(false)
   })
 

@@ -16,7 +16,8 @@
  *   «Saltar día»—, «Volver a cocinar este día» —antes «Reactivar día»—,
  *   «Levantar veto»).
  * - `semana`: la hoja «···» de la semana (`WeekActionsSheet`).
- * - `semana_fila`: el menú «···» de cada fila de la vista semana.
+ * - Hasta PRO-1178 había también `semana_fila`, el menú propio de cada fila
+ *   de la vista semana; ahora la fila abre la hoja de la comida y cuenta como ella.
  *
  * Añadir una opción = añadirla aquí, en su hoja (y en specs/feature-usage.md).
  */
@@ -94,7 +95,6 @@ export const MENU_SHEET_ACTIONS = {
     'favoritas',
     'vaciar',
   ],
-  semana_fila: ['elegir_receta', 'cambiar_azar', 'anadir_plato', 'fijar', 'desfijar', 'vetar', 'quitar_comida'],
 } as const satisfies Record<string, readonly string[]>
 
 export type MenuSheetName = keyof typeof MENU_SHEET_ACTIONS

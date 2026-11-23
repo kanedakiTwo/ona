@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { refreshRecipeDishTypes } from '../dishTypes.js'
-import { fromWeekTypeOf, poolOfDishType, weekTypeDishTypeAt } from '../weekType.js'
+import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt } from '../weekType.js'
 import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
@@ -20,7 +20,9 @@ import { fridgeTextOf, parseWeekPlanAnswer, weekPlanIsEmpty, weekPlanSchema } fr
 import { describeWeekPlan } from '../weekPlan.js'
 import { COOKING_STYLES, householdMultiplier, isCookingStyle } from '@ona/shared'
 import { generateMenu } from '../menuGenerator.js'
-import { findRecipeForSlot } from '../recipeMatcher.js'
+import { loadSlotPickContext, pickForSlot, slotPickOptions } from '../menuSlotPick.js'
+import { hasConditions, parseRecipeCriteria, searchByCriteria, type RecipeCriteria } from '../recipeCriteria.js'
+import { loadFichaMenuConstraints, withFichaFilters } from '../profile/reader.js'
 import { calculateMenuCaloriesFromDB } from '../calorieCalculator.js'
 import { calculateMenuNutrientsFromDB } from '../nutrientCalculator.js'
 import { updateBalance } from '../nutrientBalance.js'
@@ -33,7 +35,7 @@ import { fillRecipeNames } from '../menuNames.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
 import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
-import { madridParts, madridWeekStart } from '../madridTime.js'
+import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, searchWords, toBuyable } from './appSkills.js'
 import { setHaveAtHome } from '../shoppingItemState.js'
@@ -52,7 +54,8 @@ import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { unlistedDietMentions } from '../stepDietMentions.js'
-import { generationSkips, loadPreviousWeek, unskipDay } from '../menuWeek.js'
+import { generationSkips, loadPreviousWeek, unskipDay, withoutPastMeals } from '../menuWeek.js'
+import { cookingFreqForMealCounts, placeSignupDishes, recipeForDish, weekTypeForMealCounts, type PlacedDish, type SignupDish } from '../signupFirstMenu.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../glutenFreeCharcuterie.js'
@@ -69,7 +72,6 @@ import { ingredientMarksOf } from '../ingredientRoles.js'
 import { shopperInviteForSignUp } from '../shopperInvite.js'
 import { SHOPPERS, asksShopper, isShopper, shopperInvites } from '@ona/shared'
 import { evaluateAndSaveMenuFit, menuFitSummary } from '../menuFit.js'
-import { schoolDinnerPool } from '../schoolMenu.js'
 import { weekHolidaySummary } from '../menuHolidays.js'
 import { isHealthMemoryKey } from '@ona/shared'
 import { moreToolsSkill } from './toolGroups.js'
@@ -638,54 +640,64 @@ const getWeeklyNutrition: SkillDefinition = {
 // get_shopping_list lives in appSkills.ts: it reads the same rolling list
 // /shopping shows (manual items, checked / in-stock state included).
 
+/**
+ * 2026-11-19: the recipes that meet every condition of a search («calabacín
+ * rápida menos de 30 minutos», «cena ligera sin arroz sin garbanzos»), never
+ * one the household can't or won't eat (allergies and diet of everyone,
+ * dislikes with whole categories, the ficha), in season. Before, the whole
+ * sentence had to be inside a name or a tag: 10 of 17 searches found nothing.
+ */
+async function searchRecipesByCriteria(ctx: SkillContext, c: RecipeCriteria): Promise<SkillResult> {
+  const own = await restrictionsFor(ctx)
+  const restrictions = await withHouseholdRestrictions(own.restrictions, ctx.userId, ctx.db).catch(() => own.restrictions)
+  const ficha = await loadFichaMenuConstraints(ctx.userId, { db: ctx.db }).catch(() => null)
+  const dislikes = ficha ? withFichaFilters({ dislikes: own.dislikes, availableEquipment: undefined }, ficha).dislikes : own.dislikes
+  const rules = compileRestrictions(restrictions, dislikes)
+  const season = detectSeason()
+  const pool = (await loadMatchableRecipes(ctx.userId, ctx.db)).filter(
+    (r: any) => !violatesRestrictions(r, rules) && (!r.seasons?.length || r.seasons.includes(season)),
+  )
+  const { exact, partial } = searchByCriteria(pool as any[], c)
+  const said = [
+    c.words.length ? c.words.join(' ') : '',
+    c.meal ? MEAL_LABEL[c.meal] : '',
+    c.light ? 'ligera' : '',
+    c.maxMinutes != null ? `≤ ${c.maxMinutes} min` : '',
+    ...c.exclude.map((x) => `sin ${x}`),
+  ].filter(Boolean).join(', ')
+  const line = (r: any) => `${r.name} (${r.totalTime ?? r.prepTime ?? '?'} min)`
+  if (exact.length) {
+    const top = exact.slice(0, 5)
+    return { data: top, summary: `Recetas que cumplen todo (${said}): ${top.map(line).join(', ')}`, uiHint: 'recipe' }
+  }
+  if (partial.length) {
+    const top = partial.slice(0, 5)
+    return { data: top, summary: `Ninguna cumple todo (${said}). Lo más cercano, con parte de lo que pide: ${top.map(line).join(', ')}. Díselo así.`, uiHint: 'recipe' }
+  }
+  return { data: [], summary: `No hay ninguna receta con todo eso (${said}). Díselo y pregúntale qué condición puede soltar.`, uiHint: 'recipe' }
+}
+
 const suggestRecipes: SkillDefinition = {
   name: 'suggest_recipes',
-  description: 'Sugiere recetas filtradas por temporada y/o tipo de comida. Devuelve hasta 5 recetas.',
+  description: 'Busca recetas del catálogo y del hogar con varias condiciones a la vez, todas juntas: ingredientes o tipo de plato («calabacín», «pollo al horno»), tiempo («rápida», «menos de 30 minutos»), «sin X» (también familias: «sin legumbres», «sin arroz»), «ligera», comida o cena, postre. Nunca devuelve lo que la casa no puede o no quiere comer. Hasta 5 recetas.',
   parameters: {
     type: 'object',
     properties: {
-      criteria: { type: 'string', description: 'Criterio de busqueda libre (ej: "rapida", "legumbres")' },
+      criteria: { type: 'string', description: 'Lo que pide, con sus palabras: "calabacín rápida menos de 30 minutos", "cena ligera sin arroz sin garbanzos".' },
       mealType: { type: 'string', description: 'Tipo de comida: breakfast, lunch, dinner' },
+      maxMinutes: { type: 'number', description: 'Opcional: minutos como mucho, en total.' },
+      exclude: { type: 'array', items: { type: 'string' }, description: 'Opcional: lo que no debe llevar ("arroz", "legumbres").' },
+      light: { type: 'boolean', description: 'Opcional: true si la quiere ligera.' },
     },
     required: [],
   },
-  async handler(params: { criteria?: string; mealType?: string }, ctx: SkillContext): Promise<SkillResult> {
-    const { db } = ctx
-    const season = detectSeason()
-
-    // Never suggest something the user can't or won't eat.
-    const { restrictions, dislikes } = await restrictionsFor(ctx)
-    const rules = compileRestrictions(restrictions, dislikes)
-    let allRecipes: any[] = (await loadMatchableRecipes(ctx.userId, db)).filter(
-      (r) => !violatesRestrictions(r, rules),
-    )
-
-    // Filter by season
-    allRecipes = allRecipes.filter((r: any) => {
-      if (!r.seasons || r.seasons.length === 0) return true
-      return r.seasons.includes(season)
-    })
-
-    // Filter by meal type
-    if (params.mealType) {
-      allRecipes = allRecipes.filter((r: any) => r.meals?.includes(params.mealType))
-    }
-
-    // Filter by criteria (search in name and tags)
-    if (params.criteria) {
-      const q = params.criteria.toLowerCase()
-      allRecipes = allRecipes.filter((r: any) =>
-        r.name.toLowerCase().includes(q) ||
-        r.tags?.some((t: string) => t.toLowerCase().includes(q))
-      )
-    }
-
-    const top5 = allRecipes.slice(0, 5)
-    const summary = top5.length > 0
-      ? `Sugerencias: ${top5.map((r: any) => `${r.name} (${r.prepTime ?? '?'}min)`).join(', ')}`
-      : 'No he encontrado recetas con esos criterios.'
-
-    return { data: top5, summary, uiHint: 'recipe' }
+  async handler(params: { criteria?: string; mealType?: string; maxMinutes?: number; exclude?: string[]; light?: boolean }, ctx: SkillContext): Promise<SkillResult> {
+    const c = parseRecipeCriteria(params.criteria)
+    if (typeof params.maxMinutes === 'number' && params.maxMinutes > 0) c.maxMinutes = Math.min(c.maxMinutes ?? Infinity, params.maxMinutes)
+    for (const x of Array.isArray(params.exclude) ? params.exclude : []) if (typeof x === 'string' && x.trim() && !c.exclude.includes(x.trim())) c.exclude.push(x.trim())
+    if (params.light) c.light = true
+    if (params.mealType && MEAL_KEYS.includes(params.mealType)) c.meal = params.mealType as Meal
+    return searchRecipesByCriteria(ctx, c)
   },
 }
 
@@ -821,7 +833,7 @@ async function pickWhatIHaveRecipe(
 
 const searchRecipes: SkillDefinition = {
   name: 'search_recipes',
-  description: 'Busca recetas por nombre.',
+  description: 'Busca recetas por nombre. Si la búsqueda trae condiciones (tiempo, «sin X», ligera, comida o cena), busca con todas a la vez como suggest_recipes.',
   parameters: {
     type: 'object',
     properties: {
@@ -831,6 +843,9 @@ const searchRecipes: SkillDefinition = {
   },
   async handler(params: { query: string }, ctx: SkillContext): Promise<SkillResult> {
     const { db } = ctx
+    // «calabacín rápida menos de 30 minutos»: conditions, not a name (2026-11-19).
+    const criteria = parseRecipeCriteria(params.query)
+    if (hasConditions(criteria)) return searchRecipesByCriteria(ctx, criteria)
 
     const results = await db
       .select({
@@ -1009,7 +1024,8 @@ const generateWeeklyMenu: SkillDefinition = {
     // week and Laura lost her planned leftovers (PRO-63, 2026-10-11).
     if (params?.replaceExisting !== true && weekHasDishes(previous.days)) {
       return {
-        data: { weekStart, replaced: false },
+        // 21-nov: the menu it kept, so WhatsApp shows it («Tu menú…», never «Listo»).
+        data: { weekStart, replaced: false, ...(previous.menuId ? { menuId: previous.menuId } : {}) },
         summary: `No he cambiado nada: la semana del ${dateLabel(weekStart)} ya tiene menu. Para cambiar o poner platos concretos usa swap_meal, add_dish o set_meal_note. Solo si el usuario quiere rehacer la semana entera, confirmalo con el y vuelve a llamar con replaceExisting: true.`,
         uiHint: 'text',
       }
@@ -1037,14 +1053,30 @@ async function generateAndSaveWeek(
   weekPlan?: WeekPlan,
   /** PRO-377: «hazme la semana con mis favoritas». */
   onlyFavorites = false,
-): Promise<SkillResult> {
+  /**
+   * 19-nov, the WhatsApp sign-up's first menu: today's meals already gone
+   * stay empty, and the dishes they make often go in (`signupFirstMenu.ts`).
+   */
+  signup?: { pastMeals: Meal[]; dishes: SignupDish[] },
+): Promise<SkillResult & { left?: SignupDish[] }> {
     const { userId, db } = ctx
-    const { days, favoritesShort } = await generateMenu(
+    const generated = await generateMenu(
       userId, weekStart, undefined, db,
       previous.locked, previous.days, previous.bannedRecipeIds, generationSkips(previous.skippedDays, weekStart, fromDate),
       weekPlan,
       { onlyFavorites },
     )
+    const { favoritesShort } = generated
+    let days = generated.days
+    let placedDishes: PlacedDish[] = []
+    let left: SignupDish[] | undefined
+    if (signup) {
+      days = withoutPastMeals(days, weekStart, fromDate, signup.pastMeals)
+      const placing = placeSignupDishes(days, signup.dishes, previous.locked)
+      days = placing.days
+      placedDishes = placing.placed
+      left = placing.left
+    }
 
     // Save to menus table — dual-write household_id so shared-scope reads
     // pick it up. Null is acceptable if the user somehow lacks a primary
@@ -1103,13 +1135,21 @@ async function generateAndSaveWeek(
       return meals.length > 0 ? `${dayNames[i]}: ${meals.join(', ')}` : null
     }).filter(Boolean).join('; ')
     const past = fromDate ? pastDayIndexes(weekStart, fromDate) : []
-    const pastLine = past.length > 0
-      ? ` Empieza hoy (${dayNames[past.length]}): los dias que ya han pasado no se han generado.`
-      : ''
+    const firstDay = fromDate && past.length < 7 ? dayNames[past.length] : null
+    // The sign-up's start, only on the week the first day falls in.
+    const startsHere = !!fromDate && firstDay !== null && addDays(weekStart, past.length) === fromDate.slice(0, 10)
+    const signupFrom = signup && startsHere ? signupStartLine(fromDate!, firstDay!, signup.pastMeals) : null
+    const pastLine = signupFrom
+      ? ` ${signupFrom}`
+      : past.length > 0 && firstDay
+        ? ` Empieza hoy (${firstDay}): los dias que ya han pasado no se han generado.`
+        : ''
 
-    // «Cuánto ha acertado» (PRO-155): Mimo tells it following the prompt's guide.
+    // «Cuánto ha acertado» (PRO-155): Mimo tells it following the prompt's
+    // guide — never on the sign-up's first menu (19-nov: it opened with «no
+    // he conseguido acercarme»): there, the dishes they make often.
     const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
-    const fitLine = menuFitSummary(fit)
+    const fitLine = signup ? signupDishesLine(placedDishes, weekStart) : menuFitSummary(fit)
     // Festivos (PRO-226): Mimo mentions them.
     const holidayLine = await weekHolidaySummary(userId, weekStart)
 
@@ -1123,7 +1163,34 @@ async function generateAndSaveWeek(
       data: { ...menu, fit, ...(onlyFavorites ? { favoritesShort: favoritesShort ?? 0 } : {}) },
       summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
       uiHint: 'menu',
+      ...(left ? { left } : {}),
     }
+}
+
+const MEAL_NAME_ES: Record<string, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
+
+/** 19-nov: where the sign-up's first menu starts, for Mimo (it never talks about a meal already gone). */
+function signupStartLine(fromDate: string, firstDay: string, pastMeals: readonly Meal[]): string {
+  const today = madridParts(new Date()).isoDate
+  if (fromDate !== today) return `Empieza mañana (${firstDay}): hoy ya no queda ninguna comida por hacer. No hables de comidas de hoy.`
+  const next = (['lunch', 'dinner'] as const).find((m) => !pastMeals.includes(m))
+  if (pastMeals.length === 0 || !next) return `Empieza hoy (${firstDay}).`
+  return `Empieza con la ${MEAL_NAME_ES[next]} de hoy (${firstDay}): las comidas que ya han pasado no se han generado. No hables de ellas.`
+}
+
+/** 19-nov: the sign-up's dishes in the first menu, and the ones Mimo has to turn into the household's recipe. */
+function signupDishesLine(placed: readonly PlacedDish[], weekStart: string): string {
+  if (placed.length === 0) return 'No ha dicho platos que haga a menudo.'
+  const dayNames = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+  const at = (p: PlacedDish) => `${MEAL_NAME_ES[p.meal]} del ${dayNames[p.dayIndex]}`
+  const withRecipe = placed.filter((p) => p.recipeName)
+  const notes = placed.filter((p) => !p.recipeName)
+  const lines: string[] = []
+  if (withRecipe.length) lines.push(`Sus platos de siempre, en este menu: ${withRecipe.map((p) => `${p.dish} (${p.recipeName}, ${at(p)})`).join('; ')}.`)
+  for (const p of notes) {
+    lines.push(`«${p.dish}» no esta en el catalogo: lo he puesto como nota en la ${at(p)}. Ahora, en este mismo turno, crea la receta de la casa con swap_meal (day "${addDays(weekStart, p.dayIndex)}", meal "${p.meal}", recipeName "${p.dish}" y newRecipe con tu version sencilla) para que sus ingredientes salgan en la lista; no se lo preguntes.`)
+  }
+  return lines.join('\n')
 }
 
 const COOKING_FREQS = ['daily', '3_4_times', 'rarely'] as const
@@ -1132,35 +1199,48 @@ const PRIORITIES = ['quick', 'varied', 'healthy', 'cheap'] as const
 /**
  * WhatsApp-first sign-up (2026-10-10): Mimo asks the first-steps questions in
  * the chat and, with the answers, saves them (same as the web onboarding,
- * without health data) and builds the first week's menu in one go. Since
- * 2026-11-03 it asks how they cook (`cookingStyle`, like the web) instead of
- * how often; `cookingFreq` is only for an answer that says how often and fits
- * no way of cooking («poco»).
+ * without health data) and builds the first week's menu in one go.
+ *
+ * 19-nov (Miguel): four questions, and all of it where the menu reads it from
+ * day one — who they are; which meals they cook («6 cenas y 1 comida» →
+ * the «semana tipo» and how often they cook); three dishes they make often
+ * (favourites, and into the first menu for sure: `signupFirstMenu.ts`); what
+ * doesn't go in (the dislikes, families included). The first menu starts with
+ * the next meal that hasn't gone by. `cookingStyle` / `cookingFreq` stay for
+ * an answer that says how they cook.
  */
 const completeOnboarding: SkillDefinition = {
   name: 'complete_onboarding',
   description:
-    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa y como cocinan (con 2 adultos o mas, tambien quien hace la compra; y los platos o la prioridad, solo si los ha dicho), marca los primeros pasos como hechos y genera su primer menu de esta semana (no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y como cocinan.',
+    'Solo durante los primeros pasos de un hogar nuevo por WhatsApp: guarda cuantos son en casa, que comidas cocinan, los platos que hacen a menudo y lo que no quieren en el menu, marca los primeros pasos como hechos y genera su primer menu (empieza en la siguiente comida que no ha pasado y lleva sus platos; no hace falta llamar ademas a generate_weekly_menu). Llamalo una sola vez, cuando tengas adultos, niños y que comidas cocinan.',
   parameters: {
     type: 'object',
     properties: {
       adults: { type: 'integer', minimum: 1, maximum: 20, description: 'Adultos en casa (a partir de 11 años).' },
       kidsCount: { type: 'integer', minimum: 0, maximum: 20, description: 'Niños de 2 a 10 años; los menores de 2 no cuentan. 0 si no hay.' },
+      lunches: { type: 'integer', minimum: 0, maximum: 7, description: 'Cuantas comidas (mediodia) cocinan en casa a la semana. "6 cenas y 1 comida" → 1; "comemos fuera entre semana" → 2; "todas" → 7.' },
+      dinners: { type: 'integer', minimum: 0, maximum: 7, description: 'Cuantas cenas cocinan en casa a la semana. "6 cenas y 1 comida" → 6; "solo cenamos entre semana" → 5.' },
       cookingStyle: {
         type: 'string',
         enum: [...COOKING_STYLES],
-        description: 'Como cocinan en casa: daily = cada dia (o casi); cook_and_reuse = unos dias y aprovechan para otros; batch = cocinan una o dos veces y dejan hecha la semana; improvise = improvisan, deciden cada dia. La que mas se parezca a lo que dice.',
+        description: 'Solo si dice como cocinan: daily = cada dia (o casi); cook_and_reuse = unos dias y aprovechan para otros; batch = cocinan una o dos veces y dejan hecha la semana; improvise = improvisan, deciden cada dia.',
       },
       cookingFreq: {
         type: 'string',
         enum: [...COOKING_FREQS],
-        description: 'Solo si dice cuanto cocinan y eso no encaja en ningun cookingStyle (p. ej. "poco", "casi nunca"): rarely = poco; 3_4_times = unos 3-4 dias; daily = casi a diario. Si has puesto cookingStyle, omitelo.',
+        description: 'Solo si dice cuanto cocinan sin decir que comidas ("poco", "casi nunca"): rarely = poco; 3_4_times = unos 3-4 dias; daily = casi a diario. Con lunches/dinners o cookingStyle, omitelo.',
       },
       favoriteDishes: {
         type: 'array',
         items: { type: 'string' },
         maxItems: 30,
-        description: 'Platos que les gustan, tal como los dice, todos los que diga (no hay tope de cinco): los que conteste si se los has preguntado o los que diga sin preguntarle. Si no ha dicho ninguno, omitelo.',
+        description: 'Los platos que dice que hacen a menudo (o que les gustan), todos los que diga (sin limite), tal como los dice, cada uno por separado: "salmon al horno con patatas", "pollo a la plancha con brocoli". Entran en su primer menu. Si no ha dicho ninguno, omitelo.',
+      },
+      dislikes: {
+        type: 'array',
+        items: { type: 'string' },
+        maxItems: 30,
+        description: 'Lo que no entra en casa, tal como lo dice: alimentos o familias ("pescado", "legumbres", "cerdo", "picante") o platos. Nunca alergias ni intolerancias (eso va en la web). Si no ha dicho nada, omitelo.',
       },
       priority: {
         type: 'string',
@@ -1170,13 +1250,13 @@ const completeOnboarding: SkillDefinition = {
       shopper: {
         type: 'string',
         enum: [...SHOPPERS],
-        description: 'Solo con 2 adultos o mas: quien hace la compra. me = el usuario ("Yo"); other = otra persona de casa; shared = se turnan. Con other o shared la herramienta devuelve el mensaje con el enlace de invitacion para esa persona. Con 1 adulto, omitelo.',
+        description: 'Solo si con 2 adultos o mas ha dicho quien hace la compra (no lo preguntes): me = el usuario; other = otra persona de casa; shared = se turnan. Con other o shared la herramienta devuelve el mensaje con el enlace de invitacion para esa persona.',
       },
     },
     required: ['adults', 'kidsCount'],
   },
   async handler(
-    params: { adults?: number; kidsCount?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; priority?: string; shopper?: string },
+    params: { adults?: number; kidsCount?: number; lunches?: number; dinners?: number; cookingStyle?: string; cookingFreq?: string; favoriteDishes?: string[]; dislikes?: string[]; priority?: string; shopper?: string },
     ctx: SkillContext,
   ): Promise<SkillResult> {
     const { userId, db } = ctx
@@ -1186,25 +1266,52 @@ const completeOnboarding: SkillDefinition = {
     }
     const adults = Number.isInteger(params?.adults) ? Number(params.adults) : NaN
     const kidsCount = Number.isInteger(params?.kidsCount) ? Number(params.kidsCount) : 0
+    const count = (n: unknown) => (typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 7 ? n : undefined)
+    const lunches = count(params?.lunches)
+    const dinners = count(params?.dinners)
     const cookingStyle = isCookingStyle(params?.cookingStyle) ? params.cookingStyle : undefined
-    const cookingFreq = !cookingStyle && (COOKING_FREQS as readonly string[]).includes(String(params?.cookingFreq)) ? (params.cookingFreq as (typeof COOKING_FREQS)[number]) : undefined
+    const saidFreq = !cookingStyle && (COOKING_FREQS as readonly string[]).includes(String(params?.cookingFreq)) ? (params.cookingFreq as (typeof COOKING_FREQS)[number]) : undefined
+    // «6 cenas y 1 comida» also says how often they cook.
+    const cookingFreq = saidFreq ?? (cookingStyle ? undefined : cookingFreqForMealCounts(lunches, dinners))
     const priority = (PRIORITIES as readonly string[]).includes(String(params?.priority)) ? (params.priority as (typeof PRIORITIES)[number]) : undefined
-    const favoriteDishes = (Array.isArray(params?.favoriteDishes) ? params.favoriteDishes : [])
-      .map((d) => String(d).trim())
-      .filter(Boolean)
-      .slice(0, 30)
+    const list = (xs: unknown) => (Array.isArray(xs) ? xs : []).map((d) => String(d).trim()).filter(Boolean).slice(0, 30)
+    const favoriteDishes = list(params?.favoriteDishes)
+    const dislikes = list(params?.dislikes)
     const missing = [
       !(adults >= 1 && adults <= 20) && 'cuantos adultos son',
       !(kidsCount >= 0 && kidsCount <= 20) && 'cuantos niños',
-      !cookingStyle && !cookingFreq && 'como cocinan',
+      !cookingStyle && !cookingFreq && 'que comidas cocinan en casa',
     ].filter(Boolean)
     if (missing.length > 0) {
       return { data: null, summary: `No he guardado nada: falta ${missing.join(', ')}. Preguntaselo.` }
     }
-    // PRO-383: «¿Quién hace la compra?» is only for 2 adults or more.
+    // PRO-383: who does the shopping is only kept with 2 adults or more.
     const shopper = asksShopper(adults) && isShopper(params?.shopper) ? params.shopper : undefined
     // No restrictions or consent here: health data never goes through WhatsApp.
     await saveOnboarding(userId, { adults, kidsCount, cookingStyle, cookingFreq, favoriteDishes, priority, shopper, via: 'whatsapp' }, db)
+    // 19-nov: the meals they cook → the «semana tipo»; what doesn't go in →
+    // the dislikes (families included). Before the first menu, which reads both.
+    const weekTypeChanges = weekTypeForMealCounts(lunches, dinners)
+    if (weekTypeChanges.length > 0) {
+      try {
+        const householdId = await getPrimaryHouseholdId(userId, db)
+        if (householdId) {
+          await saveWeekTypeSlots(householdId, weekTypeChanges, db, { track: { userId, channel: 'whatsapp' } })
+        }
+      } catch (err) {
+        console.warn('[assistant.complete_onboarding] week type not saved (menu with every lunch and dinner):', err)
+      }
+    }
+    if (dislikes.length > 0) {
+      try {
+        const { getMemoryForUser, setMemoryBatch } = await import('../userMemoryStore.js')
+        const known = (await getMemoryForUser(userId).catch(() => null))?.dislikes?.value
+        const merged = [...new Set([...(Array.isArray(known) ? (known as string[]) : []), ...dislikes])]
+        await setMemoryBatch(userId, [{ key: 'dislikes', value: merged }], 'inferred', { signal: 'whatsapp' })
+      } catch (err) {
+        console.warn('[assistant.complete_onboarding] dislikes not saved:', err)
+      }
+    }
     // Someone else buys, or they take turns: the same invitation as the web's «Mandar invitación».
     const invite = shopperInvites(shopper) ? await shopperInviteForSignUp(userId).catch(() => null) : null
     const inviteLine = invite
@@ -1212,21 +1319,28 @@ const completeOnboarding: SkillDefinition = {
       : ''
     // PRO-320: a pass of the ficha's refiner at the moment (in the background).
     void import('../profile/refiner.js').then((m) => m.refineHouseholdSoon(userId, 'onboarding')).catch(() => undefined)
-    // Same first menu as the web sign-up (PRO-65, PRO-244): it starts today
-    // (days already gone are not generated) and, Friday to Sunday, next week
-    // comes too. The reply (and the WhatsApp picture) shows this week from
-    // today; next week is waiting in the app.
-    const plan = firstMenuWeeks()
+    // Same first menu as the web sign-up (PRO-65, PRO-244), from the next
+    // meal that hasn't gone by (19-nov): a 22:00 sign-up starts tomorrow, a
+    // 15:00 one with tonight's dinner. Friday to Sunday next week comes too.
+    // The reply (and the WhatsApp picture) shows the first week; next week is
+    // waiting in the app. Their dishes go in the first week (what doesn't
+    // fit, in the next).
+    const plan = firstMenuWeeks(new Date(), { fromNextMeal: true })
+    const pool = favoriteDishes.length > 0 ? await loadMatchableRecipes(userId, db).catch(() => []) : []
+    let dishes: SignupDish[] = favoriteDishes.map((dish) => ({ dish, recipe: recipeForDish(dish, pool, userId) }))
     const results: SkillResult[] = []
     for (const weekStart of plan.weeks) {
       const previous = await loadPreviousWeek(userId, weekStart, db)
       if (weekHasDishes(previous.days)) continue
-      results.push(await generateAndSaveWeek(ctx, weekStart, previous, plan.today))
+      const week = await generateAndSaveWeek(ctx, weekStart, previous, plan.today, undefined, false, { pastMeals: plan.pastMeals, dishes })
+      dishes = week.left ?? []
+      results.push(week)
     }
     const menu = results[0] ?? (await generateWeeklyMenu.handler({}, ctx))
     const nextLine = results.length > 1 ? ` Tambien he generado la semana que viene (${results[1].summary})` : ''
     return {
-      ...menu,
+      data: menu.data,
+      uiHint: menu.uiHint,
       summary: `Primeros pasos guardados (${adults} adultos, ${kidsCount} niños).${inviteLine} ${menu.summary}${nextLine}`,
     }
   },
@@ -1421,38 +1535,27 @@ const swapMeal: SkillDefinition = {
       }
     }
 
-    // Allergies / diet (profile + memory) and dislikes — same filter as the
-    // generator, with every member's allergies and diet (PRO-305).
-    const own = await restrictionsFor(ctx)
-    const dislikes = own.dislikes
-    const restrictions = await withHouseholdRestrictions(own.restrictions, userId, db)
-
-    // Fetch favorites
-    const favRows = await db
-      .select({ recipeId: userFavorites.recipeId })
-      .from(userFavorites)
-      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, await resolveScope(userId, db)))
-
-    const favoriteRecipeIds = new Set<string>(favRows.map((f: any) => f.recipeId))
-
-    // Load recipes with ingredients for matching (a school-day dinner skips
-    // the group of the kids' lunch, PRO-224).
-    const allRecipes = await schoolDinnerPool(await loadMatchableRecipes(userId, db), menu, dayIndex, meal, db)
-    const season = detectSeason()
+    // The same pick as «Cambiar» in the app (2026-11-19, `menuSlotPick.ts`):
+    // everyone's allergies and diet (PRO-305), the ficha (dislikes with whole
+    // categories, «sin X» saved as a note, weekly limits, light meals,
+    // equipment), favourites and ratings, the week's vetoes, a reasonable time
+    // on a working day, never a sweet as lunch or dinner and, while one fits,
+    // a main food not already in the week. Before, a random catalogue recipe
+    // with only allergies and dislikes: a khachapuri of 151 min for a Tuesday
+    // dinner, a sweet mutabbaq as a Sunday dinner, hummus for «sin legumbres».
+    const pickCtx = await loadSlotPickContext(menu, userId)
+    const pick = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds, days)
 
     // «Semana tipo» (D-182): another recipe of the type it asks for there.
     const wtType = await weekTypeDishTypeAt(userId, menu.weekStart, dayIndex, meal, 0, db)
-    const newRecipe = findRecipeForSlot(poolOfDishType(allRecipes, wtType), {
-      meal: meal as Meal,
-      season,
-      usedRecipeIds,
-      restrictions,
-      dislikes,
-      favoriteRecipeIds,
-    })
+    const newRecipe = pickForSlot(pick, null, (p) => poolOfDishType(p, wtType))
 
     if (!newRecipe) {
-      return { data: null, summary: 'No he encontrado una receta alternativa para ese hueco.', uiHint: 'text' }
+      return {
+        data: null,
+        summary: `No he cambiado nada: no hay ninguna receta que encaje en la ${slotLabel} con lo que sabemos de la casa (gustos y «sin…», reglas del menú, tiempo de ese día, lo que ya hay en la semana). Díselo así y pregúntale qué le apetece; con un plato nombrado, vuelve a llamar con recipeName.`,
+        uiHint: 'text',
+      }
     }
 
     // Update the menu (the slot keeps its «Solo hoy», PRO-102)
@@ -2978,7 +3081,7 @@ const addRecipeToMine: SkillDefinition = {
 const updateMemory: SkillDefinition = {
   name: 'update_memory',
   description:
-    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
+    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). «Sin X», «no me sugieras X», «prescindir de X», «no comemos X» van SIEMPRE en dislikes (no en notes), también las familias enteras: «legumbres», «arroz», «patata», «casquería», «cerdo», «carne roja», «marisco», «pescado» (el menú las entiende con todo lo que llevan). Las notes no cambian el menú: lo que es una regla del menú va en dislikes, en note_ficha_fact (menu_rule) o en la semana tipo. Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
   parameters: {
     type: 'object',
     properties: {

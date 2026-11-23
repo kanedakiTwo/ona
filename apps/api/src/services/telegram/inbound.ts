@@ -37,7 +37,7 @@ export interface TelegramDeps {
   chat: (userId: string, message: string, history: ChatMessage[], opts: ChatOptions) => Promise<AssistantResponse & { usage: TokenUsage }>
   checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number }>
   isPaused?: (userId: string) => Promise<boolean>
-  recordUsage: (userId: string, usage: TokenUsage) => Promise<void>
+  recordUsage: (userId: string, usage: TokenUsage) => Promise<number | void>
   menuDigest?: (userId: string, menuId: string | null, view: WeekView) => Promise<string | null>
   /** «escribiendo…» is renewed this often while a turn runs (ms; 0 = only once). */
   typingEveryMs?: number

@@ -78,6 +78,8 @@ test('/privacidad: AiKit only makes the recipe images, with OpenAI models', asyn
   await expect(main).not.toContainText('cuando lo pides')
   await expect(main).not.toContainText('Gemini')
   await expect(main).toContainText('Última actualización: 13 de noviembre de 2026')
+  // D-189: the daily reviewer also reads Mimo's chat in the app.
+  await expect(main).toContainText('conversaciones con Mimo, en la web y por WhatsApp, para detectar errores del asistente')
 })
 
 // PRO-1122 (Miguel, 2026-11-05, word for word): Groq, then OpenAI, transcribe; Oracle keeps the encrypted
@@ -121,12 +123,14 @@ test('/privacidad: the app counts functions and screens, never what you write', 
 })
 
 // PRO-171 (LEG-17): the waitlist's retention date, in Legal's exact words.
+// PRO-1254: without «el 16 de noviembre» as the opening day (it opens on the 23, D-184).
 test('/privacidad: the waitlist is kept until 16 May 2027', async ({ page }) => {
   await page.goto('/privacidad')
   await expect(page.getByTestId('privacy-waitlist-retention')).toContainText(
-    'Cuánto tiempo: hasta el 16 de mayo de 2027 (seis meses después de abrir el registro a todo el mundo, el 16 de noviembre de 2026) o hasta que te des de baja, lo que ocurra antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de esta política.',
+    'Cuánto tiempo: hasta el 16 de mayo de 2027 o hasta que te des de baja, lo que ocurra antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de esta política.',
   )
   await expect(page.getByTestId('reading-column')).not.toContainText('después de que abramos al público')
+  await expect(page.getByTestId('reading-column')).not.toContainText('16 de noviembre')
 })
 
 // PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.

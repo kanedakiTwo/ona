@@ -2,7 +2,7 @@
  * Smoke de «Guardar en mi semana tipo» desde el menú (PRO-1186) contra la API
  * y Postgres: `POST /menu/:menuId/day/:day/meal/:meal/week-type` escribe ese
  * hueco de la semana tipo del hogar y aplica la semana que se ve solo si la
- * comida no está fijada ni comida; y lo que rechaza.
+ * comida no está fijada ni comida, ni es de un día que ya pasó; y lo que rechaza.
  *
  *   API_URL=http://localhost:8717 DATABASE_URL=… pnpm --filter @ona/api exec vitest run src/tests/weekTypeFromMenu.smoke.ts
  */
@@ -90,5 +90,19 @@ describe.skipIf(!reachable)('guardar en la semana tipo desde el menú', () => {
     expect((await call('POST', `${base}/week-type`, { option: { kind: 'type', type: 'no-existe' } }, auth)).status).toBe(400)
     expect((await call('POST', `${base}/week-type`, { option: { kind: 'recipe', recipeId: '00000000-0000-0000-0000-000000000000', name: 'x' } }, auth)).status).toBe(404)
     expect((await call('POST', `/menu/${menuId}/day/${SATURDAY}/meal/snack/week-type`, { option: { kind: 'type', type: 'pizza' } }, auth)).status).toBe(404)
+
+    // Un día que ya pasó se queda como está, aunque esté suelto: se guarda, pero esa comida no cambia.
+    const past = await call('POST', '/menu/generate', { userId, weekStart: monday(-1), empty: true, force: true }, auth)
+    expect(past.status).toBeLessThan(300)
+    const pastBase = `/menu/${past.body.id}/day/${SATURDAY}/meal/dinner`
+    expect((await call(past.body.days?.[SATURDAY]?.dinner ? 'PUT' : 'POST', pastBase, { recipeId: other.id }, auth)).status).toBeLessThan(300)
+    expect((await call('PUT', `${pastBase}/lock`, { locked: false }, auth)).status).toBe(200)
+    const pastSave = await call('POST', `${pastBase}/week-type`, { option: { kind: 'type', type: 'legumbres' } }, auth)
+    expect(pastSave.status).toBe(200)
+    expect(pastSave.body.weekTypeApplied).toBe('kept')
+    expect(pastSave.body.days[SATURDAY].dinner.dishes).toHaveLength(1)
+    expect(pastSave.body.days[SATURDAY].dinner.dishes[0].recipeId).toBe(other.id)
+    const wt3 = (await call('GET', '/households/me/week-type', undefined, auth)).body.days
+    expect(wt3[SATURDAY].dinner.options).toEqual([{ kind: 'type', type: 'legumbres' }])
   })
 })

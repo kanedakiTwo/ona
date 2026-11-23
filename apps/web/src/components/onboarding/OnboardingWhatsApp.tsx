@@ -19,6 +19,7 @@ import { api } from "@/lib/api"
 import { useWhatsAppStatus, type useWhatsAppLinkCode } from "@/hooks/useWhatsApp"
 import { Accent, OnboardingHeader } from "./OnboardingShell"
 import { WhatsAppQr } from "@/components/whatsapp/WhatsAppQr"
+import { WhatsAppLink } from "@/components/whatsapp/WhatsAppLink"
 import { OnboardingMenuReady } from "./OnboardingMenuReady"
 import { markOnboardedInCache } from "@/hooks/useOnboardingGate"
 
@@ -132,9 +133,9 @@ export function OnboardingWhatsAppLink({
         </p>
         <div className="mt-6 flex flex-col items-center gap-2">
           {status.data?.chatLink && (
-            <a href={status.data.chatLink} className={PILL}>
+            <WhatsAppLink href={status.data.chatLink} className={PILL}>
               <MessageCircle size={18} aria-hidden="true" /> Abrir WhatsApp
-            </a>
+            </WhatsAppLink>
           )}
           <p className="text-[13px] text-ink-muted" role="status">
             Esperando a que termines en WhatsApp…
@@ -178,9 +179,9 @@ export function OnboardingWhatsAppLink({
           </p>
           {linkCode.data.waLink ? (
             <>
-              <a href={linkCode.data.waLink} className={PILL}>
+              <WhatsAppLink href={linkCode.data.waLink} className={PILL}>
                 <MessageCircle size={18} aria-hidden="true" /> Enviar desde WhatsApp
-              </a>
+              </WhatsAppLink>
               <WhatsAppQr href={linkCode.data.waLink} />
             </>
           ) : (

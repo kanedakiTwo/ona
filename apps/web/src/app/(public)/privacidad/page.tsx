@@ -102,7 +102,7 @@ export default function PrivacidadPage() {
               Preparar la ficha de tu hogar (vuestros gustos y costumbres a la hora de comer) a partir de lo que hablas
               con Mimo en la web y por WhatsApp, para que tus menús y sus respuestas se ajusten mejor a vosotros.
             </li>
-            <li>Revisar, de forma interna, conversaciones de WhatsApp para detectar errores del asistente y corregirlos.</li>
+            <li>Revisar, de forma interna, conversaciones con Mimo, en la web y por WhatsApp, para detectar errores del asistente y corregirlos.</li>
             <li>Controlar el gasto en IA por usuario y mantener el servicio seguro.</li>
             <li>Detectar y arreglar los fallos de la aplicación, con un registro propio que no se comparte con terceros.</li>
             <li>Si lo pides (al registrarte o en tu perfil), mandarte cada viernes el menú de la semana por email.</li>
@@ -229,9 +229,8 @@ export default function PrivacidadPage() {
             (art. 21 de la LSSI).
           </p>
           <p data-testid="privacy-waitlist-retention">
-            <strong>Cuánto tiempo:</strong> hasta el 16 de mayo de 2027 (seis meses después de abrir el registro a
-            todo el mundo, el 16 de noviembre de 2026) o hasta que te des de baja, lo que ocurra antes. Si pediste el
-            menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y
+            <strong>Cuánto tiempo:</strong> hasta el 16 de mayo de 2027 o hasta que te des de baja, lo que ocurra
+            antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y
             creas una cuenta, desde ese momento se aplica el resto de esta política.
           </p>
           <p>

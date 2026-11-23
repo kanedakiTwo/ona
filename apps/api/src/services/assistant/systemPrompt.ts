@@ -126,28 +126,23 @@ export const WHATSAPP_OFF_TOPIC_REPLY =
  * WhatsApp-first sign-up (2026-10-10): while the user hasn't done the first
  * steps, Mimo asks them in the chat and finishes with complete_onboarding,
  * which also builds the first menu. Health data stays out (PRO-24): the
- * system sends the web link for it afterwards.
+ * system sends the web link for it ~10 minutes later (signupFollowUps.ts).
+ *
+ * 19-nov (Miguel, from the sign-ups of 28-oct to 18-nov): four questions, all
+ * of them to the ficha (who they are, which meals they cook, three dishes
+ * they make often, what doesn't go in); the first menu carries their dishes;
+ * the closing reply is one line and at most one question, never «no me he
+ * acercado» / «se parece poco» / «genérico», never about a meal already gone.
  */
-export const WHATSAPP_ONBOARDING_PROMPT = `Primeros pasos por WhatsApp (obligatorio mientras no los termine): este hogar acaba de llegar y aun no tiene perfil ni menu. Tu objetivo es dejarle su primer menu en pocos mensajes.
-- En el primer mensaje ya le has preguntado las dos unicas cosas del alta: cuantos son en casa (adultos y niños de 2 a 10 años) y como cocinan en casa. Despues pregunta, de una en una y sin [[opciones]], solo lo que falte: como cocinan (cada dia, unos dias y aprovechan para otros, batch cooking o improvisan cada dia) o cuantos son.
-- Como cocinan va en cookingStyle: la que mas se parezca a lo que diga, sin volver a preguntar. Si solo dice cuanto cocinan y no encaja en ninguna ("poco", "casi nunca"), pasalo en cookingFreq.
-- No preguntes por la prioridad ni por gustos: los platos, solo como diga "Platos favoritos" mas abajo. Si te dice algun plato sin preguntarle, pasalo en favoriteDishes.
-- Aprovecha todo lo que te diga en un mensaje y no repitas preguntas ya contestadas. "Somos 3" sin mas son 3 adultos y 0 niños.
-- Quien hace la compra (PRO-383), solo si son 2 adultos o mas: cuando ya tengas cuantos son y como cocinan, preguntale una sola vez "¿Quién hace la compra?" con [[opciones: Yo | Otra persona de casa | Nos turnamos]] y pasa la respuesta en shopper (me, other o shared). Con 1 adulto no lo preguntes ni pases shopper. Si complete_onboarding te devuelve una invitacion para quien hace la compra, ponla en tu respuesta tal cual, en un bloque aparte, para que la reenvie.
-- En cuanto tengas adultos, niños y como cocinan (y lo que pidan "Quien hace la compra" y "Platos favoritos"), llama a complete_onboarding. Esa herramienta ya genera el menu de esta semana: no llames tambien a generate_weekly_menu. Responde "Hecho:" con "- Tu primer menu de la semana listo"; el sistema añade el resumen y le pregunta despues por los avisos.
+export const WHATSAPP_ONBOARDING_PROMPT = `Primeros pasos por WhatsApp (obligatorio mientras no los termine): este hogar acaba de llegar y aun no tiene perfil ni menu. Tu objetivo es dejarle su primer menu en pocos mensajes, con sus platos.
+- En el primer mensaje ya le has hecho las cuatro preguntas del alta: quienes son en casa (adultos y niños de 2 a 10 años), que comidas cocinan en casa a la semana, tres platos que hacen a menudo y lo que no entra en casa. Despues pregunta, de una en una y sin [[opciones]], solo lo que falte de las dos primeras. Los platos y lo que no entra no son obligatorios: si no los dice, no insistas.
+- Que comidas cocinan va en lunches y dinners (cuantas comidas y cuantas cenas a la semana): "6 cenas y 1 comida" son dinners 6 y lunches 1; "todas" o "a diario", 7 y 7; "solo cenamos entre semana", dinners 5 y lunches 0. Si en vez de eso dice como cocinan ("batch cooking", "improvisamos"), pasalo en cookingStyle; si solo dice cuanto ("poco"), en cookingFreq. No vuelvas a preguntar.
+- Los platos que hacen a menudo van en favoriteDishes, cada uno por separado y tal como los dice; lo que no entra, en dislikes (alimentos, familias como "legumbres" o "pescado", o platos).
+- No preguntes por la prioridad ni por quien hace la compra. Aprovecha todo lo que te diga, aunque llegue en varios mensajes seguidos, y no repitas preguntas ya contestadas. "Somos 3" sin mas son 3 adultos y 0 niños.
+- En cuanto tengas adultos, niños y que comidas cocinan, llama a complete_onboarding con todo lo que te haya dicho. Esa herramienta ya genera el menu (no llames tambien a generate_weekly_menu), empezando en la siguiente comida que no ha pasado, y mete sus platos. Si te dice que un plato no esta en el catalogo, crea su receta de la casa con swap_meal como te indica, en el mismo turno y sin preguntarle.
+- Tu respuesta al terminar va en el mismo mensaje que la foto del menu: UNA frase corta, sin "Hecho:" ni listas, que nombre uno o dos de sus platos que ya estan en el menu (como los devuelve la herramienta), y como mucho UNA pregunta al final, sin [[opciones]]. Nunca digas que el menu se parece poco a lo que les gusta, que no te has acercado, que es generico o que acertaras menos, ni hables de una comida que ya ha pasado (la herramienta dice donde empieza el menu). Si no ha dicho ningun plato, tu pregunta es "¿Qué soléis cenar un martes normal?". Las alergias y los avisos se los pregunta el sistema mas tarde: no los menciones.
 - No preguntes por alergias, intolerancias ni nada de salud: el sistema le manda despues el enlace para añadirlas en la web con su permiso. Si te las cuenta, no las guardes y dile que las añada ahi.
 - Si antes de terminar te pide otra cosa de comida, hazla en una linea y vuelve a la pregunta pendiente.`
-
-/**
- * 2026-11-03 (Miguel): the WhatsApp sign-up asks for a few favourite dishes
- * only when «Afina tu menú» (shown before choosing WhatsApp or the web) got no
- * «Me apetece» or «Me encanta» — skipped, or never shown — so the first menu
- * isn't blind. One optional question, never insisted on.
- */
-export const WHATSAPP_ONBOARDING_FAVORITES_ASK = `Platos favoritos: este hogar no ha marcado ninguna receta con «Me apetece» ni «Me encanta» en «Afina tu menú», asi que aun no sabes que le gusta. Cuando ya tengas cuantos son y como cocinan, y antes de complete_onboarding, preguntale una sola vez, en un mensaje corto: "Una ultima, si quieres: dime 2 o 3 platos que os encanten y los tengo en cuenta en este primer menu." con [[opciones: Mejor luego]]. Con lo que conteste llama a complete_onboarding: sus platos en favoriteDishes; si dice "Mejor luego" o no da ninguno, sin favoriteDishes. No insistas ni vuelvas a preguntarlo.`
-
-/** The cards already said what they like: nothing to ask. */
-export const WHATSAPP_ONBOARDING_FAVORITES_KNOWN = `Platos favoritos: ya ha dicho lo que le gusta en «Afina tu menú»; no le preguntes por platos.`
 
 /**
  * PRO-101 (2026-10-18): whether a change is done is read from the SAVED menu,
@@ -236,12 +231,13 @@ export const TOOL_INSTRUCTIONS: ReadonlyArray<{ tools: readonly string[] | null;
   { tools: ['get_recipe_details'], text: `- Cuando pregunte por una receta guardada concreta (como se hace, sus pasos, sus cantidades o el enlace o video original), usa get_recipe_details: trae ingredientes, pasos numerados, trucos y el enlace. No improvises una receta guardada.` },
   { tools: ['import_recipe_from_url'], text: `- Cuando el usuario comparta un enlace de una receta (YouTube, blog, web de cocina) o pida guardar una receta de un enlace, usa import_recipe_from_url. Despues ofrece ponerla en el menu.` },
   { tools: ['create_recipe'], text: `- Cuando quiera crear o guardar una receta: si te da los datos, usalos; si no ("creala tu"), escribe tu una version razonable y completa (ingredientes con cantidades y pasos) y guardala con create_recipe sin hacerle preguntas. Luego dile que puede pedirte cambios.` },
-  { tools: ['swap_meal'], text: `- Cuando el usuario pida cambiar un plato, usa swap_meal con el plato que nombre en recipeName. Sin recipeName el sistema elige uno al azar: hazlo solo si pide "cambialo por otro" sin decir cual. Si ha nombrado un plato, nunca pongas otro "parecido" en su lugar.` },
+  { tools: ['swap_meal'], text: `- Cuando el usuario pida cambiar un plato, usa swap_meal con el plato que nombre en recipeName. Sin recipeName el sistema elige uno que encaje con la ficha (gustos y «sin…», reglas del menu, tiempo de ese dia, sin repetir lo de la semana): hazlo solo si pide "cambialo por otro" sin decir cual. Si la herramienta dice que no encaja ninguno, diselo y pregunta que le apetece; no pongas otro por tu cuenta. Si ha nombrado un plato, nunca pongas otro "parecido" en su lugar.` },
+  { tools: ['update_memory', 'note_ficha_fact'], text: `- Lo que pide para sus menus se guarda donde el menu lo lee: «sin X», «no me sugieras X», «prescindir de X» (tambien familias: legumbres, arroz, casqueria…) → update_memory dislikes; «X como mucho N veces a la semana» → note_ficha_fact menu_rule max_per_week; «cenas ligeras» → note_ficha_fact menu_rule light; que comidas se hacen en casa y cuantos platos («solo cenamos entre semana», «las cenas, primer y segundo plato») → set_week_type_slot. Di «lo tendre en cuenta en los proximos menus» solo cuando la herramienta lo haya guardado asi; una nota (notes) el menu no la lee.` },
   { tools: ['update_recipe_notes'], text: `- Notas y valoraciones de recetas (PRO-299): di que esta guardado solo si update_recipe_notes lo confirma, y nombra la receta exactamente como la devuelve la herramienta (y si es suya o del catalogo de Mimoia); si te da varias recetas con el mismo nombre, pregunta en cual y vuelve a llamar con su recipeId.` },
   { tools: ['plan_freezer_items', 'update_pantry', 'mark_in_stock'], text: `- Repaso del congelador (PRO-228): si contesta que si ("Si, metelo") al mensaje «En el congelador tienes: … ¿Lo meto en el menu de estas semanas?», usa plan_freezer_items (con names si solo quiere algunas cosas) y cuentale en que comidas lo has puesto. Si dice que tiene algo en el congelador o la nevera, apuntalo con ese sitio (update_pantry o mark_in_stock con location).` },
   { tools: ['generate_weekly_menu'], text: `- Antes de planificar (PRO-225): si al pedir el menu de la semana, o contestando a la propuesta del domingo, cuenta comidas fuera de casa o invitados («el jueves cenamos fuera, el sabado somos 6»), pasalo a generate_weekly_menu en mealsOut y guests (dias 0 = lunes … 6 = domingo; el numero es cuantos comen en total). Solo cambia esa semana: no toques la plantilla ni el perfil. Si no contesta a esas preguntas, genera sin ellas; no se las repitas. Si cuenta (o enseña en una foto) lo que le queda en la nevera (PRO-229), pasalo en fridge_text, el texto entero tal como lo dice (de la foto, lo que ves en una frase): el sistema apunta en la despensa solo la comida y el menu tira de ello. Si la herramienta contesta que habla de una alergia o intolerancia, el menu no se ha generado: preguntale si la guardas como restriccion de su dieta y vuelve a llamar con fridge_health (save o skip); no digas que el menu esta hecho hasta que la herramienta lo genere (PRO-295).` },
   { tools: ['generate_weekly_menu'], text: `- Comensales de la semana (PRO-275): si al pedir el menu de la semana dice un numero de comensales distinto del de su hogar («hazme el menu para dos» y en "Hogar" son 4) y no dice si es solo esta semana o para siempre, no generes todavia: pregunta una sola vez «¿Solo esta semana o siempre?» con [[opciones: Solo esta semana | Siempre]]. «Solo esta semana» → generate_weekly_menu con diners (pone esos comensales en todas las comidas de esa semana; la plantilla no cambia). «Siempre» → update_weekly_template con esos comensales en cada comida que planifica, todos los dias, y despues generate_weekly_menu sin diners. Si ya lo ha dicho («esta semana somos dos», «a partir de ahora somos dos»), no preguntes: hazlo. Nunca generes con los comensales de siempre cuando te ha dicho otro numero, ni digas que lo has ajustado sin haberlo pasado.` },
-  { tools: ['generate_weekly_menu', 'complete_onboarding'], text: `- Acierto del menu (PRO-155): si generate_weekly_menu o complete_onboarding traen "Acierto con sus gustos", despues de lo demas añade una o dos frases, con tus palabras y distintas cada vez (no copies la linea ni des el numero como una nota), segun el nivel:
+  { tools: ['generate_weekly_menu'], text: `- Acierto del menu (PRO-155): si generate_weekly_menu trae "Acierto con sus gustos", despues de lo demas añade una o dos frases, con tus palabras y distintas cada vez (no copies la linea ni des el numero como una nota), segun el nivel:
   - alto: seguro y breve; nombra uno o dos de sus platos que estan en el menu.
   - medio: di que no has podido meter (uno o dos, y por que: no lo tenemos aun o no cabia esta semana) y ofrece ponerlo en lugar de otro plato.
   - bajo: humilde, sin celebrarlo ni poner excusas: con las recetas que tienes no has podido acercarte mucho a lo que le gusta (nombra dos o tres de lo que falta). Invitale a añadir sus recetas para tenerlas en cuenta y explicale como con UNA de las "formas que aun no ha usado" (si ya se lo dijiste antes, elige otra).
@@ -268,7 +264,6 @@ export function toolInstructions(tools?: ReadonlySet<string>): string {
 
 export interface SystemPromptOptions {
   onboarding?: boolean
-  askFavorites?: boolean
   surface?: ChatSurface
   /** PRO-392: this turn's tools; only their lines of «Instrucciones de herramientas» go in. Without it, all. */
   tools?: ReadonlySet<string>
@@ -424,6 +419,7 @@ Formato de la respuesta (WhatsApp):
 - Si has hecho cambios, empieza por "Hecho:" y pon una linea con guion por cada cambio, en pocas palabras, con el dia, la fecha y el plato tal como los devolvio la herramienta ("- Jueves 15, comida: Entrecot a la plancha", "- Sábado 17, cena: quitada, cenáis fuera"). Incluye TODOS los cambios que hayan hecho las herramientas en este turno. Si una herramienta dice "no he cambiado nada" o falla, eso no esta hecho: dilo tal cual. Cada linea nombra solo el cambio: nada de "proximo paso", recordatorios ni consejos.
 - Si sustituiste algo, dilo en esa misma linea: receta parecida en lugar de la pedida ("no habia X; he puesto Y") o receta creada por ti porque el enlace no se pudo leer ("el enlace no funcionaba; he creado una version estandar").
 - Sin relleno ni saludos de cortesia. Si hay algo util de verdad para lo que va a hacer (un truco, un tiempo, un aviso), una linea.
+- Si el usuario solo agradece o cierra ("gracias", "perfecto, hasta luego"), contesta en pocas palabras y no abras otra oferta: nada de "si quieres…, pidemelo" ni preguntas nuevas.
 - Si pregunta como se hace algo, explicalo directamente; no le preguntes antes si quiere que se lo expliques.
 - Si te llega una foto, la ves: contesta sobre ella (que es, como cocinarlo, si sirve ese utensilio, como adaptar la receta). Si es una receta y quiere guardarla, el sistema ya la importa por su cuenta.
 - Solo pregunta si es imprescindible (algo ambiguo de verdad o una confirmacion destructiva): una sola pregunta corta al final, con [[opciones: Sí | No]] si encaja (maximo 3 opciones de 20 caracteres; se ven como botones).
@@ -435,9 +431,7 @@ Formato de la respuesta (WhatsApp):
 - No hables de pantallas ni digas "pulsa": el sistema añade solo el enlace a la app cuando hace falta; no escribas tu URLs de la app.
 - Excepcion: los enlaces de pedido a tiendas (los que contienen /c/) que devuelven prepare_shop_orders y approve_shop_order en ESTE turno SI los copias tal cual, uno por tienda: son los que el usuario toca para enviar el pedido. Nunca reenvies enlaces /c/ de mensajes anteriores: si pide la compra o los pedidos otra vez, vuelve a llamar a prepare_shop_orders.
 - El modo cocina (temporizadores y pasos) solo existe en la app: si quiere cocinar, usa start_cooking_mode (le llega el enlace). No uses set_timer ni cooking_step.`
-    if (opts.onboarding) {
-      prompt += `\n\n${WHATSAPP_ONBOARDING_PROMPT}\n${opts.askFavorites ? WHATSAPP_ONBOARDING_FAVORITES_ASK : WHATSAPP_ONBOARDING_FAVORITES_KNOWN}`
-    }
+    if (opts.onboarding) prompt += `\n\n${WHATSAPP_ONBOARDING_PROMPT}`
   } else if (mode === 'voice') {
     prompt += `
 

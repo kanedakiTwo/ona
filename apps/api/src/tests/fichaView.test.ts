@@ -21,6 +21,7 @@ const EXAMPLES: Record<string, unknown> = {
   novelty: { score: 1 },
   cooking_style: { style: 'batch' },
   protein_minimum: { scope: 'every_dish' },
+  menu_rule: { rule: 'max_per_week', target: 'arroz', times: 1 },
   shopper: { who: 'shared' },
   dislikes: ['cilantro', 'hígado'],
   equipment: ['horno', 'olla exprés'],
@@ -44,7 +45,7 @@ const EXAMPLES: Record<string, unknown> = {
 }
 
 describe('factSentence — every type says something, for its reader', () => {
-  it('every one of the 31 types has a sentence and a topic', () => {
+  it('every one of the 32 types has a sentence and a topic', () => {
     for (const type of PROFILE_FACT_TYPES) {
       expect(EXAMPLES, type).toHaveProperty([type])
       expect(factSentence(type, EXAMPLES[type], 'casa'), type).toBeTruthy()
@@ -113,7 +114,8 @@ describe('where it comes from, and what the reader may do', () => {
 
   it('«Cómo lo uso» says only what the code does', () => {
     expect(howIUse('temporary_situation', { description: 'Sin horno hasta nuevo aviso' })).toBe('Mientras tanto no te propongo nada que necesite horno.')
-    expect(howIUse('dislikes', ['cilantro'])).toBe('El menú no te propone platos con eso.')
+    expect(howIUse('dislikes', ['cilantro'])).toBe('El menú no te propone platos con eso; una familia entera («legumbres», «casquería», «carne roja»…) cuenta con todo lo que lleva.')
+    expect(howIUse('menu_rule', { rule: 'light', meal: 'dinner' })).toMatch(/solo ponen ahí platos ligeros/)
     expect(howIUse('fixed_dish', {})).toMatch(/Mimo lo tiene en cuenta/)
   })
 })

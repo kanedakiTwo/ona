@@ -126,7 +126,9 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
       'get_ficha', 'explain_ficha_fact', 'note_ficha_fact', 'forget_ficha_fact', 'set_ficha_learning',
       'get_ficha_question', 'answer_ficha_question', 'list_taste_verdicts', 'forget_taste_verdicts', 'update_memory',
     ],
-    words: /\b(ficha|sabes de|por que crees|de donde sacas|aprend\w*|afina|me apetece|(?:me|nos|le|les) (?:gusta|gustan|encanta|encantan)|no para mi|valoraciones|cartas|olvida\w*|recuerda que|apunta que|en casa)\b/,
+    // 2026-11-19: what the household asks for its menus («que no me sugieras
+    // legumbres», «arroz no más de un día a la semana», «cenas ligeras») is saved here.
+    words: /\b(ficha|sabes de|por que crees|de donde sacas|aprend\w*|afina|me apetece|(?:me|nos|le|les) (?:gusta|gustan|encanta|encantan)|no para mi|valoraciones|cartas|olvida\w*|recuerda que|apunta que|en casa|sugieras|pongas|prescind\w*|evit\w*|ligeras?|ligeros?|como mucho|como maximo|no mas de|a la semana|nada de)\b/,
   },
 }
 
@@ -205,7 +207,9 @@ export function selectToolGroups(input: ToolSelectionInput): ToolSelection {
 
   const tools = new Set<string>(CORE_TOOLS)
   for (const g of groups) for (const name of TOOL_GROUPS[g].tools) tools.add(name)
-  if (input.onboarding) tools.add('complete_onboarding')
+  // 19-nov: the sign-up's dishes not in the catalogue become the household's
+  // recipe in the same turn (swap_meal with newRecipe).
+  if (input.onboarding) for (const name of ['complete_onboarding', 'swap_meal']) tools.add(name)
 
   // Only the user's words: Mimo's own replies say «Mimoia» when it introduces itself.
   const about = input.onboarding === true || ABOUT_WORDS.test(fold(input.message))

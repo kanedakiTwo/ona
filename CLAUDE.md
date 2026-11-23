@@ -1,5 +1,7 @@
 # Mimoia — Project Guide for Claude
 
+**Con Miguel, siempre en español de España**: cada respuesta, cada pregunta y cada resumen, aunque este fichero, el código o los commits estén en inglés. **Y que se entienda de un vistazo:** pocos identificadores (PRO-, D-, E-…); si hace falta uno, con lo que es en palabras al lado («la tarea del aviso del piloto, PRO-382»). Lo mismo en los informes y en lo que lee en el móvil (D-191, auditoría del 18-nov: P-9 y M-2).
+
 ## Read this first
 
 **Before starting any work in this project, read the specs to understand the system.**

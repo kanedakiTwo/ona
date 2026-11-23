@@ -67,8 +67,9 @@ describe('PRO-1177 · «Sin plato todavía»', () => {
     const day = read('DayMeals.tsx')
     expect(day).toMatch(/<NoDishSheets[\s\S]{0,80}where="no_hay"/)
     expect(day).not.toMatch(/onAddMeal\(m\)/)
-    // La fila vacía de la vista semana.
-    expect(read('WeekGridView.tsx')).toMatch(/<NoDishSheets/)
+    // La fila vacía de la vista semana: la hoja de la vista día (PRO-1178), o la de «no hay».
+    expect(read('WeekGridView.tsx')).toMatch(/<MealOptionsSheets/)
+    expect(read('WeekGridView.tsx')).toMatch(/<AbsentMealSheets/)
   })
 
   it('«Este día no cocino» y «Volver a cocinar este día»; sigue pidiendo confirmación', () => {

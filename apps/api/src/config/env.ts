@@ -106,10 +106,10 @@ export const env = {
    * Per-user monthly spend cap for the text advisor (the `/assistant/:userId/chat`
    * Claude calls), in euros. Resets implicitly on month change. When a user has
    * already spent at least this much in the current month, the chat endpoint
-   * returns 429 `ADVISOR_BUDGET_EXCEEDED` until the month rolls over. Default €5.
+   * returns 429 `ADVISOR_BUDGET_EXCEEDED` until the month rolls over. Default €6.
    */
   ADVISOR_MONTHLY_BUDGET_EUR: parseFloat(
-    process.env.ADVISOR_MONTHLY_BUDGET_EUR || '5',
+    process.env.ADVISOR_MONTHLY_BUDGET_EUR || '6',
   ),
   /**
    * Per-user monthly cap on ALL paid AI work (chat, WhatsApp, voice,

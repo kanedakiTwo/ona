@@ -49,6 +49,33 @@ describe('auth route smoke', () => {
     expect(second.status).toBe(409)
   })
 
+  it.skipIf(!reachable)('an admin email with other capitals is the same account, never a new admin (PRO-1271)', async () => {
+    // `smoke-case-admin@test.local` is in ADMIN_EMAILS (test-smoke.sh).
+    const post = (path: string, body: object) =>
+      fetch(`${API_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const first = await post('/register', {
+      username: `case_admin_${Date.now()}`,
+      email: 'smoke-case-admin@test.local',
+      password: 'pw12345678',
+      ageConfirmed: true,
+    })
+    expect([201, 409]).toContain(first.status) // 409 if an earlier run on this database made it
+    const variant = await post('/register', {
+      username: `case_variant_${Date.now()}`,
+      email: 'Smoke-Case-ADMIN@test.local',
+      password: 'pw12345678',
+      ageConfirmed: true,
+    })
+    expect(variant.status).toBe(409)
+    if (first.status !== 201) return
+    // Logging in with other capitals reaches the same (real) account.
+    const login = await post('/login', { username: 'SMOKE-case-admin@TEST.local', password: 'pw12345678' })
+    expect(login.status).toBe(200)
+    const { user } = await login.json()
+    expect(user.email).toBe('smoke-case-admin@test.local')
+    expect(user.role).toBe('admin')
+  })
+
   it.skipIf(!reachable)('POST /register without «Tengo 14 años o más» is a 400 (PRO-23)', async () => {
     const u = `age_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const base = { username: u, email: `${u}@test.local`, password: 'pw12345678' }

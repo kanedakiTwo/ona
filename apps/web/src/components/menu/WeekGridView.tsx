@@ -1,34 +1,25 @@
 "use client"
 
 /**
- * "Vista semana" (mobile) — each day as a stacked row of meal cards.
- * Since the 2026-10-08 redesign /menu renders it only below lg; desktop uses
- * MenuDesktop's "La semana" columns. The lg+ classes below are kept for any
- * other host but are not reached from /menu today.
+ * "Vista semana" (mobile, below lg; desktop uses MenuDesktop's «La semana»):
+ * each day as a stacked section of meal rows.
  *
- * Original lg+ design: a 7-column grid where each day is a column and each
- * slot is a card with feature-parity to Vista día.
- *
- * Parity surface (lg+):
- *   - All recipe dishes in a slot are shown (not just the first).
- *   - Note dishes ("comemos fuera") render inline.
- *   - The slot's pinned type, lock state, and servings override surface as
- *     small chips above / next to the title.
- *   - The "..." menu carries the full action set: Elegir / Aleatorio / Añadir
- *     plato / Bloquear / Vetar / Quitar. The popover is portalled to
- *     document.body so it can never be clipped or stacked below a sibling
- *     card (motion.article children create their own stacking contexts; only
- *     escaping to the root works).
- *   - All mutations dispatch the SAME hooks Vista día uses, so the query
- *     cache invalidation is shared and toggling between the two views
- *     reflects each other instantly.
- *
- * Mobile keeps the compact one-row-per-slot layout because tapping a day
- * header flips to Vista día one tap away for finer per-dish controls; the
- * grid view's purpose is the bird's-eye glance.
+ *   - A sticky day header (tap = that day in Vista día).
+ *   - Each row: thumbnail, meal eyebrow, every dish of the meal (a note edits
+ *     in place), the semana tipo's chip and the time.
+ *   - The row's "···" opens the meal sheet of Vista día (`MealOptionsSheets`)
+ *     with the same `SlotContext` and `SlotHandlers` (`slotPropsFor`, built
+ *     once by /menu for every view): PRO-1178, E-72. Until then the row had
+ *     its own menu with other names («Aleatorio», «Bloquear», «Quitar slot»)
+ *     and without Comensales, táper, sobras nor «Marcar como cocinada».
+ *   - An empty row opens «Sin plato todavía», like Vista día: the slot's own
+ *     sheet, or the «no hay» one when the day lacks that meal (`absentFor`).
+ *   - Drag a row onto another to swap the two slots (`onMoveSlot`).
+ *   - A recipe opens at the batch's servings, as from Vista día (PRO-75).
+ *   - A past week shows no "···", «Sin plato todavía» nor «Reactivar», as
+ *     Vista día; its notes still edit in place.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { createPortal } from "react-dom"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "motion/react"
 import {
   DndContext,
@@ -44,40 +35,15 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
-import {
-  Ban,
-  CalendarX,
-  ChevronRight,
-  Lock,
-  MoreHorizontal,
-  Moon,
-  Plus,
-  Replace,
-  RotateCcw,
-  Shuffle,
-  Sun,
-  Sunrise,
-  Sunset,
-  Trash2,
-  Unlock,
-  Users,
-} from "lucide-react"
-import {
-  type DayMenu,
-  type Dish,
-  type MealSlot,
-  type RecipeDish,
-  type MenuSheetAction,
-} from "@ona/shared"
+import { CalendarX, ChevronRight, Lock, Moon, RotateCcw, Sun, Sunrise, Sunset, Users } from "lucide-react"
+import { weekTypeChipOf, type DayMenu, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { trackSheetAction } from "@/lib/usageEvents"
 import { shortRecipeName } from "@/lib/recipeView"
-import { RecipePickerSheet } from "@/components/menu/RecipePickerSheet"
-import { AddDishSheet } from "@/components/menu/AddDishSheet"
-import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { NoteEditor } from "@/components/menu/NoteEditor"
 import { RecipeCover } from "@/components/menu/RecipeCover"
-import { NoDishSheets, type NoDishSheet } from "@/components/menu/NoDishSheets"
-import type { DishPayload } from "@/components/menu/MealOptions"
+import type { NoDishSheet } from "@/components/menu/NoDishSheets"
+import { AbsentMealSheets, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
+import { MealOptionsButton, MealOptionsSheets, slotServings, useMealOptions } from "@/components/menu/MealOptions"
 
 type MealKey = "breakfast" | "lunch" | "dinner" | "snack"
 
@@ -97,21 +63,20 @@ const MEAL_META: Record<MealKey, { label: string; Icon: typeof Sun }> = {
 
 const MEAL_ORDER: MealKey[] = ["breakfast", "lunch", "snack", "dinner"]
 
-interface LockedMap {
-  [dayIndex: string]: { [meal: string]: boolean } | undefined
-}
-
 interface Props {
   days: DayMenu[]
   weekStart: string
   todayIndex: number
   skippedDays?: number[]
-  /** Lock state per slot — drives the small padlock (PRO-1175) + the menu's Bloquear/Desbloquear label. */
-  lockedSlots?: LockedMap
-  /** Household-derived diner count, used as the fallback when the slot has no override. */
-  defaultDiners?: number
+  /** A past week: no "···", «Sin plato todavía» nor «Reactivar» (as Vista día). */
+  readOnly?: boolean
+  /** The same slot context and handlers as Vista día (built once by /menu). */
+  slotPropsFor: (day: number) => SlotPropsFn
+  /** «Sin plato todavía» for a meal the day lacks, as Vista día's «no hay» card. */
+  absentFor: (day: number) => Omit<AbsentMeals, "meals">
   onSelectDay: (dayIndex: number) => void
-  onSelectRecipe: (recipeId: string) => void
+  /** Opens the recipe at the batch's servings (`slotServings`, as Vista día). */
+  onSelectRecipe: (recipeId: string, servings: number) => void
   onMoveSlot?: (params: {
     fromDay: number
     fromMeal: MealKey
@@ -119,29 +84,9 @@ interface Props {
     toMeal: MealKey
   }) => void
   onUnskipDay?: (dayIndex: number) => void
-  /** Aleatorio — server-side matcher picks a new recipe for the slot. */
-  onRandomize?: (day: number, meal: MealKey) => void
-  /** Vetar la primera receta del slot para el resto de la semana. */
-  onBan?: (day: number, meal: MealKey, recipeId: string) => void
-  /** Quitar el slot entero del día (no la receta individual). */
-  onRemove?: (day: number, meal: MealKey) => void
-  /** "+ Añadir" en slot vacío → opens RecipePickerSheet inline → server replaces. */
-  onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
-  /** «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177). Rejects when nothing fits. */
-  onFillAuto?: (day: number, meal: MealKey, dishType: string | null) => Promise<unknown>
-  /** Elegir receta en slot lleno → opens RecipePickerSheet inline → server replaces. */
-  onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
-  /** Bloquear/Desbloquear slot — same toggle as Vista día. */
-  onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
-  /** Añadir plato extra al slot (multi-dish) — opens AddDishSheet. */
-  onAddDish?: (day: number, meal: MealKey, payload: DishPayload) => void
-  /** Aleatorio que **añade** un plato adicional al slot (no reemplaza el primero). */
-  onAddRandomDish?: (day: number, meal: MealKey) => void
-  /** Edit the text of a note dish in place. Persists via `patchDish`. */
-  onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
-  /** Remove a single dish (recipe or note) at the given position. */
-  onRemoveDish?: (day: number, meal: MealKey, position: number) => void
 }
+
+type RowProps = Pick<Props, "readOnly" | "slotPropsFor" | "absentFor" | "onSelectDay" | "onSelectRecipe">
 
 interface CellData {
   day: number
@@ -158,23 +103,9 @@ export function WeekGridView({
   weekStart,
   todayIndex,
   skippedDays,
-  lockedSlots,
-  defaultDiners,
-  onSelectDay,
-  onSelectRecipe,
   onMoveSlot,
   onUnskipDay,
-  onRandomize,
-  onBan,
-  onRemove,
-  onAddRecipe,
-  onFillAuto,
-  onPickRecipe,
-  onToggleLock,
-  onAddDish,
-  onAddRandomDish,
-  onEditNote,
-  onRemoveDish,
+  ...row
 }: Props) {
   const start = new Date(weekStart + "T00:00:00")
   const skippedSet = useMemo(() => new Set(skippedDays ?? []), [skippedDays])
@@ -182,8 +113,7 @@ export function WeekGridView({
   // Meal types that have at least one *template-active* slot somewhere in
   // the week. Counts slot KEYS (not dish content) so empty-mode menus
   // still show the user's configured template slots as tappable "+ Añadir"
-  // cards instead of collapsing to "— sin platos —". No hardcoded fallback
-  // — we always defer to the user's actual configured template.
+  // rows instead of collapsing to "— sin platos —".
   const visibleMeals = useMemo(() => {
     return MEAL_ORDER.filter((m) => days.some((day) => day?.[m] != null))
   }, [days])
@@ -254,7 +184,7 @@ export function WeekGridView({
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA] lg:rounded-none lg:border-0 lg:bg-transparent lg:grid lg:grid-cols-7 lg:gap-3"
+          className="rounded-2xl border border-[#DDD6C5] bg-[#FFFEFA]"
         >
           {days.map((day, di) => (
             <DaySection
@@ -262,36 +192,20 @@ export function WeekGridView({
               dayIndex={di}
               date={dateOf(start, di)}
               monthLabel={monthOf(start, di)}
-              dayShort={DAY_SHORT[di]}
-              dayName={DAY_NAMES[di]}
               isToday={di === todayIndex}
               isSkipped={skippedSet.has(di)}
               visibleMeals={visibleMeals}
               day={day}
-              locked={lockedSlots?.[String(di)] ?? {}}
-              defaultDiners={defaultDiners}
-              onSelectDay={onSelectDay}
-              onSelectRecipe={onSelectRecipe}
               onUnskipDay={onUnskipDay}
-              onRandomize={onRandomize}
-              onBan={onBan}
-              onRemove={onRemove}
-              onAddRecipe={onAddRecipe}
-              onFillAuto={onFillAuto}
-              onPickRecipe={onPickRecipe}
-              onToggleLock={onToggleLock}
-              onAddDish={onAddDish}
-              onAddRandomDish={onAddRandomDish}
-              onEditNote={onEditNote}
-              onRemoveDish={onRemoveDish}
               isFirst={di === 0}
               isLast={di === days.length - 1}
+              {...row}
             />
           ))}
         </motion.div>
 
         <p className="mt-3 text-center text-[10px] uppercase tracking-[0.15em] text-[#7A7066]">
-          Pulsa para ir al día · arrastra una receta para moverla a otro slot
+          Pulsa para ir al día · arrastra una receta para moverla a otra comida
         </p>
       </div>
 
@@ -306,57 +220,23 @@ function DaySection({
   dayIndex,
   date,
   monthLabel,
-  dayShort,
-  dayName,
   isToday,
   isSkipped,
   visibleMeals,
   day,
-  locked,
-  defaultDiners,
-  onSelectDay,
-  onSelectRecipe,
   onUnskipDay,
-  onRandomize,
-  onBan,
-  onRemove,
-  onAddRecipe,
-  onFillAuto,
-  onPickRecipe,
-  onToggleLock,
-  onAddDish,
-  onAddRandomDish,
-  onEditNote,
-  onRemoveDish,
   isFirst,
   isLast,
-}: {
+  ...row
+}: RowProps & {
   dayIndex: number
   date: number
   monthLabel: string
-  dayShort: string
-  dayName: string
   isToday: boolean
   isSkipped: boolean
   visibleMeals: MealKey[]
   day: DayMenu | undefined
-  locked: { [meal: string]: boolean }
-  defaultDiners?: number
-  onSelectDay: (dayIndex: number) => void
-  onSelectRecipe: (recipeId: string) => void
   onUnskipDay?: (dayIndex: number) => void
-  onRandomize?: (day: number, meal: MealKey) => void
-  onBan?: (day: number, meal: MealKey, recipeId: string) => void
-  onRemove?: (day: number, meal: MealKey) => void
-  onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
-  /** «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177). Rejects when nothing fits. */
-  onFillAuto?: (day: number, meal: MealKey, dishType: string | null) => Promise<unknown>
-  onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
-  onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
-  onAddDish?: (day: number, meal: MealKey, payload: DishPayload) => void
-  onAddRandomDish?: (day: number, meal: MealKey) => void
-  onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
-  onRemoveDish?: (day: number, meal: MealKey, position: number) => void
   isFirst: boolean
   isLast: boolean
 }) {
@@ -367,18 +247,14 @@ function DaySection({
   return (
     <section
       data-day={dayIndex}
-      className={`${sectionBg} ${
-        !isFirst ? "border-t border-[#DDD6C5] lg:border-t-0" : ""
-      } ${isFirst ? "rounded-t-2xl lg:rounded-2xl" : ""} ${
-        isLast ? "rounded-b-2xl lg:rounded-2xl" : ""
-      } lg:border lg:border-[#DDD6C5] lg:rounded-2xl`}
+      className={`${sectionBg} ${!isFirst ? "border-t border-[#DDD6C5]" : "rounded-t-2xl"} ${isLast ? "rounded-b-2xl" : ""}`}
     >
-      {/* Mobile header (clickable, flips to Vista día). */}
+      {/* Sticky header: tap flips to Vista día on that day. */}
       <button
         type="button"
-        onClick={() => onSelectDay(dayIndex)}
-        className={`lg:hidden sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm ${headerBg}/95`}
-        aria-label={`Ir al día ${dayName} ${date}`}
+        onClick={() => row.onSelectDay(dayIndex)}
+        className={`sticky top-0 z-10 flex w-full items-center justify-between px-4 pt-3 pb-2 text-left backdrop-blur-sm ${headerBg}/95`}
+        aria-label={`Ir al día ${DAY_NAMES[dayIndex]} ${date}`}
       >
         <div className="flex min-w-0 items-baseline gap-2">
           <span
@@ -390,7 +266,7 @@ function DaySection({
                   : "text-[#1A1612]"
             }`}
           >
-            {dayShort} {date} {monthLabel}
+            {DAY_SHORT[dayIndex]} {date} {monthLabel}
           </span>
           {isToday && (
             <span className="rounded-full bg-[#C65D38] px-2 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE]">
@@ -405,32 +281,6 @@ function DaySection({
         </div>
         <ChevronRight size={14} className="text-[#7A7066]" />
       </button>
-      {/* Desktop header (static, no flip target at lg+). */}
-      <div
-        className={`hidden lg:flex w-full flex-col items-start gap-1 px-4 pt-3 pb-2 ${headerBg}`}
-      >
-        <span
-          className={`whitespace-nowrap text-[13px] font-medium ${
-            isSkipped
-              ? "text-[#7A7066]"
-              : isToday
-                ? "text-[#C65D38]"
-                : "text-[#1A1612]"
-          }`}
-        >
-          {dayShort} {date} {monthLabel}
-        </span>
-        {isToday && (
-          <span className="rounded-full bg-[#C65D38] px-2 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#FAF6EE]">
-            Hoy
-          </span>
-        )}
-        {isSkipped && (
-          <span className="rounded-full border border-[#7A7066]/40 px-2 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#7A7066]">
-            Sin cocinar
-          </span>
-        )}
-      </div>
 
       {isSkipped ? (
         <div className="flex items-center gap-2 px-4 pb-3 pt-1">
@@ -438,7 +288,7 @@ function DaySection({
           <span className="text-[12px] italic text-[#7A7066]">
             Día saltado en esta semana.
           </span>
-          {onUnskipDay && (
+          {onUnskipDay && !row.readOnly && (
             <button
               type="button"
               onClick={(e) => {
@@ -454,34 +304,11 @@ function DaySection({
           )}
         </div>
       ) : (
-        <div className="px-2 pb-2 md:px-3 lg:p-2 lg:space-y-2">
+        <div className="px-2 pb-2 md:px-3">
           {hasAnyMeal ? (
-            visibleMeals.map((m) => {
-              const slot = day?.[m] as MealSlot | undefined
-              return (
-                <SlotRow
-                  key={m}
-                  dayIndex={dayIndex}
-                  meal={m}
-                  slot={slot}
-                  isLocked={Boolean(locked?.[m])}
-                  defaultDiners={defaultDiners}
-                  onSelectDay={onSelectDay}
-                  onSelectRecipe={onSelectRecipe}
-                  onRandomize={onRandomize}
-                  onBan={onBan}
-                  onRemove={onRemove}
-                  onAddRecipe={onAddRecipe}
-                  onFillAuto={onFillAuto}
-                  onPickRecipe={onPickRecipe}
-                  onToggleLock={onToggleLock}
-                  onAddDish={onAddDish}
-                  onAddRandomDish={onAddRandomDish}
-                  onEditNote={onEditNote}
-                  onRemoveDish={onRemoveDish}
-                />
-              )
-            })
+            visibleMeals.map((m) => (
+              <SlotRow key={m} dayIndex={dayIndex} meal={m} slot={day?.[m] as MealSlot | undefined} {...row} />
+            ))
           ) : (
             <p className="px-2 py-1 text-[11px] italic text-[#A39A8E]">— sin platos —</p>
           )}
@@ -495,168 +322,73 @@ function SlotRow({
   dayIndex,
   meal,
   slot,
-  isLocked,
-  defaultDiners,
+  readOnly,
+  slotPropsFor,
+  absentFor,
   onSelectDay,
   onSelectRecipe,
-  onRandomize,
-  onBan,
-  onRemove,
-  onAddRecipe,
-  onFillAuto,
-  onPickRecipe,
-  onToggleLock,
-  onAddDish,
-  onAddRandomDish,
-  onEditNote,
-  onRemoveDish,
-}: {
+}: RowProps & {
   dayIndex: number
   meal: MealKey
+  /** Undefined: the day doesn't have this meal («no hay»). */
   slot: MealSlot | undefined
-  isLocked: boolean
-  defaultDiners?: number
-  onSelectDay: (dayIndex: number) => void
-  onSelectRecipe: (recipeId: string) => void
-  onRandomize?: (day: number, meal: MealKey) => void
-  onBan?: (day: number, meal: MealKey, recipeId: string) => void
-  onRemove?: (day: number, meal: MealKey) => void
-  onAddRecipe?: (day: number, meal: MealKey, recipeId: string) => void
-  /** «Que elija Mimoia» in an empty meal («Sin plato todavía», PRO-1177). Rejects when nothing fits. */
-  onFillAuto?: (day: number, meal: MealKey, dishType: string | null) => Promise<unknown>
-  onPickRecipe?: (day: number, meal: MealKey, recipeId: string) => void
-  onToggleLock?: (day: number, meal: MealKey, nextLocked: boolean) => void
-  onAddDish?: (day: number, meal: MealKey, payload: DishPayload) => void
-  onAddRandomDish?: (day: number, meal: MealKey) => void
-  onEditNote?: (day: number, meal: MealKey, position: number, text: string) => void
-  onRemoveDish?: (day: number, meal: MealKey, position: number) => void
 }) {
-  const dropId = `row-${dayIndex}-${meal}`
   const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: dropId,
+    id: `row-${dayIndex}-${meal}`,
     data: { dayIndex, meal },
   })
+  const ctl = useMealOptions()
+  const [absentSheet, setAbsentSheet] = useState<NoDishSheet>(null)
   const { label: mealLabel, Icon: MealIcon } = MEAL_META[meal]
-  const [emptySheet, setEmptySheet] = useState<NoDishSheet>(null)
-  const [replacePickerOpen, setReplacePickerOpen] = useState(false)
-  const [addDishOpen, setAddDishOpen] = useState(false)
-  const [confirm, setConfirm] = useState<null | "ban" | "remove">(null)
+  const dayName = DAY_NAMES[dayIndex].toLowerCase()
+  const props = slot ? slotPropsFor(dayIndex)(meal, slot) : null
+  const sheets = !readOnly && props && <MealOptionsSheets ctl={ctl} {...props} />
 
   const dishes: Dish[] = slot?.dishes ?? []
-  const recipeDishes = dishes.filter((d): d is RecipeDish => d.kind === 'recipe')
-  const firstRecipe = recipeDishes[0] ?? null
-  // A leftover is part of its source batch: no «N pax» chip (PRO-75).
-  const slotServingsOverride = firstRecipe?.variant === "leftover" ? null : slot?.servings ?? null
+  const firstRecipe = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
 
-  // Empty slot (no dishes at all) — the dashed "+ Añadir" opens «Sin plato todavía» (PRO-1177).
-  if (dishes.length === 0) {
-    const dayName = DAY_NAMES[dayIndex].toLowerCase()
+  // Empty row: the same sheet as Vista día's empty card («Sin plato todavía»,
+  // PRO-1177), or its «no hay» card when the day lacks the meal.
+  if (!props || dishes.length === 0) {
     return (
       <>
-      <button
-        ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
-        type="button"
-        onClick={() => {
-          if (onAddRecipe) setEmptySheet("actions")
-          else onSelectDay(dayIndex)
-        }}
-        aria-haspopup={onAddRecipe ? "dialog" : undefined}
-        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:border lg:border-dashed lg:border-[#DDD6C5] lg:bg-[#FFFEFA]/40 ${
-          isOver ? "bg-[#1A1612]/10 lg:border-[#1A1612]/40 lg:bg-[#1A1612]/5" : "hover:bg-[#F2EDE0] lg:hover:border-[#1A1612]/40 lg:hover:bg-[#F2EDE0]/40"
-        }`}
-      >
-        <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#A39A8E] lg:h-auto lg:w-full lg:rounded-none lg:rounded-t-lg lg:aspect-[4/3] lg:border-0 lg:border-b lg:border-dashed lg:border-[#DDD6C5]">
-          <MealIcon size={18} strokeWidth={1.3} className="lg:hidden" />
-          <MealIcon size={28} strokeWidth={1.2} className="hidden lg:inline" />
-        </div>
-        <div className="min-w-0 flex-1 lg:px-2 lg:pt-1.5 lg:pb-2">
-          <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
-            <MealIcon size={12} strokeWidth={1.6} className="lg:hidden" />
-            {mealLabel}
-          </p>
-          <p className="mt-0.5 text-[13px] italic text-[#A39A8E] lg:mt-1 lg:text-[12px]">
-            + Añadir
-          </p>
-        </div>
-      </button>
-      {onAddRecipe && (
-        <NoDishSheets
-          open={emptySheet}
-          setOpen={setEmptySheet}
-          // A meal the day doesn't have at all («no hay») has nothing to remove.
-          where={slot ? "vacio" : "no_hay"}
-          meal={meal}
-          day={dayIndex}
-          eyebrow={`${mealLabel} · ${dayName}`}
-          pickerTitle={`${mealLabel} del ${dayName}`}
-          showWeekTypeLink
-          onPick={(recipeId) => onAddRecipe(dayIndex, meal, recipeId)}
-          onPickAuto={(dishType) => onFillAuto?.(dayIndex, meal, dishType) ?? Promise.resolve()}
-          onNote={(text) => onAddDish?.(dayIndex, meal, { kind: "note", text })}
-          onDone={(recipeId, place) => onAddDish?.(dayIndex, meal, { kind: "recipe", recipeId, variant: place })}
-          onRemove={slot && onRemove ? () => onRemove(dayIndex, meal) : undefined}
-        />
-      )}
+        <button
+          ref={setDropRef as unknown as React.LegacyRef<HTMLButtonElement>}
+          type="button"
+          data-week-row={`${dayIndex}-${meal}`}
+          onClick={() => {
+            if (readOnly) onSelectDay(dayIndex)
+            else if (props) ctl.setOpen("actions")
+            else setAbsentSheet("actions")
+          }}
+          aria-haspopup={readOnly ? undefined : "dialog"}
+          aria-label={readOnly ? undefined : `${mealLabel} del ${dayName}: añadir`}
+          className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${
+            isOver ? "bg-[#1A1612]/10" : "hover:bg-[#F2EDE0]"
+          }`}
+        >
+          <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-lg border border-dashed border-[#DDD6C5] bg-[#F2EDE0]/40 text-[#A39A8E]">
+            <MealIcon size={18} strokeWidth={1.3} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
+              <MealIcon size={12} strokeWidth={1.6} />
+              {mealLabel}
+            </p>
+            <p className="mt-0.5 text-[13px] italic text-[#A39A8E]">{readOnly ? "Sin plato" : "+ Añadir"}</p>
+          </div>
+        </button>
+        {sheets}
+        {!readOnly && !slot && (
+          <AbsentMealSheets open={absentSheet} setOpen={setAbsentSheet} meal={meal} {...absentFor(dayIndex)} />
+        )}
       </>
     )
   }
 
-  // Slot has at least one dish. Build the action set once — only the
-  // callbacks the parent wired show up.
-  const actions: ActionDef[] = []
-  if (onPickRecipe && firstRecipe) {
-    actions.push({
-      icon: Replace,
-      label: "Elegir receta",
-      action: "elegir_receta",
-      onSelect: () => setReplacePickerOpen(true),
-    })
-  }
-  if (onRandomize) {
-    actions.push({
-      icon: Shuffle,
-      label: "Aleatorio",
-      action: "cambiar_azar",
-      onSelect: () => onRandomize(dayIndex, meal),
-    })
-  }
-  if (onAddDish || onAddRandomDish) {
-    actions.push({
-      icon: Plus,
-      label: "Añadir plato",
-      action: "anadir_plato",
-      onSelect: () => setAddDishOpen(true),
-    })
-  }
-  if (onToggleLock) {
-    actions.push({
-      icon: isLocked ? Unlock : Lock,
-      label: isLocked ? "Desbloquear" : "Bloquear",
-      action: isLocked ? "desfijar" : "fijar",
-      onSelect: () => onToggleLock(dayIndex, meal, !isLocked),
-    })
-  }
-  if (onBan && firstRecipe) {
-    actions.push({
-      icon: Ban,
-      label: "Vetar receta",
-      action: "vetar",
-      onSelect: () => setConfirm("ban"),
-      destructive: true,
-    })
-  }
-  if (onRemove) {
-    actions.push({
-      icon: Trash2,
-      label: "Quitar slot",
-      action: "quitar_comida",
-      onSelect: () => setConfirm("remove"),
-      destructive: true,
-    })
-  }
-
-  // Drag preview uses the first recipe dish; if the slot is note-only we
-  // still render a card but disable dragging (no recipeId to carry).
+  const { ctx, handlers } = props
+  // Drag preview uses the first recipe dish; a note-only slot renders but
+  // doesn't drag (no recipeId to carry).
   const cellData: CellData | null = firstRecipe
     ? {
         day: dayIndex,
@@ -671,87 +403,38 @@ function SlotRow({
 
   return (
     <>
-    <div ref={setDropRef} className={`relative ${isOver ? "rounded-xl ring-2 ring-inset ring-[#1A1612]/40" : ""}`}>
-      <FilledRow
-        dayIndex={dayIndex}
-        meal={meal}
-        mealLabel={mealLabel}
-        MealIcon={MealIcon}
-        dishes={dishes}
-        firstRecipe={firstRecipe}
-        cellData={cellData}
-        isLocked={isLocked}
-        slotServingsOverride={slotServingsOverride}
-        defaultDiners={defaultDiners}
-        actions={actions}
-        canAddDish={Boolean(onAddDish || onAddRandomDish)}
-        onOpenAddDish={() => setAddDishOpen(true)}
-        onSelectDay={onSelectDay}
-        onSelectRecipe={onSelectRecipe}
-        onEditNote={onEditNote ? (position, text) => onEditNote(dayIndex, meal, position, text) : undefined}
-        onRemoveDish={onRemoveDish ? (position) => onRemoveDish(dayIndex, meal, position) : undefined}
-      />
-    </div>
-    {/* Sheets live as siblings outside the card so they don't collide
-        with stacking contexts created by motion / overflow-hidden. */}
-    <RecipePickerSheet
-      open={replacePickerOpen}
-      onClose={() => setReplacePickerOpen(false)}
-      title={`${mealLabel} del día`}
-      subtitle={firstRecipe?.recipeName ? `Ahora: ${firstRecipe.recipeName}` : "Sin plato"}
-      onPick={(picked) => {
-        if (onPickRecipe) onPickRecipe(dayIndex, meal, picked.id)
-        setReplacePickerOpen(false)
-      }}
-    />
-    <AddDishSheet
-      open={addDishOpen}
-      onClose={() => setAddDishOpen(false)}
-      slotLabel={`${mealLabel} del día`}
-      onPickAleatorio={() => {
-        if (onAddRandomDish) onAddRandomDish(dayIndex, meal)
-        setAddDishOpen(false)
-      }}
-      onPickRecipe={(recipeId) => {
-        if (onAddDish) onAddDish(dayIndex, meal, { kind: 'recipe', recipeId })
-        setAddDishOpen(false)
-      }}
-      onAddNote={(text) => {
-        if (onAddDish) onAddDish(dayIndex, meal, { kind: 'note', text })
-        setAddDishOpen(false)
-      }}
-    />
-    {firstRecipe && onBan && (
-      <ConfirmSheet
-        open={confirm === "ban"}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => onBan(dayIndex, meal, firstRecipe.recipeId)}
-        title={`¿Vetar «${firstRecipe.recipeName ?? "esta receta"}» del resto de la semana?`}
-        message="Pondremos otra receta en su lugar y no volverá a salir esta semana."
-        confirmLabel="Vetar"
-      />
-    )}
-    {onRemove && (
-      <ConfirmSheet
-        open={confirm === "remove"}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => onRemove(dayIndex, meal)}
-        title="¿Quitar este plato del día?"
-        message="Solo de este día; tus preferencias no cambian."
-        confirmLabel="Quitar"
-      />
-    )}
+      <div ref={setDropRef} data-week-row={`${dayIndex}-${meal}`} className={`relative ${isOver ? "rounded-xl ring-2 ring-inset ring-[#1A1612]/40" : ""}`}>
+        <FilledRow
+          dayIndex={dayIndex}
+          meal={meal}
+          mealLabel={mealLabel}
+          MealIcon={MealIcon}
+          dishes={dishes}
+          firstRecipe={firstRecipe}
+          cellData={cellData}
+          isLocked={ctx.isLocked}
+          // A leftover is part of its source batch: no «N pax» chip (PRO-75).
+          servingsOverride={firstRecipe?.variant === "leftover" ? null : ctx.slot.servings ?? null}
+          menuButton={
+            readOnly ? null : (
+              <MealOptionsButton
+                ctl={ctl}
+                label={`Más opciones de ${mealLabel.toLowerCase()} del ${dayName}`}
+                className="-my-3 -mr-1 text-ink-mid"
+              />
+            )
+          }
+          onSelectDay={onSelectDay}
+          onSelectRecipe={(recipeId) => onSelectRecipe(recipeId, slotServings(ctx))}
+          onEditNote={handlers.editNote}
+          onRemoveDish={handlers.removeDish}
+        />
+      </div>
+      {/* The sheets live outside the card: React events bubble out of their
+          portals, and the card's click opens the recipe and its pointer drags. */}
+      {sheets}
     </>
   )
-}
-
-interface ActionDef {
-  icon: typeof Shuffle
-  label: string
-  /** PRO-1174: the option, counted as `menu_sheet_action` of the `semana_fila` sheet. */
-  action: MenuSheetAction
-  onSelect: () => void
-  destructive?: boolean
 }
 
 function FilledRow({
@@ -763,11 +446,8 @@ function FilledRow({
   firstRecipe,
   cellData,
   isLocked,
-  slotServingsOverride,
-  defaultDiners,
-  actions,
-  canAddDish,
-  onOpenAddDish,
+  servingsOverride,
+  menuButton,
   onSelectDay,
   onSelectRecipe,
   onEditNote,
@@ -781,28 +461,24 @@ function FilledRow({
   firstRecipe: RecipeDish | null
   cellData: CellData | null
   isLocked: boolean
-  slotServingsOverride: number | null
-  defaultDiners?: number
-  actions: ActionDef[]
-  canAddDish: boolean
-  onOpenAddDish: () => void
+  servingsOverride: number | null
+  /** The "···" that opens the meal sheet (none on a past week). */
+  menuButton: React.ReactNode
   onSelectDay: (dayIndex: number) => void
   onSelectRecipe: (recipeId: string) => void
-  onEditNote?: (position: number, text: string) => void
-  onRemoveDish?: (position: number) => void
+  onEditNote: (position: number, text: string) => void
+  onRemoveDish: (position: number) => void
 }) {
-  // Drag handle is the whole card (first recipe carries the drag payload).
-  // If the slot is note-only we render but skip drag wiring.
+  // The whole card is the drag handle (the first recipe carries the payload).
   const dragId = cellData ? `row-${dayIndex}-${meal}` : `noop-${dayIndex}-${meal}`
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
     data: cellData ?? { day: dayIndex, meal, isPlaceholder: true },
     disabled: cellData == null,
   })
+  // PRO-1186: «Legumbres · semana tipo», short, as the desktop cell.
+  const weekType = weekTypeChipOf(dishes)
 
-  // The image and the "..." menu live inside the same card. The card itself
-  // is the drag handle on lg+. The menu's portalled popover keeps clicks
-  // outside the card to avoid drag conflicts (target.closest catches them).
   return (
     <div
       ref={setNodeRef}
@@ -813,15 +489,16 @@ function FilledRow({
       onClick={(e) => {
         if (isDragging) return
         const target = e.target as HTMLElement
-        // Clicks on the action menu or its dishes manage their own targets.
+        // The "···" and the dishes manage their own clicks.
         if (target.closest('[data-row-menu="1"]')) return
         if (target.closest('[data-dish-row="1"]')) return
-        if (target.closest('[data-add-dish="1"]')) return
         // Default: tap the card → recipe detail (first recipe) or day flip.
         if (firstRecipe) onSelectRecipe(firstRecipe.recipeId)
         else onSelectDay(dayIndex)
       }}
       onKeyDown={(e) => {
+        // Only keys on the card itself: Enter on the "···", a dish or a note is theirs.
+        if (e.target !== e.currentTarget) return
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
           if (!isDragging) {
@@ -830,11 +507,11 @@ function FilledRow({
           }
         }
       }}
-      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors lg:flex-col lg:items-stretch lg:gap-0 lg:px-0 lg:py-0 lg:rounded-lg lg:border lg:border-[#DDD6C5] lg:bg-[#FFFEFA] ${
-        isDragging ? "opacity-30" : "hover:bg-[#F2EDE0] lg:hover:opacity-95"
+      className={`relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors ${
+        isDragging ? "opacity-30" : "hover:bg-[#F2EDE0]"
       }`}
     >
-      <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0] lg:h-auto lg:w-full lg:rounded-none lg:rounded-t-lg lg:aspect-[4/3]">
+      <div className="relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-lg bg-[#F2EDE0]">
         <RecipeCover
           src={firstRecipe?.imageUrl}
           name={firstRecipe?.recipeName ?? mealLabel}
@@ -856,56 +533,53 @@ function FilledRow({
             Nevera
           </span>
         )}
-        {cellData?.totalMinutes != null && cellData.totalMinutes > 0 && (
-          <span className="absolute right-1 top-1 hidden rounded-full bg-[#FAF6EE]/95 px-1.5 py-0.5 text-[9px] font-medium text-[#1A1612] backdrop-blur-sm lg:inline-flex">
-            {cellData.totalMinutes}'
-          </span>
-        )}
         {isLocked && (
           <span title="Se queda si rehaces la semana" className="absolute left-1 top-1 inline-flex items-center rounded-full bg-[#FAF6EE]/95 p-1 text-[#1A1612] backdrop-blur-sm">
             <Lock size={9} strokeWidth={2} role="img" aria-label="Se queda si rehaces la semana" />
           </span>
         )}
       </div>
-      <div className="min-w-0 flex-1 lg:px-2 lg:pt-1.5 lg:pb-2">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
           <p className="m-0 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[#7A7066]">
             <MealIcon size={12} strokeWidth={1.6} />
             {mealLabel}
           </p>
-          {actions.length > 0 && (
-            <RowActionsButton actions={actions} />
+          {menuButton && (
+            // A press on the "···" doesn't drag the card. Keys go on: the
+            // sheets close with Escape from a window listener.
+            <span
+              data-row-menu="1"
+              className="shrink-0"
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              {menuButton}
+            </span>
           )}
         </div>
 
-        {/* Servings chip (mirrors Vista día's surface). */}
-        {slotServingsOverride != null && (
+        {servingsOverride != null && (
           <div className="mt-1 flex flex-wrap items-center gap-1">
-            {slotServingsOverride != null && (
-              <span className="inline-flex items-center gap-0.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#7A7066]">
-                <Users size={9} strokeWidth={2} />
-                {slotServingsOverride} pax
-              </span>
-            )}
+            <span className="inline-flex items-center gap-0.5 rounded-full border border-[#DDD6C5] bg-[#FFFEFA] px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-[0.12em] text-[#7A7066]">
+              <Users size={9} strokeWidth={2} />
+              {servingsOverride} pax
+            </span>
           </div>
         )}
 
-        {/* Dish list — every dish is shown, not just the first. */}
+        {/* Every dish is shown, not just the first; a note edits in place. */}
         <ul className="mt-1 space-y-0.5">
           {dishes.map((dish, i) => (
-            <li
-              key={i}
-              data-dish-row="1"
-              className="flex items-center gap-1.5"
-            >
-              {dish.kind === 'recipe' ? (
+            <li key={i} data-dish-row="1" className="flex items-center gap-1.5">
+              {dish.kind === "recipe" ? (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     onSelectRecipe(dish.recipeId)
                   }}
-                  className="block min-w-0 flex-1 truncate text-left text-[13px] font-medium text-[#1A1612] hover:text-[#C65D38] lg:line-clamp-2 lg:whitespace-normal lg:text-[12.5px] lg:leading-snug"
+                  className="block min-w-0 flex-1 truncate text-left text-[13px] font-medium text-[#1A1612] hover:text-[#C65D38]"
                   title={dish.recipeName ?? undefined}
                 >
                   {shortRecipeName(dish.recipeName ?? "Receta")}
@@ -914,8 +588,8 @@ function FilledRow({
                 <div className="min-w-0 flex-1">
                   <NoteEditor
                     text={dish.text}
-                    onSave={(text) => onEditNote?.(i, text)}
-                    onRemove={onRemoveDish ? () => onRemoveDish(i) : undefined}
+                    onSave={(text) => onEditNote(i, text)}
+                    onRemove={() => onRemoveDish(i)}
                     variant="inline"
                   />
                 </div>
@@ -924,122 +598,19 @@ function FilledRow({
           ))}
         </ul>
 
-        {/* "+ añadir" affordance only at lg+ where there's space for a
-            secondary row; mobile users go through the full action menu. */}
-        {canAddDish && (
-          <button
-            type="button"
-            data-add-dish="1"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenAddDish()
-            }}
-            className="mt-1.5 hidden w-full items-center justify-center gap-1 rounded-md border border-dashed border-[#DDD6C5] py-1 text-[9px] uppercase tracking-[0.12em] text-[#7A7066] transition-colors hover:border-[#1A1612] hover:text-[#1A1612] lg:flex"
+        {weekType && (
+          <p
+            data-testid="week-row-week-type"
+            className={`mt-0.5 text-[11px] leading-tight ${weekType.missing ? "font-medium text-terracotta-deep" : "text-[#7A7066]"}`}
           >
-            <Plus size={9} />
-            Añadir plato
-          </button>
+            {weekType.missing ? "Sin receta de ese tipo" : weekType.label}
+          </p>
         )}
 
         {cellData?.totalMinutes != null && cellData.totalMinutes > 0 && (
-          <p className="mt-0.5 text-[11px] text-[#7A7066] lg:hidden">
-            {cellData.totalMinutes} min
-          </p>
+          <p className="mt-0.5 text-[11px] text-[#7A7066]">{cellData.totalMinutes} min</p>
         )}
       </div>
-    </div>
-  )
-}
-
-/**
- * "..." menu trigger + popover. The popover is rendered into document.body
- * via createPortal — sibling `motion.article` cards each create their own
- * stacking context (transform / will-change), so any in-tree z-index would
- * be clipped or hidden behind a neighbouring card image. Portalling to the
- * root escapes every parent stacking context permanently.
- */
-function RowActionsButton({ actions }: { actions: ActionDef[] }) {
-  const [open, setOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
-
-  useLayoutEffect(() => {
-    if (!open) return
-    function place() {
-      const el = triggerRef.current
-      if (!el) return
-      const r = el.getBoundingClientRect()
-      setPos({
-        top: r.bottom + 4,
-        right: Math.max(8, window.innerWidth - r.right),
-      })
-    }
-    place()
-    window.addEventListener("resize", place)
-    window.addEventListener("scroll", place, true)
-    return () => {
-      window.removeEventListener("resize", place)
-      window.removeEventListener("scroll", place, true)
-    }
-  }, [open])
-
-  return (
-    <div data-row-menu="1" className="shrink-0">
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen((v) => !v)
-        }}
-        className="rounded-full p-1 text-[#7A7066] transition-colors hover:bg-[#F2EDE0] hover:text-[#1A1612]"
-        aria-label="Acciones rápidas"
-        aria-expanded={open}
-      >
-        <MoreHorizontal size={14} />
-      </button>
-      {open && typeof window !== "undefined" && pos && createPortal(
-        <>
-          <button
-            type="button"
-            aria-hidden="true"
-            tabIndex={-1}
-            onClick={(e) => {
-              e.stopPropagation()
-              setOpen(false)
-            }}
-            className="fixed inset-0 z-[60] cursor-default bg-transparent"
-          />
-          <div
-            data-row-menu="1"
-            className="fixed z-[70] w-44 overflow-hidden rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] shadow-[0_12px_24px_-12px_rgba(26,22,18,0.28)]"
-            style={{ top: pos.top, right: pos.right }}
-          >
-            {actions.map((a) => {
-              const Icon = a.icon
-              return (
-                <button
-                  key={a.label}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    trackSheetAction("semana_fila", a.action)
-                    a.onSelect()
-                    setOpen(false)
-                  }}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-[#F2EDE0] ${
-                    a.destructive ? "text-[#C65D38]" : "text-[#1A1612]"
-                  }`}
-                >
-                  <Icon size={13} strokeWidth={1.6} />
-                  {a.label}
-                </button>
-              )
-            })}
-          </div>
-        </>,
-        document.body,
-      )}
     </div>
   )
 }

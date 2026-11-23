@@ -36,6 +36,18 @@ export function isShoppingItemList(value: unknown): value is ShoppingItem[] {
   return Array.isArray(value) && value.every((i) => i && typeof i === 'object' && typeof (i as any).name === 'string' && 'aisle' in (i as any))
 }
 
+/**
+ * The items of what `get_shopping_list` returns: its `data` is the list
+ * itself (`{ listId, items }`), not the bare array. 18-nov: WhatsApp only took
+ * the bare array, so the list never followed the reply («la tienes justo
+ * debajo» and nothing below). Either shape → the items; anything else → null.
+ */
+export function shoppingItemsOf(value: unknown): ShoppingItem[] | null {
+  if (isShoppingItemList(value)) return value
+  const items = value && typeof value === 'object' ? (value as { items?: unknown }).items : undefined
+  return isShoppingItemList(items) ? items : null
+}
+
 export function shoppingListDigest(all: ShoppingItem[]): string {
   // «No lo compro esta semana» (PRO-175) is not part of the list.
   const items = all.filter((i) => !i.skipped)

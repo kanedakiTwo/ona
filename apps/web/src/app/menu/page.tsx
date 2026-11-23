@@ -8,8 +8,9 @@
  * "···" for the week), day strip, the day's featured meal as a full-bleed
  * photo with "Empezar a cocinar", the other meals as rows. Every per-meal
  * action sits behind its own "···" (MealOptions); every week action behind
- * the header "···" (WeekActionsSheet). Vista semana (mobile) keeps the
- * draggable WeekGridView. Desktop (lg+) renders MenuDesktop: hero row +
+ * the header "···" (WeekActionsSheet). Vista semana (mobile) is the
+ * draggable WeekGridView, whose rows open the same meal sheet with the same
+ * `slotPropsFor` (PRO-1178). Desktop (lg+) renders MenuDesktop: hero row +
  * "La semana" columns with drag & drop.
  */
 import { NoHealthDataNotice } from "@/components/menu/NoHealthDataNotice"
@@ -938,69 +939,26 @@ export default function MenuPage() {
         showWeekGrid ? (
           <div className="mt-4">
             <WeekGridView
-              days={menu.days as never}
+              days={days}
               weekStart={weekStart}
               todayIndex={todayIndex}
               skippedDays={skippedDays}
-              lockedSlots={menu.locked as never}
-              defaultDiners={defaultDiners}
+              readOnly={isPastWeek}
+              // PRO-1178: the same sheet, context and handlers as Vista día.
+              slotPropsFor={slotPropsFor}
+              absentFor={absentFor}
               onSelectDay={(d) => {
                 setSelectedDay(d)
                 setViewMode("day")
               }}
-              onSelectRecipe={(recipeId) => {
+              onSelectRecipe={(recipeId, servings) => {
                 haptic.light()
-                router.push(menuRecipeHref(recipeId))
+                router.push(menuRecipeHref(recipeId, servings))
               }}
               onMoveSlot={onMoveSlot}
               onUnskipDay={(d) => {
                 haptic.light()
                 unskipDay.mutate({ menuId: menu.id, day: d })
-              }}
-              onRandomize={(d, m) => {
-                haptic.medium()
-                regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m })
-              }}
-              onBan={(d, m, recipeId) => {
-                haptic.medium()
-                banRecipe.mutate(
-                  { menuId: menu.id, recipeId },
-                  { onSuccess: () => regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m }) },
-                )
-              }}
-              onRemove={(d, m) => {
-                haptic.medium()
-                deleteMealSlot.mutate({ menuId: menu.id, day: d, meal: m })
-              }}
-              onAddRecipe={(d, m, recipeId) => {
-                haptic.medium()
-                // An empty meal takes the recipe in place; one the day doesn't have is added (PRO-1177).
-                if (days[d]?.[m]) regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
-                else addMealSlot.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
-              }}
-              onFillAuto={(d, m, dishType) => {
-                haptic.medium()
-                return addMealSlot.mutateAsync({ menuId: menu.id, day: d, meal: m, dishType })
-              }}
-              onPickRecipe={(d, m, recipeId) => {
-                haptic.medium()
-                regenerateMeal.mutate({ menuId: menu.id, day: d, meal: m, recipeId })
-              }}
-              onToggleLock={(d, m, nextLocked) => lockMeal.mutate({ menuId: menu.id, day: d, meal: m, locked: nextLocked })}
-              onAddDish={(d, m, payload) => {
-                haptic.light()
-                addDish.mutate({ menuId: menu.id, day: d, meal: m, payload })
-              }}
-              onAddRandomDish={(d, m) => {
-                haptic.medium()
-                addRandomDish.mutate({ menuId: menu.id, day: d, meal: m })
-              }}
-              onEditNote={(d, m, position, text) =>
-                patchDish.mutate({ menuId: menu.id, day: d, meal: m, position, patch: { text } })
-              }
-              onRemoveDish={(d, m, position) => {
-                haptic.medium()
-                removeDish.mutate({ menuId: menu.id, day: d, meal: m, position })
               }}
             />
           </div>

@@ -11,7 +11,7 @@ import { db } from '../db/connection.js'
 import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema } from '@ona/shared'
+import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema, pastDayIndexes } from '@ona/shared'
 import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish, WeekTypeOption } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
@@ -26,7 +26,7 @@ import { getMemoryForUser } from '../services/userMemoryStore.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
 import { generateAndSaveMenu } from '../services/menuGenerate.js'
 import { autoplanNoticeFor, markAutoplanViewed, noteAutoplanChange } from '../services/weeklyAutoplan.js'
-import { loadSlotPickContext, slotPickOptions } from '../services/menuSlotPick.js'
+import { loadSlotPickContext, pickForSlot, slotPickOptions } from '../services/menuSlotPick.js'
 import { memoryTastes } from '../services/menuTastes.js'
 import {
   menuEditWho,
@@ -42,6 +42,7 @@ import { dayTimeBudget, detectSeason } from '@ona/shared'
 import { schoolDinnerPool } from '../services/schoolMenu.js'
 import { slotTimeBudget } from '../services/menuHolidays.js'
 import { requestChannel } from '../services/usageEvents.js'
+import { madridParts } from '../services/madridTime.js'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
 import { resolveScope, scopeWhere, getPrimaryHouseholdId, canAccessRow } from '../services/scopeResolver.js'
 import {
@@ -621,7 +622,9 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
     // Allergies and diet of the whole household, dislikes, equipment,
     // favourites, ratings and the catalogue (shared with PRO-364's review).
     const pickCtx = await loadSlotPickContext(menu, req.userId!)
-    const { pool: recipesWithIngredients, options: matcherOptions } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds)
+    // With the week (2026-11-19): weekly limits, light meals, a working day's
+    // time, and a main food not already in the week while one fits.
+    const pick = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIds, days)
 
     // Re-pick a recipe for each existing recipe-dish, preserving the dish's course.
     // Note dishes stay in place unchanged. «Semana tipo» (D-182): a dish the
@@ -637,7 +640,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       const dish = slot.dishes[i]
       if (dish.kind !== 'recipe') continue
       if (chipType && i === firstRecipeAt) {
-        const picked = findForCourse(poolOfChipType(recipesWithIngredients, chipType, dish.recipeId), null, matcherOptions)
+        const picked = pickForSlot(pick, null, (p) => poolOfChipType(p, chipType, dish.recipeId))
         if (!picked) {
           const label = dishTypeInfo(chipType)?.label ?? chipType
           res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con esta comida.`, code: 'NO_RECIPE_OF_TYPE' })
@@ -648,7 +651,7 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
       }
       const type = await weekTypeDishTypeAt(menu.userId, menu.weekStart, dayIndex, meal, i)
       const currentCourse = type ? null : dish.course ?? null
-      const picked = findForCourse(poolOfDishType(recipesWithIngredients, type), currentCourse, matcherOptions)
+      const picked = pickForSlot(pick, currentCourse, (p) => poolOfDishType(p, type))
       if (!picked) continue  // keep the old recipe if no candidate
       newDishes[i] = {
         kind: 'recipe',
@@ -679,10 +682,10 @@ router.put('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =>
 // POST /menu/:menuId/day/:day/meal/:meal/week-type { option } — «Guardar en
 // mi semana tipo» (PRO-1186, design §4): that day and meal of the household's
 // week type take this option every week, and the meal on screen follows it
-// now unless it is locked, eaten or a táper (`weekTypeMealChange`). Answers
-// the week with `weekTypeApplied`: `mark` (it already was it: now with its
-// chip), `changed`, `kept` or `missing` (no recipe of that type fits this
-// meal: it stays as it is).
+// now unless it is locked, eaten, a táper or on a day that already went by
+// (`weekTypeMealChange`). Answers the week with `weekTypeApplied`: `mark` (it
+// already was it: now with its chip), `changed`, `kept` or `missing` (no
+// recipe of that type fits this meal: it stays as it is).
 const weekTypeSaveSchema = z.object({ option: weekTypeOptionSchema })
 router.post('/menu/:menuId/day/:day/meal/:meal/week-type', async (req: AuthRequest, res) => {
   try {
@@ -741,8 +744,10 @@ router.post('/menu/:menuId/day/:day/meal/:meal/week-type', async (req: AuthReque
     )
 
     const locked = Boolean((menu.locked as LockedSlots | null)?.[String(dayIndex)]?.[meal])
+    // A day of the week on screen that already went by stays as it is: saved for every week, not redone.
+    const past = pastDayIndexes(menu.weekStart, madridParts(new Date()).isoDate).includes(dayIndex)
     const change = weekTypeMealChange(slot, option, {
-      locked,
+      locked: locked || past,
       dishTypes: mainRecipeId ? byId.get(mainRecipeId)?.dishTypes : null,
       recipe: chosen ? { id: chosen.id, name: chosen.name, course: (chosen.course as RecipeDish['course']) ?? null } : null,
     })
@@ -1559,11 +1564,21 @@ const addDishSchema = z.union([
   }),
 ])
 
-/** A recipe dish without a name gets its recipe's (PRO-240). Notes and named dishes pass through. */
-async function withRecipeNameStored(dish: Dish): Promise<Dish> {
-  if (dish.kind !== 'recipe' || dish.recipeName?.trim()) return dish
-  const [row] = await db.select({ name: recipes.name }).from(recipes).where(eq(recipes.id, dish.recipeId)).limit(1)
-  return row ? { ...dish, recipeName: row.name } : dish
+/**
+ * A recipe dish only with a recipe the caller can see (PRO-1274: another
+ * household's private recipe used to go in, and its name, photo and
+ * ingredients showed in the menu and the shopping list); null if not.
+ * Without a name, it gets its recipe's (PRO-240). Notes pass through.
+ */
+async function visibleDishWithName(dish: Dish, userId: string): Promise<Dish | null> {
+  if (dish.kind !== 'recipe') return dish
+  const [row] = await db
+    .select({ name: recipes.name })
+    .from(recipes)
+    .where(and(eq(recipes.id, dish.recipeId), visibleRecipeWhere(await visibleAuthorIds(userId))))
+    .limit(1)
+  if (!row) return null
+  return dish.recipeName?.trim() ? dish : { ...dish, recipeName: row.name }
 }
 
 // B.1: POST /menu/:menuId/day/:day/meal/:meal/dish — append a dish to a slot.
@@ -1582,8 +1597,10 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish', async (req: AuthRequest, r
     const days = menu.days as DayMenu[]
     const slot = days[day]?.[meal] ?? { servings: null, dishes: [] }
     // PRO-240: the dish is stored with its recipe's name (Mimo's tápers
-    // came without one and the menu showed «Receta»).
-    const named = await withRecipeNameStored(parsed.data as Dish)
+    // came without one and the menu showed «Receta»). PRO-1274: 404, as
+    // GET /recipes/:id, when the caller can't see that recipe.
+    const named = await visibleDishWithName(parsed.data as Dish, req.userId!)
+    if (!named) { res.status(404).json({ error: 'Recipe not found' }); return }
     const next = addDish(slot.dishes, named)
     if (!days[day]) days[day] = {}
     days[day][meal] = { ...slot, dishes: next }
@@ -1756,61 +1773,19 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/:position/regenerate', async
       }
     }
 
-    const [user] = await db
-      .select({ restrictions: users.restrictions })
-      .from(users)
-      .where(eq(users.id, menu.userId))
-      .limit(1)
-    const memRegen = await getMemoryForUser(menu.userId).catch(() => null)
-    // PRO-305: every member's allergies and diet, like the weekly menu.
-    const restrictions = await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memRegen), menu.userId)
-    const dislikesValRegen = memRegen?.dislikes?.value
-    const equipValRegen = memRegen?.equipment?.value
-    // The household's ficha on top (PRO-253): dislikes of every member, equipment missing right now.
-    const { dislikes: dislikesRegen, availableEquipment: availEquipRegen, unavailableEquipment: unavailEquip3, tastes: tastesRegen } = withFichaFilters(
-      {
-        dislikes: Array.isArray(dislikesValRegen) ? (dislikesValRegen as string[]) : [],
-        availableEquipment: Array.isArray(equipValRegen) ? new Set<string>((equipValRegen as string[]).map(normaliseEquipment)) : undefined,
-        tastes: memoryTastes(memRegen),
-      },
-      await loadFichaMenuConstraints(menu.userId),
-    )
-    const timeBudgetRegen = slotTimeBudget(memRegen, menu.weekStart, day)
-
-    const favScopeRegen = await resolveScope(menu.userId)
-    const favRowsRegen = await db
-      .select({ recipeId: userFavorites.recipeId })
-      .from(userFavorites)
-      .where(scopeWhere(userFavorites.userId, userFavorites.householdId, favScopeRegen))
-    const ratedRegen = withHouseholdRatings(
-      new Set<string>(favRowsRegen.map((f: any) => f.recipeId)),
-      new Set(menu.bannedRecipeIds ?? []),
-      await loadHouseholdRatingSets(req.userId!),
-    )
-
-    // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
-    const recipesWithIngredientsRegen = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, day, meal)
-
-    const matcherOptionsRegen = {
-      meal: meal as Meal,
-      season: detectSeason(),
-      usedRecipeIds,
-      restrictions,
-      ...ratedRegen,
-      dislikes: dislikesRegen,
-      availableEquipment: availEquipRegen,
-      unavailableEquipment: unavailEquip3,
-      tastes: tastesRegen,
-      timeBudget: timeBudgetRegen,
-    }
+    // The same context and rules as «Cambiar» (menuSlotPick.ts): everyone's
+    // allergies and diet (PRO-305), the ficha (PRO-253, 2026-11-19: whole
+    // categories, weekly limits, light meals), ratings, a working day's time
+    // and, while one fits, a main food not already in the week.
+    const pickRegen = await slotPickOptions(await loadSlotPickContext(menu, req.userId!), menu, day, meal, usedRecipeIds, days)
 
     // «Semana tipo» (D-182): another recipe of the type the week type asks for there.
     // PRO-1176: «Que elija Mimoia» in that dish's picker, with its type chip: only that type (none → 409).
     const chipRegen = isDishType(req.body?.dishType) ? (req.body.dishType as string) : null
     const typeRegen = chipRegen ? null : await weekTypeDishTypeAt(menu.userId, menu.weekStart, day, meal, position)
     const picked = chipRegen
-      ? findForCourse(poolOfChipType(recipesWithIngredientsRegen, chipRegen, dish.recipeId), null, matcherOptionsRegen)
-      : findForCourse(poolOfDishType(recipesWithIngredientsRegen, typeRegen), typeRegen ? null : dish.course ?? null, matcherOptionsRegen)
+      ? pickForSlot(pickRegen, null, (p) => poolOfChipType(p, chipRegen, dish.recipeId))
+      : pickForSlot(pickRegen, typeRegen ? null : dish.course ?? null, (p) => poolOfDishType(p, typeRegen))
     if (!picked && chipRegen) {
       const label = dishTypeInfo(chipRegen)?.label ?? chipRegen
       res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con este plato.`, code: 'NO_RECIPE_OF_TYPE' })

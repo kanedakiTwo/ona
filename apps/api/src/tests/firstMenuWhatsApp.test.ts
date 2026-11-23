@@ -30,6 +30,19 @@ vi.mock('../services/menuWeek.js', async (orig) => ({
   loadPreviousWeek: vi.fn(async () => ({ days: undefined, locked: {}, bannedRecipeIds: new Set(), skippedDays: new Set() })),
 }))
 vi.mock('../services/scopeResolver.js', async (orig) => ({ ...(await orig<any>()), getPrimaryHouseholdId: vi.fn(async () => null) }))
+// 19-nov: the dishes said in the sign-up are looked up in the household's recipes and the catalogue.
+const POOL = [
+  { id: 'salmon', name: 'Salmón al horno con patatas', meals: ['dinner'] },
+  { id: 'pollo', name: 'Pollo a la plancha con brócoli', meals: ['lunch', 'dinner'] },
+  { id: 'bravas', name: 'Patatas bravas', meals: ['lunch'] },
+]
+vi.mock('../services/matchableRecipes.js', async (orig) => ({ ...(await orig<any>()), loadMatchableRecipes: vi.fn(async () => POOL) }))
+vi.mock('../services/weekType.js', async (orig) => ({ ...(await orig<any>()), saveWeekTypeSlots: vi.fn(async () => []) }))
+vi.mock('../services/userMemoryStore.js', async (orig) => ({
+  ...(await orig<any>()),
+  getMemoryForUser: vi.fn(async () => ({ dislikes: { value: ['casqueria'] } })),
+  setMemoryBatch: vi.fn(async () => undefined),
+}))
 vi.mock('../services/calorieCalculator.js', async (orig) => ({ ...(await orig<any>()), calculateMenuCaloriesFromDB: vi.fn(async () => 0) }))
 vi.mock('../services/nutrientCalculator.js', async (orig) => ({ ...(await orig<any>()), calculateMenuNutrientsFromDB: vi.fn(async () => ({})) }))
 vi.mock('../services/nutrientBalance.js', async (orig) => ({ ...(await orig<any>()), updateBalance: vi.fn(async () => undefined) }))
@@ -42,6 +55,9 @@ vi.mock('../services/menuFit.js', async (orig) => ({
 
 const { skills } = await import('../services/assistant/skills.js')
 const { saveOnboarding } = await import('../services/onboarding.js')
+const { saveWeekTypeSlots } = await import('../services/weekType.js')
+const { setMemoryBatch } = await import('../services/userMemoryStore.js')
+const { getPrimaryHouseholdId } = await import('../services/scopeResolver.js')
 const { shopperInviteForSignUp } = await import('../services/shopperInvite.js')
 const completeOnboarding = skills.find((s) => s.name === 'complete_onboarding')!
 
@@ -74,7 +90,7 @@ describe('complete_onboarding — first menu from today (PRO-244)', () => {
   afterEach(() => vi.useRealTimers())
 
   it('a Wednesday sign-up: this week only, Monday and Tuesday not generated', async () => {
-    vi.setSystemTime(new Date('2026-10-14T16:00:00Z')) // miércoles 14, 18:00 Madrid
+    vi.setSystemTime(new Date('2026-10-14T10:00:00Z')) // miércoles 14, 12:00 Madrid
     const db = fakeDb()
     const r = await completeOnboarding.handler(answers, { userId: 'u1', db } as any)
     expect(generateCalls).toEqual([{ weekStart: '2026-10-12', skipped: [0, 1] }])
@@ -84,7 +100,29 @@ describe('complete_onboarding — first menu from today (PRO-244)', () => {
     expect(db.saved[0].days[2].lunch.dishes).toHaveLength(1)
     expect(db.saved[0].skippedDays).toEqual([])
     expect((r.data as any).weekStart).toBe('2026-10-12')
-    expect(r.summary).toMatch(/Empieza hoy \(miercoles\)/)
+    // 19-nov: at 12:00 only breakfast is gone; the menu starts with today's lunch.
+    expect(r.summary).toMatch(/Empieza con la comida de hoy \(miercoles\)/)
+  })
+
+  it('19-nov: a 22:00 sign-up starts tomorrow, and Mimo is told not to talk about today', async () => {
+    vi.setSystemTime(new Date('2026-11-18T21:00:00Z')) // miércoles 18, 22:00 Madrid
+    const db = fakeDb()
+    const r = await completeOnboarding.handler(answers, { userId: 'u1', db } as any)
+    expect(generateCalls).toEqual([{ weekStart: '2026-11-16', skipped: [0, 1, 2] }])
+    expect(db.saved[0].days[2]).toEqual({})
+    expect(db.saved[0].days[3].lunch.dishes).toHaveLength(1)
+    expect(r.summary).toMatch(/Empieza mañana \(jueves\)/)
+    expect(r.summary).toMatch(/No hables de comidas de hoy/)
+  })
+
+  it('19-nov: a 15:00 sign-up starts with tonight\'s dinner (today\'s lunch is left empty)', async () => {
+    vi.setSystemTime(new Date('2026-11-18T14:00:00Z')) // miércoles 18, 15:00 Madrid
+    const db = fakeDb()
+    const r = await completeOnboarding.handler(answers, { userId: 'u1', db } as any)
+    expect(generateCalls).toEqual([{ weekStart: '2026-11-16', skipped: [0, 1] }])
+    expect(db.saved[0].days[2].lunch).toBeUndefined()
+    expect(db.saved[0].days[3].lunch.dishes).toHaveLength(1)
+    expect(r.summary).toMatch(/Empieza con la cena de hoy \(miercoles\)/)
   })
 
   it('a Saturday sign-up: Saturday and Sunday of this week, plus the whole next week', async () => {
@@ -99,6 +137,53 @@ describe('complete_onboarding — first menu from today (PRO-244)', () => {
     // The reply (and the WhatsApp picture) is this week, from today.
     expect((r.data as any).weekStart).toBe('2026-10-12')
     expect(r.summary).toMatch(/semana que viene/)
+  })
+})
+
+describe('complete_onboarding — the four questions to the ficha and the first menu (19-nov)', () => {
+  beforeEach(() => {
+    generateCalls.length = 0
+    vi.mocked(saveOnboarding).mockClear()
+    vi.mocked(saveWeekTypeSlots).mockClear()
+    vi.mocked(setMemoryBatch).mockClear()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-17T08:00:00Z')) // martes 17, 09:00 Madrid
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('the dishes they make often are in the first menu: the catalogue\'s when it has them, a note to make the household\'s recipe when not', async () => {
+    const db = fakeDb()
+    const r = await completeOnboarding.handler(
+      { adults: 2, kidsCount: 0, dinners: 6, lunches: 1, favoriteDishes: ['salmón al horno con patatas', 'pollo a la plancha con brócoli', 'tortilla de mi abuela'] },
+      { userId: 'u1', db } as any,
+    )
+    const dishes = db.saved[0].days.flatMap((d: any) => Object.values(d).flatMap((slot: any) => slot.dishes))
+    expect(dishes).toContainEqual(expect.objectContaining({ kind: 'recipe', recipeId: 'salmon' }))
+    expect(dishes).toContainEqual(expect.objectContaining({ kind: 'recipe', recipeId: 'pollo' }))
+    expect(dishes).toContainEqual({ kind: 'note', text: 'tortilla de mi abuela' })
+    // «patatas» alone is not «salmón al horno con patatas».
+    expect(dishes).not.toContainEqual(expect.objectContaining({ recipeId: 'bravas' }))
+    expect(r.summary).toMatch(/Sus platos de siempre, en este menu: salmón al horno con patatas \(Salmón al horno con patatas/)
+    expect(r.summary).toMatch(/«tortilla de mi abuela» no esta en el catalogo[\s\S]*swap_meal \(day "2026-11-\d\d", meal "lunch", recipeName "tortilla de mi abuela" y newRecipe/)
+    // The first menu never carries the fit line («no me he acercado»…).
+    expect(r.summary).not.toMatch(/Acierto con sus gustos/)
+  })
+
+  it('«6 cenas y 1 comida» → the week type (no lunch Monday to Saturday, no dinner on Saturday) and how often they cook', async () => {
+    vi.mocked(getPrimaryHouseholdId).mockResolvedValueOnce('h1')
+    await completeOnboarding.handler({ adults: 2, kidsCount: 0, dinners: 6, lunches: 1 }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(saveOnboarding).mock.calls[0][1]).toMatchObject({ cookingFreq: 'daily', cookingStyle: undefined })
+    const [householdId, changes] = vi.mocked(saveWeekTypeSlots).mock.calls[0]
+    expect(householdId).toBe('h1')
+    const off = (changes as any[]).filter((c) => c.slot.off).map((c) => `${c.meal}:${c.day}`)
+    expect(off.sort()).toEqual(['dinner:5', 'lunch:0', 'lunch:1', 'lunch:2', 'lunch:3', 'lunch:4', 'lunch:5'])
+  })
+
+  it('what doesn\'t go in joins the dislikes the menu reads', async () => {
+    await completeOnboarding.handler({ adults: 1, kidsCount: 0, dinners: 7, lunches: 7, dislikes: ['picante', 'legumbres'] }, { userId: 'u1', db: fakeDb() } as any)
+    expect(vi.mocked(setMemoryBatch)).toHaveBeenCalledWith('u1', [{ key: 'dislikes', value: ['casqueria', 'picante', 'legumbres'] }], 'inferred', { signal: 'whatsapp' })
+    // Seven and seven: the week type stays as it is.
+    expect(saveWeekTypeSlots).not.toHaveBeenCalled()
   })
 })
 

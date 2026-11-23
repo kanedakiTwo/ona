@@ -13,7 +13,12 @@ describe('web usage paths', () => {
     expect(screenOfPath('/recipes')).toBe('recetas')
     expect(screenOfPath('/recipes/0b1c')).toBe('receta')
     expect(screenOfPath('/recipes/new')).toBeNull()
+    // PRO-1202: «Recetarios» and «Mis recetas» moved to the Recetas tab; they aren't a recipe.
+    expect(screenOfPath('/recipes/recetarios')).toBe('recetarios')
+    expect(screenOfPath('/profile/cookbooks')).toBe('recetarios')
+    expect(screenOfPath('/recipes/mias')).toBeNull()
     expect(screenOfPath('/recipes/0b1c/cook')).toBeNull()
+    expect(screenOfPath('/cocinar')).toBe('cocinar')
     expect(screenOfPath('/profile/pantry')).toBe('despensa')
     expect(screenOfPath('/profile/avisos')).toBe('avisos')
     expect(screenOfPath('/profile/casa')).toBe('casa')
@@ -22,7 +27,8 @@ describe('web usage paths', () => {
   })
 
   it('every screen and origin the web sends is one the API accepts', () => {
-    for (const p of ['/menu', '/shopping', '/compra', '/recipes', '/recipes/x', '/profile', '/profile/pantry', '/profile/avisos', '/profile/casa']) {
+    expect(USAGE_SCREENS).toContain('cocinar')
+    for (const p of ['/menu', '/cocinar', '/shopping', '/compra', '/recipes', '/recipes/x', '/profile', '/profile/pantry', '/profile/avisos', '/profile/casa']) {
       expect(USAGE_SCREENS).toContain(screenOfPath(p))
     }
     for (const prev of ['/menu?day=2', '/recipes', '/cookbooks/1', '/shopping', null, '/']) {
@@ -30,6 +36,8 @@ describe('web usage paths', () => {
     }
     expect(recipeFromPath('/menu')).toBe('menu')
     expect(recipeFromPath('/cookbooks/1')).toBe('catalogo')
+    expect(recipeFromPath('/recipes/recetarios')).toBe('catalogo')
+    expect(recipeFromPath('/recipes/mias')).toBe('catalogo')
     expect(recipeFromPath(null)).toBe('otro')
   })
 

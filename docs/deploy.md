@@ -119,7 +119,7 @@ Both are configured in the Railway dashboard, not committed.
 | `DATABASE_URL` | Auto-injected via Railway service link to `Postgres` (uses internal hostname) |
 | `JWT_SECRET` | Production secret, **≥ 32 chars** or the API refuses to boot (`openssl rand -base64 48`). Rotating it logs every user out once. |
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
-| `GROQ_API_KEY` | First in the transcription chain (WhatsApp voice notes and Mimo's voice in the app, `POST /stt`; `specs/voice-mode.md`): Groq Whisper, free plan at console.groq.com. `GROQ_TRANSCRIBE_MODEL` defaults to `whisper-large-v3-turbo`. Then AiKit (`AIKIT_API_KEY`, model `AIKIT_TRANSCRIBE_MODEL`, default `google/gemini-3.8-flash`; empty = off) and OpenAI. With none of the three `/stt` answers 503 and Mimo is text-only |
+| `GROQ_API_KEY` | First in the transcription chain (WhatsApp voice notes and Mimo's voice in the app, `POST /stt`; `specs/voice-mode.md`): Groq Whisper, free plan at console.groq.com. `GROQ_TRANSCRIBE_MODEL` defaults to `whisper-large-v3-turbo`. Then OpenAI; never AiKit (PRO-1122: no processor contract, so no users' audio; `AIKIT_TRANSCRIBE_MODEL` is no longer read and can go). With neither `/stt` answers 503 and Mimo is text-only |
 | `OPENAI_API_KEY` | Last in the transcription chain (after Groq and AiKit), and the recipe-image reserve |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Production and staging since 2026-10-09: one voice, Miguel's clone (`Miguel:qvz8MPUNfIEXPflIyvbY`, ElevenLabs Starter on mmartinlacoma@gmail.com). See `specs/voice-mode.md` |
 | `RESEND_API_KEY` / `EMAIL_FROM` / `RESEND_BASE_URL` | Optional: email through Resend (`specs/email.md`, PRO-93). Unset key = no email (each send logs `[email] not configured`). `EMAIL_FROM` defaults to `Mimoia <hola@mimoia.com>` (mimoia.com verified in Resend, EU region); `RESEND_BASE_URL` only for a mock. **Production: a session of Miguel sets the key, after Legal reviews `/privacidad` (D-050). Never in staging.** |
@@ -175,6 +175,17 @@ The `DATABASE_URL` injected into `ona-api` uses the internal hostname (`postgres
 railway variables --service Postgres --kv | grep ^DATABASE_PUBLIC_URL=
 # → postgresql://…@interchange.proxy.rlwy.net:26066/railway
 ```
+
+## Restoring a backup
+
+Every night the office keeps an encrypted copy of the production database on Oracle Cloud, Madrid, for 14 days (D-138). Whoever restores one (`hq restaurar`, or by hand) runs this **against the restored database before the API takes traffic** (PRO-1122, `specs/privacy.md` «Backups and restoring one»):
+
+```bash
+DATABASE_URL=<restored db> ERASURES_FROM_URL=<db being replaced, or the newest copy> \
+  pnpm --filter @ona/api db:apply-erasures
+```
+
+It erases again the accounts, household persons and health data erased since the copy, from the erasure log (`erasure_log`, 15 days) of both databases. Exit code 1 → do not open the service. Pass both URLs in the environment, never on the command line. Without `ERASURES_FROM_URL` it only uses the restored copy's own log, which misses everything erased after that copy.
 
 ## Recipe seed
 

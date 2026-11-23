@@ -2,10 +2,11 @@
  * Miguel, 2026-11-05: «si hay algún día que no tiene comida y le doy, quiero
  * que directamente me aparezca el menú contextual». Vista día, mobile (390×844):
  *   - an empty meal («Comida · Añadir plato»): tapping the card opens the
- *     same sheet as its «···» (Añadir plato, Fijar, Comensales, Quitar);
- *   - a missing meal («El martes no hay comida»): tapping it opens what to
- *     put there (Elegir receta, Una al azar, a táper) and «Elegir receta»
- *     adds the recipe picked, instead of a dish nobody chose.
+ *     same sheet as its «···», «Sin plato todavía» (PRO-1177: Elegir receta,
+ *     Escribir un plato, Ya lo tengo hecho and Quitar; no «Fijar»);
+ *   - a missing meal («El martes no hay comida»): tapping it opens the same
+ *     sheet without «Quitar», and «Elegir receta» adds the recipe picked,
+ *     instead of a dish nobody chose.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { addMealWithRecipe, completeOnboarding, registerFreshUser } from './_helpers'
@@ -60,9 +61,11 @@ test('tapping an empty meal opens its «···» sheet', async ({ page }) => {
   await page.getByTestId('empty-meal').first().click()
   const sheet = page.getByRole('dialog', { name: 'Sin plato todavía' })
   await expect(sheet).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /^añadir plato/i })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /^fijar/i })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /^quitar comida/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^elegir receta/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^escribir un plato/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^ya lo tengo hecho/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^quitar comida de este día/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /fijar|que no cambie|más opciones/i })).toHaveCount(0)
 })
 
 test('tapping «El … no hay comida» offers what to put there, and «Elegir receta» adds the one picked', async ({ page }) => {
@@ -81,13 +84,14 @@ test('tapping «El … no hay comida» offers what to put there, and «Elegir re
   })
   await absent.getByRole('button', { name: `Añadir comida al ${WEEKDAYS[day]}` }).click()
   const sheet = page.getByRole('dialog', { name: 'Sin plato todavía' })
-  await expect(sheet.getByRole('button', { name: /^una al azar/i })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /^del congelador/i })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /^táper de la nevera/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^escribir un plato/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^ya lo tengo hecho/i })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: /^quitar/i })).toHaveCount(0)
   expect(posted, 'opening the sheet adds nothing').toBe(false)
 
   await sheet.getByRole('button', { name: /^elegir receta/i }).click()
-  const picker = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: `Comida del ${WEEKDAYS[day]}` }) })
+  const picker = page.getByTestId('recipe-picker')
+  await expect(picker.getByRole('heading', { name: `Comida del ${WEEKDAYS[day]}` })).toBeVisible()
   const first = picker.locator('ul button').first()
   await expect(first).toBeVisible({ timeout: 15_000 })
   const added = page.waitForResponse(

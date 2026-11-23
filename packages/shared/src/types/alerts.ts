@@ -11,6 +11,7 @@ export const ALERT_KINDS = [
   'prep_alerts',
   'dinner_checkin',
   'shopping_reminder',
+  'weekly_autoplan',
   'weekly_nudge',
   'freezer_review',
 ] as const
@@ -22,6 +23,7 @@ export const ALERT_LABELS: Record<AlertKind, { title: string; description: strin
   prep_alerts: { title: 'Sacar del congelador y poner en remojo', description: 'Con tiempo, antes de cocinar.' },
   dinner_checkin: { title: '¿Hiciste la cena?', description: 'Un par de horas después de cenar, para apuntarlo.' },
   shopping_reminder: { title: '¿Toca compra?', description: 'Los sábados por la mañana, si te faltan cosas.' },
+  weekly_autoplan: { title: 'La semana, hecha cada jueves', description: 'Los jueves, Mimo os deja lista la próxima; la cambiáis cuando queráis.' },
   weekly_nudge: { title: 'Domingo de planificar', description: 'Si la semana que viene aún no tiene menú.' },
   freezer_review: { title: 'Repaso del congelador', description: 'Una vez al mes, lo que lleva tiempo congelado.' },
 }
@@ -32,8 +34,11 @@ export const ALERT_LABELS: Record<AlertKind, { title: string; description: strin
  */
 export const ALERT_OPT_IN_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>(['daily_brief'])
 
-/** Where one kind arrives today. */
-export type AlertChannel = 'whatsapp' | 'push' | 'email' | 'off'
+/** Where one kind arrives today (`app`: in the menu, no message; PRO-381). */
+export type AlertChannel = 'whatsapp' | 'push' | 'email' | 'app' | 'off'
+
+/** PRO-381: with the Thursday week on, the Sunday question isn't needed. */
+export const WEEKLY_NUDGE_AUTOPLAN_NOTE = 'No hace falta: Mimo os deja hecha la semana cada jueves.'
 
 export interface AlertRow {
   kind: AlertKind
@@ -53,6 +58,17 @@ export interface AlertsOverview {
   whatsapp: { linked: boolean; notify: boolean }
   push: { subscribed: boolean }
   kinds: AlertRow[]
+}
+
+/**
+ * PRO-381: the card on /menu after Mimo left next week done on Thursday
+ * (`GET /menu/autoplan`). `null` when there is nothing to show.
+ */
+export interface AutoplanNotice {
+  /** Monday of the week Mimo made (YYYY-MM-DD). */
+  weekStart: string
+  /** Its Sunday (YYYY-MM-DD). */
+  weekEnd: string
 }
 
 export function isAlertKind(k: unknown): k is AlertKind {
@@ -79,13 +95,19 @@ export function buildAlertRows(input: {
   pushSubscribed: boolean
 }): AlertRow[] {
   const waReady = input.whatsapp.linked && input.whatsapp.notify
+  const isOn = (kind: AlertKind) => alertKindOn(kind, input.userPrefs, input.whatsapp.linked ? input.whatsapp.prefs : null)
   return ALERT_KINDS.map((kind) => {
-    const on = alertKindOn(kind, input.userPrefs, input.whatsapp.linked ? input.whatsapp.prefs : null)
+    const on = isOn(kind)
     let channel: AlertChannel = 'off'
     let fallback: 'push' | null = null
     let note: string | null = null
     if (on) {
-      if (waReady) {
+      if (kind === 'weekly_autoplan') {
+        // PRO-381: the week itself, in the menu; it is not a message.
+        channel = 'app'
+      } else if (kind === 'weekly_nudge' && isOn('weekly_autoplan')) {
+        note = WEEKLY_NUDGE_AUTOPLAN_NOTE
+      } else if (waReady) {
         channel = 'whatsapp'
         fallback = input.pushSubscribed ? 'push' : null
       } else if (kind === 'prep_alerts' && input.pushSubscribed) {

@@ -11,7 +11,7 @@
  * switches (`get_alerts` / `set_alerts`), in the web chat and on WhatsApp.
  */
 import Link from "next/link"
-import { Bell, Mail, MessageCircle, Smartphone } from "lucide-react"
+import { Bell, CalendarCheck, Mail, MessageCircle, Smartphone } from "lucide-react"
 import type { AlertRow } from "@ona/shared"
 import { useAlerts, useSetAlert } from "@/hooks/useAlerts"
 import { Accent, SUB_CARD, SUB_EYEBROW, SUB_LIST, SubPage } from "@/components/profile/SubPage"
@@ -23,11 +23,13 @@ const CHANNEL_LABEL: Record<AlertRow["channel"], string> = {
   whatsapp: "Por WhatsApp",
   push: "Notificación del móvil",
   email: "Por correo",
+  app: "En tu menú, en la app",
   off: "No te llega",
 }
 
 function ChannelIcon({ channel }: { channel: AlertRow["channel"] }) {
-  const Icon = channel === "whatsapp" ? MessageCircle : channel === "push" ? Smartphone : channel === "email" ? Mail : Bell
+  const Icon =
+    channel === "whatsapp" ? MessageCircle : channel === "push" ? Smartphone : channel === "email" ? Mail : channel === "app" ? CalendarCheck : Bell
   return <Icon size={14} strokeWidth={1.8} aria-hidden="true" className="shrink-0" />
 }
 
@@ -46,6 +48,7 @@ export default function AvisosPage() {
   return (
     <SubPage
       eyebrow="Avisos"
+      back={{ href: "/profile/ajustes", label: "Ajustes" }}
       title={
         <>
           Qué te llega y <Accent>por dónde</Accent>
@@ -113,8 +116,8 @@ export default function AvisosPage() {
                   <strong className="font-medium text-ink">Notificaciones del móvil:</strong>{" "}
                   {data.push.subscribed ? "activadas." : "sin activar."}
                 </p>
-                <Link href="/profile" className="inline-block pt-1 text-[13px] font-medium text-ink underline underline-offset-2">
-                  Cambiarlos en Perfil
+                <Link href="/profile/ajustes" className="inline-block pt-1 text-[13px] font-medium text-ink underline underline-offset-2">
+                  Cambiarlos en Ajustes
                 </Link>
               </div>
             </div>

@@ -109,6 +109,7 @@ function fakeDeps(over: Partial<CatalogImportDeps> = {}) {
       return rewriteFor(d, HOUSE_STEPS[d.name])
     },
     matchIngredients: async (_n, ings) => ings.map((i, k) => ({ ingredientId: `ing-${k}`, name: i.name, quantity: i.quantity, unit: i.unit as any, unitWeight: i.unit === 'u' ? 60 : null })),
+    findIngredientIds: async (names) => names.map(() => null),
     persistDraft: async (input) => {
       saved.push(input)
       return { ok: true, recipeId: `r${saved.length}` }
@@ -146,6 +147,45 @@ describe('import of three pages (PRO-154)', () => {
     expect(saved[0].internalTags).toEqual(expect.arrayContaining(['catalogo-tanda', 'proteina:legumbre', 'tecnica:sofreir', 'cocina:espanola', 'tipo:guiso']))
     expect(saved[0]).toMatchObject({ prepTime: 20, cookTime: 20, course: 'main', difficulty: 'easy' })
     expect(saved[0].steps[0].ingredientRefs).toEqual(['ing_0'])
+  })
+
+  it('«Cocinar ahora»: the marks travel to persistDraft, substitutes as catalogue ids', async () => {
+    const lines: string[] = []
+    const asked: string[][] = []
+    const { deps, saved } = fakeDeps({
+      findIngredientIds: async (names) => {
+        asked.push(names)
+        return names.map((n) => (n === 'leche' ? 'ing-leche' : null))
+      },
+      log: (l) => lines.push(l),
+    })
+    const page = PAGES[0]
+    const marked = {
+      ...page,
+      ingredients: page.ingredients.map((ing, k) =>
+        k === 0 ? { ...ing, role: 'essential' as const } : k === 1 ? { ...ing, role: 'secondary' as const, substitutes: ['leche', 'bebida de unicornio'] } : ing,
+      ),
+    }
+    await importCatalogBatch([marked], 't', deps)
+    expect(saved).toHaveLength(1)
+    const ings = saved[0].ingredients
+    expect(ings[0]).toMatchObject({ role: 'essential', substituteIngredientIds: [] })
+    expect(ings[1]).toMatchObject({ role: 'secondary', substituteIngredientIds: ['ing-leche'] })
+    expect(ings[2]).toMatchObject({ role: null, substituteIngredientIds: [] })
+    expect(asked).toEqual([['leche', 'bebida de unicornio']])
+    expect(lines.some((l) => l.includes('sustituto sin casar: bebida de unicornio'))).toBe(true)
+  })
+
+  it('a recipe without substitutes never asks the catalogue for them', async () => {
+    let calls = 0
+    const { deps } = fakeDeps({
+      findIngredientIds: async (names) => {
+        calls++
+        return names.map(() => null)
+      },
+    })
+    await importCatalogBatch([PAGES[0]], 't', deps)
+    expect(calls).toBe(0)
   })
 
   it('a rewrite that keeps copying the book is rejected and never saved', async () => {

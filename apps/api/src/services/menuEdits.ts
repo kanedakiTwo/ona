@@ -20,6 +20,7 @@ import { db } from '../db/connection.js'
 import { menuEdits, recipes } from '../db/schema.js'
 import type { Dish, MealSlot } from '@ona/shared'
 import { INTERNAL_CALL_HEADER } from './usageEvents.js'
+import { noteAutoplanChangeForMenu } from './weeklyAutoplan.js'
 
 export const MENU_EDIT_ACTIONS = ['swap', 'add', 'remove', 'ban', 'skip_day', 'move', 'leftover', 'freezer'] as const
 export type MenuEditAction = (typeof MENU_EDIT_ACTIONS)[number]
@@ -171,7 +172,10 @@ export async function recordMenuEdits(
         if (c.after && !c.after.name) c.after = { ...c.after, name: names.get(c.after.id) ?? null }
       }
     }
-    await db.insert(menuEdits).values(menuEditRows(menu, req.userId ?? null, menuEditWho(req), changes))
+    const who = menuEditWho(req)
+    await db.insert(menuEdits).values(menuEditRows(menu, req.userId ?? null, who, changes))
+    // PRO-381: a change in the week Mimo left done on Thursday.
+    noteAutoplanChangeForMenu(menu.id, req.userId, who.channel)
   } catch (err: any) {
     console.warn('[menu-edits] record failed (ignored):', err?.message ?? err)
   }

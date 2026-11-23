@@ -106,6 +106,10 @@ export function factSentence(type: string, value: unknown, who: Who, validUntil:
       return ({ me: 'La compra la hace quien se dio de alta', other: 'La compra la hace otra persona de casa', shared: 'La compra la hacéis por turnos' } as Record<string, string>)[String(v.who)] ?? null
     case 'protein_minimum':
       return 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz, legumbre o pasta'
+    case 'menu_rule':
+      if (v.rule === 'max_per_week' && v.target) return cap(`${v.target}, como mucho ${v.times === 1 ? 'una vez' : `${v.times} veces`} a la semana`)
+      if (v.rule === 'light') return v.meal === 'lunch' ? 'Comidas ligeras' : 'Cenas ligeras'
+      return null
     case 'dislikes':
       return list(value).length ? cap(`no ${V.gusta[who]} ${joinEs(list(value))}`) : null
     case 'equipment':
@@ -162,7 +166,7 @@ const TOPIC_OF: Record<string, FichaTopic> = {
   equipment: 'en_la_cocina', temporary_situation: 'en_la_cocina', batch_cooking: 'en_la_cocina', cooking_skill: 'en_la_cocina', prep_habits: 'en_la_cocina',
   time_available: 'tiempo_y_compra', effort: 'tiempo_y_compra', shopping: 'tiempo_y_compra', shopper: 'tiempo_y_compra', weekly_budget_eur: 'tiempo_y_compra',
   affinity: 'gustos', dislikes: 'gustos', novelty: 'gustos', cuisine_bias: 'gustos',
-  protein_minimum: 'como_comes', nutrition_principles: 'como_comes',
+  protein_minimum: 'como_comes', nutrition_principles: 'como_comes', menu_rule: 'como_comeis',
   'household.adults': 'la_casa', 'household.kids_2_to_10': 'la_casa', region: 'la_casa',
   notes: 'notas',
 }
@@ -182,7 +186,13 @@ export function howIUse(type: string, value: unknown): string {
   }
   switch (type) {
     case 'dislikes':
-      return 'El menú no te propone platos con eso.'
+      return 'El menú no te propone platos con eso; una familia entera («legumbres», «casquería», «carne roja»…) cuenta con todo lo que lleva.'
+    case 'menu_rule':
+      return (value as any)?.rule === 'light'
+        ? 'El menú y «Cambiar» solo ponen ahí platos ligeros: nada de guisos, legumbres, fritos ni embutidos.'
+        : 'El menú no pone más platos con eso a la semana, y «Cambiar» tampoco.'
+    case 'notes':
+      return 'Mimo lo tiene en cuenta cuando habla contigo; si dice «sin…», «… como mucho N veces a la semana» o «cenas ligeras», el menú también.'
     case 'affinity':
       return Number((value as any)?.score) <= -2
         ? 'El menú no te propone platos con eso, y Mimo lo tiene en cuenta cuando te sugiere algo.'

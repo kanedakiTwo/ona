@@ -5,15 +5,16 @@ import { db } from '../db/connection.js'
 import { userFeedback, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
-import { feedbackForAgents, feedbackTagCounts } from '../services/agentView.js'
+import { feedbackForAgents, feedbackTagCounts, seanEllisCounts } from '../services/agentView.js'
 
 /**
  * Beta feedback (specs/feedback.md).
  *
  *   POST /feedback          auth: { text, page?, channel? } → saved verbatim
  *   GET  /admin/feedback    admin JWT (with who sent it) or x-metrics-token
- *                           (agents: counts by channel, page and tag, and
- *                           possible allergies; no text, no identity)
+ *                           (agents: counts by channel, page and tag, the
+ *                           Sean Ellis answers by option, and possible
+ *                           allergies; no text, no identity)
  *
  * Per-route auth (no catch-all): mounted before the `router.use(authMiddleware)` routers.
  */
@@ -32,8 +33,10 @@ export interface FeedbackRow {
   channel: FeedbackChannel
   text: string
   page: string | null
-  /** What it answers ('sobras', PRO-285), or null. */
+  /** What it answers ('sobras', PRO-285; 'sean_ellis', PRO-334), or null. */
   tag?: string | null
+  /** The option picked ('sean_ellis'), or null. */
+  answer?: string | null
   createdAt: Date
   username?: string
   email?: string
@@ -57,6 +60,7 @@ export function createDbFeedbackRepo(): FeedbackRepo {
           text: userFeedback.text,
           page: userFeedback.page,
           tag: userFeedback.tag,
+          answer: userFeedback.answer,
           createdAt: userFeedback.createdAt,
           username: users.username,
           email: users.email,
@@ -104,7 +108,8 @@ export function createFeedbackRouter(
       return
     }
     // byTag: the answers to Mimo's questions, e.g. { sobras: 3 } (PRO-285).
-    res.json({ days, count: rows.length, byTag: feedbackTagCounts(rows), items: rows })
+    // seanEllis: the survey's answers by option, e.g. { muy: 2, algo: 1 } (PRO-334).
+    res.json({ days, count: rows.length, byTag: feedbackTagCounts(rows), seanEllis: seanEllisCounts(rows), items: rows })
   })
 
   return router

@@ -271,6 +271,8 @@ describe('3. asking for a dish never regenerates the week', () => {
     const r = await skill('generate_weekly_menu').handler({}, { userId: 'u-1', db })
     expect(r.summary).toMatch(/^No he cambiado nada: la semana del lunes 12 de octubre ya tiene menu/)
     expect(r.summary).toContain('replaceExisting: true')
+    // 21-nov: the menu it kept, for WhatsApp to show it as a read (never «Listo»).
+    expect(r.data).toMatchObject({ replaced: false, menuId: 'm-12' })
     expect(generateMenu).not.toHaveBeenCalled()
     expect(log.some((q) => q.ops.insert)).toBe(false)
   })

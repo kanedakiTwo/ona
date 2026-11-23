@@ -105,6 +105,21 @@ export function budgetMicros(): number {
   return Math.round(env.ADVISOR_MONTHLY_BUDGET_EUR * 1_000_000)
 }
 
+/** 18-nov: the share of the month's cap at which Mimo says it's running low. */
+export const BUDGET_WARNING_SHARE = 0.8
+/** The line added, once a month, to the reply that crosses it (no euros: the reply doesn't show them). */
+export const BUDGET_WARNING_LINE = 'Te queda poco de Mimo este mes; se renueva el día 1.'
+
+/**
+ * Pure: this turn (`addedMicros`) takes the month's spend from under 80 % of
+ * the cap to 80 % or more. The spend only grows within a month, so it is
+ * true once a month at most, with no state to keep.
+ */
+export function crossesBudgetWarning(spentBeforeMicros: number, addedMicros: number, budgetMicros: number): boolean {
+  const line = budgetMicros * BUDGET_WARNING_SHARE
+  return budgetMicros > 0 && addedMicros > 0 && spentBeforeMicros < line && spentBeforeMicros + addedMicros >= line
+}
+
 /**
  * This user's advisor spend so far this month, in micro-euros. Returns 0 when
  * the stored month key doesn't match the current month (the total has logically
@@ -148,7 +163,8 @@ export async function checkAdvisorBudget(
 }
 
 /**
- * Add one turn's cost to the user's monthly total. Atomic increment-or-reset:
+ * Add one turn's cost to the user's monthly total (returns the micro-euros
+ * added; 0 when nothing was). Atomic increment-or-reset:
  * if the stored month key is the current month we add to it, otherwise we
  * start a fresh month at this turn's cost. No-op when the turn cost rounds to
  * zero (e.g. a fully cache-read turn on a tiny prompt).
@@ -167,10 +183,15 @@ export async function recordAdvisorUsage(
   usage: TokenUsage,
   db: Db = defaultDb,
   feature: 'assistant_chat' | 'whatsapp_chat' | 'telegram_chat' = chatFeatureFor(currentCostChannel()),
-): Promise<void> {
+  opts: { countsTowardBudget?: boolean } = {},
+): Promise<number> {
+  // «Mimo remoto» (PRO-1102): the office answered the turn, nothing was paid.
+  if (env.MIMO_REMOTO) return 0
   recordCost({ feature, provider: 'anthropic', model: ADVISOR_PRICE_MODEL, units: { ...usage }, userId })
+  // 18-nov: the WhatsApp sign-up and its first menu are in the ledger, not in the cap.
+  if (opts.countsTowardBudget === false) return 0
   const micros = usageCostMicros(usage, env.ADVISOR_EUR_PER_USD)
-  if (micros <= 0) return
+  if (micros <= 0) return 0
   const monthKey = currentMonthKey()
   await db.execute(sql`
     UPDATE users SET
@@ -181,4 +202,5 @@ export async function recordAdvisorUsage(
       advisor_spend_month_key = ${monthKey}
     WHERE id = ${userId}::uuid
   `)
+  return micros
 }

@@ -4,7 +4,7 @@
  * Auto-decrements on cook-log creation (server-side). The frontend just
  * lists + lets the user edit qty / unit / expiry manually.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import type { BuyableUnit, PantryLocation } from "@ona/shared"
 import { api } from "@/lib/api"
 
@@ -22,6 +22,12 @@ export interface PantryItem {
   storedAt: string
   lastUpdatedAt: string
   createdAt: string
+}
+
+/** The pantry and what «Cocinar» reads from it («Con lo que tienes», the proposal). */
+function invalidatePantry(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ["pantry"] })
+  qc.invalidateQueries({ queryKey: ["cook-now"] })
 }
 
 export function usePantry() {
@@ -47,7 +53,7 @@ export function useAddPantry() {
     }
   >({
     mutationFn: (body) => api.post<PantryItem>("/pantry", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry"] }),
+    onSuccess: () => invalidatePantry(qc),
   })
 }
 
@@ -62,7 +68,7 @@ export function usePatchPantry() {
     }
   >({
     mutationFn: ({ id, patch }) => api.patch<PantryItem>(`/pantry/${id}`, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry"] }),
+    onSuccess: () => invalidatePantry(qc),
   })
 }
 
@@ -70,6 +76,6 @@ export function useDeletePantry() {
   const qc = useQueryClient()
   return useMutation<void, Error, { id: string }>({
     mutationFn: ({ id }) => api.delete<void>(`/pantry/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pantry"] }),
+    onSuccess: () => invalidatePantry(qc),
   })
 }

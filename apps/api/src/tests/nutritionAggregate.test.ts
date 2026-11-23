@@ -9,7 +9,9 @@ import { describe, it, expect } from 'vitest'
 import type { RecipeIngredient, Unit } from '@ona/shared'
 import {
   aggregateNutrition,
+  catalogEntryFromRow,
   edibleShare,
+  lacksNutrition,
   lineEdibleShare,
   type IngredientCatalogEntry,
 } from '../services/nutrition/aggregate.js'
@@ -660,5 +662,61 @@ describe('aggregateNutrition — huesos de caldo y marisco con concha (PRO-281, 
     expect(lineEdibleShare(0.5, 'de ración, limpias para el horno')).toBe(0.5)
     expect(lineEdibleShare(0.5, 'fileteadas en trozos; guarda cabezas y raspas')).toBe(0.5)
     expect(lineEdibleShare(1, 'peladas')).toBe(1)
+  })
+})
+
+// ─── PRO-1125: an ingredient with no nutrition yet ─────────────
+
+describe('aggregateNutrition — ingredient with no nutrition yet (PRO-1125)', () => {
+  const row = { fdcId: null, calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, salt: 0 }
+
+  it('lacksNutrition: no USDA id and every value at zero', () => {
+    expect(lacksNutrition(row)).toBe(true)
+    expect(lacksNutrition({ ...row, protein: null })).toBe(true)
+    // USDA water keeps its id; BEDCA / estimated rows have values.
+    expect(lacksNutrition({ ...row, fdcId: 173647 })).toBe(false)
+    expect(lacksNutrition({ ...row, calories: 558 })).toBe(false)
+    expect(lacksNutrition({ ...row, salt: 99 })).toBe(false)
+  })
+
+  it('catalogEntryFromRow carries the mark', () => {
+    const e = catalogEntryFromRow({ id: 'h', name: 'hojaldre', ...row, density: null, unitWeight: null, edibleFraction: 1 })
+    expect(e.missingNutrition).toBe(true)
+    expect(catalogEntryFromRow({ id: 'h', name: 'hojaldre', ...row, calories: 558 }).missingNutrition).toBe(false)
+  })
+
+  it('skips the line and marks the recipe incomplete instead of counting it as 0 kcal', () => {
+    const catalog = catalogOf([
+      makeEntry({ id: 'hojaldre', name: 'hojaldre', missingNutrition: true }),
+      makeEntry({ id: 'queso', name: 'queso feta', calories: 264, protein: 14, fat: 21 }),
+    ])
+    const r = aggregateNutrition({
+      servings: 2,
+      ingredients: [
+        makeIngredient({ ingredientId: 'hojaldre', quantity: 250, unit: 'g' }),
+        makeIngredient({ ingredientId: 'queso', quantity: 100, unit: 'g' }),
+      ],
+      catalog,
+    })
+    expect(r.skipped).toEqual([{ ingredientId: 'hojaldre', reason: 'no-nutrition' }])
+    expect(r.incomplete).toBe(true)
+    expect(r.perServing.kcal).toBe(132)
+  })
+
+  it('a negligible line with no nutrition (water, salt, a spice) keeps the recipe complete', () => {
+    const catalog = catalogOf([
+      makeEntry({ id: 'agua', name: 'agua mineral', missingNutrition: true }),
+      makeEntry({ id: 'queso', name: 'queso feta', calories: 264 }),
+    ])
+    const r = aggregateNutrition({
+      servings: 1,
+      ingredients: [
+        makeIngredient({ ingredientId: 'agua', quantity: 500, unit: 'g' }),
+        makeIngredient({ ingredientId: 'queso', quantity: 100, unit: 'g' }),
+      ],
+      catalog,
+    })
+    expect(r.skipped).toEqual([{ ingredientId: 'agua', reason: 'no-nutrition' }])
+    expect(r.incomplete).toBe(false)
   })
 })

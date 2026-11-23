@@ -40,7 +40,7 @@ function recipeChains(source: string): string[] {
 const SCOPED_FILES = [
   'services/matchableRecipes.ts',
   'services/menuGenerator.ts',
-  'services/pantryMatcher.ts',
+  'services/cookNow/load.ts',
   'services/advisor.ts',
   'services/assistant/skills.ts',
   'routes/menus.ts',
@@ -63,16 +63,21 @@ describe('recipe visibility coverage', () => {
       /export async function loadMatchableRecipes[\s\S]{0,200}visibleRecipeWhere\(/,
     )
     expect(read('services/menuGenerator.ts')).toContain('loadMatchableRecipes(userId, db)')
-    expect(read('services/assistant/skills.ts')).toContain('loadMatchableRecipes(userId, db)')
-    // generate-slot, household slot, regenerate-dish, add-course: all through the loader
-    // (a school-day dinner wraps it in schoolDinnerPool, PRO-224).
-    expect(read('routes/menus.ts').match(/= await (schoolDinnerPool\(await )?loadMatchableRecipes\(req\.userId!\)/g)?.length).toBe(3)
+    // Mimo: the search (suggest_recipes) and, since 2026-11-19, swap_meal through «Cambiar»'s context.
+    expect(read('services/assistant/skills.ts')).toContain('loadMatchableRecipes(ctx.userId, ctx.db)')
+    expect(read('services/assistant/skills.ts')).toContain('await loadSlotPickContext(menu, userId)')
+    // generate-slot, household slot, add-course: all through the loader
+    // (a school-day dinner wraps it in schoolDinnerPool, PRO-224); regenerate-dish
+    // through «Cambiar»'s context since 2026-11-19 (below).
+    expect(read('routes/menus.ts').match(/= await (schoolDinnerPool\(await )?loadMatchableRecipes\(req\.userId!\)/g)?.length).toBe(2)
     // «Cambiar» (PUT slot) and PRO-364's review share the context in menuSlotPick.ts.
     expect(read('services/menuSlotPick.ts')).toContain('= await loadMatchableRecipes(requesterId)')
-    expect(read('services/pantryMatcher.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
+    // «Cocinar ahora» searches through the loader and picks through the visibility.
+    expect(read('services/cookNow/load.ts')).toContain('loadMatchableRecipes(userId)')
+    expect(read('services/cookNow/load.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
     expect(read('services/advisor.ts')).toContain('visibleRecipeWhere(await visibleAuthorIds(userId))')
-    // manual pick of a recipe for a slot (meal + course variants).
-    expect(read('routes/menus.ts').match(/eq\(recipes\.id, manualRecipeId\), visibleRecipeWhere/g)?.length).toBe(2)
+    // manual pick of a recipe for a slot (meal + course variants) and for one dish («Cambiar este plato», PRO-1176).
+    expect(read('routes/menus.ts').match(/eq\(recipes\.id, manualRecipeId\), visibleRecipeWhere/g)?.length).toBe(3)
   })
 
   it('the chain extractor catches an unscoped bulk load', () => {

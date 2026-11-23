@@ -14,7 +14,7 @@ vi.mock('../db/connection.js', () => ({ db: { execute: vi.fn(async () => ({ rows
 import {
   LEFTOVERS_QUESTION,
   isLeftoversAnswer,
-  maybeAppendLeftoversQuestion,
+  maybeLeftoversQuestion,
   recordLeftoversAnswer,
   shouldAskLeftovers,
   type LeftoversQuestionStore,
@@ -85,14 +85,14 @@ describe('shouldAskLeftovers', () => {
   })
 })
 
-describe('maybeAppendLeftoversQuestion', () => {
-  it('goes at the end of a WhatsApp reply, once per user', async () => {
+describe('maybeLeftoversQuestion', () => {
+  it('due after a WhatsApp reply, once per user (19-nov: as a message of its own)', async () => {
     const { store, state } = memoryStore()
-    const first = await maybeAppendLeftoversQuestion('u1', 'Hecho: el jueves cenáis crema de calabaza.', { mode: 'whatsapp', otherOffer: false, store, now: NOW })
-    expect(first).toBe(`Hecho: el jueves cenáis crema de calabaza.\n\n${LEFTOVERS_QUESTION}`)
+    const first = await maybeLeftoversQuestion('u1', { mode: 'whatsapp', otherOffer: false, store, now: NOW })
+    expect(first).toBe(LEFTOVERS_QUESTION)
     expect(state.askedAt).toEqual(NOW)
-    const second = await maybeAppendLeftoversQuestion('u1', 'Apuntado.', { mode: 'whatsapp', otherOffer: false, store, now: new Date(NOW.getTime() + HOUR) })
-    expect(second).toBe('Apuntado.')
+    const second = await maybeLeftoversQuestion('u1', { mode: 'whatsapp', otherOffer: false, store, now: new Date(NOW.getTime() + HOUR) })
+    expect(second).toBeNull()
   })
 
   it('never in the web chat, during the first steps, with another offer or outside the window', async () => {
@@ -102,17 +102,17 @@ describe('maybeAppendLeftoversQuestion', () => {
       { mode: 'whatsapp', otherOffer: true },
     ]) {
       const { store, state } = memoryStore()
-      expect(await maybeAppendLeftoversQuestion('u1', 'Hola', { ...opts, store, now: NOW })).toBe('Hola')
+      expect(await maybeLeftoversQuestion('u1', { ...opts, store, now: NOW })).toBeNull()
       expect(state.askedAt).toBeNull()
     }
     const late = memoryStore({ lastInboundAt: new Date(NOW.getTime() - 25 * HOUR) })
-    expect(await maybeAppendLeftoversQuestion('u1', 'Hola', { mode: 'whatsapp', otherOffer: false, store: late.store, now: NOW })).toBe('Hola')
+    expect(await maybeLeftoversQuestion('u1', { mode: 'whatsapp', otherOffer: false, store: late.store, now: NOW })).toBeNull()
     expect(late.state.askedAt).toBeNull()
   })
 
-  it('a failing store leaves the reply as it was', async () => {
+  it('a failing store asks nothing', async () => {
     const store = { load: async () => { throw new Error('db down') } } as unknown as LeftoversQuestionStore
-    expect(await maybeAppendLeftoversQuestion('u1', 'Hola', { mode: 'whatsapp', otherOffer: false, store, now: NOW })).toBe('Hola')
+    expect(await maybeLeftoversQuestion('u1', { mode: 'whatsapp', otherOffer: false, store, now: NOW })).toBeNull()
   })
 })
 
@@ -120,80 +120,38 @@ describe('appendReplyOffers: one offer per reply', () => {
   const steps = (store: LeftoversQuestionStore, over: Partial<ReplyOfferSteps> = {}): ReplyOfferSteps => ({
     family: async (_u, reply) => reply,
     invite: async (_u, reply) => reply,
-    leftovers: (u, reply, opts) => maybeAppendLeftoversQuestion(u, reply, { ...opts, store, now: NOW }),
+    leftovers: (u, opts) => maybeLeftoversQuestion(u, { ...opts, store, now: NOW }),
+    seanEllis: async () => null,
     ...over,
   })
 
-  it('with no other offer due, the leftovers question goes (WhatsApp) and counts as the turn’s offer', async () => {
+  it('with no other offer due, the leftovers question goes apart from the reply (WhatsApp) and counts as the turn’s offer', async () => {
     const { store } = memoryStore()
     const r = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps(store))
-    expect(r).toEqual({ message: `Hecho.\n\n${LEFTOVERS_QUESTION}`, offerAdded: true })
+    // 19-nov: never stuck to the reply — it goes as a message of its own.
+    expect(r).toEqual({ message: 'Hecho.', offerAdded: true, survey: LEFTOVERS_QUESTION })
   })
 
   it('never together with the family offer or the invite to another household; it waits for a later reply', async () => {
     const { store, state } = memoryStore()
     const family = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps(store, { family: async (_u, r) => `${r}\n\nFAMILIA` }))
-    expect(family).toEqual({ message: 'Hecho.\n\nFAMILIA', offerAdded: true })
+    expect(family).toEqual({ message: 'Hecho.\n\nFAMILIA', offerAdded: true, survey: null })
     const invite = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps(store, { invite: async (_u, r) => `${r}\n\nINVITA` }))
-    expect(invite).toEqual({ message: 'Hecho.\n\nINVITA', offerAdded: true })
+    expect(invite).toEqual({ message: 'Hecho.\n\nINVITA', offerAdded: true, survey: null })
     expect(state.askedAt).toBeNull()
     const later = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps(store))
-    expect(later.message).toContain(LEFTOVERS_QUESTION)
-    expect(later.message).not.toContain('FAMILIA')
+    expect(later).toEqual({ message: 'Hecho.', offerAdded: true, survey: LEFTOVERS_QUESTION })
+  })
+
+  it('at most one survey a week per household (19-nov)', async () => {
+    const { store, state } = memoryStore()
+    const r = await appendReplyOffers('u1', 'Hecho.', { mode: 'whatsapp', invite: true }, steps(store, { surveyedThisWeek: async () => true }))
+    expect(r).toEqual({ message: 'Hecho.', offerAdded: false, survey: null })
+    expect(state.askedAt).toBeNull()
   })
 
   it('in the web chat nothing is added', async () => {
     const { store } = memoryStore()
-    expect(await appendReplyOffers('u1', 'Hecho.', { mode: 'text', invite: true }, steps(store))).toEqual({ message: 'Hecho.', offerAdded: false })
-  })
-})
-
-describe('the answer', () => {
-  const asked: ChatMessage[] = [
-    { role: 'user', content: '¿Qué cenamos?' },
-    { role: 'assistant', content: `Crema de calabaza.\n\n${LEFTOVERS_QUESTION}` },
-  ]
-
-  it('the message right after the question is saved verbatim, tagged sobras, once', async () => {
-    const { store, state } = memoryStore()
-    expect(isLeftoversAnswer('Sobró arroz y lo congelamos', asked)).toBe(true)
-    expect(await recordLeftoversAnswer('u1', '  Sobró arroz y lo congelamos  ', asked, { store })).toBe(true)
-    expect(state.answers).toEqual([{ userId: 'u1', text: 'Sobró arroz y lo congelamos', tag: 'sobras', channel: 'whatsapp' }])
-    expect(await recordLeftoversAnswer('u1', 'Otra cosa', asked, { store })).toBe(false)
-    expect(state.answers).toHaveLength(1)
-  })
-
-  it('a message that doesn’t follow the question is not an answer', async () => {
-    const { store, state } = memoryStore()
-    const other: ChatMessage[] = [{ role: 'assistant', content: 'Hecho.' }, { role: 'user', content: 'gracias' }, { role: 'assistant', content: 'De nada.' }]
-    expect(await recordLeftoversAnswer('u1', 'Sobró arroz', other, { store })).toBe(false)
-    expect(await recordLeftoversAnswer('u1', 'Sobró arroz', [], { store })).toBe(false)
-    expect(state.answers).toEqual([])
-  })
-})
-
-describe('/admin/feedback counts the answers (byTag)', () => {
-  const servers: Server[] = []
-  afterAll(() => servers.forEach((s) => { s.closeAllConnections(); s.close() }))
-
-  it('admin and the agents token both get { sobras: n }; the agents never the text', async () => {
-    const rows: FeedbackRow[] = [
-      { id: 'f1', channel: 'whatsapp', text: 'Sobró arroz y lo congelamos', page: null, tag: 'sobras', createdAt: NOW },
-      { id: 'f2', channel: 'whatsapp', text: 'No sobró nada', page: null, tag: 'sobras', createdAt: NOW },
-      { id: 'f3', channel: 'app', text: 'Me encanta la lista', page: '/shopping', tag: null, createdAt: NOW },
-    ]
-    const repo: FeedbackRepo = { save: async () => {}, list: async () => rows }
-    const readAuth: RequestHandler = (req, res, next) => (req.get('x-admin') || req.get('x-metrics-token') === 'ok' ? next() : res.sendStatus(401))
-    const a = express()
-    a.use(createFeedbackRouter({ repo, auth: (_q, _s, n) => n(), readAuth, now: () => NOW }))
-    const server = await new Promise<Server>((resolve) => { const s = a.listen(0, '127.0.0.1', () => resolve(s)) })
-    servers.push(server)
-    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-    const admin = await (await fetch(`${base}/admin/feedback`, { headers: { 'x-admin': '1' } })).json()
-    expect(admin.byTag).toEqual({ sobras: 2 })
-    expect(admin.items[0]).toMatchObject({ tag: 'sobras', text: 'Sobró arroz y lo congelamos' })
-    const agents = await (await fetch(`${base}/admin/feedback`, { headers: { 'x-metrics-token': 'ok' } })).json()
-    expect(agents.byTag).toEqual({ sobras: 2 })
-    expect(JSON.stringify(agents)).not.toContain('arroz')
+    expect(await appendReplyOffers('u1', 'Hecho.', { mode: 'text', invite: true }, steps(store))).toEqual({ message: 'Hecho.', offerAdded: false, survey: null })
   })
 })

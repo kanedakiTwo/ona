@@ -42,7 +42,7 @@ export function OnboardingMenuReady() {
         updateUser({ restrictions: updated.restrictions ?? toSave })
         // The weeks Mimo built in the chat (next week too, Friday to Sunday),
         // again, now without what they don't eat — from today on (PRO-244).
-        const { weeks, today } = firstMenuWeeks()
+        const { weeks, today } = firstMenuWeeks(new Date(), { fromNextMeal: true })
         for (const weekStart of weeks) {
           await api.post("/menu/generate", { userId: user.id, weekStart, fromDate: today })
         }

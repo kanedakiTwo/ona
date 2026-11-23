@@ -1,12 +1,12 @@
 /**
  * Speech-to-text chain (2026-10-25): OpenAI's key gave 401 in production and
  * 429 in staging, so voice notes and Mimo's voice went deaf. Now Groq (free
- * Whisper) → AiKit (Gemini through its chat API) → OpenAI: the first one
- * configured transcribes, and the next one tries when it fails or hears
- * nothing. AiKit is skipped after a real recogniser heard no voice, because
- * Gemini invents a sentence for background noise.
+ * Whisper) → OpenAI: the first one configured transcribes, and the next one
+ * tries when it fails or hears nothing. AiKit left the chain with PRO-1122:
+ * it has no processor contract, so it never gets users' audio, even with its
+ * key set (it still makes recipe photos).
  *
- * fetch is simulated: these tests never reach Groq, AiKit or OpenAI.
+ * fetch is simulated: these tests never reach Groq or OpenAI.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -16,12 +16,8 @@ vi.mock('../services/costLedger.js', () => ({ recordCost: (...a: unknown[]) => r
 import { env } from '../config/env.js'
 import { PRICES, computeCostMicros } from '../config/pricing.js'
 import {
-  AIKIT_CHAT_URL,
-  AIKIT_NO_SPEECH,
   GROQ_TRANSCRIBE_URL,
   SttNotConfiguredError,
-  aikitAudioMime,
-  aikitText,
   groqText,
   groqUnits,
   isSttConfigured,
@@ -40,9 +36,6 @@ const groqOk = (text = SAID) =>
   jsonResponse(200, { task: 'transcribe', language: 'spanish', duration: 12, text, segments: [{ text, no_speech_prob: 0.01, avg_logprob: -0.2 }] })
 const groqSilence = () =>
   jsonResponse(200, { duration: 4, text: ' Subtítulos realizados por la comunidad de Amara.org', segments: [{ no_speech_prob: 0.9, avg_logprob: -1.4 }] })
-const aikitOk = (content: string | null = SAID, usage = { prompt_tokens: 392, completion_tokens: 207, total_tokens: 599 }) =>
-  jsonResponse(200, { model: 'google/gemini-3.8-flash', choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }], usage, cost: 0.000956 })
-const aikitBlank = () => aikitOk(null, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 })
 const openaiOk = (text = SAID) =>
   jsonResponse(200, { text, usage: { type: 'tokens', input_tokens: 120, input_token_details: { audio_tokens: 100, text_tokens: 20 }, output_tokens: 30 } })
 
@@ -50,7 +43,6 @@ const saved = {
   GROQ_API_KEY: env.GROQ_API_KEY,
   GROQ_TRANSCRIBE_MODEL: env.GROQ_TRANSCRIBE_MODEL,
   AIKIT_API_KEY: env.AIKIT_API_KEY,
-  AIKIT_TRANSCRIBE_MODEL: env.AIKIT_TRANSCRIBE_MODEL,
   OPENAI_API_KEY: env.OPENAI_API_KEY,
   OPENAI_TRANSCRIBE_MODEL: env.OPENAI_TRANSCRIBE_MODEL,
 }
@@ -61,8 +53,8 @@ const urls = () => fetchMock.mock.calls.map((c) => c[0] as string)
 beforeEach(() => {
   env.GROQ_API_KEY = 'groq-test-key'
   env.GROQ_TRANSCRIBE_MODEL = 'whisper-large-v3-turbo'
+  // Set on purpose: the images use it, and transcription must ignore it.
   env.AIKIT_API_KEY = 'aikit-test-key'
-  env.AIKIT_TRANSCRIBE_MODEL = 'google/gemini-3.8-flash'
   env.OPENAI_API_KEY = 'openai-test-key'
   env.OPENAI_TRANSCRIBE_MODEL = 'gpt-4o-transcribe'
   recordCost.mockReset()
@@ -77,41 +69,49 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('which providers are in the chain', () => {
-  it('Groq → AiKit → OpenAI, only the configured ones', () => {
-    expect(sttProviders({ groq: true, aikit: true, openai: true })).toEqual(['groq', 'aikit', 'openai'])
-    expect(sttProviders({ groq: false, aikit: true, openai: true })).toEqual(['aikit', 'openai'])
-    expect(sttProviders({ groq: true, aikit: false, openai: false })).toEqual(['groq'])
-    expect(sttProviders({ groq: false, aikit: false, openai: false })).toEqual([])
-  })
-
-  it('reads the keys from env; an empty AIKIT_TRANSCRIBE_MODEL takes AiKit out', () => {
-    expect(sttProviders()).toEqual(['groq', 'aikit', 'openai'])
-    env.AIKIT_TRANSCRIBE_MODEL = ''
+describe('AiKit never gets the audio (PRO-1122)', () => {
+  it('with AiKit\'s key set, the chain is Groq → OpenAI', () => {
     expect(sttProviders()).toEqual(['groq', 'openai'])
   })
 
-  it('isSttConfigured is true with any one of them', () => {
+  it('AiKit alone is no transcription at all', async () => {
     env.GROQ_API_KEY = ''
     env.OPENAI_API_KEY = ''
-    expect(isSttConfigured()).toBe(true) // AiKit alone
-    env.AIKIT_API_KEY = ''
+    expect(isSttConfigured()).toBe(false)
+    await expect(transcribeAudio(AUDIO, 'audio/ogg')).rejects.toBeInstanceOf(SttNotConfiguredError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('Groq and OpenAI both failing never falls to AiKit', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(429, { error: { message: 'Rate limit reached' } }))
+      .mockResolvedValueOnce(jsonResponse(500, { error: { message: 'boom' } }))
+    await expect(transcribeAudio(AUDIO, 'audio/ogg')).rejects.toThrow(/OpenAI transcription 500/)
+    expect(urls()).toEqual([GROQ_TRANSCRIBE_URL, OPENAI_URL])
+    expect(urls().some((u) => u.includes('aikit'))).toBe(false)
+  })
+})
+
+describe('which providers are in the chain', () => {
+  it('Groq → OpenAI, only the configured ones', () => {
+    expect(sttProviders({ groq: true, openai: true })).toEqual(['groq', 'openai'])
+    expect(sttProviders({ groq: false, openai: true })).toEqual(['openai'])
+    expect(sttProviders({ groq: true, openai: false })).toEqual(['groq'])
+    expect(sttProviders({ groq: false, openai: false })).toEqual([])
+  })
+
+  it('isSttConfigured is true with either of them', () => {
+    env.GROQ_API_KEY = ''
+    expect(isSttConfigured()).toBe(true) // OpenAI alone
+    env.OPENAI_API_KEY = ''
     expect(isSttConfigured()).toBe(false)
     env.GROQ_API_KEY = 'groq-test-key'
     expect(isSttConfigured()).toBe(true)
   })
-
-  it('none configured → SttNotConfiguredError (the route answers 503, WhatsApp says it cannot listen)', async () => {
-    env.GROQ_API_KEY = ''
-    env.AIKIT_API_KEY = ''
-    env.OPENAI_API_KEY = ''
-    await expect(transcribeAudio(AUDIO, 'audio/ogg')).rejects.toBeInstanceOf(SttNotConfiguredError)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
 })
 
 describe('order of the chain', () => {
-  it('Groq answers first and the others are not called', async () => {
+  it('Groq answers first and OpenAI is not called', async () => {
     fetchMock.mockResolvedValueOnce(groqOk())
     expect(await transcribeAudio(AUDIO, 'audio/ogg; codecs=opus')).toBe(SAID)
     expect(urls()).toEqual([GROQ_TRANSCRIBE_URL])
@@ -123,55 +123,22 @@ describe('order of the chain', () => {
     })
   })
 
-  it('Groq fails → AiKit transcribes, and the ledger says AiKit', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: { message: 'Rate limit reached' } })).mockResolvedValueOnce(aikitOk())
-    expect(await transcribeAudio(AUDIO, 'audio/ogg', { feature: 'mimo_voice_transcription' })).toBe(SAID)
-    expect(urls()).toEqual([GROQ_TRANSCRIBE_URL, AIKIT_CHAT_URL])
-    expect(recordCost).toHaveBeenCalledTimes(1)
-    expect(recordCost).toHaveBeenCalledWith({
-      feature: 'mimo_voice_transcription',
-      provider: 'aikit',
-      model: 'google/gemini-3.8-flash',
-      units: { inputTokens: 392, outputTokens: 207 },
-    })
-  })
-
-  it('Groq and AiKit fail → OpenAI', async () => {
-    fetchMock
-      .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValueOnce(jsonResponse(500, { errors: [{ message: 'boom' }] }))
-      .mockResolvedValueOnce(openaiOk())
-    expect(await transcribeAudio(AUDIO, 'audio/webm')).toBe(SAID)
-    expect(urls()).toEqual([GROQ_TRANSCRIBE_URL, AIKIT_CHAT_URL, OPENAI_URL])
-    expect(recordCost.mock.calls[0][0]).toMatchObject({ provider: 'openai', model: 'gpt-4o-transcribe' })
-  })
-
-  it('every provider fails → the last error (the route answers 502, WhatsApp asks to repeat)', async () => {
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse(401, { error: { message: 'Invalid API Key' } }))
-      .mockResolvedValueOnce(jsonResponse(403, { errors: [{ message: 'no' }] }))
-      .mockResolvedValueOnce(jsonResponse(401, { error: { message: 'invalid_api_key' } }))
-    await expect(transcribeAudio(AUDIO, 'audio/ogg')).rejects.toThrow(/OpenAI transcription 401/)
-  })
-})
-
-describe('only the configured providers are called', () => {
-  it('without GROQ_API_KEY the chain starts at AiKit', async () => {
-    env.GROQ_API_KEY = ''
-    fetchMock.mockResolvedValueOnce(aikitOk())
-    expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe(SAID)
-    expect(urls()).toEqual([AIKIT_CHAT_URL])
-  })
-
-  it('without AiKit, a Groq failure goes straight to OpenAI', async () => {
-    env.AIKIT_API_KEY = ''
-    fetchMock.mockResolvedValueOnce(jsonResponse(503, {})).mockResolvedValueOnce(openaiOk())
-    expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe(SAID)
+  it('Groq fails → OpenAI transcribes, and the ledger says OpenAI', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce(openaiOk())
+    expect(await transcribeAudio(AUDIO, 'audio/webm', { feature: 'mimo_voice_transcription' })).toBe(SAID)
     expect(urls()).toEqual([GROQ_TRANSCRIBE_URL, OPENAI_URL])
+    expect(recordCost).toHaveBeenCalledTimes(1)
+    expect(recordCost.mock.calls[0][0]).toMatchObject({ feature: 'mimo_voice_transcription', provider: 'openai', model: 'gpt-4o-transcribe' })
+  })
+
+  it('without GROQ_API_KEY the chain starts at OpenAI', async () => {
+    env.GROQ_API_KEY = ''
+    fetchMock.mockResolvedValueOnce(openaiOk())
+    expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe(SAID)
+    expect(urls()).toEqual([OPENAI_URL])
   })
 
   it('Groq alone failing → its error', async () => {
-    env.AIKIT_API_KEY = ''
     env.OPENAI_API_KEY = ''
     fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: { message: 'Rate limit reached' } }))
     await expect(transcribeAudio(AUDIO, 'audio/ogg')).rejects.toThrow('Groq transcription 429: Rate limit reached')
@@ -179,40 +146,22 @@ describe('only the configured providers are called', () => {
 })
 
 describe('an empty answer moves on to the next provider', () => {
-  it('Groq hears only silence → OpenAI tries; AiKit is skipped (it would invent a sentence)', async () => {
+  it('Groq hears only silence → OpenAI tries', async () => {
     fetchMock.mockResolvedValueOnce(groqSilence()).mockResolvedValueOnce(openaiOk())
     expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe(SAID)
     expect(urls()).toEqual([GROQ_TRANSCRIBE_URL, OPENAI_URL])
   })
 
-  it('Groq hears silence and there is no OpenAI → empty text, AiKit not asked', async () => {
+  it('all empty → empty text, not an error', async () => {
+    fetchMock.mockResolvedValueOnce(groqSilence()).mockResolvedValueOnce(openaiOk(''))
+    expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe('')
+  })
+
+  it('Groq hears silence and there is no OpenAI → empty text', async () => {
     env.OPENAI_API_KEY = ''
     fetchMock.mockResolvedValueOnce(groqSilence())
     expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe('')
     expect(urls()).toEqual([GROQ_TRANSCRIBE_URL])
-  })
-
-  it('AiKit says there is no voice → OpenAI tries; all empty → empty text, not an error', async () => {
-    env.GROQ_API_KEY = ''
-    fetchMock.mockResolvedValueOnce(aikitOk(AIKIT_NO_SPEECH)).mockResolvedValueOnce(openaiOk(''))
-    expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe('')
-    expect(urls()).toEqual([AIKIT_CHAT_URL, OPENAI_URL])
-  })
-
-  it('AiKit answering with no text and 0 tokens is asked once more, and not billed', async () => {
-    env.GROQ_API_KEY = ''
-    fetchMock.mockResolvedValueOnce(aikitBlank()).mockResolvedValueOnce(aikitOk())
-    expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe(SAID)
-    expect(urls()).toEqual([AIKIT_CHAT_URL, AIKIT_CHAT_URL])
-    expect(recordCost).toHaveBeenCalledTimes(1)
-  })
-
-  it('a cut-off AiKit text with 0 tokens is not trusted; twice → OpenAI', async () => {
-    env.GROQ_API_KEY = ''
-    const cutOff = aikitOk('Hola Mimo, añade 2 kg de tomates a la lista de la', { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 })
-    fetchMock.mockResolvedValueOnce(cutOff).mockResolvedValueOnce(aikitBlank()).mockResolvedValueOnce(openaiOk())
-    expect(await transcribeAudio(AUDIO, 'audio/ogg')).toBe(SAID)
-    expect(urls()).toEqual([AIKIT_CHAT_URL, AIKIT_CHAT_URL, OPENAI_URL])
   })
 })
 
@@ -246,33 +195,6 @@ describe('Groq request', () => {
   })
 })
 
-describe('AiKit request', () => {
-  it('chat completion with the audio as an image_url data URI, temperature 0, literal-transcription instructions', async () => {
-    env.GROQ_API_KEY = ''
-    fetchMock.mockResolvedValueOnce(aikitOk())
-    await transcribeAudio(AUDIO, 'audio/ogg; codecs=opus')
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('https://cms.aikit.es/api/inference/chat/completions')
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer aikit-test-key')
-    const body = JSON.parse(init.body as string)
-    expect(body.model).toBe('google/gemini-3.8-flash')
-    expect(body.temperature).toBe(0)
-    expect(body.messages[0].role).toBe('system')
-    expect(body.messages[0].content).toMatch(/exactamente las palabras que se oyen/)
-    expect(body.messages[0].content).toContain(AIKIT_NO_SPEECH)
-    const part = body.messages[1].content[0]
-    expect(part.type).toBe('image_url')
-    expect(part.image_url.url).toBe(`data:audio/ogg;base64,${AUDIO.toString('base64')}`)
-  })
-
-  it('a note over 10 MB skips AiKit', async () => {
-    env.GROQ_API_KEY = ''
-    fetchMock.mockResolvedValueOnce(openaiOk())
-    expect(await transcribeAudio(Buffer.alloc(10 * 1024 * 1024 + 1), 'audio/ogg')).toBe(SAID)
-    expect(urls()).toEqual([OPENAI_URL])
-  })
-})
-
 describe('pure helpers', () => {
   it('groqUnits: the duration in minutes, 10 s at least (what Groq bills)', () => {
     expect(groqUnits({ duration: 90 })).toEqual({ minutes: 1.5 })
@@ -287,22 +209,6 @@ describe('pure helpers', () => {
     expect(groqText({ text: 'Sí.', segments: [{ no_speech_prob: 0.8, avg_logprob: -0.4 }] })).toBe('Sí.')
     expect(groqText({ text: 'Sin segmentos' })).toBe('Sin segmentos')
   })
-
-  it('aikitText: the marker for no voice is empty; quotes around the text go', () => {
-    expect(aikitText(AIKIT_NO_SPEECH)).toBe('')
-    expect(aikitText(` ${AIKIT_NO_SPEECH}\n`)).toBe('')
-    expect(aikitText('«Hola, Mimo.»')).toBe('Hola, Mimo.')
-    expect(aikitText(null)).toBe('')
-  })
-
-  it('aikitAudioMime writes aliases the standard way and drops codec parameters', () => {
-    expect(aikitAudioMime('audio/ogg; codecs=opus')).toBe('audio/ogg')
-    expect(aikitAudioMime('audio/webm;codecs=opus')).toBe('audio/webm')
-    expect(aikitAudioMime('audio/mp4')).toBe('audio/mp4')
-    expect(aikitAudioMime('audio/x-m4a')).toBe('audio/mp4')
-    expect(aikitAudioMime('audio/mp3')).toBe('audio/mpeg')
-    expect(aikitAudioMime('audio/opus')).toBe('audio/ogg')
-  })
 })
 
 describe('prices of the new providers', () => {
@@ -312,10 +218,5 @@ describe('prices of the new providers', () => {
     expect(computeCostMicros('groq', 'whisper-large-v3-turbo', { minutes: 60 }, FX)).toBe(36_000)
     // A 10 s minimum note: $0.04 / 360 ≈ $0.000111 → €0.0001
     expect(computeCostMicros('groq', 'whisper-large-v3-turbo', groqUnits({ duration: 4 }), FX)).toBe(100)
-  })
-
-  it('AiKit Gemini 3.8 Flash: what AiKit reported for a 10 s note', () => {
-    // 392 in × 0.67 + 207 out × 3.35 per MTok ≈ 0.000956 (AiKit's `cost`)
-    expect(computeCostMicros('aikit', 'google/gemini-3.8-flash', { inputTokens: 392, outputTokens: 207 }, FX)).toBe(956)
   })
 })

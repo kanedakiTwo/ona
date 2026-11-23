@@ -13,7 +13,7 @@ import {
   type RawExtractedRecipe,
   type TextExtractionProvider,
 } from './recipeExtractor.js'
-import { detectSourceType, type UrlSourceType } from './sources/sourceType.js'
+import { detectSourceType } from './sources/sourceType.js'
 import {
   extractArticleRecipe,
   type ArticleFetcher,

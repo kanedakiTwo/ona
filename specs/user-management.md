@@ -66,7 +66,7 @@ The token is a single-use opaque string (`crypto.randomBytes(32).toString('hex')
 
 ## Suspension semantics
 
-- A suspended user's existing JWT keeps decoding, but every privileged endpoint (anything behind `requireAuth`) re-checks `users.suspended_at IS NULL` and returns 401 with `code: 'SUSPENDED'` if not. The frontend catches that code and forces a logout with a Spanish message: "Tu cuenta está suspendida. Contacta con el equipo de Mimoia si crees que es un error."
+- A suspended user's existing JWT keeps decoding, but every privileged endpoint (anything behind `authMiddleware`) re-checks `users.suspended_at IS NULL` and returns 401 with `code: 'SUSPENDED'` if not. The frontend catches that code and forces a logout with a Spanish message: "Tu cuenta está suspendida. Contacta con el equipo de Mimoia si crees que es un error."
 - Login (`POST /auth/login`) explicitly rejects suspended users with the same code.
 - Suspending an admin is allowed but lands in audit. Re-promoting (re-adding to `ADMIN_EMAILS` and re-deploying) doesn't reactivate a suspended account — admin must explicitly unsuspend first. This avoids the odd state where someone who was suspended for cause silently regains access on next deploy.
 

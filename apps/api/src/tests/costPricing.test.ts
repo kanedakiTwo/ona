@@ -89,7 +89,7 @@ describe('price table coverage', () => {
       ['openai', 'gpt-realtime'],
       ['openai', 'gpt-4o-transcribe'],
       ['groq', 'whisper-large-v3-turbo'], // GROQ_TRANSCRIBE_MODEL default
-      ['aikit', 'google/gemini-3.8-flash'], // AIKIT_TRANSCRIBE_MODEL default
+      ['aikit', 'google/gemini-3.8-flash'], // AiKit transcription until PRO-1122 (old ledger rows)
       ['meta_whatsapp', 'utility_template'],
       ['aikit', 'imagen-fal'],
     ] as const) {

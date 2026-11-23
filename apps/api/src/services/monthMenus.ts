@@ -27,7 +27,7 @@ import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { detectSeason, MEALS, recipeTotalMinutes, type Course, type DayMenu, type DayTemplate, type Meal, type RecipeDish } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { catalogCollections, menus, recipes, users, userSettings } from '../db/schema.js'
+import { catalogCollections, menus, recipes, users } from '../db/schema.js'
 import { compileRestrictions, mergeRestrictions, normalizeText, violatesRestrictions, type RestrictableRecipe } from './dietaryRestrictions.js'
 import { withHouseholdRestrictions } from './householdAllergies.js'
 import { addDays, madridParts } from './madridTime.js'
@@ -36,7 +36,8 @@ import { findForCourse } from './courseAwareMatcher.js'
 import { getMemoryForUser } from './userMemoryStore.js'
 import { isFishDish, mainProteinOf, type WeekRecipe } from './weekRules.js'
 import { keepLockedSlots, loadPreviousWeek, menuHasDishes } from './menuWeek.js'
-import { defaultTemplate, normalizeMealTemplate } from './menuGenerator.js'
+import { loadWeekTypeForUser } from './weekType.js'
+import { planWeekType } from './weekTypePlan.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
 import { isRetiredRecipe } from './recipeCatalogOrder.js'
 import { enqueuePrepAlertsForMenu } from './notificationScheduler.js'
@@ -446,8 +447,8 @@ export async function copyMonthMenuToWeek(
   const previous = await loadPreviousWeek(opts.userId, opts.weekStart, db)
   if (!opts.force && menuHasDishes(previous.days)) return { status: 'not_empty' }
 
-  const [settings] = await db.select({ template: userSettings.template }).from(userSettings).where(eq(userSettings.userId, opts.userId)).limit(1)
-  const template = normalizeMealTemplate(settings?.template) ?? defaultTemplate()
+  // The household's «semana tipo» (D-182): its meals, «no hay» left out.
+  const template = planWeekType((await loadWeekTypeForUser(opts.userId, db)).days, opts.weekStart, { recipes: [], restrictions: [] }).template
   const restrictions = await loadRestrictions(opts.userId, db)
   const pool = await loadMatchableRecipes(opts.userId, db)
   const result = copyMonthMenu({

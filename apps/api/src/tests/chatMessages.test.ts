@@ -25,7 +25,7 @@ const fakeDb = {
       inserted.push(rows)
     },
   }),
-  execute: async () => ({ rowCount: 0 }),
+  execute: async () => ({ rows: [], rowCount: 0 }),
 }
 
 vi.mock('../db/connection.js', () => ({ db: fakeDb, pool: {} }))

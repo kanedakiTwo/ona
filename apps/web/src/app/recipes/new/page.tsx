@@ -3,38 +3,31 @@
 import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth"
-import { uploadRecipeImage, useCreateRecipe, useIngredients } from "@/hooks/useRecipes"
+import { uploadRecipeImage, useCreateRecipe } from "@/hooks/useRecipes"
+import { useIngredientLines } from "@/hooks/useIngredientLines"
 import { NewRecipePhotoCard } from "@/components/recipes/form/NewRecipePhotoCard"
 import { LintFailureError } from "@/lib/api"
 import { PhotoRecipeUpload } from "@/components/recipes/PhotoRecipeUpload"
 import { UrlRecipeImport } from "@/components/recipes/UrlRecipeImport"
-import {
-  SortableStepsList,
-  makeStep,
-  type StepDraft,
-} from "@/components/recipes/SortableStepsList"
-import {
-  SortableIngredientsList,
-  makeRowId,
-} from "@/components/recipes/SortableIngredientsList"
+import { IngredientLinesField, StepsTextField } from "@/components/recipes/form/RecipeTextFields"
+import { savedRowLine, stepsText, type ResolvedIngredientRow, type SavedIngredientRow } from "@/lib/ingredientLines"
 import { FitChip, cycleFit } from "@/components/recipes/FitChip"
 import {
-  AddRowButton,
   Field,
   FieldError,
   FORCE_PILL,
   FormCard,
   FormErrors,
   FormHeader,
-  IngredientRowFields,
   SaveBar,
   TagList,
   choicePillClass,
   fieldClass,
 } from "@/components/recipes/form/RecipeFormUI"
-import { buildRecipePayload, createRecipeSchema, COURSES, COURSE_LABELS } from "@ona/shared"
-import type { Course, Meal, Season, ExtractedRecipe, Ingredient } from "@ona/shared"
+import { buildRecipePayload, createRecipeSchema, formatIngredientLine, splitSteps, COURSES, COURSE_LABELS } from "@ona/shared"
+import type { Course, Meal, Season, ExtractedRecipe } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
+import { RequiredNote } from "@/components/FieldLabel"
 
 const MEAL_OPTIONS: { value: Meal; label: string }[] = [
   { value: "breakfast", label: MEAL_LABELS.breakfast },
@@ -50,35 +43,8 @@ const SEASON_OPTIONS: { value: Season; label: string }[] = [
   { value: "winter", label: SEASON_LABELS.winter },
 ]
 
-const UNIT_OPTIONS = ["g", "kg", "ml", "l", "ud", "cda", "cdta"]
-
-interface IngredientRow {
-  /** Stable client-side id used by the sortable list. Stripped from the
-   *  payload at submit time. */
-  rowId: string
-  // What the user typed; we resolve against the library to populate ingredientId.
-  ingredientName: string
-  ingredientId: string
-  quantity: number | ""
-  unit: string
-  /** When true, the ingredient renders with an "opcional" badge on the
-   *  detail view and the shopping aggregator skips it. */
-  optional: boolean
-  /** «en lomos», «picada»… (PRO-109). */
-  note: string
-}
-
-function emptyRow(): IngredientRow {
-  return {
-    rowId: makeRowId(),
-    ingredientName: "",
-    ingredientId: "",
-    quantity: "",
-    unit: "g",
-    optional: false,
-    note: "",
-  }
-}
+/** Stands in for the ids of lines not resolved yet, to check the rest of the form first. */
+const PENDING_ID = "00000000-0000-4000-8000-000000000000"
 
 export default function NewRecipePage() {
   // Next.js 15 requires `useSearchParams()` to be wrapped in <Suspense>
@@ -97,8 +63,6 @@ function NewRecipePageInner() {
   const searchParams = useSearchParams()
   useAuth()
   const createRecipe = useCreateRecipe()
-  const { data: ingredientLibrary = [], isLoading: ingredientsLoading } =
-    useIngredients()
 
   // `/recipes/new?name=tarta+de+zanahoria` pre-fills the name field — used by
   // the menu swap picker's empty state so a user who searched "tarta" and
@@ -120,13 +84,15 @@ function NewRecipePageInner() {
   const [course, setCourse] = useState<Course | "">("")
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
-  const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([
-    emptyRow(),
-  ])
-  // Steps carry a stable client-side id so the drag-and-drop list can
-  // reorder them without losing focus or remounting textareas. The id is
-  // form-local: the server still receives `{ index, text }`.
-  const [steps, setSteps] = useState<StepDraft[]>([makeStep()])
+  // Ingredients, one per line (PRO-1115). `savedRows` are the ones a photo
+  // import already matched: their lines keep those rows while untouched.
+  const [ingredientText, setIngredientText] = useState("")
+  const [savedRows, setSavedRows] = useState<SavedIngredientRow[]>([])
+  const ingredientLines = useIngredientLines(ingredientText, savedRows)
+  // Steps, written or pasted whole; split into steps on the fly.
+  const [stepText, setStepText] = useState("")
+  // Resolving the lines (and creating the new ingredients) before the create.
+  const [resolving, setResolving] = useState(false)
   const [photoExtracted, setPhotoExtracted] = useState(false)
   // «Subir mi foto» (PRO-145): uploaded right after the create; while it is
   // set the API skips the AI photo.
@@ -159,22 +125,24 @@ function NewRecipePageInner() {
       Object.fromEntries(data.seasons.map((s) => [s, "perfect" as const])),
     )
     setTags(data.tags)
-    setSteps(
-      data.steps.length > 0 ? data.steps.map((t) => makeStep(t)) : [makeStep()],
-    )
-    setIngredientRows(
-      data.ingredients.length > 0
-        ? data.ingredients.map((ing) => ({
-            rowId: makeRowId(),
-            ingredientId: ing.ingredientId ?? "",
-            ingredientName: ing.ingredientName ?? ing.extractedName,
-            quantity: ing.quantity,
-            unit: ing.unit || "g",
-            optional: false,
-            note: "",
-          }))
-        : [emptyRow()]
-    )
+    setStepText(stepsText(data.steps))
+    // Matched ones keep their row; the rest are lines like any typed one.
+    const matched: SavedIngredientRow[] = []
+    const lines = data.ingredients.map((ing) => {
+      const row = {
+        ingredientName: ing.ingredientName ?? ing.extractedName,
+        quantity: ing.quantity,
+        unit: ing.unit || "g",
+        displayQuantity: ing.displayQuantity ?? null,
+        displayUnit: ing.displayUnit ?? null,
+      }
+      if (!ing.ingredientId) return formatIngredientLine(row)
+      const saved = { ...row, ingredientId: ing.ingredientId }
+      matched.push(saved)
+      return savedRowLine(saved)
+    })
+    setSavedRows(matched)
+    setIngredientText(lines.join("\n"))
     setPhotoExtracted(true)
     setAskSourceLink(data.looksLikeScreenshot === true)
   }
@@ -199,74 +167,10 @@ function NewRecipePageInner() {
     setTags(tags.filter((t) => t !== tag))
   }
 
-  // Key all ingredient mutations by `rowId` so reordering doesn't break
-  // positional indices mid-drag. Same shape as the edit page.
-  function setRowIngredient(rowId: string, ing: Ingredient) {
-    setIngredientRows((prev) =>
-      prev.map((r) =>
-        r.rowId === rowId ? { ...r, ingredientName: ing.name, ingredientId: ing.id } : r,
-      ),
-    )
-  }
-
-  function updateIngredientQuantity(rowId: string, value: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) =>
-        r.rowId === rowId
-          ? { ...r, quantity: value === "" ? "" : Number(value) }
-          : r,
-      ),
-    )
-  }
-
-  function updateIngredientUnit(rowId: string, value: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, unit: value } : r)),
-    )
-  }
-
-  function toggleIngredientOptional(rowId: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, optional: !r.optional } : r)),
-    )
-  }
-
-  function updateIngredientNote(rowId: string, value: string) {
-    setIngredientRows((prev) =>
-      prev.map((r) => (r.rowId === rowId ? { ...r, note: value } : r)),
-    )
-  }
-
-  function addIngredientRow() {
-    setIngredientRows((prev) => [...prev, emptyRow()])
-  }
-
-  function removeIngredientRow(rowId: string) {
-    setIngredientRows((prev) => {
-      if (prev.length <= 1) return prev
-      return prev.filter((r) => r.rowId !== rowId)
-    })
-  }
-
-  function updateStep(id: string, value: string) {
-    setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, text: value } : s)))
-  }
-
-  function addStep() {
-    setSteps((prev) => [...prev, makeStep()])
-  }
-
-  function removeStep(id: string) {
-    setSteps((prev) => {
-      if (prev.length <= 1) return [makeStep()]
-      return prev.filter((s) => s.id !== id)
-    })
-  }
-
   // Build the schema-shaped payload from form state. Lives in @ona/shared so
   // the contract test in apps/api can validate this exact transformer against
   // createRecipeSchema and prevent silent drift.
-  function buildPayload() {
+  function buildPayload(ingredientRows: ResolvedIngredientRow[]) {
     const base = buildRecipePayload({
       name,
       servings,
@@ -278,23 +182,12 @@ function NewRecipePageInner() {
       selectedMeals: Object.keys(mealFit) as Meal[],
       selectedSeasons: Object.keys(seasonFit) as Season[],
       tags,
-      // The form holds steps as `{ id, text }[]` for drag-and-drop key
-      // stability; the payload builder only consumes the text array.
-      steps: steps.map((s) => s.text),
+      steps: splitSteps(stepText),
       ingredientRows,
       sourceUrl,
     })
     return { ...base, mealFit, seasonFit, frequency, course: course || null }
   }
-
-  // Surface inline errors per row (e.g. "no encontrado") regardless of submit.
-  const ingredientRowHints = ingredientRows.map((row) => {
-    const typed = row.ingredientName.trim()
-    if (!typed) return null
-    if (ingredientsLoading) return null
-    if (!row.ingredientId) return "no encontrado"
-    return null
-  })
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -307,39 +200,46 @@ function NewRecipePageInner() {
     const useForce = submitter?.name === "force"
     setErrors({})
 
-    const payload = buildPayload()
-    const parsed = createRecipeSchema.safeParse(payload)
-
-    if (!parsed.success) {
+    // The rest of the form first, with the lines standing in: nothing is
+    // created while the name or the meal is missing.
+    const views = ingredientLines.views
+    const draft = createRecipeSchema.safeParse(
+      buildPayload(
+        views.map((v) => ({
+          ingredientId: PENDING_ID,
+          ingredientName: v.parsed.name,
+          quantity: v.amount.quantity,
+          unit: v.amount.unit,
+          optional: v.parsed.optional,
+          note: v.parsed.note ?? "",
+        })),
+      ),
+    )
+    if (!draft.success) {
       // Map zod issues to a flat field -> message dictionary.
       const next: Record<string, string> = {}
-      for (const issue of parsed.error.issues) {
+      for (const issue of draft.error.issues) {
         const key = issue.path.length > 0 ? String(issue.path[0]) : "_form"
         if (!next[key]) next[key] = issue.message
       }
-      // Add a custom message when any row has free-text without a matched id.
-      const hasUnresolved = ingredientRows.some(
-        (r) => r.ingredientName.trim() && !r.ingredientId
-      )
-      if (hasUnresolved) {
-        next.ingredients =
-          "Hay ingredientes sin asociar a la base. Selecciona uno de la lista."
-      }
+      if (views.length === 0) next.ingredients = "Escribe al menos un ingrediente, uno por línea."
       setErrors(next)
       return
     }
 
-    // Block submit if any row has typed text but no matched id (zod won't catch
-    // this on its own because we already filter such rows out by name; but a
-    // user typing free-text expects feedback, not silent removal).
-    const hasUnresolved = ingredientRows.some(
-      (r) => r.ingredientName.trim() && !r.ingredientId
-    )
-    if (hasUnresolved) {
-      setErrors({
-        ingredients:
-          "Hay ingredientes sin asociar a la base. Selecciona uno de la lista.",
-      })
+    // Lines → rows: the new ingredients are created now, like in the imports.
+    let parsed: ReturnType<typeof createRecipeSchema.safeParse>
+    setResolving(true)
+    try {
+      parsed = createRecipeSchema.safeParse(buildPayload(await ingredientLines.resolveRows()))
+    } catch (err) {
+      setErrors({ _form: (err as Error).message || "No se han podido guardar los ingredientes." })
+      return
+    } finally {
+      setResolving(false)
+    }
+    if (!parsed.success) {
+      setErrors({ _form: parsed.error.issues[0]?.message ?? "Revisa los ingredientes." })
       return
     }
 
@@ -426,7 +326,7 @@ function NewRecipePageInner() {
             <div className="min-w-0 space-y-4 lg:space-y-6">
               <FormCard title="Datos">
                 <div className="space-y-5">
-                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name}>
+                  <Field label="Nombre" htmlFor="recipe-name" error={errors.name} required>
                     <input
                       id="recipe-name"
                       type="text"
@@ -450,11 +350,12 @@ function NewRecipePageInner() {
                     <Field
                       label="Enlace del original"
                       htmlFor="recipe-source"
+                      optional
                       error={errors.sourceUrl}
                       hint={
                         askSourceLink
                           ? "Parece una captura de una web o una red social. Pega aquí el enlace del original y se guardará como fuente de la receta."
-                          : "Opcional. Si la receta viene de una web o un vídeo, la receta mostrará «Ver fuente»."
+                          : "Si la receta viene de una web o un vídeo, la receta mostrará «Ver fuente»."
                       }
                     >
                       <input
@@ -470,11 +371,12 @@ function NewRecipePageInner() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Comensales" htmlFor="recipe-servings" error={errors.servings}>
+                    <Field label="Comensales" htmlFor="recipe-servings" error={errors.servings} required>
                       <div className="flex items-center gap-2">
                         <input
                           id="recipe-servings"
                           type="number"
+                          required
                           value={servings}
                           onChange={(e) => {
                             setServings(e.target.value ? Number(e.target.value) : "")
@@ -491,6 +393,7 @@ function NewRecipePageInner() {
                       label="Tiempo de preparacion"
                       htmlFor="recipe-prep"
                       error={errors.prepTime}
+                      optional
                     >
                       <div className="flex items-center gap-2">
                         <input
@@ -509,7 +412,7 @@ function NewRecipePageInner() {
                     </Field>
                   </div>
 
-                  <Field label="Tipo de plato" htmlFor="recipe-course">
+                  <Field label="Tipo de plato" htmlFor="recipe-course" optional>
                     <select
                       id="recipe-course"
                       value={course}
@@ -525,7 +428,7 @@ function NewRecipePageInner() {
                     </select>
                   </Field>
 
-                  <Field label="Etiquetas" htmlFor="recipe-tags">
+                  <Field label="Etiquetas" htmlFor="recipe-tags" optional plural>
                     <input
                       id="recipe-tags"
                       type="text"
@@ -579,6 +482,7 @@ function NewRecipePageInner() {
                     label="Tipo de comida"
                     hint="Toca: vacío → encaja a veces → encaja perfecto. Al menos una en cualquier estado distinto a vacío."
                     error={errors.meals}
+                    required
                   >
                     <div className="flex flex-wrap gap-2">
                       {MEAL_OPTIONS.map((opt) => (
@@ -594,8 +498,9 @@ function NewRecipePageInner() {
 
                   <Field
                     label="Temporada"
-                    hint="Marca al menos una con el grado de encaje"
+                    hint="Marca las que encajen y con qué grado"
                     error={errors.seasons}
+                    optional
                   >
                     <div className="flex flex-wrap gap-2">
                       {SEASON_OPTIONS.map((opt) => (
@@ -618,67 +523,30 @@ function NewRecipePageInner() {
             <div className="min-w-0 space-y-4 lg:space-y-6">
               <FormCard
                 title="Ingredientes"
-                description="Cada ingrediente se asocia a la biblioteca de Mimoia. Empieza a escribir y selecciona uno de la lista."
+                description="Uno por línea, como en un papel: «200 g de lentejas», «1 cebolla», «sal». Después de una coma va una nota («200 g de bacalao, desalado») y «(opcional)» lo marca. Debajo ves cómo se ha entendido."
+                mark={{ required: true }}
               >
-                <SortableIngredientsList
-                  rows={ingredientRows}
-                  onReorder={setIngredientRows}
-                  renderRow={(row) => {
-                    const idx = ingredientRows.findIndex((r) => r.rowId === row.rowId)
-                    const localHint = ingredientRowHints[idx]
-                    const serverHint = Object.entries(errors).find(
-                      ([k]) =>
-                        k === `ingredients[${idx}]` ||
-                        k.startsWith(`ingredients[${idx}].`),
-                    )?.[1]
-                    const hint = localHint ?? serverHint
-                    const selectedIng = row.ingredientId
-                      ? ingredientLibrary.find((ing) => ing.id === row.ingredientId) ?? null
-                      : null
-                    return (
-                      <IngredientRowFields
-                        selected={selectedIng}
-                        onSelect={(ing) => setRowIngredient(row.rowId, ing)}
-                        placeholder={
-                          ingredientsLoading ? "Cargando biblioteca..." : "Ingrediente"
-                        }
-                        hasError={!!hint}
-                        defaultText={row.ingredientName}
-                        quantity={row.quantity}
-                        onQuantity={(v) => updateIngredientQuantity(row.rowId, v)}
-                        unit={row.unit}
-                        units={UNIT_OPTIONS}
-                        onUnit={(v) => updateIngredientUnit(row.rowId, v)}
-                        optional={row.optional}
-                        onToggleOptional={() => toggleIngredientOptional(row.rowId)}
-                        note={row.note}
-                        onNote={(v) => updateIngredientNote(row.rowId, v)}
-                        onRemove={() => removeIngredientRow(row.rowId)}
-                        removable={ingredientRows.length > 1}
-                        hint={hint}
-                      />
-                    )
-                  }}
+                <IngredientLinesField
+                  text={ingredientText}
+                  onText={setIngredientText}
+                  views={ingredientLines.views}
+                  onChoose={ingredientLines.choose}
+                  hasError={!!errors.ingredients}
+                  errorAt={(idx) => lintAt(errors, "ingredients", idx)}
                 />
-                <AddRowButton onClick={addIngredientRow}>Anadir ingrediente</AddRowButton>
                 <FieldError>{errors.ingredients}</FieldError>
               </FormCard>
 
-              <FormCard title="Preparacion">
-                <SortableStepsList
-                  steps={steps}
-                  onReorder={setSteps}
-                  onChange={updateStep}
-                  onRemove={removeStep}
-                  errorAt={(idx) =>
-                    // Lint paths from the server: "steps[3].text" or "steps[3]".
-                    Object.entries(errors).find(
-                      ([k]) =>
-                        k === `steps[${idx}]` || k.startsWith(`steps[${idx}].`),
-                    )?.[1] ?? null
-                  }
+              <FormCard
+                title="Preparacion"
+                description="Escribe o pega el texto entero: se parte en pasos por los saltos de línea y por la numeración («1.», «2)», «Paso 3:»)."
+                mark={{ optional: true }}
+              >
+                <StepsTextField
+                  text={stepText}
+                  onText={setStepText}
+                  errorAt={(idx) => lintAt(errors, "steps", idx)}
                 />
-                <AddRowButton onClick={addStep}>Anadir paso</AddRowButton>
               </FormCard>
             </div>
           </div>
@@ -687,6 +555,7 @@ function NewRecipePageInner() {
               warnings) and the sticky ink pill. */}
           {/* The bar must be a direct child of the form: a sticky element
               only sticks inside its parent's box. */}
+          <RequiredNote className="mt-4" />
           <div className="mt-6">
             <FormErrors
               errors={errors}
@@ -701,7 +570,7 @@ function NewRecipePageInner() {
                 <button
                   type="submit"
                   name="force"
-                  disabled={createRecipe.isPending}
+                  disabled={createRecipe.isPending || resolving}
                   className={FORCE_PILL}
                 >
                   {createRecipe.isPending ? "Guardando..." : "Guardar igualmente"}
@@ -711,13 +580,20 @@ function NewRecipePageInner() {
           </div>
           <SaveBar
             submitLabel={
-              uploadingPhoto ? "Subiendo tu foto..." : createRecipe.isPending ? "Guardando..." : "Crear receta"
+              uploadingPhoto ? "Subiendo tu foto..." : createRecipe.isPending || resolving ? "Guardando..." : "Crear receta"
             }
-            disabled={createRecipe.isPending || uploadingPhoto}
+            disabled={createRecipe.isPending || uploadingPhoto || resolving}
             cancelHref="/recipes"
           />
         </form>
       </div>
     </div>
+  )
+}
+
+/** A server lint message for row `idx` of a list: "ingredients[3]" or "steps[3].text". */
+function lintAt(errors: Record<string, string>, list: "ingredients" | "steps", idx: number): string | null {
+  return (
+    Object.entries(errors).find(([k]) => k === `${list}[${idx}]` || k.startsWith(`${list}[${idx}].`))?.[1] ?? null
   )
 }

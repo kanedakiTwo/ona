@@ -3,10 +3,11 @@
  *  - «En el perfil no se habían guardado los hijos aunque en WhatsApp sí me
  *    habla de ellos»: what Mimo notes (`household.kids_2_to_10`) is the
  *    account's count too, and /profile reads the account, not the copy kept
- *    in this browser.
- *  - «He sido incapaz de ver dónde meter intolerancia al pimiento»: the
- *    profile has «Alergias e intolerancias», which takes free text — saved
- *    even when «Guardar» is tapped without pressing Enter.
+ *    in this browser. Since PRO-1203, «Quién come» shows them as children to
+ *    describe.
+ *  - «He sido incapaz de ver dónde meter intolerancia al pimiento»: your row
+ *    of «Quién come» opens «Tus alergias y tu dieta», which takes free text —
+ *    saved even when «Guardar» is tapped without pressing Enter.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { completeOnboarding, registerFreshUser } from './_helpers'
@@ -35,19 +36,24 @@ test('kids Mimo noted show in the profile; «Alergias e intolerancias» takes «
 
   // This browser still says 0 niños; the profile shows the account.
   await page.goto('/profile')
-  await expect(page.getByText(/1 adulto · 2 niños/)).toBeVisible({ timeout: 15_000 })
+  const whoEats = page.getByTestId('who-eats')
+  await expect(whoEats).toContainText('para 1 adulto y 2 niños', { timeout: 15_000 })
+  await expect(whoEats.getByTestId('who-eats-extra')).toHaveCount(2)
 
-  await page.getByRole('link', { name: /alergias e intolerancias/i }).click()
+  await whoEats.getByTestId('who-eats-row').first().click()
+  await page.getByRole('link', { name: 'Cambiar alergias y dieta' }).click()
   await expect(page).toHaveURL(/\/profile\/casa\/alergias/, { timeout: 15_000 })
   await page.getByRole('checkbox', { name: /datos de salud/i }).check()
   await expect(page.getByRole('button', { name: /^no tengo ninguna$/i })).toBeVisible()
   // Typed, no Enter: the button already says «Guardar» and saves it.
   await page.getByPlaceholder(/p\. ej\. pimiento/i).fill('Pimiento')
   await page.getByRole('button', { name: /^guardar$/i }).click()
-  // Back on /profile itself (the alergias URL ends in «?next=/profile» too).
-  await page.waitForURL((u) => u.pathname === '/profile', { timeout: 15_000 })
+  // Back on your row (the alergias URL ends in «?next=/profile/quien/me»).
+  await page.waitForURL((u) => u.pathname === '/profile/quien/me', { timeout: 15_000 })
 
   const account = await (await page.request.get(`${API_URL}/user/${s.userId}`, { headers: s.auth })).json()
   expect(account.restrictions).toEqual(['pimiento'])
-  await expect(page.getByRole('link', { name: /alergias e intolerancias/i })).toContainText('pimiento', { timeout: 15_000 })
+  await expect(page.getByTestId('person-restrictions')).toContainText('pimiento', { timeout: 15_000 })
+  await page.goto('/profile')
+  await expect(page.getByTestId('who-eats-row').first()).toContainText('pimiento', { timeout: 15_000 })
 })

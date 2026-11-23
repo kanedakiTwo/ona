@@ -2,6 +2,7 @@ import type { DayTimeBudget, FitLevel, Meal, RecipeFrequency, Season } from '@on
 import { FIT_WEIGHT, FREQUENCY_WEIGHT, appliancesIn, classifyEquipment, fitsTimeBudget, isInSeason } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
 import type { DietCategory } from './stepDietMentions.js'
+import { tasteWeight, type MenuTastes } from './menuTastes.js'
 
 export interface RecipeWithIngredients {
   id: string
@@ -58,6 +59,10 @@ export interface RecipeWithIngredients {
   dislikesOverridden?: readonly string[]
   /** Internal tags (`tipo:<slug>`, `proteina:<slug>`), for the week rules (PRO-254). */
   internalTags?: string[] | null
+  /** `recipes.difficulty` ('easy' | 'medium' | 'hard'), for the cook's level (PRO-1201). */
+  difficulty?: string | null
+  /** «Semana tipo» (D-182): `DISH_TYPES` keys (`recipes.dish_types`, else `dishTypesOf`). */
+  dishTypes?: string[] | null
   /** Cached per-serving nutrition; only `kcal` is read here (the planner's day floor). */
   nutritionPerServing?: { kcal?: number | null } | null
   ingredients: Array<{
@@ -75,6 +80,13 @@ export interface RecipeWithIngredients {
     edibleFraction?: number | null
     note?: string | null
     aisle?: string | null
+    /** Row id + «Cocinar ahora» marks (specs/cook-now.md). */
+    rowId?: string
+    optional?: boolean
+    displayUnit?: string | null
+    category?: string | null
+    role?: 'essential' | 'secondary' | null
+    substituteIngredientIds?: string[]
   }>
   /** Servings the quantities are for (recipes.servings), for the week rules (PRO-280). */
   servings?: number | null
@@ -97,12 +109,6 @@ export interface MatcherOptions {
    * excluded. Absent / empty set is a no-op (existing call sites stay valid).
    */
   bannedRecipeIds?: Set<string>
-  /**
-   * When set, the matcher only returns recipes whose `tags` include this
-   * value. Used by the "Pin meal type to a day" UI (cremas, legumbres,
-   * pizza…). Null / absent means no constraint.
-   */
-  pinnedType?: string | null
   /**
    * Day index (0-6, Mon-Sun) for this slot. Used by the
    * `weekends_only` frequency filter — recipes with that hint are
@@ -144,6 +150,17 @@ export interface MatcherOptions {
   timeBudget?: DayTimeBudget | null
   /** Legacy shape of `timeBudget`: N minutes in total. */
   maxPrepMinutes?: number | null
+  /**
+   * PRO-1201: the ficha's cuisines and the cook's level, as weights of the
+   * draw (`menuTastes.ts`); they never filter. Absent = as before.
+   */
+  tastes?: MenuTastes
+  /**
+   * PRO-1200 (`everydayMenu.ts`): the `diario` recipes plus what the
+   * household chose. When any candidate is in it, the draw keeps to those;
+   * when none is, it draws from every candidate. Absent = no-op.
+   */
+  everyday?: ReadonlySet<string>
 }
 
 /**
@@ -166,7 +183,6 @@ export function matchRecipes(
     usedRecipeIds,
     restrictions,
     bannedRecipeIds,
-    pinnedType,
     dislikes,
     availableEquipment,
     unavailableEquipment,
@@ -188,9 +204,6 @@ export function matchRecipes(
   return recipes.filter((recipe) => {
     // 0. Veto wins over everything else — a banned favourite is still out.
     if (bannedRecipeIds?.has(recipe.id)) return false
-
-    // 0b. Pinned meal type — when set, recipe must carry the tag.
-    if (pinnedType && !recipe.tags.includes(pinnedType)) return false
 
     // 0b'. Catalogue quality gate (PRO-73): a system recipe the audit flags
     //      (no steps, too few ingredients, quantities out of range) is
@@ -274,6 +287,9 @@ export const LIKE_WEIGHT = 1.5
  *   - season fit: same scale, multiplicative against meal weight.
  *   - favourite:  2× on top.
  *   - «Me apetece» (PRO-146): ×1.5 on the rounded weight.
+ *   - the ficha's tastes (PRO-1201, `tasteWeight`): a cuisine they love ×1.5,
+ *     one they don't ×0.15; a hard recipe ×0.1 for an «easy» cook, ×0.7 for
+ *     a «medium» one. Also on the rounded weight, so they never vanish.
  *
  * So a perfect-meal / perfect-season favourite weighs 18 against a
  * mid-meal / mid-season non-favourite at 1 — strong but not crushing,
@@ -283,7 +299,7 @@ export const LIKE_WEIGHT = 1.5
 export function pickRandom(
   candidates: RecipeWithIngredients[],
   favoriteRecipeIds: Set<string>,
-  ctx?: { meal?: Meal; season?: Season; likedRecipeIds?: Set<string> },
+  ctx?: { meal?: Meal; season?: Season; likedRecipeIds?: Set<string>; tastes?: MenuTastes },
 ): RecipeWithIngredients | undefined {
   if (candidates.length === 0) return undefined
 
@@ -309,7 +325,7 @@ export function pickRandom(
     // Round to an integer weight (as when the pool held copies), with
     // a floor of 1 so an "occasional" recipe still has a non-zero chance
     // when it's the only option.
-    const count = Math.max(1, Math.round(weight)) * (ctx?.likedRecipeIds?.has(recipe.id) ? LIKE_WEIGHT : 1)
+    const count = Math.max(1, Math.round(weight)) * (ctx?.likedRecipeIds?.has(recipe.id) ? LIKE_WEIGHT : 1) * tasteWeight(recipe, ctx?.tastes)
     weights.push(count)
     total += count
   }
@@ -366,10 +382,13 @@ export function findRecipeForSlot(
   recipes: RecipeWithIngredients[],
   options: MatcherOptions,
 ): RecipeWithIngredients | undefined {
-  const candidates = matchRecipes(recipes, options)
+  let candidates = matchRecipes(recipes, options)
+  const everyday = options.everyday
+  if (everyday && candidates.some((r) => everyday.has(r.id))) candidates = candidates.filter((r) => everyday.has(r.id))
   return pickRandom(candidates, options.favoriteRecipeIds, {
     meal: options.meal,
     season: options.season,
     likedRecipeIds: options.likedRecipeIds,
+    tastes: options.tastes,
   })
 }

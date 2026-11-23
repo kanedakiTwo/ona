@@ -19,16 +19,21 @@ import { useWakeLock } from "@/hooks/useWakeLock"
 import { haptic } from "@/lib/pwa/haptics"
 import { subscribeCookingCommands } from "@/lib/cookingCommands"
 import { useAuth } from "@/lib/auth"
+import { trackUsage } from "@/lib/usageEvents"
 import { useOptionalMimo } from "@/components/mimo/MimoProvider"
 import { StepCard, buildIngredientRefCounts } from "./StepCard"
 import { ChecklistPanel } from "./ChecklistPanel"
 import { RatingPromptSheet } from "./RatingPromptSheet"
 import { useRecordCook } from "@/hooks/useCookLogs"
+import { useSetSlotEaten } from "@/hooks/useMenu"
+import type { CookMenuContext } from "@/lib/cookHref"
 
 interface CookingShellProps {
   recipe: Recipe
   servings: number
   onServingsChange: (n: number) => void
+  /** The menu meal being cooked (`?menu=&day=&meal=`, lib/cookHref.ts), if it came from the menu. */
+  menuContext?: CookMenuContext | null
 }
 
 /* ─── Web Audio chime (no asset file) ────────────────────────────── */
@@ -77,6 +82,7 @@ export function CookingShell({
   recipe,
   servings,
   onServingsChange,
+  menuContext = null,
 }: CookingShellProps) {
   const router = useRouter()
   const [stepIdx, setStepIdx] = useState(0)
@@ -98,7 +104,10 @@ export function CookingShell({
     if (!mimo) return
     haptic.light()
     if (mimo.handsFree) mimo.setHandsFree(false)
-    else mimo.open({ listen: true, handsFree: true })
+    else {
+      mimo.open({ listen: true, handsFree: true })
+      trackUsage("handsfree_started", { where: "cocina" })
+    }
   }
 
   const totalSteps = recipe.steps.length
@@ -201,16 +210,31 @@ export function CookingShell({
   }
 
   // «Terminar» on the last step (PRO-110): records the dish as cooked, asks
-  // «¿Qué tal?» when the API says so, then back to the recipe.
+  // «¿Qué tal?» when the API says so, then back to the recipe. Coming from
+  // the menu (specs/cook-now.md), the log carries the menu slot, the slot
+  // turns «✓ Comido» and it goes back to /menu instead.
   const recordCook = useRecordCook()
+  const setEaten = useSetSlotEaten()
   const [ratingOpen, setRatingOpen] = useState(false)
+  function finishExit() {
+    if (menuContext) router.push("/menu")
+    else handleExit()
+  }
   function handleFinish() {
     haptic.medium()
     recordCook.mutate(
-      { recipeId: recipe.id, servings },
       {
-        onSuccess: (res) => (res.askRating ? setRatingOpen(true) : handleExit()),
-        onError: () => handleExit(),
+        recipeId: recipe.id,
+        servings,
+        ...(menuContext ? { menuId: menuContext.menuId, dayIndex: menuContext.day, meal: menuContext.meal } : {}),
+      },
+      {
+        onSuccess: (res) => {
+          if (menuContext) setEaten.mutate({ menuId: menuContext.menuId, day: menuContext.day, meal: menuContext.meal, eaten: true })
+          if (res.askRating) setRatingOpen(true)
+          else finishExit()
+        },
+        onError: () => finishExit(),
       },
     )
   }
@@ -466,7 +490,7 @@ export function CookingShell({
         recipeName={recipe.name}
         onDone={() => {
           setRatingOpen(false)
-          handleExit()
+          finishExit()
         }}
         layerClassName="z-[110]"
       />

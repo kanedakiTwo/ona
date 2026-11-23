@@ -117,7 +117,7 @@ function Hero() {
             variants={fadeUp}
             className="mt-10 max-w-md text-base leading-relaxed text-[#4A4239] md:text-lg"
           >
-            Mimoia piensa vuestra semana: un menú de temporada a vuestro gusto, la lista de la compra hecha y un mensaje por WhatsApp cuando toca descongelar o ir a comprar. Tú solo dices «vale» o «cámbiame el jueves».
+            Mimoia piensa vuestra semana: cada jueves te deja hecho el menú de la siguiente, a vuestro gusto y de temporada, con la lista de la compra y un aviso cuando toca descongelar. Si no te apetece algo, le dices «cámbiame el jueves».
           </motion.p>
 
           <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center gap-4">
@@ -134,9 +134,11 @@ function Hero() {
           </motion.div>
 
           <motion.p variants={fadeUp} className="mt-10 text-xs text-[#7A7066]">
-            {heroCta.open
-              ? "Gratis durante la beta · Sin tarjeta · Te borras con un clic"
-              : "Gratis durante la beta · Entramos por tandas · Te borras con un clic"}
+            {heroCta.open ? (
+              <FreeStartLine testId="hero-plans-link" />
+            ) : (
+              "Gratis durante la beta · Entramos por tandas · Te borras con un clic"
+            )}
           </motion.p>
         </motion.div>
 
@@ -215,7 +217,7 @@ function Marquee() {
     "Sin contar calorías",
     "Menús de temporada",
     "La lista sale sola",
-    "Te escribe por WhatsApp",
+    "Te avisa cuando toca",
     "Pensado para toda la casa",
     "Se acuerda de quién no come qué",
     "Pide a tus tiendas de siempre",
@@ -309,7 +311,7 @@ function Steps() {
       num: "01",
       eyebrow: "Una vez",
       title: "Cuéntale cómo sois en casa.",
-      desc: "Cuántos sois, quién no come qué, cuánto tiempo tenéis entre semana y tres platos que os encantan. Por la app o por WhatsApp, como te sea más cómodo.",
+      desc: "Cuántos sois, cómo cocináis, cuánto tiempo tenéis entre semana y quién no come qué. Por la app o por WhatsApp, como te sea más cómodo.",
       img: STEP1_IMG,
     },
     {
@@ -503,13 +505,14 @@ function Differential() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, amount: 0.2 })
 
-  const rows = [
+  // `plans`: only the trial and the paid plans have it (Legal, PRO-1190), so it links to the prices.
+  const rows: { tracking: string; ona: string; plans?: boolean }[] = [
     { tracking: "Apuntas lo que ya comiste", ona: "Piensa lo que vais a comer" },
     { tracking: "Cuentan las calorías de una persona", ona: "Piensa en toda la casa" },
     { tracking: "Te piden algo cada día", ona: "Dos minutos a la semana" },
-    { tracking: "Tienes que acordarte de abrir la app", ona: "Te escribe por WhatsApp cuando toca" },
+    { tracking: "Tienes que acordarte de abrir la app", ona: "Te deja la semana hecha cada jueves" },
     { tracking: "La lista de la compra la haces tú", ona: "La lista sale sola, y se la puedes mandar a tus tiendas" },
-    { tracking: "Empiezan de cero cada vez", ona: "Recuerda lo que le vas contando" },
+    { tracking: "Empiezan de cero cada vez", ona: "Recuerda lo que le vas contando", plans: true },
   ]
 
   return (
@@ -554,7 +557,15 @@ function Differential() {
               </div>
               <div className="flex items-start gap-3 border-l border-[#DDD6C5] bg-[#FAF6EE] p-6 md:p-8">
                 <span className="mt-1 text-base text-[#2D6A4F]">✓</span>
-                <span className="text-sm font-medium leading-snug text-[#1A1612] md:text-base">{row.ona}</span>
+                <span className="text-sm font-medium leading-snug text-[#1A1612] md:text-base">
+                  {row.ona}
+                  {row.plans && (
+                    <>
+                      {" · "}
+                      <PlansLink testId="differential-plans-link" />
+                    </>
+                  )}
+                </span>
               </div>
             </motion.div>
           ))}
@@ -748,11 +759,34 @@ function FinalCTA() {
             <ArrowUpRight size={20} />
           </MagneticButton>
           <p className="text-xs text-[#7A7066]">
-            Gratis durante la beta · Sin tarjeta · Te borras con un clic
+            <FreeStartLine testId="final-plans-link" />
           </p>
         </div>
       </div>
     </section>
+  )
+}
+
+/* ═══════════════════════════════════════════
+   «Empiezas gratis… · Ver planes» (PRO-1190, Legal 2026-11-08): with
+   paid plans, what you pay for is one click away, in the prices of
+   «Cómo funciona».
+   ═══════════════════════════════════════════ */
+const PLANS_HREF = "/como-funciona#precios"
+
+function PlansLink({ testId }: { testId: string }) {
+  return (
+    <Link href={PLANS_HREF} className="underline underline-offset-2 hover:text-[#2D6A4F]" data-testid={testId}>
+      Ver planes
+    </Link>
+  )
+}
+
+function FreeStartLine({ testId }: { testId: string }) {
+  return (
+    <>
+      Empiezas gratis · Sin tarjeta · Te borras con un clic · <PlansLink testId={testId} />
+    </>
   )
 }
 

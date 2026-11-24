@@ -2,11 +2,8 @@ import { Router } from 'express'
 import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
-<<<<<<< c719acb01368c3987b20a2de683b2e7cfc602a5b
 import { loadMenuWaitReport } from '../services/menuWaitReport.js'
-=======
 import { loadMimoCacheWeekly } from '../services/mimoTurnCost.js'
->>>>>>> 075996442f6ebfc8e77b32a2f05c73bdbcccf3fa
 import { loadCapHits } from '../services/capHits.js'
 import { loadApiSaldo } from '../services/apiSaldo.js'
 import { loadFeatureUsageReport } from '../services/featureUsageReport.js'
@@ -70,15 +67,14 @@ router.get('/admin/metrics', metricsAuth, async (req, res) => {
 router.get('/admin/usage', metricsAuth, async (req, res) => {
   try {
     const days = intParam(req.query.days, 28, 1, 180)
-<<<<<<< c719acb01368c3987b20a2de683b2e7cfc602a5b
     const includeInternal = flag(req.query.includeInternal)
     // PRO-1298: the menu's wait, by week (its own file: services/menuWaitReport.ts).
-    const [report, menuWait] = await Promise.all([loadUsageReport({ days, includeInternal }), loadMenuWaitReport({ includeInternal })])
-    res.json({ ...report, menuWait })
-=======
-    const [report, mimoCache] = await Promise.all([loadUsageReport({ days, includeInternal: flag(req.query.includeInternal) }), loadMimoCacheWeekly(days)])
-    res.json({ ...report, mimoCache })
->>>>>>> 075996442f6ebfc8e77b32a2f05c73bdbcccf3fa
+    const [report, menuWait, mimoCache] = await Promise.all([
+      loadUsageReport({ days, includeInternal }),
+      loadMenuWaitReport({ includeInternal }),
+      loadMimoCacheWeekly(days),
+    ])
+    res.json({ ...report, menuWait, mimoCache })
   } catch (err: any) {
     console.error('[usage] report failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

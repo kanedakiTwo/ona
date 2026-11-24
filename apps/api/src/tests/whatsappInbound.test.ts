@@ -771,7 +771,7 @@ describe('processInbound — the reply carries the menu / list, not just a link 
       menuDigest,
     })
     await processInbound(msg({ text: 'genera el menú de la semana' }), t.deps)
-    expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-9', 'generated')
+    expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-9', 'generated', 'es')
     expect(t.sent).toEqual([{ type: 'text', text: MENU_TEXT }])
     const text = textOf(t.sent)
     expect(text.startsWith('Listo: tu menú hasta el domingo 🍽️')).toBe(true)
@@ -859,7 +859,7 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     const menuImage = vi.fn(async () => ({ jpeg: JPEG, caption: CAPTION }))
     const t = setup({ chatReply: generated(), menuDigest: async () => MENU_TEXT, menuImage })
     await processInbound(msg({ text: 'genera el menú de la semana' }), t.deps)
-    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-9', 'generated')
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-9', 'generated', 'es')
     expect(t.sent).toHaveLength(1)
     const m = t.sent[0]
     expect(m).toMatchObject({ type: 'image', mimeType: 'image/jpeg', image: JPEG })
@@ -970,7 +970,7 @@ describe('processInbound — the generated week goes out as ONE picture with a s
       menuImage,
     })
     await processInbound(msg({ text: 'dame el menú de la semana' }), t.deps)
-    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-1', 'viewing')
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-1', 'viewing', 'es')
     expect(t.sent).toHaveLength(1)
     expect(t.sent[0]).toMatchObject({ type: 'image', text: VIEW_CAPTION })
     expect(VIEW_CAPTION.startsWith('Tu menú de esta semana 🍽️\n')).toBe(true)

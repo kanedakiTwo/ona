@@ -322,3 +322,14 @@ export async function recentInboundTexts(phone: string, limit = 15): Promise<str
     .limit(limit)
   return rows.map((r) => r.body ?? '').filter(Boolean)
 }
+
+/** PRO-1300: the language saved at the sign-up for this number (null: none). */
+export async function linkLanguage(phone: string): Promise<'es' | 'en' | null> {
+  const [row] = await db.select({ language: whatsappLinks.language }).from(whatsappLinks).where(eq(whatsappLinks.phone, phone)).limit(1)
+  return row?.language === 'en' || row?.language === 'es' ? row.language : null
+}
+
+/** PRO-1300: saves the language the household writes in (no link → nothing). */
+export async function setLinkLanguage(phone: string, language: 'es' | 'en'): Promise<void> {
+  await db.update(whatsappLinks).set({ language }).where(eq(whatsappLinks.phone, phone))
+}

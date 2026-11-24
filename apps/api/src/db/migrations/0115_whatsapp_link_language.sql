@@ -1,0 +1,1 @@
+ALTER TABLE "whatsapp_links" ADD COLUMN "language" text;

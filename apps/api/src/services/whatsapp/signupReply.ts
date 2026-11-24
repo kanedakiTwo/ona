@@ -8,7 +8,7 @@
  * que os gusta» / «se parece poco» / «bastante genérico»: those sentences go.
  * Pure, tested in signupReply.test.ts.
  */
-import { MADE_WITH_PREFIX, MENU_INVITE_PREFIX, SNOWBALL_LINE } from '../menuText.js'
+import { MADE_WITH_PREFIX, MENU_INVITE_PREFIX, MENU_INVITE_PREFIX_EN, SNOWBALL_LINE, SNOWBALL_LINE_EN } from '../menuText.js'
 
 /** What the sign-up's closing reply never says (the prompt forbids it; this is the net). */
 export const SIGNUP_FORBIDDEN_PHRASES: readonly RegExp[] = [
@@ -16,6 +16,9 @@ export const SIGNUP_FORBIDDEN_PHRASES: readonly RegExp[] = [
   /se parece poco/i,
   /gen[eé]ric/i,
   /acertar[eé] menos/i,
+  // PRO-1300: the same, in English.
+  /less right/i,
+  /(?:not|n't) (?:very |that )?close to/i,
 ]
 
 /**
@@ -40,8 +43,11 @@ export function signupWords(text: string): string {
   return sentences.filter((s, i) => !asks(s) || i === lastQuestion).join(' ').trim()
 }
 
-/** The caption's opener after generating («Listo: tu menú hasta el domingo 🍽️»). */
-const OPENER_PREFIX = 'Listo:'
+/** The caption's opener after generating («Listo: tu menú hasta el domingo 🍽️»; PRO-1300: «Ready: …» in English). */
+const OPENER_PREFIXES = ['Listo:', 'Ready:']
+const SNOWBALL_LINES = [SNOWBALL_LINE, SNOWBALL_LINE_EN]
+const INVITE_PREFIXES = [MENU_INVITE_PREFIX, MENU_INVITE_PREFIX_EN]
+const startsWithAny = (line: string, prefixes: readonly string[]) => prefixes.some((p) => line.startsWith(p))
 
 /**
  * Pure: the week caption for the sign-up — no snowball line («acertaré
@@ -51,8 +57,8 @@ const OPENER_PREFIX = 'Listo:'
 export function signupCaption(caption: string, hasWords: boolean): string {
   return caption
     .split('\n')
-    .filter((l) => !l.startsWith(SNOWBALL_LINE) && !l.startsWith(MENU_INVITE_PREFIX) && !l.startsWith(MADE_WITH_PREFIX))
-    .filter((l) => !(hasWords && l.startsWith(OPENER_PREFIX)))
+    .filter((l) => !startsWithAny(l, SNOWBALL_LINES) && !startsWithAny(l, INVITE_PREFIXES) && !l.startsWith(MADE_WITH_PREFIX))
+    .filter((l) => !(hasWords && startsWithAny(l, OPENER_PREFIXES)))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
@@ -62,7 +68,7 @@ export function signupCaption(caption: string, hasWords: boolean): string {
 export function captionWithoutInvite(caption: string): string {
   return caption
     .split('\n')
-    .filter((l) => !l.startsWith(MENU_INVITE_PREFIX))
+    .filter((l) => !startsWithAny(l, INVITE_PREFIXES))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()

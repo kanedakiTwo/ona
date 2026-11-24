@@ -18,8 +18,9 @@ import { and, eq, gte, isNotNull, isNull, lte, max } from 'drizzle-orm'
 import { db } from '../../db/connection.js'
 import { users, whatsappLinks, whatsappMessages } from '../../db/schema.js'
 import { isAwakeInstant } from '../notifications/hours.js'
-import { COPY } from './inbound.js'
-import { OPT_IN_NO, OPT_IN_YES } from './commands.js'
+import { optInButtons, signupCopy } from './inbound.js'
+import { languageForPhone } from './outbound.js'
+import type { Lang } from './language.js'
 import { renderPlainText, outboundBody, type OutboundMessage } from './render.js'
 import { recordServiceMessageCost } from './serviceCost.js'
 import * as store from './store.js'
@@ -61,19 +62,11 @@ export function dueSignupFollowUp(input: {
   return 'optin_prompt'
 }
 
-/** The message of a follow-up. */
-export function signupFollowUpMessage(which: SignupFollowUp, webUrl: string): OutboundMessage[] {
-  if (which === 'health_link') return renderPlainText(COPY.healthOnWeb(`${webUrl.replace(/\/$/, '')}/profile`))
-  return [
-    {
-      type: 'buttons',
-      text: COPY.optInPrompt,
-      buttons: [
-        { id: 'optin_yes', title: OPT_IN_YES },
-        { id: 'optin_no', title: OPT_IN_NO },
-      ],
-    },
-  ]
+/** The message of a follow-up, in the household's language (PRO-1300). */
+export function signupFollowUpMessage(which: SignupFollowUp, webUrl: string, lang: Lang = 'es'): OutboundMessage[] {
+  const copy = signupCopy(lang)
+  if (which === 'health_link') return renderPlainText(copy.healthOnWeb(`${webUrl.replace(/\/$/, '')}/profile`))
+  return [{ type: 'buttons', text: copy.optInPrompt, buttons: optInButtons(lang) }]
 }
 
 /** One tick: send what is due. Returns how many messages went out. */
@@ -101,7 +94,8 @@ export async function runSignupFollowUps(now: Date = new Date()): Promise<number
         .where(eq(whatsappMessages.phone, row.phone))
       const which = dueSignupFollowUp({ completedAt: row.completedAt!, kinds, lastActivityAt: last?.at ?? null, now })
       if (!which) continue
-      for (const m of signupFollowUpMessage(which, env.WEB_PUBLIC_URL)) {
+      const lang = await languageForPhone(row.phone)
+      for (const m of signupFollowUpMessage(which, env.WEB_PUBLIC_URL, lang)) {
         try {
           const wamid = await client.sendMessage(row.phone, m)
           void recordServiceMessageCost(row.userId)

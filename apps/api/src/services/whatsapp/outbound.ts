@@ -56,7 +56,7 @@ import { quietAfterSignUp } from './signUpQuiet.js'
 import { isShoppingReminderWindow } from './proactive.js'
 import { loadUserAlertPrefs, mergeAlertPrefs, setAlertPrefs } from '../notifications/alertPrefs.js'
 import { ratingToSave } from './checkinButtons.js'
-import { detectLanguage, type Lang } from './language.js'
+import { clearLanguage, type Lang } from './language.js'
 import { FATIGUE_STREAK, fatigueAskKind, fatigueQuestion, fatiguedKind, type FatigueKind } from './fatigue.js'
 import { OPT_OUT_REASON_TAG, type OptOutReason } from './optOutReason.js'
 import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
@@ -304,10 +304,30 @@ async function isRatedLeftover(userId: string, recipeId: string, now: Date): Pro
   return Boolean(row)
 }
 
-/** 19-nov: the language this number writes in (language.ts). Never throws: Spanish. */
+/**
+ * 19-nov: the language this number writes in (language.ts): what its last
+ * messages say clearly, else the one saved at the sign-up (PRO-1300), else
+ * Spanish. Never throws.
+ */
 export async function languageForPhone(phone: string): Promise<Lang> {
   try {
-    return detectLanguage(await store.recentInboundTexts(phone))
+    return clearLanguage(await store.recentInboundTexts(phone)) ?? (await store.linkLanguage(phone)) ?? 'es'
+  } catch {
+    return 'es'
+  }
+}
+
+/**
+ * PRO-1300: during the sign-up (the link and the first steps), the language
+ * the household writes in is saved for the avisos. Only when its messages
+ * say it clearly; returns the language to use now. Never throws.
+ */
+export async function rememberLanguage(phone: string): Promise<Lang> {
+  try {
+    const clear = clearLanguage(await store.recentInboundTexts(phone))
+    if (!clear) return (await store.linkLanguage(phone)) ?? 'es'
+    await store.setLinkLanguage(phone, clear)
+    return clear
   } catch {
     return 'es'
   }

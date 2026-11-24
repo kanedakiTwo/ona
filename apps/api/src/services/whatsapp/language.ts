@@ -10,6 +10,9 @@ import type { OutboundMessage } from './render.js'
  *     nothing about the person).
  *   - English only with a clear lead (and some evidence); anything unclear is
  *     Spanish, as before.
+ *   - PRO-1300: a lone greeting («Hi», «Hola») counts too, and the language
+ *     the household wrote in at the sign-up is saved (`whatsapp_links.language`):
+ *     it applies whenever the last messages don't say it clearly.
  */
 export type Lang = 'es' | 'en'
 
@@ -20,12 +23,27 @@ const ES_WORDS = new Set(
   'el la los las de del que y es son por para con una un qué que hoy cena comida sí si gracias mi me lo le se no pero como cómo cuando cuándo esta este semana menú lista compra receta hacer hice hecho quiero puedes tengo tenemos hay muy también ya'.split(' '),
 )
 
-export function detectLanguage(texts: readonly string[]): Lang {
+/**
+ * PRO-1300: a first message is often just a greeting («Hi», «Hola»): too
+ * short for the words count, but it says the language. Whole message only,
+ * with or without «Mimo».
+ */
+const EN_GREETING = /^(?:hi|hello|hey|hiya|hi there|hello there|good (?:morning|afternoon|evening))(?: mimo(?:ia)?)?$/
+const ES_GREETING = /^(?:hola|buenas|buenos dias|buenas tardes|buenas noches)(?: mimo(?:ia)?)?$/
+
+/**
+ * PRO-1300: the language when the texts say it clearly, else null (the
+ * caller then falls back on the language saved at the sign-up, or Spanish).
+ */
+export function clearLanguage(texts: readonly string[]): Lang | null {
   let en = 0
   let es = 0
   for (const raw of texts) {
     const t = raw.toLowerCase()
     const words = t.split(/[^a-záéíóúüñ']+/).filter(Boolean)
+    const bare = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z' ]+/g, ' ').replace(/\s+/g, ' ').trim()
+    if (EN_GREETING.test(bare)) en += 3
+    if (ES_GREETING.test(bare)) es += 3
     if (words.length < 3) continue
     if (/[ñ¿¡]|[áéíóú]/.test(t)) es += 2
     for (const w of words) {
@@ -33,7 +51,13 @@ export function detectLanguage(texts: readonly string[]): Lang {
       if (ES_WORDS.has(w)) es++
     }
   }
-  return en >= 3 && en > es * 1.5 ? 'en' : 'es'
+  if (en >= 3 && en > es * 1.5) return 'en'
+  if (es >= 3 && es > en * 1.5) return 'es'
+  return null
+}
+
+export function detectLanguage(texts: readonly string[]): Lang {
+  return clearLanguage(texts) === 'en' ? 'en' : 'es'
 }
 
 /**

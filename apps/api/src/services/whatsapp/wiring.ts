@@ -24,7 +24,7 @@ import { isUserAllowed } from './config.js'
 import { isOnFreePlan } from '../accountAccess.js'
 import * as store from './store.js'
 import * as client from './client.js'
-import { languageForPhone, recordDinnerCheckinAnswer, saveOptOutReason, setAvisoKind, writeGuided } from './outbound.js'
+import { languageForPhone, recordDinnerCheckinAnswer, rememberLanguage, saveOptOutReason, setAvisoKind, writeGuided } from './outbound.js'
 import type { InboundDeps } from './inbound.js'
 import { fillRecipeNames } from '../menuNames.js'
 import type { InboundMessage } from './webhookParser.js'
@@ -126,25 +126,27 @@ export function buildInboundDeps(): InboundDeps {
     // 18-nov: a tapped «¿hiciste la cena?» button, recorded without the model.
     recordDinnerCheckin: (userId, answer, checkinAt) => recordDinnerCheckinAnswer(userId, answer, checkinAt),
     language: languageForPhone,
+    rememberLanguage,
     setAvisoKind,
     saveOptOutReason,
     isPaused: (userId) => isOnFreePlan(userId),
     // The week the turn generated or read (or the user's latest), read back
     // after the whole turn, scoped to the caller's household like every menu read.
-    menuDigest: async (userId, menuId, view) => {
+    menuDigest: async (userId, menuId, view, lang) => {
       const menu = await loadWeekMenu(userId, menuId)
       if (!menu) return null
-      return weekMenuDigest(menu, await weekReplyOptions(userId, view))
+      return weekMenuDigest(menu, { ...(await weekReplyOptions(userId, view)), lang })
     },
     // The same week as a picture + short caption (2026-10-15). Throws → inbound
     // sends the digest text above instead; null = nothing to draw.
-    menuImage: async (userId, menuId, view) => {
+    menuImage: async (userId, menuId, view, lang) => {
       const menu = await loadWeekMenu(userId, menuId)
       if (!menu) return null
-      const opts = await weekReplyOptions(userId, view)
+      // PRO-1300: the picture and its caption in the household's language.
+      const opts = { ...(await weekReplyOptions(userId, view)), lang }
       const t0 = Date.now()
       const madeWith = opts.inviteCode ? madeWithMimoLine(env.WEB_PUBLIC_URL, opts.inviteCode) : null
-      const jpeg = await weekMenuImage(menu, { today: opts.today, webUrl: env.WEB_PUBLIC_URL, madeWith, photoUrls: recipePhotoUrls })
+      const jpeg = await weekMenuImage(menu, { today: opts.today, webUrl: env.WEB_PUBLIC_URL, madeWith, lang, photoUrls: recipePhotoUrls })
       if (!jpeg) return null
       console.log(`[whatsapp] week image drawn in ${Date.now() - t0} ms (${Math.round(jpeg.length / 1024)} KB)`)
       return { jpeg, caption: weekMenuCaption(menu, opts) }

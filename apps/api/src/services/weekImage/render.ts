@@ -153,7 +153,7 @@ function cellA(cell: WeekImageCell, icon: string, L: Layout, photoFor: PhotoFor)
   )
 }
 
-function cellB(cell: WeekImageCell, icon: string, L: Layout, photoFor: PhotoFor): Node {
+function cellB(cell: WeekImageCell, icon: string, L: Layout, photoFor: PhotoFor, en = false): Node {
   const [first, second] = cell.dishes
   if (!first) return el('div', { width: L.colW, alignItems: 'center', justifyContent: 'center' }, dash())
   const small = { width: L.colW, fontFamily: 'Inter', fontSize: 22, lineHeight: 1.2, color: C.muted }
@@ -162,11 +162,11 @@ function cellB(cell: WeekImageCell, icon: string, L: Layout, photoFor: PhotoFor)
     clamped({ width: L.colW, fontFamily: 'Fraunces', fontSize: 25, lineHeight: 1.12, letterSpacing: -0.25, color: C.ink }, first.name, 2),
   ]
   if (second) parts.push(clamped(small, `+ ${second.name}`, 2))
-  if (cell.more > 0) parts.push(text(small, `+${cell.more} más`))
+  if (cell.more > 0) parts.push(text(small, `+${cell.more} ${en ? 'more' : 'más'}`))
   return el('div', { width: L.colW, flexDirection: 'column', gap: 8 }, ...parts)
 }
 
-function dayLabel(row: WeekImageRow, L: Layout, format: WeekImageModel['format']): Node {
+function dayLabel(row: WeekImageRow, L: Layout, format: WeekImageModel['format'], lang: WeekImageModel['lang']): Node {
   const parts: Node[] = [
     text({ fontFamily: 'Fraunces', fontWeight: 600, fontSize: format === 'A' ? 34 : 32, lineHeight: 1, color: C.ink }, row.dayShort),
     text({ fontFamily: 'Inter', fontSize: 24, color: C.muted, marginTop: 6 }, row.dateLabel),
@@ -176,7 +176,7 @@ function dayLabel(row: WeekImageRow, L: Layout, format: WeekImageModel['format']
       el(
         'div',
         { marginTop: 10, backgroundColor: C.terracotta, borderRadius: 999, padding: '3px 13px' },
-        text({ fontFamily: 'Inter', fontWeight: 700, fontSize: 20, letterSpacing: 2.4, color: '#FFFFFF' }, 'HOY'),
+        text({ fontFamily: 'Inter', fontWeight: 700, fontSize: 20, letterSpacing: 2.4, color: '#FFFFFF' }, lang === 'en' ? 'TODAY' : 'HOY'),
       ),
     )
   }
@@ -187,13 +187,13 @@ function row(model: WeekImageModel, r: WeekImageRow, L: Layout, photoFor: PhotoF
   const icons = assets().icons
   let body: Node[]
   if (r.kind === 'skipped') {
-    body = [text({ fontFamily: 'Cormorant', fontStyle: 'italic', fontWeight: 500, fontSize: 36, color: C.muted, alignSelf: 'center' }, 'Sin cocinar')]
+    body = [text({ fontFamily: 'Cormorant', fontStyle: 'italic', fontWeight: 500, fontSize: 36, color: C.muted, alignSelf: 'center' }, model.lang === 'en' ? 'Not cooking' : 'Sin cocinar')]
   } else if (r.kind === 'empty') {
-    body = [text({ fontFamily: 'Inter', fontSize: 24, color: C.faint, alignSelf: 'center' }, 'Nada previsto')]
+    body = [text({ fontFamily: 'Inter', fontSize: 24, color: C.faint, alignSelf: 'center' }, model.lang === 'en' ? 'Nothing planned' : 'Nada previsto')]
   } else {
     body = r.cells.map((cell, i) => {
       const icon = icons[model.columns[i]?.icon ?? 'plate']
-      return model.format === 'A' ? cellA(cell, icon, L, photoFor) : cellB(cell, icon, L, photoFor)
+      return model.format === 'A' ? cellA(cell, icon, L, photoFor) : cellB(cell, icon, L, photoFor, model.lang === 'en')
     })
   }
   const style: Style = { gap: GAP, alignItems: 'stretch', padding: '14px 0' }
@@ -209,7 +209,7 @@ function row(model: WeekImageModel, r: WeekImageRow, L: Layout, photoFor: PhotoF
     style.borderBottom = `1px solid ${C.hairline}`
   }
   if (r.isPast) style.opacity = 0.42
-  return el('div', style, dayLabel(r, L, model.format), ...body)
+  return el('div', style, dayLabel(r, L, model.format, model.lang), ...body)
 }
 
 function header(model: WeekImageModel): Node {
@@ -229,10 +229,10 @@ function header(model: WeekImageModel): Node {
       el(
         'div',
         { alignItems: 'baseline' },
-        text({ fontFamily: 'Fraunces Display', fontSize: 76, lineHeight: 0.95, letterSpacing: -1.9, color: C.ink }, 'Tu'),
+        text({ fontFamily: 'Fraunces Display', fontSize: 76, lineHeight: 0.95, letterSpacing: -1.9, color: C.ink }, model.lang === 'en' ? 'Your' : 'Tu'),
         text(
           { fontFamily: 'Cormorant', fontStyle: 'italic', fontWeight: 500, fontSize: 87, lineHeight: 0.95, color: C.terracotta, marginLeft: 18 },
-          'semana',
+          model.lang === 'en' ? 'week' : 'semana',
         ),
       ),
       text({ fontFamily: 'Inter', fontSize: 26, color: C.muted, marginTop: 12 }, model.subtitle),
@@ -258,13 +258,15 @@ function columnHeaders(model: WeekImageModel, L: Layout): Node {
   )
 }
 
-function footer(): Node {
+function footer(lang: WeekImageModel['lang']): Node {
   const span = (s: string, bold = false) =>
     text({ whiteSpace: 'pre', ...(bold ? { fontWeight: 600, color: C.ink } : {}) }, s)
   return el(
     'div',
     { justifyContent: 'space-between', alignItems: 'center', marginTop: 26, fontFamily: 'Inter', fontSize: 24, color: C.muted },
-    el('div', {}, span('¿Cambio algo? '), span('Díselo a Mimo', true), span(' por aquí')),
+    lang === 'en'
+      ? el('div', {}, span('Change anything? '), span('Tell Mimo', true), span(' here'))
+      : el('div', {}, span('¿Cambio algo? '), span('Díselo a Mimo', true), span(' por aquí')),
     el('div', {}, span('mimoia.com', true), span('/menu')),
   )
 }
@@ -292,7 +294,7 @@ export function weekImageTree(model: WeekImageModel, photoFor: PhotoFor): Node {
       header(model),
       ...(model.columns.length > 0 ? [columnHeaders(model, L)] : []),
       ...model.rows.map((r) => row(model, r, L, photoFor)),
-      footer(),
+      footer(model.lang),
       ...(model.madeWith ? [madeWithLine(model.madeWith)] : []),
     ),
   )

@@ -26,7 +26,7 @@ const STOP = new Set([
   'no me mandes mas mensajes', 'no me mandes mas avisos', 'desactivar avisos', 'quitar avisos',
 ])
 const START = new Set([
-  'alta', 'start', 'darme de alta', 'si avisame', 'activar avisos', 'reanudar avisos', 'quiero avisos',
+  'alta', 'start', 'darme de alta', 'si avisame', 'yes notify me', 'activar avisos', 'reanudar avisos', 'quiero avisos',
 ])
 const HUMAN = new Set([
   'humano', 'persona', 'una persona', 'hablar con una persona', 'hablar con un humano', 'soporte', 'contacto',
@@ -46,3 +46,6 @@ export function controlCommand(text: string | null | undefined): ControlCommand 
 /** Button titles of the opt-in question sent right after linking (≤ 20 chars). */
 export const OPT_IN_YES = 'Sí, avísame'
 export const OPT_IN_NO = 'No, gracias'
+/** PRO-1300: the same buttons for a household that writes in English. */
+export const OPT_IN_YES_EN = 'Yes, notify me'
+export const OPT_IN_NO_EN = 'No, thanks'

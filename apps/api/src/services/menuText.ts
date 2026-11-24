@@ -128,6 +128,32 @@ export function weekRangeEs(weekStart: string): string {
     : `del ${start.getUTCDate()} de ${sm} al ${end.getUTCDate()} de ${em}`
 }
 
+/**
+ * PRO-1300: the week in English, for a household that writes to Mimo in
+ * English (WhatsApp, `whatsapp/language.ts`). Dish names stay as they are (D-111).
+ */
+export type MenuLang = 'es' | 'en'
+export const DAY_NAME_EN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+export const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+export const MEAL_LABEL_EN: Record<string, string> = {
+  breakfast: 'breakfast',
+  lunch: 'lunch',
+  snack: 'snack',
+  dinner: 'dinner',
+}
+
+/** Monday `YYYY-MM-DD` → "12 to 18 October" / "28 September to 4 October". */
+export function weekRangeEn(weekStart: string): string {
+  const [y, m, d] = weekStart.slice(0, 10).split('-').map(Number)
+  const start = new Date(Date.UTC(y, m - 1, d))
+  const end = new Date(Date.UTC(y, m - 1, d + 6))
+  const sm = MONTHS_EN[start.getUTCMonth()]
+  const em = MONTHS_EN[end.getUTCMonth()]
+  return sm === em
+    ? `${start.getUTCDate()} to ${end.getUTCDate()} ${em}`
+    : `${start.getUTCDate()} ${sm} to ${end.getUTCDate()} ${em}`
+}
+
 /** `YYYY-MM-DD` + n days → `YYYY-MM-DD` (calendar arithmetic, no TZ involved). */
 export function plusDays(isoDate: string, n: number): string {
   const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number)
@@ -168,13 +194,14 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
  */
 export function weekMenuDigest(menu: WeekMenuInput, opts: WeekReplyOptions): string {
   const { snowball, opener, holiday, shown, link, invite, madeWith, today, tomorrow } = weekDigestParts(menu, opts)
+  const en = opts.lang === 'en'
   const blocks = shown.map((d) => {
-    const when = d.date === today ? ' · hoy' : d.date === tomorrow ? ' · mañana' : ''
-    const title = `*${capitalize(DAY_NAME_ES[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
-    if (d.skipped) return `${title}\nSin cocinar`
+    const when = d.date === today ? (en ? ' · today' : ' · hoy') : d.date === tomorrow ? (en ? ' · tomorrow' : ' · mañana') : ''
+    const title = `*${capitalize((en ? DAY_NAME_EN : DAY_NAME_ES)[d.i])} ${Number(d.date.slice(8, 10))}${when}*`
+    if (d.skipped) return `${title}\n${en ? 'Not cooking' : 'Sin cocinar'}`
     const lines = d.entries.map((e) => {
       const dishes = e.dishes.join(' + ')
-      return MEAL_EMOJI[e.meal] ? `${MEAL_EMOJI[e.meal]} ${dishes}` : `${e.label}: ${dishes}`
+      return MEAL_EMOJI[e.meal] ? `${MEAL_EMOJI[e.meal]} ${dishes}` : `${en ? (MEAL_LABEL_EN[e.meal] ?? e.label) : e.label}: ${dishes}`
     })
     return [title, ...lines].join('\n')
   })
@@ -234,6 +261,8 @@ export interface WeekReplyOptions {
    * forwarded week brings another household. Absent → no such line.
    */
   inviteCode?: string | null
+  /** PRO-1300: the household's language on WhatsApp; `en` → the fixed lines in English. Default `es`. */
+  lang?: MenuLang
 }
 
 /**
@@ -241,16 +270,22 @@ export interface WeekReplyOptions {
  * message shows. «con más calma» only when the holiday lifted a weekday
  * limit; otherwise it just says the day is a holiday. Null without one.
  */
-export function holidayLine(weekStart: string, shownDayIndexes: number[], opts: Pick<WeekReplyOptions, 'region' | 'timeAvailable'>): string | null {
+export function holidayLine(weekStart: string, shownDayIndexes: number[], opts: Pick<WeekReplyOptions, 'region' | 'timeAvailable' | 'lang'>): string | null {
   if (!opts.region) return null
   const before = timeBudgetsByDay(opts.timeAvailable)
   const { budgets: after, holidays } = holidayTimeBudgets(before, weekStart, opts.region)
   const days = holidays.filter((h) => shownDayIndexes.includes(h.dayIndex))
   if (days.length === 0) return null
+  const relaxed = days.some((h) => holidayRelaxedDay(before, after, h.dayIndex))
+  if (opts.lang === 'en') {
+    const names = days.map((h) => DAY_NAME_EN[h.dayIndex])
+    const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    const subject = who + (names.length === 1 ? ' is a public holiday' : ' are public holidays')
+    return relaxed ? `${subject}: I've given you something more relaxed.` : `${subject}.`
+  }
   const names = days.map((h) => `el ${DAY_NAME_ES[h.dayIndex]}`)
   const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`
   const subject = capitalize(who) + (names.length === 1 ? ' es festivo' : ' son festivos')
-  const relaxed = days.some((h) => holidayRelaxedDay(before, after, h.dayIndex))
   return relaxed ? `${subject}: te he puesto algo con más calma.` : `${subject}.`
 }
 
@@ -262,6 +297,9 @@ export function holidayLine(weekStart: string, shownDayIndexes: number[], opts: 
  */
 export const SNOWBALL_LINE =
   'Las primeras semanas acertaré menos con los gustos de tu casa. Dime qué cambiarías y lo apunto: así iré acertando cada vez más. Es el efecto bola de nieve ⛄'
+/** PRO-1300: the same line for a household that writes in English. */
+export const SNOWBALL_LINE_EN =
+  "For the first few weeks I'll get your household's tastes less right. Tell me what you'd change and I'll note it down: that way I'll get it more and more right. It's the snowball effect ⛄"
 /** The snowball line goes with the household's first this-many generated weeks (PRO-170: 2). */
 export const SNOWBALL_WEEKS = 2
 
@@ -318,7 +356,18 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
 
   // Asked to see it: "Tu menú de esta semana" / "…de la semana del 19 al 25
   // de octubre", never «Listo:» (nothing was just made).
-  const opener = opts.view === 'viewing'
+  const en = opts.lang === 'en'
+  const opener = en
+    ? opts.view === 'viewing'
+      ? todayIndex >= 0
+        ? 'Your menu for this week 🍽️'
+        : `Your menu for the week of ${weekRangeEn(weekStart)} 🍽️`
+      : !fromToday
+        ? `Ready: your menu for the week of ${weekRangeEn(weekStart)} 🍽️`
+        : todayIndex === 6
+          ? 'Ready: your menu for today 🍽️'
+          : 'Ready: your menu until Sunday 🍽️'
+    : opts.view === 'viewing'
     ? todayIndex >= 0
       ? 'Tu menú de esta semana 🍽️'
       : `Tu menú de la semana ${weekRangeEs(weekStart)} 🍽️`
@@ -327,12 +376,12 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
       : todayIndex === 6
         ? 'Listo: tu menú de hoy 🍽️'
         : 'Listo: tu menú hasta el domingo 🍽️'
-  const snowball = showsSnowball(opts) ? SNOWBALL_LINE : null
+  const snowball = showsSnowball(opts) ? (en ? SNOWBALL_LINE_EN : SNOWBALL_LINE) : null
   const holiday = (opts.view ?? 'generated') === 'generated'
     ? holidayLine(weekStart, shown.filter((d) => !d.skipped).map((d) => d.i), opts)
     : null
-  const link = opts.webUrl ? `${MENU_LINK_PREFIX}Recetas y lista de la compra: ${shortWebLink(opts.webUrl, '/menu')}` : null
-  const invite = menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i))
+  const link = opts.webUrl ? `${MENU_LINK_PREFIX}${en ? 'Recipes and shopping list' : 'Recetas y lista de la compra'}: ${shortWebLink(opts.webUrl, '/menu')}` : null
+  const invite = menuDigestInvite(shown.filter((d) => !d.skipped && d.date !== today).map((d) => d.i), opts.lang)
   const madeWith = opts.inviteCode && opts.webUrl ? madeWithMimoLine(opts.webUrl, opts.inviteCode) : null
   return { snowball, opener, holiday, shown, link, invite, madeWith, today, tomorrow }
 }
@@ -347,6 +396,8 @@ function weekDigestParts(menu: WeekMenuInput, opts: WeekReplyOptions) {
 export const MENU_LINK_PREFIX = '📖 '
 /** How the caption's invite line starts (`¿Cambio algo? Dímelo, …`). */
 export const MENU_INVITE_PREFIX = '¿Cambio algo?'
+/** PRO-1300: the same, in English (`Change anything? Tell me, …`). */
+export const MENU_INVITE_PREFIX_EN = 'Change anything?'
 /** How the household's invitation foot starts (`Hecho con Mimo · mimoia.com/i/<code>`). */
 export const MADE_WITH_PREFIX = 'Hecho con Mimo ·'
 
@@ -363,14 +414,15 @@ export function captionVariants(caption: string): string[] {
   const out = [
     caption,
     without([MADE_WITH_PREFIX]),
-    without([MADE_WITH_PREFIX, MENU_INVITE_PREFIX]),
-    without([MADE_WITH_PREFIX, MENU_INVITE_PREFIX, MENU_LINK_PREFIX]),
+    without([MADE_WITH_PREFIX, MENU_INVITE_PREFIX, MENU_INVITE_PREFIX_EN]),
+    without([MADE_WITH_PREFIX, MENU_INVITE_PREFIX, MENU_INVITE_PREFIX_EN, MENU_LINK_PREFIX]),
   ]
   return out.filter((c, i) => out.indexOf(c) === i)
 }
 
-export function menuDigestInvite(upcomingDayIndexes: number[]): string {
+export function menuDigestInvite(upcomingDayIndexes: number[], lang: MenuLang = 'es'): string {
   const i = upcomingDayIndexes[Math.min(1, upcomingDayIndexes.length - 1)]
+  if (lang === 'en') return `${MENU_INVITE_PREFIX_EN} Tell me, e.g. "${i === undefined ? 'today' : `on ${DAY_NAME_EN[i]}`}, fish".`
   const when = i === undefined ? 'hoy' : `el ${DAY_NAME_ES[i]}`
   return `${MENU_INVITE_PREFIX} Dímelo, p. ej. «${when}, pescado».`
 }

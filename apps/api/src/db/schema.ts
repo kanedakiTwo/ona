@@ -1111,6 +1111,12 @@ export const whatsappLinks = pgTable('whatsapp_links', {
   optInDeclinedAt: timestamp('opt_in_declined_at', { withTimezone: true }),
   /** PRO-248: when Mimo offered the avisos the one extra time (WhatsApp or web chat). */
   optInReofferedAt: timestamp('opt_in_reoffered_at', { withTimezone: true }),
+  /**
+   * PRO-1300: the language the household wrote in at the sign-up (`es` | `en`,
+   * whatsapp/language.ts). The avisos use it when the last messages don't say
+   * it clearly. Null → Spanish.
+   */
+  language: text('language'),
 })
 
 export const whatsappLinkCodes = pgTable('whatsapp_link_codes', {

@@ -16,6 +16,10 @@ export const AI_DISCLOSURE =
 export const AI_DISCLOSURE_FIRST_PERSON =
   'Soy un asistente de inteligencia artificial (IA): puedo equivocarme y no sustituyo a un profesional sanitario.'
 
+/** PRO-1300: the same, for a household that writes to Mimo in English (WhatsApp sign-up). */
+export const AI_DISCLOSURE_FIRST_PERSON_EN =
+  "I'm an artificial intelligence (AI) assistant: I can make mistakes and I'm not a substitute for a health professional."
+
 /** Short form for tight spaces where the full sentence doesn't fit (voice overlay). */
 export const AI_DISCLOSURE_SHORT = 'Estás hablando con una IA.'
 

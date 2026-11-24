@@ -1,4 +1,4 @@
-import type { WeekMenuInput } from '../menuText.js'
+import type { MenuLang, WeekMenuInput } from '../menuText.js'
 import { buildWeekImageModel, photoRecipeIds } from './model.js'
 import { loadRecipePhotos } from './photos.js'
 import { renderWeekImage } from './render.js'
@@ -18,12 +18,14 @@ export async function weekMenuImage(
     webUrl: string
     /** PRO-1016: «Hecho con Mimo · mimoia.com/i/<code>» at the foot (null → none). */
     madeWith?: string | null
+    /** PRO-1300: the picture's fixed words in English (`en`). Default Spanish. */
+    lang?: MenuLang
     /** recipe id → its `image_url` (absolute or `/images/recipes/…`). */
     photoUrls: (recipeIds: string[]) => Promise<Map<string, string | null>>
     fetchImpl?: typeof fetch
   },
 ): Promise<Buffer | null> {
-  const model = buildWeekImageModel(menu, { today: opts.today, madeWith: opts.madeWith })
+  const model = buildWeekImageModel(menu, { today: opts.today, madeWith: opts.madeWith, lang: opts.lang })
   if (!model) return null
   const ids = photoRecipeIds(model)
   let photos = new Map<string, Buffer>()

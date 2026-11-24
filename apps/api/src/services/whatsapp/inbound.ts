@@ -12,9 +12,9 @@ import { shoppingItemsOf, shoppingListDigest } from '../shoppingText.js'
 import { captionVariants, type WeekView } from '../menuText.js'
 import { captionWithoutInvite, signupCaption, signupWords } from './signupReply.js'
 import { createCoalescer } from './coalesce.js'
-import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
-import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
-import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
+import { AI_DISCLOSURE_FIRST_PERSON, AI_DISCLOSURE_FIRST_PERSON_EN, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
+import { guidedMeta, guideInLanguage, type GuideSpec, type GuidedResult } from './guided.js'
+import { controlCommand, OPT_IN_NO, OPT_IN_NO_EN, OPT_IN_YES, OPT_IN_YES_EN } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
 import { recordServiceMessageCost } from './serviceCost.js'
 import { needsReturnDisclosure, stripAiSignature, withReturnDisclosure } from './aiNotice.js'
@@ -132,6 +132,12 @@ export interface InboundDeps {
   recordDinnerCheckin?: (userId: string, answer: CheckinAnswer, checkinAt: Date) => Promise<{ name: string } | null>
   /** 19-nov: the language this number writes in, for the fixed lines (language.ts). Absent → Spanish. */
   language?: (phone: string) => Promise<Lang>
+  /**
+   * PRO-1300: during the sign-up (the link and the first steps), saves the
+   * language the household writes in for the avisos and returns it. Absent →
+   * `language`, nothing saved.
+   */
+  rememberLanguage?: (phone: string) => Promise<Lang>
   /** 19-nov: «¿Te sigo avisando de…?» answered (fatigue.ts): the kind on or off. Absent → Mimo answers. */
   setAvisoKind?: (userId: string, kind: FatigueKind, on: boolean) => Promise<void>
   /** 19-nov: why they wrote BAJA (optOutReason.ts), as an opinion. Absent → no question, no record. */
@@ -146,13 +152,13 @@ export interface InboundDeps {
    * and iterate here (menuId = the one the turn touched, null = the user's
    * latest). Absent → no digest.
    */
-  menuDigest?: (userId: string, menuId: string | null, view: WeekView) => Promise<string | null>
+  menuDigest?: (userId: string, menuId: string | null, view: WeekView, lang?: Lang) => Promise<string | null>
   /**
    * The same week as one picture plus a short caption (2026-10-15), sent
    * instead of the digest text. Throwing → the digest text. Null (nothing to
    * draw) → the digest text after generating, the model's words after a read.
    */
-  menuImage?: (userId: string, menuId: string | null, view: WeekView) => Promise<WeekImage | null>
+  menuImage?: (userId: string, menuId: string | null, view: WeekView, lang?: Lang) => Promise<WeekImage | null>
   /**
    * Photo of a recipe → saved recipe. Absent → photos get a polite "todavía no".
    * `sourceUrl` = the link saved as its source (PRO-66); `looksLikeScreenshot`
@@ -247,10 +253,11 @@ async function loadMenuDigest(
   userId: string,
   deps: Pick<InboundDeps, 'menuDigest'>,
   view: WeekView | null,
+  lang: Lang = 'es',
 ): Promise<string | null> {
   if (!deps.menuDigest || !view) return null
   try {
-    return await deps.menuDigest(userId, menuIdOf(response), view)
+    return await deps.menuDigest(userId, menuIdOf(response), view, lang)
   } catch (err) {
     console.warn('[whatsapp] menuDigest failed (sending the reply without it):', err)
     return null
@@ -318,16 +325,19 @@ export async function replyMessages(
   userId: string,
   deps: Pick<InboundDeps, 'menuDigest' | 'menuImage' | 'webUrl'>,
   lastButtons: string[] | null,
+  /** PRO-1300: the household's language, read only when a week goes out. */
+  languageOf: () => Promise<Lang> = async () => 'es',
 ): Promise<OutboundMessage[]> {
   const asText = (r: AssistantResponse) => dropRepeatedButtons(renderAssistantReply(r, deps.webUrl), lastButtons)
   const view = weekViewOf(response)
-  const digest = await loadMenuDigest(response, userId, deps, view)
+  const lang: Lang = view ? await languageOf().catch((): Lang => 'es') : 'es'
+  const digest = await loadMenuDigest(response, userId, deps, view, lang)
   const textVersion = asText(withWeekText(response, view, digest))
   if (!deps.menuImage || !view) return textVersion
 
   let image: WeekImage | null = null
   try {
-    image = await deps.menuImage(userId, menuIdOf(response), view)
+    image = await deps.menuImage(userId, menuIdOf(response), view, lang)
   } catch (err) {
     console.warn('[whatsapp] week image failed (sending the text digest):', err)
     return textVersion
@@ -540,6 +550,70 @@ export const COPY = {
   schoolMenuHeic: 'Esa foto está en HEIC, el formato del iPhone, y no la puedo leer. Mándamela como foto (no como documento) o haz una captura de pantalla y mándame la captura.',
   schoolMenuTooBig: 'Ese archivo es demasiado grande para leerlo. Mándame solo la página del menú del mes, o una foto de esa página.',
 }
+
+/**
+ * PRO-1300: the sign-up in the language of whoever writes. A household whose
+ * first message is in English (language.ts) gets the first contact, the
+ * first steps, the follow-ups and the ending in English; the rest of the
+ * fixed texts stay in Spanish (`COPY`). Same keys as `COPY`, same order of
+ * the questions (`WHATSAPP_ONBOARDING_QUESTIONS`).
+ */
+export const WHATSAPP_ONBOARDING_QUESTIONS_EN: readonly string[] = [
+  "Who's at home? Tell me adults and children aged 2 to 10.",
+  'Which meals do you cook at home each week? For example: "6 dinners and 1 lunch".',
+  'Three dishes you make often.',
+  "Is there anything that doesn't come into your home? A food or a dish you don't like.",
+]
+
+const COUNT_WORDS_EN = ['zero', 'one', 'two', 'three', 'four', 'five']
+
+export const COPY_EN = {
+  linkedOnboarding: (name: string | null) =>
+    `Hi${name ? `, ${name}` : ''}! You're connected: I'm Mimo, from Mimoia. I'm an artificial intelligence (AI) assistant specialised in cooking: I can make mistakes and I'm not a substitute for a health professional, but I can take care of the routine tasks so that cooking is fun again.\n\nYou can write to me or send me voice notes, whatever suits you best.\n\nTo get started, let's put together your first menu right away: I only need to know ${COUNT_WORDS_EN[WHATSAPP_ONBOARDING_QUESTIONS_EN.length] ?? WHATSAPP_ONBOARDING_QUESTIONS_EN.length} things.\n\n${WHATSAPP_ONBOARDING_QUESTIONS_EN.map((q, i) => `*${i + 1}.* ${q}`).join('\n')}`,
+  healthOnWeb: (url: string) =>
+    `If anyone at home has allergies, intolerances or something you can't or don't want to eat, add it here with your permission and I'll take it into account: ${url}\nOn WhatsApp I'm not allowed to store health data.`,
+  linked: (name: string | null) =>
+    `All set${name ? `, ${name}` : ''}! Your WhatsApp is now connected to Mimoia. Ask me what's on today, ask me for the shopping list, send me a voice note or share a recipe with me (a link or a photo) to save it.\n\n${AI_DISCLOSURE_FIRST_PERSON_EN}`,
+  optInPrompt:
+    "Would you like me to write to you too? I don't write much, only what matters: a heads-up before cooking (frozen food, timings) and the shopping list on Saturdays. If you'd like the menu every morning, just ask. You can change this whenever you like, just by asking me.",
+  optInDeclined: "OK, I won't write to you on my own. If you change your mind, write START.",
+  firstSteps: (url: string) =>
+    `Here are some examples of things you can ask me right now:\n📸 Send me a photo or a link of a recipe, I'll read it and save it in your recipes.\n🍽️ "What's for dinner tonight?"\n🛒 "Make me the shopping list"\n\nAnd whenever you like, come back to Mimoia on the web: your weekly menu is there, with a quick tour of everything else.\n${url}`,
+  movedAccount: "This WhatsApp was connected to another Mimoia account. From now on it's connected to the account you got the code from.",
+  started: "Done: I'll send you notifications again (a heads-up before cooking, the shopping list). Write STOP to stop them.",
+  startedFirst: "Done: I'll send you notifications (a heads-up before cooking, the shopping list). Write STOP to stop them.",
+  badCode: "That code isn't valid or has expired. Get a new one in Mimoia → Perfil → Mimo en WhatsApp.",
+  connect: (url: string) =>
+    `Hi, I'm Mimo, Mimoia's cooking assistant. ${AI_DISCLOSURE_FIRST_PERSON_EN}\n\nTo talk to me here, connect your account:\n${url}\n\nLog in (or create your account) and I'll give you a code to send me from this chat.`,
+  working: "One moment, I'm on it…",
+} satisfies Partial<Record<keyof typeof COPY, unknown>>
+
+/** PRO-1300: the sign-up's texts in a language (English: `COPY_EN`, else `COPY`). */
+export function signupCopy(lang: Lang): Pick<typeof COPY, keyof typeof COPY_EN> {
+  return lang === 'en' ? COPY_EN : COPY
+}
+
+/** PRO-1300: the avisos question's buttons, in the household's language. */
+export function optInButtons(lang: Lang): { id: string; title: string }[] {
+  return [
+    { id: 'optin_yes', title: lang === 'en' ? OPT_IN_YES_EN : OPT_IN_YES },
+    { id: 'optin_no', title: lang === 'en' ? OPT_IN_NO_EN : OPT_IN_NO },
+  ]
+}
+
+/** «No, gracias» / «No, thanks»: the answer to the avisos question (only right after it). */
+export function isOptInNo(text: string): boolean {
+  const t = text.trim().toLowerCase()
+  return t === OPT_IN_NO.toLowerCase() || t === OPT_IN_NO_EN.toLowerCase()
+}
+
+/**
+ * PRO-1300: what Mimo is told with each message of the sign-up when the
+ * household writes in English (the turn's text, never history): its replies
+ * and the first menu's line in English, the dish names as they are (D-111).
+ */
+export const ONBOARDING_ENGLISH_NOTE =
+  '(Nota del sistema: este hogar escribe en inglés. Contesta en inglés natural, también tu frase del primer menú y tus preguntas, como "What do you usually have for dinner on a normal Tuesday?"; los nombres de los platos, tal cual.)'
 
 /** Slow skills get an immediate, specific "on it" instead of waiting for the timer. */
 const SLOW_SKILL_ACK: Record<string, string> = {
@@ -757,17 +831,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       }
     }
   }
-  const sendOptInPrompt = (userId: string) =>
-    send(userId, 'optin_prompt', [
-      {
-        type: 'buttons',
-        text: COPY.optInPrompt,
-        buttons: [
-          { id: 'optin_yes', title: OPT_IN_YES },
-          { id: 'optin_no', title: OPT_IN_NO },
-        ],
-      },
-    ])
+  const sendOptInPrompt = (userId: string, lang: Lang) =>
+    send(userId, 'optin_prompt', [{ type: 'buttons', text: signupCopy(lang).optInPrompt, buttons: optInButtons(lang) }])
   const sendText = (userId: string | null, kind: string, text: string) => send(userId, kind, renderPlainText(text))
   /**
    * PRO-07: the WhatsApp-first sign-up ends with three suggestions, right
@@ -779,18 +844,20 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const sent = await store.recentOutboundKinds(msg.from, new Date(0))
     return sent.has('onboarding') && sent.has('optin_prompt') && !sent.has('first_steps')
   }
-  const sendFirstSteps = async (userId: string) => {
+  const sendFirstSteps = async (userId: string, lang: Lang) => {
     const url = `${deps.webUrl.replace(/\/$/, '')}/menu`
-    const fixed = COPY.firstSteps(url)
+    const fixed = signupCopy(lang).firstSteps(url)
     if (!deps.guided) return sendText(userId, 'first_steps', fixed)
     // PRO-156: written from its guide; the fixed text is the safety net.
-    const written = await deps.guided(userId, msg.from, firstStepsGuide(url), fixed)
+    const written = await deps.guided(userId, msg.from, guideInLanguage(firstStepsGuide(url), lang), fixed)
     return send(userId, 'first_steps', renderPlainText(written.text), guidedMeta(written))
   }
 
   await client.markReadWithTyping(msg.wamid)
   let langP: Promise<Lang> | null = null
   const languageOf = () => (langP ??= deps.language ? deps.language(msg.from).catch(() => 'es' as const) : Promise.resolve('es' as const))
+  // PRO-1300: in the sign-up the language is also saved (for the avisos).
+  const rememberLanguage = () => (langP = deps.rememberLanguage ? deps.rememberLanguage(msg.from).catch(() => 'es' as const) : languageOf())
 
   // ── 0. Control words ───────────────────────────────────────────
   const link = await store.getLinkByPhone(msg.from)
@@ -817,10 +884,11 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         const sentKinds = await store.recentOutboundKinds(msg.from, new Date(0))
         const first = !sentKinds.has('optin') && !sentKinds.has('optout')
         const ending = await signupEnding()
-        await sendText(userId, 'optin', first ? COPY.startedFirst : COPY.started)
-        if (ending) await sendFirstSteps(link.userId)
+        const lang = await languageOf()
+        await sendText(userId, 'optin', first ? signupCopy(lang).startedFirst : signupCopy(lang).started)
+        if (ending) await sendFirstSteps(link.userId, lang)
       } else {
-        await sendText(null, 'optin', COPY.connect(connectUrl(deps.webUrl)))
+        await sendText(null, 'optin', signupCopy(await languageOf()).connect(connectUrl(deps.webUrl)))
       }
     } else {
       await sendText(userId, 'system', COPY.human(deps.supportEmail))
@@ -828,7 +896,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     return
   }
   // "No, gracias" only means something as the answer to the opt-in question.
-  if (link && msg.text && msg.text.trim().toLowerCase() === OPT_IN_NO.toLowerCase()) {
+  if (link && msg.text && isOptInNo(msg.text)) {
     const kinds = await store.recentOutboundKinds(msg.from, new Date(now.getTime() - 24 * 60 * 60 * 1000))
     const prompt = kinds.get('optin_prompt')
     if (prompt && [...kinds.values()].every((t) => t <= prompt)) {
@@ -836,8 +904,9 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       await deps.optIn?.markDeclined(link.userId)
       // PRO-248: the answer is always confirmed, also before the suggestions.
       const ending = await signupEnding()
-      await sendText(link.userId, 'system', COPY.optInDeclined)
-      if (ending) await sendFirstSteps(link.userId)
+      const lang = await languageOf()
+      await sendText(link.userId, 'system', signupCopy(lang).optInDeclined)
+      if (ending) await sendFirstSteps(link.userId, lang)
       return
     }
   }
@@ -856,13 +925,14 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         return
       }
       trackEvent('whatsapp_linked', { userId: linked.userId, channel: 'whatsapp' })
-      await sendText(linked.userId, 'system', COPY.movedAccount)
+      const lang = await rememberLanguage()
+      await sendText(linked.userId, 'system', signupCopy(lang).movedAccount)
       if (linked.onboardingDone === false) {
-        await sendText(linked.userId, 'onboarding', COPY.linkedOnboarding(msg.profileName))
+        await sendText(linked.userId, 'onboarding', signupCopy(lang).linkedOnboarding(msg.profileName))
         return
       }
-      await sendText(linked.userId, 'system', COPY.linked(msg.profileName))
-      await sendOptInPrompt(linked.userId)
+      await sendText(linked.userId, 'system', signupCopy(lang).linked(msg.profileName))
+      await sendOptInPrompt(linked.userId, lang)
       return
     }
     await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
@@ -878,21 +948,24 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       if (linked) {
         trackEvent('whatsapp_linked', { userId: linked.userId, channel: 'whatsapp' })
         await store.updateInbound(msg.wamid, { status: 'ignored', userId: linked.userId })
+        // PRO-1300: in the language of what the number wrote before the code
+        // (its first message), saved for the avisos.
+        const lang = await rememberLanguage()
         if (linked.onboardingDone === false) {
           // WhatsApp-first sign-up: the first steps happen here; the opt-in
           // comes after the first menu (see the end of the turn).
-          await sendText(linked.userId, 'onboarding', COPY.linkedOnboarding(msg.profileName))
+          await sendText(linked.userId, 'onboarding', signupCopy(lang).linkedOnboarding(msg.profileName))
           return
         }
-        await sendText(linked.userId, 'system', COPY.linked(msg.profileName))
+        await sendText(linked.userId, 'system', signupCopy(lang).linked(msg.profileName))
         // New links start with proactive messages OFF: ask explicitly.
-        await sendOptInPrompt(linked.userId)
+        await sendOptInPrompt(linked.userId, lang)
         return
       }
     }
     await store.updateInbound(msg.wamid, { status: 'ignored' })
     if (candidates.length > 0) {
-      await sendText(null, 'link', COPY.badCode)
+      await sendText(null, 'link', signupCopy(await languageOf()).badCode)
       return
     }
     // WhatsApp-first linking (Instinct-style "just text it"): point to the
@@ -905,7 +978,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const optedIn = kinds.get('optin')
     if (optedOut && (!optedIn || optedIn < optedOut)) return
     if (!(await store.hasRecentOutbound(msg.from, ['link'], since))) {
-      await sendText(null, 'link', COPY.connect(connectUrl(deps.webUrl)))
+      // PRO-1300: the first contact in the language of the first message.
+      await sendText(null, 'link', signupCopy(await languageOf()).connect(connectUrl(deps.webUrl)))
     }
     return
   }
@@ -994,7 +1068,9 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       spentBefore = budget.spentMicros ?? null
       budgetLimit = budget.budgetMicros
     }
-    acker.arm()
+    // PRO-1300: each turn of the sign-up keeps the household's language saved.
+    const signupLang = link.onboardingDone === false ? await rememberLanguage() : null
+    acker.arm(signupLang ? signupCopy(signupLang).working : undefined)
 
     // ── 3. Normalise the message to text ───────────────────────
     let text: string | null = null
@@ -1063,7 +1139,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const history = buildChatHistory(rows, now)
     // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
     const lateCheckin = lateDinnerCheckinNote(rows, now)
-    const chatText = lateCheckin ? `${lateCheckin}\n\n${text}` : text
+    const turnText = lateCheckin ? `${lateCheckin}\n\n${text}` : text
+    const chatText = signupLang === 'en' ? `${ONBOARDING_ENGLISH_NOTE}\n\n${turnText}` : turnText
     const { usage, ...response } = await deps.chat(userId, chatText, history, {
       mode: 'whatsapp',
       ...(images ? { images } : {}),
@@ -1101,7 +1178,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         ...(images ? { photo: true } : {}),
       },
     })
-    const reply = await replyMessages(response, userId, deps, lastSentButtons(rows))
+    const reply = await replyMessages(response, userId, deps, lastSentButtons(rows), languageOf)
     await out('reply', nearCap ? withBudgetWarning(reply) : reply)
     // 19-nov: a survey always goes as a message of its own (never stuck to the
     // reply nor under another question's buttons).

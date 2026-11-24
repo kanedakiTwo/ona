@@ -143,7 +143,7 @@ describe('replyMessages — viewing the week sends the picture', () => {
   it('one picture with «Tu menú de esta semana», no model list, no recipe links, no «Ver menú»', async () => {
     const d = deps()
     const out = await replyMessages(read(), 'user-1', d, null)
-    expect(d.menuImage).toHaveBeenCalledWith('user-1', 'm-1', 'viewing')
+    expect(d.menuImage).toHaveBeenCalledWith('user-1', 'm-1', 'viewing', 'es')
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ type: 'image', image: JPEG, mimeType: 'image/jpeg', alt: WEEK_IMAGE_ALT, text: viewingCaption })
     const text = out[0].text
@@ -223,8 +223,8 @@ describe('replyMessages — a generated week asks for its caption as «generated
       { webUrl: WEB, menuDigest, menuImage },
       null,
     )
-    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-2', 'generated')
-    expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-2', 'generated')
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-2', 'generated', 'es')
+    expect(menuDigest).toHaveBeenCalledWith('user-1', 'm-2', 'generated', 'es')
     expect(out).toHaveLength(1)
     expect(out[0].text).toBe(caption)
     expect(out[0].text.startsWith(SNOWBALL_LINE)).toBe(true)
@@ -364,7 +364,7 @@ describe('a generation that changed nothing is no «Listo»', () => {
     const menuImage = vi.fn<NonNullable<InboundDeps['menuImage']>>(async () => ({ jpeg: JPEG, caption }))
     const menuDigest = vi.fn<NonNullable<InboundDeps['menuDigest']>>(async () => 'digest')
     const out = await replyMessages(unchanged({ weekStart: '2026-11-23', replaced: false, menuId: 'm-23' }), 'user-1', { webUrl: WEB, menuDigest, menuImage }, null)
-    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-23', 'viewing')
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-23', 'viewing', 'es')
     expect(out).toHaveLength(1)
     expect(out[0].type).toBe('image')
     expect(out[0].text).toContain('¿Lo rehago entero o cambio algunos platos?')

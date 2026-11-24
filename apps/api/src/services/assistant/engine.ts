@@ -10,6 +10,7 @@ import { recordSkillActivity } from '../activityEvents.js'
 import { recordSkillUsage } from '../usageEvents.js'
 import { admitsNotDone, claimsAction, toolMadeChange, unconfirmedCalls } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
+import { withPromisedAppLink } from './promisedLink.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
 import { maybeLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
@@ -543,6 +544,16 @@ function compactJson(value: unknown, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
 }
 
+/** The recipe the turn's tools last answered about, if any (for «el enlace de la receta»). */
+function lastRecipeId(executed: ExecutedTool[]): string | null {
+  for (const e of [...executed].reverse()) {
+    const d = e.result.data as Record<string, unknown> | null
+    if (d && typeof d === 'object' && typeof d.recipeId === 'string') return d.recipeId
+    if (d && typeof d === 'object' && e.result.uiHint === 'recipe' && typeof d.id === 'string') return d.id
+  }
+  return null
+}
+
 /**
  * The web client renders one card per turn from `uiHint` + `data` (and
  * WhatsApp derives its app link from it), so pick the most visual skill result
@@ -562,6 +573,10 @@ function buildResponse(
   // one that talks about body effects anyway is flagged for the daily review.
   text = ensureHealthDisclaimer(text)
   if (talksHealthEffects(text) && !flags.includes('health_talk')) flags.push('health_talk')
+  // PRO-1301: a link to the app the reply announces («te paso el enlace del menú») is written by code.
+  const linked = withPromisedAppLink(text, env.WEB_PUBLIC_URL, lastRecipeId(executed))
+  if (linked !== text) flags.push('app_link_added')
+  text = linked
   const trace = { toolsUsed: executed.map((e) => e.name), corrections: flags, toolTrace: traceOf(executed) }
   if (executed.length === 0) {
     return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage, ...trace }

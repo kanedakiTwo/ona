@@ -706,6 +706,13 @@ export const households = pgTable('households', {
   trialEndingEmailAt: timestamp('trial_ending_email_at', { withTimezone: true }),
   /** PRO-136: when the day-7 founder-price offer went out by email / WhatsApp (once). */
   founderOfferAt: timestamp('founder_offer_at', { withTimezone: true }),
+  /**
+   * PRO-1301: "HH:MM" (Madrid) for the morning menu and the dinner question,
+   * chosen in Perfil → Avisos or with Mimo. Null = the time it always had
+   * (breakfast time; two hours after dinner).
+   */
+  dailyBriefTime: text('daily_brief_time'),
+  dinnerCheckinTime: text('dinner_checkin_time'),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])

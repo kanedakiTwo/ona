@@ -63,6 +63,11 @@ export interface ChatOptions {
   surface?: ChatSurface
   /** PRO-392: the page the web companion writes from (its tools go in). */
   page?: PageKind
+  /**
+   * PRO-1295: tools this turn may not use (an opinion on a proposal is no
+   * cooked meal: no `log_cooked`). Absent → all of the selection.
+   */
+  withoutTools?: readonly string[]
 }
 
 /**
@@ -109,9 +114,10 @@ export async function chat(
 
   // 4. This turn's tools, the last one marked as a cache breakpoint.
   const onboarding = opts.onboarding === true
-  const tools = withLastToolCached(getToolDefinitions({ mode, onboarding, only: selection.tools }))
+  const allowed = <T extends { name: string }>(defs: T[]) => (opts.withoutTools?.length ? defs.filter((t) => !opts.withoutTools!.includes(t.name)) : defs)
+  const tools = withLastToolCached(allowed(getToolDefinitions({ mode, onboarding, only: selection.tools })))
   const moreTools = (groups: ToolGroupId[]) =>
-    getToolDefinitions({ mode, onboarding, only: new Set(groups.flatMap((g) => TOOL_GROUPS[g].tools)) })
+    allowed(getToolDefinitions({ mode, onboarding, only: new Set(groups.flatMap((g) => TOOL_GROUPS[g].tools)) }))
 
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
   // PRO-313: none of the reply offers on Telegram (their texts and budgets are WhatsApp's).
@@ -134,7 +140,8 @@ export async function chat(
     system,
     tools,
     messages,
-    skills,
+    // PRO-1295: a tool left out can't run either, even if the model names it.
+    skills: opts.withoutTools?.length ? skills.filter((s) => !opts.withoutTools!.includes(s.name)) : skills,
     ctx: { userId, db, channel: mode, surface: opts.surface },
     onToolStart: opts.onToolStart,
     moreTools,

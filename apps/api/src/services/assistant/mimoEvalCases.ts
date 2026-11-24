@@ -58,6 +58,10 @@
  *   dinners, dishes, what doesn't go in) and the closing words name their
  *   dishes, ask one question at most, never «no he conseguido acercarme»,
  *   «se parece poco», «genérico», nor talk about a meal already gone.
+ * - `despensa-una-llamada` (PRO-1294, history of 23-nov: 70 calls, 206 s,
+ *   0,53 €): a dictated pantry («tengo en la nevera…» with 20 things) goes in
+ *   one update_pantry / mark_in_stock call with items; the reply is short,
+ *   asks about what it didn't recognise and never reports technical errors.
  * - `comida-improvisada` (PRO-1293, Mimo's history 2026-11-23): what was
  *   eaten or improvised for today instead of the menu goes in that meal as
  *   text (mark_meal_eaten with dish, or set_meal_note), never as a new
@@ -70,7 +74,7 @@ import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffe
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu'
+export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'despensa-una-llamada'
 
 export interface MimoEvalCase {
   id: string
@@ -119,6 +123,20 @@ export interface MimoEvalToolCall {
 export const SAYS_AI_RE = /\b(ia|inteligencia artificial)\b/
 /** PRO-1169: «soy una persona», «soy humano»… but not «no soy una persona» (folded text). */
 export const SAYS_PERSON_RE = /(?<!\bno )\bsoy (una persona|un humano|una humana|humano|humana|de carne y hueso)\b/
+
+/** PRO-1294: the tools that write the pantry; a dictation goes in one call of them. */
+export const PANTRY_WRITE_TOOLS = ['update_pantry', 'mark_in_stock']
+/** PRO-1294: a pantry reply that reports technical failures instead of asking (folded text). */
+const TECH_ERROR_RE = /\b(error(es)?|ha fallado|fallo al|no se ha podido|invalid[oa]s?|400|404|500)\b/
+/** PRO-1294: from how many of the dictated products named back the reply recites the list. */
+export const PANTRY_RECITE_MIN = 8
+
+/** PRO-1294: how many of the products in «tengo en la nevera a, b… y c» the reply names back (folded). */
+export function pantryProductsNamed(reply: string, message: string): number {
+  const products = fold(message).replace(/^[^,]*?\b(tengo|tenemos)\b(\s+en\s+(la|el)\s+\w+)?\s*/, '').split(/,\s*|\s+y\s+/).map((p) => p.trim()).filter(Boolean)
+  const text = fold(reply)
+  return products.filter((p) => text.includes(p)).length
+}
 
 /** PRO-277: how long Mimo's part may be when it goes in the menu picture's caption (≈600, some slack). */
 export const MENU_REPLY_MAX = 700
@@ -401,6 +419,9 @@ export function milkAllergyProblems(reply: string): string[] {
  * - `no-guarda` / `herramienta-equivocada` / `semana-tipo-mal` (`semana-tipo`,
  *   live): didn't write it, wrote it where it doesn't go (the ficha, or the
  *   week type without the meal), or wrote the wrong day, meal or options.
+ * - `error-tecnico` / `recita-lista` / `una-por-producto`
+ *   (`despensa-una-llamada`): reports technical errors instead of asking,
+ *   reads the dictation back, or (live) wrote it in more than one call.
  */
 export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
@@ -451,10 +472,15 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
     if (SIGNUP_FORBIDDEN_PHRASES.some((re) => re.test(text))) problems.push('excusa-el-menu')
     if ((reply.match(/\?/g) ?? []).length > 1) problems.push('dos-preguntas')
   }
+  if (c.check === 'despensa-una-llamada') {
+    if (TECH_ERROR_RE.test(text)) problems.push('error-tecnico')
+    if (pantryProductsNamed(reply, c.message) >= PANTRY_RECITE_MIN) problems.push('recita-lista')
+    if (toolTrace && toolTrace.filter((t) => PANTRY_WRITE_TOOLS.includes(t.name)).length > 1) problems.push('una-por-producto')
+  }
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) {
-    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'no-guarda' : 'no-mira-menu')
+    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' || c.check === 'despensa-una-llamada' ? 'no-guarda' : 'no-mira-menu')
   }
   if (toolsUsed && c.mustNotCall?.some((t) => toolsUsed.includes(t))) problems.push(c.check === 'semana-tipo' || c.check === 'preferencia-menu' ? 'herramienta-equivocada' : 'compra-lo-hecho')
   if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push(c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'guarda-mal' : 'semana-tipo-mal')
@@ -1060,5 +1086,21 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     },
     expect: /lentejas/,
     badReply: 'Apuntado: hoy habéis cenado lentejas con chorizo. ¡Que aproveche!',
+  },
+  {
+    id: 'despensa-dictada-nevera',
+    check: 'despensa-una-llamada',
+    origin: 'Histórico de Mimo, 23-nov (letra O): un hogar dictó su despensa por voz y Mimo hizo 70 llamadas, una por producto (206 s, 0,53 €), y le devolvió errores de productos sueltos. PRO-1294',
+    context: ['Hoy es lunes 2026-11-23 (dayIndex 0), son las 19:30 en Madrid.', 'Hogar: 2 adultos y 1 niño'].join('\n'),
+    history: [],
+    message: 'tengo en la nevera leche, yogures naturales, huevos, mantequilla, queso fresco, jamón york, pechugas de pollo, carne picada, salmón, zanahorias, calabacín, pimientos rojos, tomates, lechugas, espinacas, champiñones, limones, nata para cocinar, tofu y fuet',
+    reconstructed: true,
+    toolResults: {
+      update_pantry: 'Hecho: 19 productos apuntados en la despensa (19 en la nevera). Dudas: no he reconocido "fuet"; pregúntale qué es, como una duda, sin hablar de fallos. Resúmeselo en una línea, sin recitar la lista.',
+      mark_in_stock: 'Hecho: 19 productos apuntados en la despensa (19 en la nevera). Dudas: no he reconocido "fuet"; pregúntale qué es, como una duda, sin hablar de fallos. Resúmeselo en una línea, sin recitar la lista.',
+    },
+    expect: /fuet/,
+    mustCallOneOf: PANTRY_WRITE_TOOLS,
+    badReply: 'He apuntado en la nevera: leche, yogures naturales, huevos, mantequilla, queso fresco, jamón york, pechugas de pollo, carne picada, salmón, zanahorias, calabacín, pimientos rojos, tomates, lechugas, espinacas, champiñones, limones, nata para cocinar y tofu. Error al añadir "fuet": Datos invalidos (400). Inténtalo de nuevo más tarde.',
   },
 ]

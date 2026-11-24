@@ -12,6 +12,7 @@ vi.mock('../services/recipeImport.js', () => ({
 import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct, namesSameDish } from '../services/assistant/appSkills.js'
 import { sumDinersByRecipe, withLeftoverBatches } from '../services/shoppingList.js'
 import { MIMO_EVAL_CASES, mimoReplyProblems } from '../services/assistant/mimoEvalCases.js'
+import { toolMadeChange } from '../services/assistant/claims.js'
 import type { DayMenu, Dish } from '@ona/shared'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
@@ -477,6 +478,43 @@ describe('shopping, pantry, staples', () => {
       { method: 'POST', path: '/pantry', body: { name: 'garbanzos', quantity: 400, unit: 'g', expiresAt: '2026-12-01' } },
       { method: 'DELETE', path: '/pantry/p1', body: undefined },
     ])
+  })
+
+  // PRO-1294: a household dictated its pantry and Mimo called update_pantry 70 times (206 s, 0,53 €).
+  it('update_pantry takes 40 products in one call; the one it cannot place is a doubt, not an error', async () => {
+    const names = Array.from({ length: 38 }, (_, i) => `producto ${String.fromCharCode(97 + (i % 26))}${i}`)
+    const f = fakeApi({
+      'GET /pantry': [{ id: 'p1', name: 'Arroz', quantity: 500, unit: 'g' }],
+      'POST /pantry': (body: any) => {
+        if (body.name === 'cosa rara') throw new Error('400 Datos invalidos')
+        return { id: `n-${body.name}`, name: body.name, quantity: body.quantity ?? 0, unit: body.unit ?? 'u' }
+      },
+    })
+    const items = [{ name: 'arroz', quantity: 1, unit: 'kg' }, ...names.map((name) => ({ name })), { name: 'cosa rara' }]
+    expect(items).toHaveLength(40)
+    const r = await get('update_pantry').handler({ action: 'add', location: 'nevera', items }, ctx(f.api))
+    expect(f.calls.filter((c) => c.method === 'GET')).toHaveLength(1)
+    expect(writes(f.calls)).toHaveLength(40)
+    expect(writes(f.calls)[0]).toEqual({ method: 'PATCH', path: '/pantry/p1', body: { quantity: 1500, unit: 'g', location: 'nevera' } })
+    expect(writes(f.calls)[1].body).toEqual({ name: names[0], location: 'nevera' })
+    expect(r.data).toEqual({ added: 39, removed: 0, doubts: ['cosa rara'] })
+    expect(r.summary).toMatch(/^Hecho: 39 productos apuntados en la despensa \(39 en la nevera\)\./)
+    expect(r.summary).toContain('Dudas: no he reconocido "cosa rara"')
+    expect(r.summary).not.toMatch(/error|400|invalid/i)
+    expect(toolMadeChange('update_pantry', r.summary, false)).toBe(true)
+  })
+
+  it('update_pantry in a batch: a repeated product goes to one row; a remove of what is not there and noise are doubts', async () => {
+    const f = fakeApi({ 'GET /pantry': [], 'POST /pantry': (body: any) => ({ id: 'n1', name: body.name, quantity: 0, unit: 'u' }) })
+    const r = await get('update_pantry').handler(
+      { action: 'add', items: [{ name: 'leche' }, { name: 'Leche' }, { name: 'azafrán', action: 'remove' }, { name: '…' }, { name: 'huevos', location: 'congelador' }] },
+      ctx(f.api),
+    )
+    expect(writes(f.calls).map((c) => `${c.method} ${c.path}`)).toEqual(['POST /pantry', 'POST /pantry'])
+    expect(r.summary).toContain('3 productos apuntados en la despensa (1 en el congelador)')
+    expect(r.summary).toContain('no he reconocido "azafrán" y "…"')
+    const none = await get('update_pantry').handler({ action: 'remove', items: [{ name: 'azafrán' }] }, ctx(fakeApi({ 'GET /pantry': [] }).api))
+    expect(toolMadeChange('update_pantry', none.summary, false)).toBe(false)
   })
 
   it('manage_staples adds, pauses and removes', async () => {

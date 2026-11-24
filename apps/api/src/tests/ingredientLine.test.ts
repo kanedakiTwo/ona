@@ -156,6 +156,26 @@ describe('formatIngredientLine', () => {
     expect(formatIngredientLine(rows[11])).toBe('12,5 g de harina')
   })
 
+  // 24-nov: a photo import wrote «2 patata».
+  it('something counted in more than one goes in plural', () => {
+    const u = (ingredientName: string, quantity: number) => formatIngredientLine({ ingredientName, quantity, unit: 'u' })
+    expect(u('patata', 2)).toBe('2 patatas')
+    expect(u('huevo', 3)).toBe('3 huevos')
+    expect(u('limón', 2)).toBe('2 limones')
+    expect(u('calabacín', 2)).toBe('2 calabacines')
+    expect(u('nuez', 4)).toBe('4 nueces')
+    expect(u('diente de ajo', 3)).toBe('3 dientes de ajo')
+    expect(u('espárragos', 6)).toBe('6 espárragos')
+    // one, or less than one, stays singular; a noun with its adjective is left alone
+    expect(u('patata', 1)).toBe('1 patata')
+    expect(u('cebolla', 0.5)).toBe('1/2 cebolla')
+    expect(u('pimiento rojo', 2)).toBe('2 pimiento rojo')
+    // and the plural reads back as the same amount
+    const back = parseIngredientLine(u('patata', 2))!
+    expect(ingredientLineToRow(back)).toMatchObject({ quantity: 2, unit: 'u' })
+    expect(back.name).toBe('patatas')
+  })
+
   it.each(rows)('reading the line again gives the same row ($ingredientName)', (r) => {
     const parsed = parseIngredientLine(formatIngredientLine(r))!
     const amount = ingredientLineToRow(parsed)

@@ -25,10 +25,14 @@ import { recorderSupported, useRecorder } from '@/hooks/useRecorder'
 import { emitCookingCommand, getCookStep } from '@/lib/cookingCommands'
 import { handsFreeAfterSilence, leavesCookMode, turnSilenceMs } from '@/lib/mimoHandsFree'
 import { recipeRefsFrom, type RecipeRef } from '@/lib/mimoRecipeLinks'
+import { mimoOptions } from '@/lib/mimoOptions'
 import { createPendingListen } from '@/lib/pendingListen'
 import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
 import { useFloatingButtonsHidden } from '@/hooks/useFloatingButtonsHidden'
+
+/** PRO-1302: the API's 429s for the month's cap; their text is Mimo's notice. */
+const CAP_CODES = new Set(['ADVISOR_BUDGET_EXCEEDED', 'SPEND_CAP_EXCEEDED'])
 
 export interface MimoMessage {
   id: string
@@ -244,15 +248,22 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         if (res.actionTaken) queryClient.invalidateQueries()
       } catch (err: any) {
         const msg = err?.message || 'No he podido conectar.'
-        setError(msg)
-        append({ role: 'assistant', content: `No he podido responder: ${msg}` })
+        if (CAP_CODES.has(err?.code)) {
+          // PRO-1302: the month's cap is Mimo's own words (what still works and where), not an error.
+          reply = msg
+          append({ role: 'assistant', content: msg })
+        } else {
+          setError(msg)
+          append({ role: 'assistant', content: `No he podido responder: ${msg}` })
+        }
       } finally {
         busyRef.current = false
       }
 
       if (reply && (spoken || speakReplies)) {
         setStatus('speaking')
-        await voice.speak(reply)
+        // Out loud, the question without the `[[opciones: …]]` line (the buttons are on screen).
+        await voice.speak(mimoOptions(reply).text)
       }
       setStatus('idle')
       if (spoken && handsFreeRef.current) listenRef.current()

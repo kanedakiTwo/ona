@@ -38,7 +38,7 @@ import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
-import { appSkills, bestMatch, dishNoteText, searchWords, toBuyable } from './appSkills.js'
+import { appSkills, bestMatch, dishNoteText, markEatenAsNote, PANTRY_BATCH_MAX, pantryBatchSummary, pantryNameOk, searchWords, toBuyable } from './appSkills.js'
 import { setHaveAtHome } from '../shoppingItemState.js'
 import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
@@ -48,6 +48,7 @@ import { fichaSkills } from './fichaSkills.js'
 import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
+import { alertTimeSkills } from './alertTimeSkills.js'
 import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
@@ -65,11 +66,11 @@ import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser, type AddPantryInput } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
-import { NotARecipeError, NeedsScreenshotError } from '../recipeUrlExtractor.js'
-import { NoExtractableContentError } from '../sources/youtube.js'
-import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
+import { NotARecipeError } from '../recipeUrlExtractor.js'
+import { importFailureReason, importFailureReply, IMPORT_WORKS, unsupportedNetwork, unsupportedNetworkReply } from '../sources/importFailure.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
-import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, hasHealthConsent, saidAllergyReply } from '../healthConsent.js'
+import { divertDietFacts } from './dietFacts.js'
 import { saveOnboarding } from '../onboarding.js'
 import { ingredientMarksOf } from '../ingredientRoles.js'
 import { shopperInviteForSignUp } from '../shopperInvite.js'
@@ -1713,7 +1714,8 @@ const toggleFavorite: SkillDefinition = {
 
 const markMealEaten: SkillDefinition = {
   name: 'mark_meal_eaten',
-  description: 'Marca una comida como comida o no comida en el menu actual.',
+  description:
+    'Marca una comida como comida o no comida en el menu actual. Si comieron otra cosa que la del menu ("al final cenamos tortilla", "pedimos pizza"), pasa en dish lo que dicen: queda apuntado en esa comida como texto, sin crear receta.',
   parameters: {
     type: 'object',
     properties: {
@@ -1721,10 +1723,15 @@ const markMealEaten: SkillDefinition = {
       dayIndex: { type: 'number', description: 'Solo si no usas day: 0=lunes … 6=domingo de esta semana' },
       meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch, snack o dinner' },
       eaten: { type: 'boolean', description: 'true si se ha comido, false si no' },
+      dish: { type: 'string', description: 'Solo si comieron otra cosa que la del menu: lo que comieron, con sus palabras ("tortilla", "pizza pedida"). Sustituye los platos de esa comida por ese texto.' },
     },
     required: ['meal', 'eaten'],
   },
-  async handler(params: { day?: string; dayIndex?: number; meal: string; eaten: boolean }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { day?: string; dayIndex?: number; meal: string; eaten: boolean; dish?: string }, ctx: SkillContext): Promise<SkillResult> {
+    // PRO-1293: what they ate instead goes in as text, never as a recipe.
+    if (params.eaten !== false && typeof params.dish === 'string' && params.dish.trim()) {
+      return markEatenAsNote(ctx, { day: params.day, dayIndex: params.dayIndex, meal: params.meal, dish: params.dish })
+    }
     const { db } = ctx
     const { meal, eaten } = params
     const t = menuDayParam({ day: params.day, dayIndex: params.dayIndex })
@@ -1770,7 +1777,7 @@ const markMealEaten: SkillDefinition = {
 const createRecipe: SkillDefinition = {
   name: 'create_recipe',
   description:
-    'Crea y guarda una receta nueva del usuario. Si el usuario pide una receta basica sin dar detalles ("crea tu un filete a la parrilla"), inventa tu una version sencilla y razonable (ingredientes con cantidades y pasos) y creala sin hacer mas preguntas.',
+    'Crea y guarda una receta nueva del usuario. Si el usuario pide una receta basica sin dar detalles ("crea tu un filete a la parrilla"), inventa tu una version sencilla y razonable (ingredientes con cantidades y pasos) y creala sin hacer mas preguntas. No la uses para lo que ya han comido o improvisan para hoy ("al final cenamos tortilla", "pedimos pizza"): eso es mark_meal_eaten con dish o set_meal_note. Si lo piden ("hice lentejas, guardamela") o te dictan como se hace, si.',
   parameters: {
     type: 'object',
     properties: {
@@ -2031,6 +2038,7 @@ async function storePantryAmount(
   name: string,
   amount: { quantity?: number; unit?: string },
   location: AddPantryInput['location'],
+  pantry?: { id: string; name: string }[],
 ): Promise<string | null> {
   const b = toBuyable(amount.quantity, amount.unit)
   if (b.quantity == null || !b.unit) return null
@@ -2040,7 +2048,9 @@ async function storePantryAmount(
     row = await patchPantryForUser(ctx.userId, pantryHit.id, { quantity: b.quantity, unit, ...(location ? { location } : {}) }, ctx.db)
   } else {
     try {
-      row = await addPantryForUser(ctx.userId, { name: String(b.suffix ? `${name} (${b.suffix})` : name).trim().slice(0, 80), quantity: b.quantity, unit, location }, ctx.db)
+      const added = await addPantryForUser(ctx.userId, { name: String(b.suffix ? `${name} (${b.suffix})` : name).trim().slice(0, 80), quantity: b.quantity, unit, location }, ctx.db)
+      if (pantry && !pantry.includes(added)) pantry.push(added)
+      row = added
     } catch (err) {
       if (!(err instanceof NoHouseholdError)) throw err
     }
@@ -2048,110 +2058,182 @@ async function storePantryAmount(
   return row ? `${row.name}: ${Math.round(row.quantity * 100) / 100} ${row.unit}` : null
 }
 
+type StockParams = { ingredient: string; inStock?: boolean; location?: string; quantity?: number; unit?: string }
+
+/** What mark_in_stock reads once per call: the pantry and the latest list (PRO-1294: one read for a whole dictation). */
+interface StockState {
+  pantry: Awaited<ReturnType<typeof listPantryForUser>>
+  list: Awaited<ReturnType<typeof latestShoppingList>>
+  items: any[]
+  /** One product writes the list at once; a batch, once at the end. */
+  saveList: () => Promise<void>
+}
+
+/** One product of mark_in_stock. A result with `data: null` changed nothing (a doubt, in a batch). */
+async function markOneInStock(params: StockParams, ctx: SkillContext, state: StockState): Promise<SkillResult> {
+  const { userId, db } = ctx
+  const { list, items, pantry } = state
+  const item = list ? findShoppingItem(items, params.ingredient) : null
+  const pantryHit = findPantryRow(pantry, params.ingredient)
+  const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
+  const next = params.inStock != null ? !!params.inStock : !current
+
+  // «Nos queda una cebolla» (PRO-182): the list buys only the rest of a menu line.
+  if (item && item.ingredientId && item.kind !== 'manual' && item.kind !== 'staple' && params.quantity != null && params.quantity >= 0 && params.inStock !== false) {
+    const b = toBuyable(params.quantity, params.unit)
+    let have: number | null = b.quantity ?? (params.quantity === 0 ? 0 : null)
+    if (have != null && have > 0 && b.unit && b.unit !== item.unit) {
+      const [ing] = await db
+        .select({ density: ingredients.density, unitWeight: ingredients.unitWeight })
+        .from(ingredients)
+        .where(eq(ingredients.id, item.ingredientId))
+        .limit(1)
+      have = convertUnits(have, b.unit as any, item.unit, ing?.density, ing?.unitWeight)
+    }
+    if (have == null) {
+      return {
+        data: null,
+        summary: `No he podido pasar esa cantidad a la unidad de la lista (${item.unit}). ¿Cuánto ${item.name} os queda en ${item.unit}?`,
+        uiHint: 'text',
+      }
+    }
+    setHaveAtHome(item, have)
+    await state.saveList()
+    const left = item.inStock ? 0 : Math.max(0, item.quantity - (item.haveQuantity ?? 0))
+    const fmt = (n: number) => `${Math.round(n * 10) / 10} ${item.unit}`
+    const where = isPantryLocation(params.location) ? params.location : undefined
+    const stored = params.quantity > 0 ? await storePantryAmount(ctx, pantryHit, String(item.name), params, where, pantry) : null
+    const pantryLine = stored ? ` En la despensa queda apuntado: ${stored}.` : ''
+    return {
+      data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left, pantry: stored },
+      summary: item.inStock
+        ? `${item.name}: con lo que tenéis llega; marcado como en casa.${pantryLine}`
+        : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).${pantryLine}`,
+      uiHint: 'confirmation',
+    }
+  }
+
+  let touched = false
+  if (item) {
+    item.inStock = next
+    await state.saveList()
+    touched = true
+  }
+  const location = isPantryLocation(params.location) ? params.location : undefined
+  // With an amount («tengo 4 huevos»), the pantry keeps that amount (PRO-349).
+  const stored = next && params.quantity != null && params.quantity > 0
+    ? await storePantryAmount(ctx, pantryHit, String(item?.name ?? params.ingredient), params, location, pantry)
+    : null
+  if (stored) touched = true
+  if (!stored && next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
+    await patchPantryForUser(userId, pantryHit.id, { location }, db)
+    touched = true
+  }
+  if (!stored && next && !pantryHit) {
+    try {
+      const added = await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80), location }, db)
+      if (!pantry.includes(added)) pantry.push(added)
+      touched = true
+    } catch (err) {
+      if (!(err instanceof NoHouseholdError)) throw err
+    }
+  }
+  if (!next && pantryHit) {
+    await deletePantryForUser(userId, pantryHit.id, db)
+    if (pantry.includes(pantryHit)) pantry.splice(pantry.indexOf(pantryHit), 1)
+    touched = true
+  }
+  if (!touched) {
+    return {
+      data: null,
+      summary: list
+        ? `No he encontrado "${params.ingredient}" en tu lista ni en la despensa.`
+        : 'Necesitas tener una lista de la compra activa para gestionar la despensa.',
+      uiHint: 'text',
+    }
+  }
+  const name = item?.name ?? pantryHit?.name ?? params.ingredient
+  return {
+    data: { name, inStock: next, ...(stored ? { pantry: stored } : {}) },
+    summary: next
+      ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.${stored ? ` En la despensa queda apuntado: ${stored}.` : ''}`
+      : `${name} eliminado de la despensa.`,
+    uiHint: 'confirmation',
+  }
+}
+
 const markInStock: SkillDefinition = {
   name: 'mark_in_stock',
   description:
-    'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna. Si dice CUANTO le queda ("nos queda una cebolla y medio pimiento", "tengo 200 g de arroz"), pasa quantity (y unit si la dice): la lista compra solo lo que falta en vez de marcar toda la linea; una llamada por ingrediente.',
+    'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna. Si dice CUANTO le queda ("nos queda una cebolla y medio pimiento", "tengo 200 g de arroz"), pasa quantity (y unit si la dice): la lista compra solo lo que falta en vez de marcar toda la linea. Varios ingredientes ("tengo cebolla, ajo y pimiento", "se me han acabado la leche y los huevos") van en UNA sola llamada con items (hasta 100), nunca una llamada por ingrediente; cada item hereda inStock y location si no los lleva. Devuelve cuantos ha apuntado y las dudas: lo que no ha reconocido se lo preguntas al usuario.',
   parameters: {
     type: 'object',
     properties: {
-      ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial)' },
+      ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial). Para varios, items' },
       inStock: { type: 'boolean', description: 'true si tiene, false si no. Si se omite, alterna el estado.' },
       location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'], description: 'Donde lo tiene, si lo dice ("tengo pollo en el congelador"). Si ya estaba apuntado en otro sitio, lo cambia de sitio.' },
       quantity: { type: 'number', description: 'Cuanto le queda en casa (0.5 = medio). Solo si lo dice.' },
       unit: { type: 'string', description: 'Unidad de quantity: unidades, g, kg, ml, l… Sin unidad = unidades.' },
+      items: {
+        type: 'array',
+        maxItems: PANTRY_BATCH_MAX,
+        description: 'Varios ingredientes en una llamada',
+        items: {
+          type: 'object',
+          properties: {
+            ingredient: { type: 'string' },
+            inStock: { type: 'boolean' },
+            location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+            quantity: { type: 'number' },
+            unit: { type: 'string' },
+          },
+          required: ['ingredient'],
+        },
+      },
     },
-    required: ['ingredient'],
+    required: [],
   },
-  async handler(params: { ingredient: string; inStock?: boolean; location?: string; quantity?: number; unit?: string }, ctx) {
-    const { userId, db } = ctx
-    const pantry = await listPantryForUser(userId, db).catch(() => [])
+  async handler(params: StockParams & { items?: StockParams[] }, ctx) {
+    const pantry = await listPantryForUser(ctx.userId, ctx.db).catch(() => [])
     const list = await latestShoppingList(ctx)
     const items = ((list?.items as any[]) ?? []).slice()
-    const item = list ? findShoppingItem(items, params.ingredient) : null
-    const pantryHit = findPantryRow(pantry, params.ingredient)
-    const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
-    const next = params.inStock != null ? !!params.inStock : !current
-
-    // «Nos queda una cebolla» (PRO-182): the list buys only the rest of a menu line.
-    if (item && item.ingredientId && item.kind !== 'manual' && item.kind !== 'staple' && params.quantity != null && params.quantity >= 0 && params.inStock !== false) {
-      const b = toBuyable(params.quantity, params.unit)
-      let have: number | null = b.quantity ?? (params.quantity === 0 ? 0 : null)
-      if (have != null && have > 0 && b.unit && b.unit !== item.unit) {
-        const [ing] = await db
-          .select({ density: ingredients.density, unitWeight: ingredients.unitWeight })
-          .from(ingredients)
-          .where(eq(ingredients.id, item.ingredientId))
-          .limit(1)
-        have = convertUnits(have, b.unit as any, item.unit, ing?.density, ing?.unitWeight)
-      }
-      if (have == null) {
-        return {
-          data: null,
-          summary: `No he podido pasar esa cantidad a la unidad de la lista (${item.unit}). ¿Cuánto ${item.name} os queda en ${item.unit}?`,
-          uiHint: 'text',
-        }
-      }
-      setHaveAtHome(item, have)
-      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
-      const left = item.inStock ? 0 : Math.max(0, item.quantity - (item.haveQuantity ?? 0))
-      const fmt = (n: number) => `${Math.round(n * 10) / 10} ${item.unit}`
-      const where = isPantryLocation(params.location) ? params.location : undefined
-      const stored = params.quantity > 0 ? await storePantryAmount(ctx, pantryHit, String(item.name), params, where) : null
-      const pantryLine = stored ? ` En la despensa queda apuntado: ${stored}.` : ''
-      return {
-        data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left, pantry: stored },
-        summary: item.inStock
-          ? `${item.name}: con lo que tenéis llega; marcado como en casa.${pantryLine}`
-          : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).${pantryLine}`,
-        uiHint: 'confirmation',
-      }
+    const batch = Array.isArray(params.items) && params.items.length > 0
+    let listDirty = false
+    const saveList = async () => {
+      if (batch) listDirty = true
+      else if (list) await ctx.db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
     }
-
-    let touched = false
-    if (item) {
-      item.inStock = next
-      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
-      touched = true
+    const state: StockState = { pantry, list, items, saveList }
+    if (!batch) {
+      if (!pantryNameOk(params.ingredient)) return { data: null, summary: 'Falta el ingrediente; no he cambiado nada.', uiHint: 'text' }
+      return markOneInStock(params, ctx, state)
     }
-    const location = isPantryLocation(params.location) ? params.location : undefined
-    // With an amount («tengo 4 huevos»), the pantry keeps that amount (PRO-349).
-    const stored = next && params.quantity != null && params.quantity > 0
-      ? await storePantryAmount(ctx, pantryHit, String(item?.name ?? params.ingredient), params, location)
-      : null
-    if (stored) touched = true
-    if (!stored && next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
-      await patchPantryForUser(userId, pantryHit.id, { location }, db)
-      touched = true
-    }
-    if (!stored && next && !pantryHit) {
+    // PRO-1294: the whole dictation in one call; what it can't place is a doubt, never an error.
+    const done: { location?: string; removed?: boolean }[] = []
+    const doubts: string[] = []
+    for (const raw of params.items!.slice(0, PANTRY_BATCH_MAX)) {
+      const one: StockParams = { inStock: params.inStock, location: params.location, ...raw, ingredient: String(raw?.ingredient ?? '').trim() }
+      if (!pantryNameOk(one.ingredient)) {
+        if (one.ingredient) doubts.push(one.ingredient.slice(0, 40))
+        continue
+      }
       try {
-        await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80), location }, db)
-        touched = true
+        const r = await markOneInStock(one, ctx, state)
+        const d = r.data as { inStock?: boolean } | null
+        if (d) done.push({ location: isPantryLocation(one.location) ? one.location : undefined, removed: d.inStock === false })
+        else doubts.push(one.ingredient.slice(0, 40))
       } catch (err) {
-        if (!(err instanceof NoHouseholdError)) throw err
+        console.warn('[mark_in_stock] item failed:', one.ingredient, (err as Error)?.message ?? err)
+        doubts.push(one.ingredient.slice(0, 40))
       }
     }
-    if (!next && pantryHit) {
-      await deletePantryForUser(userId, pantryHit.id, db)
-      touched = true
-    }
-    if (!touched) {
-      return {
-        data: null,
-        summary: list
-          ? `No he encontrado "${params.ingredient}" en tu lista ni en la despensa.`
-          : 'Necesitas tener una lista de la compra activa para gestionar la despensa.',
-        uiHint: 'text',
-      }
-    }
-    const name = item?.name ?? pantryHit?.name ?? params.ingredient
+    if (listDirty && list) await ctx.db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+    const added = done.filter((d) => !d.removed).length
     return {
-      data: { name, inStock: next, ...(stored ? { pantry: stored } : {}) },
-      summary: next
-        ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.${stored ? ` En la despensa queda apuntado: ${stored}.` : ''}`
-        : `${name} eliminado de la despensa.`,
-      uiHint: 'confirmation',
+      // data.name/inStock stay out: activityEvents logs one product, not a batch.
+      data: done.length ? { added, removed: done.length - added, doubts } : null,
+      summary: pantryBatchSummary(done, doubts),
+      uiHint: done.length ? 'confirmation' : 'text',
     }
   },
 }
@@ -3162,7 +3244,7 @@ const addRecipeToMine: SkillDefinition = {
 const updateMemory: SkillDefinition = {
   name: 'update_memory',
   description:
-    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). «Sin X», «no me sugieras X», «prescindir de X», «no comemos X» van SIEMPRE en dislikes (no en notes), también las familias enteras: «legumbres», «arroz», «patata», «casquería», «cerdo», «carne roja», «marisco», «pescado» (el menú las entiende con todo lo que llevan). Las notes no cambian el menú: lo que es una regla del menú va en dislikes, en note_ficha_fact (menu_rule) o en la semana tipo. Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
+    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). «Sin X», «no me sugieras X», «prescindir de X», «no comemos X» van SIEMPRE en dislikes (no en notes), también las familias enteras: «legumbres», «arroz», «patata», «casquería», «cerdo», «carne roja», «marisco», «pescado» (el menú las entiende con todo lo que llevan). Una dieta no es un gusto: «vegetariano», «vegano», «sin carne ni pescado», «sin alcohol», «sin cerdo» (por dieta, no porque no les guste), «halal», «sin gluten», «sin lactosa» y las alergias van en restrictions, con esas palabras. Las notes no cambian el menú: lo que es una regla del menú va en dislikes, en note_ficha_fact (menu_rule) o en la semana tipo. Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
   parameters: {
     type: 'object',
     properties: {
@@ -3214,6 +3296,14 @@ const updateMemory: SkillDefinition = {
         return { data: null, summary: saidAllergies.length ? saidAllergyReply(saidAllergies, 'whatsapp') : WHATSAPP_HEALTH_DATA_REPLY, uiHint: 'text' }
       }
     }
+    // PRO-201: what the household doesn't eat by diet («vegetariano», «sin
+    // alcohol», «sin cerdo») is a restriction, not a taste or a note — when it
+    // can be written (not WhatsApp, with the consent); otherwise the facts stay
+    // as they came and the menu still reads the dislikes.
+    if (ctx.channel !== 'whatsapp') {
+      const diet = divertDietFacts(params.facts)
+      if (diet.diverted.length > 0 && (await hasHealthConsent(userId))) params = { facts: diet.facts }
+    }
     const { setMemoryBatch, getMemoryForUser, UnknownMemoryKeyError, MemoryValueValidationError, HealthConsentRequiredError } = await import('../userMemoryStore.js')
     const current = await getMemoryForUser(userId).catch(() => ({}))
     const { facts: merged, keptManual } = mergeMemoryFacts(current as Record<string, { value: unknown; source?: string }>, params.facts)
@@ -3230,7 +3320,10 @@ const updateMemory: SkillDefinition = {
       // user set by hand unless they asked for the change (confidence 1).
       // PRO-316: the ficha gets it too, with where it was said.
       const signal = ctx.channel === 'whatsapp' ? 'whatsapp' : ctx.channel === 'voice' ? 'voice' : ctx.channel === 'onboarding' ? 'onboarding' : 'chat'
-      await setMemoryBatch(userId, merged, 'inferred', { signal })
+      // PRO-201: allergies and diet are never deduced: the person said them
+      // («Lo dijiste tú» in «Tu ficha»), out of the sign-up.
+      const facts = ctx.channel === 'onboarding' ? merged : merged.map((f) => (f.key === 'restrictions' ? { ...f, source: 'manual' as const } : f))
+      await setMemoryBatch(userId, facts, 'inferred', { signal })
     } catch (err) {
       if (err instanceof HealthConsentRequiredError) {
         return {
@@ -3279,7 +3372,7 @@ const updateMemory: SkillDefinition = {
 export const importRecipeFromUrlSkill: SkillDefinition = {
   name: 'import_recipe_from_url',
   description:
-    'Importa una receta desde un enlace (video de YouTube, articulo/blog de cocina o post de Instagram/TikTok) y la guarda en las recetas del usuario. Usala cuando el usuario comparta o pegue un enlace de una receta o pida "guardame esta receta". Tarda unos segundos. Devuelve el id y el nombre de la receta guardada.',
+    'Importa una receta desde un enlace (video de YouTube, articulo/blog de cocina o post publico de Instagram/TikTok) y la guarda en las recetas del usuario. Usala cuando el usuario comparta o pegue un enlace de una receta o pida "guardame esta receta". Tarda unos segundos. Devuelve el id y el nombre de la receta guardada. Lee el texto (subtitulos, descripcion o pie del post), nunca el video en si; no lee Facebook, X/Twitter, Pinterest, Threads ni Vimeo: no ofrezcas pegar enlaces de esas redes. Si falla, dice el motivo en una frase y que si funciona: pasalo tal cual.',
   parameters: {
     type: 'object',
     properties: {
@@ -3292,6 +3385,11 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
     if (!/^https?:\/\/\S+$/i.test(url)) {
       return { data: null, summary: 'La URL no es valida. Pide al usuario el enlace completo.', uiHint: 'text' }
     }
+    // PRO-1301: a network the import doesn't read is said up front, without trying.
+    const network = unsupportedNetwork(url)
+    if (network) {
+      return { data: null, summary: `No se ha guardado nada. Responde al usuario con esto, tal cual: «${unsupportedNetworkReply(network)}»`, uiHint: 'text' }
+    }
     try {
       const saved = await importRecipeFromUrl(url, ctx.userId)
       const review = saved.warnings.length > 0
@@ -3303,23 +3401,20 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
         uiHint: 'recipe',
       }
     } catch (err: any) {
-      if (err instanceof NeedsScreenshotError) {
-        // Plan B for Instagram/TikTok and unreadable pages: a screenshot, which the photo import
-        // reads (a WhatsApp photo is imported directly).
+      if (err instanceof NotARecipeError) {
+        return { data: null, summary: `El enlace no parece contener una receta cocinable: «${untrustedText(err.reason, 160)}». Si quiere guardar otra: ${IMPORT_WORKS}`, uiHint: 'text' }
+      }
+      // PRO-1301: the motive in one sentence and what does work (a screenshot
+      // among them: the photo import reads it, and a WhatsApp photo right after
+      // takes this link as its source, whatsapp/photoSource.ts, which looks for
+      // the screenshot message kept in brackets).
+      const reason = importFailureReason(err)
+      if (reason) {
         return {
           data: null,
-          summary: `No se ha guardado nada. Responde al usuario exactamente: «${err.message}».`,
+          summary: `No se ha guardado nada [${err.message}]. Responde al usuario con esto, tal cual, sin añadir otra causa: «${importFailureReply(reason)}»`,
           uiHint: 'text',
         }
-      }
-      if (err instanceof NotARecipeError) {
-        return { data: null, summary: `El enlace no parece contener una receta cocinable: «${untrustedText(err.reason, 160)}»`, uiHint: 'text' }
-      }
-      if (err instanceof NoExtractableContentError || err instanceof PageFetchError) {
-        return { data: null, summary: `No se pudo leer el contenido del enlace: ${err.message}`, uiHint: 'text' }
-      }
-      if (err instanceof UnsafeUrlError) {
-        return { data: null, summary: `No se puede importar ese enlace: ${err.message} Pide un enlace público a la receta.`, uiHint: 'text' }
       }
       throw err
     }
@@ -3386,6 +3481,8 @@ export const skills: SkillDefinition[] = [
   ...freezerSkills,
   // La receta del día (PRO-1099, specs/recipe-of-the-day.md):
   ...recipeOfTheDaySkills,
+  // PRO-1301: la hora del menú del día y de la pregunta de la cena.
+  ...alertTimeSkills,
 ]
 
 /**

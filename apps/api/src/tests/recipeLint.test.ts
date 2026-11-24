@@ -365,6 +365,51 @@ describe('lintRecipe — errors', () => {
     expect(orphan!.message).toContain('ajo')
   })
 
+  // 24-nov, a handwritten «Rösti de patatas» imported from a photo: «Salpimentar
+  // al gusto» is the step that uses the salt and the pepper, and «mantequilla al
+  // gusto» has no amount to be out of range.
+  it('«salpimentar» mentions the salt and the pepper; «sazonar», the salt', () => {
+    const catalog: CatalogIngredient[] = [...CATALOG, { id: 'cat-pimienta', name: 'pimienta negra', fdcId: 1010, density: null }]
+    const recipe = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-pollo', quantity: 300, unit: 'g' },
+        { id: 'row-2', ingredientId: 'cat-sal', quantity: 2, unit: 'g' },
+        { id: 'row-3', ingredientId: 'cat-pimienta', quantity: 1, unit: 'g' },
+      ],
+      steps: [
+        { index: 0, text: 'Trocea el pollo.', durationMin: 5 },
+        { index: 1, text: 'Salpimentar al gusto y dorar.', durationMin: 10 },
+      ],
+    })
+    expect(lintRecipe(recipe, { ingredientCatalog: catalog }).errors.filter((e) => e.code === 'ORPHAN_INGREDIENT')).toEqual([])
+    const sazona = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-pollo', quantity: 300, unit: 'g' },
+        { id: 'row-2', ingredientId: 'cat-sal', quantity: 2, unit: 'g' },
+        { id: 'row-3', ingredientId: 'cat-pimienta', quantity: 1, unit: 'g' },
+      ],
+      steps: [{ index: 0, text: 'Sazona el pollo y dóralo.', durationMin: 10 }],
+    })
+    const orphans = lintRecipe(sazona, { ingredientCatalog: catalog }).errors.filter((e) => e.code === 'ORPHAN_INGREDIENT')
+    expect(orphans.map((e) => e.message).join(' ')).toContain('pimienta')
+    expect(orphans.map((e) => e.message).join(' ')).not.toContain('"sal"')
+  })
+
+  it('QUANTITY_OUT_OF_RANGE says nothing about an ingredient with no amount («al gusto», 0 g)', () => {
+    const recipe = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-pollo', quantity: 300, unit: 'g' },
+        { id: 'row-2', ingredientId: 'cat-arroz', quantity: 160, unit: 'g' },
+        { id: 'row-3', ingredientId: 'cat-aceite', quantity: 0, unit: 'g' },
+      ],
+      steps: [
+        { index: 0, text: 'Dora el pollo con el aceite de oliva.', durationMin: 10 },
+        { index: 1, text: 'Añade el arroz.', durationMin: 15 },
+      ],
+    })
+    expect(lintRecipe(recipe, opts).errors.filter((e) => e.code === 'QUANTITY_OUT_OF_RANGE')).toEqual([])
+  })
+
   it('ORPHAN_INGREDIENT exempts optional ingredients', () => {
     const recipe = makeRecipe({
       ingredients: [

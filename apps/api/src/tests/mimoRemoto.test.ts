@@ -101,7 +101,7 @@ describe('remote rounds through the tool loop', () => {
     expect(handler).toHaveBeenCalledTimes(1)
     expect(r).toMatchObject({ message: 'Aún no tienes recetas tuyas.', actionTaken: true, toolsUsed: ['get_my_recipes'] })
     // Nothing paid: no usage at all.
-    expect(r.usage).toEqual({ inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 })
+    expect(r.usage).toMatchObject({ inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheWrite1hTokens: 0, cacheReadTokens: 0 })
 
     // Two rounds, each saved with system, messages, tools and model.
     expect(rows).toHaveLength(2)

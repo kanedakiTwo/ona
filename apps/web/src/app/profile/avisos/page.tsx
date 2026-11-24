@@ -9,11 +9,14 @@
  * without it only the prep alerts go by the phone notification. Email only
  * carries the account and the Friday menu. Mimo can read and change the same
  * switches (`get_alerts` / `set_alerts`), in the web chat and on WhatsApp.
+ * PRO-1301: the household's time for the morning menu and the dinner
+ * question (Mimo: `set_alert_time`).
  */
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Bell, CalendarCheck, Mail, MessageCircle, Smartphone } from "lucide-react"
-import type { AlertRow } from "@ona/shared"
-import { useAlerts, useSetAlert } from "@/hooks/useAlerts"
+import { ALERT_TIME_KINDS, ALERT_TIME_RANGE, type AlertRow, type AlertsOverview, type AlertTimeKind } from "@ona/shared"
+import { useAlerts, useSetAlert, useSetAlertTime } from "@/hooks/useAlerts"
 import { Accent, SUB_CARD, SUB_EYEBROW, SUB_LIST, SubPage } from "@/components/profile/SubPage"
 import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 import { Switch } from "@/app/profile/sections/ProfileCards"
@@ -39,6 +42,72 @@ function channelLine(row: AlertRow): string {
   return row.fallback ? `${CHANNEL_LABEL[row.channel]} · si no sale, notificación del móvil` : CHANNEL_LABEL[row.channel]
 }
 
+const TIME_LABEL: Record<AlertTimeKind, string> = {
+  daily_brief: "Menú del día",
+  dinner_checkin: "¿Hiciste la cena?",
+}
+
+function AlertTimeRow({ kind, data }: { kind: AlertTimeKind; data: AlertsOverview }) {
+  const saved = data.times[kind]
+  const setTime = useSetAlertTime()
+  const [value, setValue] = useState(saved.time)
+  useEffect(() => setValue(saved.time), [saved.time])
+  const changed = value !== saved.time
+  const { min, max } = ALERT_TIME_RANGE[kind]
+  return (
+    <li className="px-4 py-3" data-testid={`alert-time-${kind}`}>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={`alert-time-${kind}-input`} className="min-w-0">
+          <span className="block text-[15px] font-medium text-ink">{TIME_LABEL[kind]}</span>
+          <span className="block text-[12px] leading-snug text-ink-muted" data-testid={`alert-time-${kind}-note`}>
+            {saved.custom ? "La hora que elegisteis." : "La de siempre."} Entre las {min} y las {max}.
+          </span>
+        </label>
+        <input
+          id={`alert-time-${kind}-input`}
+          type="time"
+          min={min}
+          max={max}
+          step={300}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="min-h-[44px] w-[112px] shrink-0 rounded-xl border border-border-soft bg-paper px-3 text-[15px] text-ink focus:border-ink focus:outline-none"
+        />
+      </div>
+      {(changed || saved.custom) && (
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-3">
+          {saved.custom && !changed && (
+            <button
+              type="button"
+              disabled={setTime.isPending}
+              onClick={() => setTime.mutate({ kind, time: null })}
+              className="text-[13px] font-medium text-ink-mid underline underline-offset-2 disabled:opacity-60"
+            >
+              Volver a la de siempre
+            </button>
+          )}
+          {changed && (
+            <button
+              type="button"
+              data-testid={`alert-time-${kind}-save`}
+              disabled={setTime.isPending || !value}
+              onClick={() => setTime.mutate({ kind, time: value })}
+              className="min-h-[36px] rounded-full bg-ink px-4 text-[13px] font-medium text-cream disabled:opacity-40"
+            >
+              Guardar
+            </button>
+          )}
+        </div>
+      )}
+      {setTime.isError && (
+        <p role="alert" className="mt-2 text-[13px] text-terracotta-deep">
+          {setTime.error instanceof Error && setTime.error.message ? setTime.error.message : "No se ha podido guardar. Inténtalo otra vez."}
+        </p>
+      )}
+    </li>
+  )
+}
+
 export default function AvisosPage() {
   const alerts = useAlerts()
   const setAlert = useSetAlert()
@@ -54,7 +123,7 @@ export default function AvisosPage() {
           Qué te llega y <Accent>por dónde</Accent>
         </>
       }
-      intro="Cada aviso llega por un solo sitio: por WhatsApp si lo tienes conectado; si no, los de preparación como notificación del móvil. También puedes pedírselo a Mimo: «no me mandes el menú del día»."
+      intro="Cada aviso llega por un solo sitio: por WhatsApp si lo tienes conectado; si no, los de preparación como notificación del móvil. También puedes pedírselo a Mimo: «no me mandes el menú del día» o «mándamelo a las 8»."
     >
       {load.failed ? (
         <SubLoadError onRetry={load.retry} retrying={load.retrying} />
@@ -97,6 +166,17 @@ export default function AvisosPage() {
               <p role="alert" className="mt-3 text-[13px] text-terracotta-deep">
                 No se ha podido guardar. Inténtalo otra vez.
               </p>
+            )}
+            {data.times && (
+              <>
+                <h2 className={`${SUB_EYEBROW} mt-8`}>A qué hora</h2>
+                <p className="mt-1 text-[12px] leading-snug text-ink-muted">Para toda la casa.</p>
+                <ul className={`${SUB_LIST} mt-3`} data-testid="alert-times">
+                  {ALERT_TIME_KINDS.map((kind) => (
+                    <AlertTimeRow key={kind} kind={kind} data={data} />
+                  ))}
+                </ul>
+              </>
             )}
           </section>
 

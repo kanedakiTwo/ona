@@ -11,6 +11,7 @@ import { HOUSEHOLD_INVITE_SOURCES, MENU_SHEETS, isHouseholdInviteSource, isMenuS
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
 import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
+import { knownRefSources, refSourceForAgents, utmSourceForAgents } from './agentView.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
 import { GROWTH_DEFINITIONS, loadGrowthReport } from './growthReport.js'
@@ -186,6 +187,64 @@ export function buildFunnel(input: UsageInput): FunnelWeek[] {
     }
   }
   return [...weeks.values()].sort((a, b) => a.week.localeCompare(b.week))
+}
+
+/** The `?ref` label and utm_source an account signed up with (`users.signup_attribution`), raw. */
+export interface SignupAttributionRow {
+  householdId: string
+  /** Madrid day of its signup_completed. */
+  day: string
+  source: string | null
+  utmSource: string | null
+}
+
+export interface SignupSourceWeek {
+  week: string
+  isoWeek: string
+  source: string
+  utmSource: string
+  signups: number
+  firstMenu: number
+}
+
+/**
+ * Pure (PRO-1288): signups by ISO week of signup, `?ref` label and utm_source. `source` goes
+ * through the closed list of `?ref` labels (`refSourceForAgents`; none → 'directo') and
+ * `utmSource` through the waitlist's closed list of channels (`utmSourceForAgents`), so no
+ * free text leaves. Same cohort as `funnel[]` (a household's first signup_completed in the
+ * window); `firstMenu` = a menu_generated within its first 7 days.
+ */
+export function buildSignupSources(
+  input: UsageInput,
+  signups: readonly SignupAttributionRow[],
+  known: ReadonlySet<string> = knownRefSources(),
+): SignupSourceWeek[] {
+  const first = new Map<string, SignupAttributionRow>()
+  for (const s of signups) {
+    const prev = first.get(s.householdId)
+    if (!prev || s.day < prev.day) first.set(s.householdId, s)
+  }
+  const menuDays = new Map<string, string[]>()
+  for (const h of input.householdDays) {
+    if (h.name !== 'menu_generated') continue
+    if (!menuDays.has(h.householdId)) menuDays.set(h.householdId, [])
+    menuDays.get(h.householdId)!.push(h.day)
+  }
+  const rows = new Map<string, SignupSourceWeek>()
+  for (const s of first.values()) {
+    const week = weekOfDay(s.day)
+    const source = s.source == null || !s.source.trim() ? 'directo' : refSourceForAgents(s.source.trim().toLowerCase(), known)
+    const utmSource = utmSourceForAgents(s.utmSource)
+    const key = JSON.stringify([week, source, utmSource])
+    if (!rows.has(key)) rows.set(key, { week, isoWeek: isoWeekLabel(week), source, utmSource, signups: 0, firstMenu: 0 })
+    const r = rows.get(key)!
+    r.signups += 1
+    const menu = (menuDays.get(s.householdId) ?? []).some((d) => dayDiff(s.day, d) >= 0 && dayDiff(s.day, d) < FUNNEL_FIRST_WEEK_DAYS)
+    if (menu) r.firstMenu += 1
+  }
+  return [...rows.values()].sort(
+    (a, b) => a.week.localeCompare(b.week) || b.signups - a.signups || a.source.localeCompare(b.source) || a.utmSource.localeCompare(b.utmSource),
+  )
 }
 
 export function buildTotals(input: UsageInput) {
@@ -508,10 +567,13 @@ export const BREAKDOWN_EVENTS = [
   // PRO-1174: «al azar» or chosen (how), the meal or one dish (target); the menu's sheets by sheet and by action.
   'meal_swapped',
   'menu_sheet_action',
+  // PRO-1292: the turns the code answered without the model, by kind.
+  'mimo_code_reply',
 ] as const
 
 export const USAGE_DEFINITIONS = {
   activeHouseholds: 'Distinct households with at least one usage event that day / ISO week (Europe/Madrid), not counting app_opened_installed (opening the installed app is not using it). Events without a household (deleted accounts) are counted in events but not here.',
+  signupSources: 'PRO-1288: the same cohorts as funnel, split by the `?ref` label (source) and utm_source the account signed up with (users.signup_attribution). source: the closed list of `?ref` labels (the code\'s and METRICS_EXTRA_REF_SOURCES), none → directo, any other → otro; utmSource: the waitlist\'s closed list of channels, none → ninguna, any other → otro. firstMenu as in funnel. Counts only.',
   funnel: 'Signup-week cohorts (signup_completed). firstMenu → shoppingListViewed → cooked are nested steps within the first 7 days (signup day … +6): menu_generated, then shopping_list_viewed, then cook_mode_started or meal_cooked. activeWeek2 is not nested: signups with any event on days 7–13, over week2Eligible (signups whose day 7 has arrived).',
   channels: 'web (app and web chat), voice (Mimo with the voice in the app), whatsapp; unknown = system.',
   excluded: 'Admin and suspended accounts are excluded unless includeInternal=1. Events of deleted accounts stay as anonymous counts.',
@@ -525,7 +587,7 @@ export const USAGE_DEFINITIONS = {
   screens: 'PRO-120: screen_viewed per ISO week; each row is one person and screen and Madrid day (capped on the server), so views = people-days. top = the screens with views, most viewed first.',
   householdsBySystem:
     'PRO-307: active households of the window (see activeHouseholds) by the system of the last browser they came in with: the most recent usage event with a device (screen_viewed, from the day this shipped, 2026-10-22; or app_opened_installed) — android, ios (iPhone; iPadOS Safari says it is a Mac and counts as desktop), desktop, unknown (no such event: WhatsApp only, or no web visit since). Only that word is stored, never the browser string. Counts only.',
-  breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp) — and, since PRO-1024, the tricks\' events (menu_generated, shopping_list_viewed range, meal_adjusted, taper_set, leftover_dish_set, dish_added, template_changed, memory_set, recipe_rated, recipe_note_saved, favorite_toggled, recipe_photo_main, with_what_i_have_used, shopping_line_edited, staple_toggled, content_shared, week_printed, handsfree_started) — and, since PRO-1174, meal_swapped (how: auto = «al azar», picked = chosen; target: meal or dish; from: receta) and menu_sheet_action (sheet, action; crossed in menuSheetActions) — how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
+  breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp) — and, since PRO-1024, the tricks\' events (menu_generated, shopping_list_viewed range, meal_adjusted, taper_set, leftover_dish_set, dish_added, template_changed, memory_set, recipe_rated, recipe_note_saved, favorite_toggled, recipe_photo_main, with_what_i_have_used, shopping_line_edited, staple_toggled, content_shared, week_printed, handsfree_started) — and, since PRO-1174, meal_swapped (how: auto = «al azar», picked = chosen; target: meal or dish; from: receta) and menu_sheet_action (sheet, action; crossed in menuSheetActions) — and, since PRO-1292, mimo_code_reply (kind: ver_menu = the menu of a day or the week read without the model, paso_cocina = «siguiente» / «anterior» / «repite» in cook mode, ver_lista = the shopping list, PRO-1302) — how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
   menuSheetActions: 'PRO-1174: menu_sheet_action in the window, the options tapped in the menu\'s «···» sheets, by sheet — comida (one dish), comida_varios (several dishes or a note), plato (each dish of that list), vacio (a meal with no dish), no_hay (a meal the day doesn\'t have), dia (the day\'s footer), semana (the week\'s sheet; a row of the week view opens the meal\'s sheets since PRO-1178) — with its total and the taps of each option (closed list MENU_SHEET_ACTIONS), most tapped first. A tap is counted when the option is tapped, before any confirmation. Web only. Counts only.',
   mimoSkills: 'PRO-1022: mimo_skill_used in the window, one row per Mimo tool (skill = the tool name) that returned data, most used first: total and by where the conversation was — web (chat in the app), whatsapp, telegram, voice. A tool that failed or found nothing (data null) leaves none. Counts only, never text.',
   ...GROWTH_DEFINITIONS,
@@ -641,6 +703,14 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       WHERE e.household_id IS NOT NULL AND e.props ? 'device' AND ${counted}
       ORDER BY e.household_id, e.created_at DESC
   `)
+  // PRO-1288: each household's first signup in the window and the label it came with. Ids stay in this process: only counts leave.
+  const signupAttributionQ = db.execute(sql`
+    SELECT DISTINCT ON (e.household_id) e.household_id::text AS household_id, ${dayOf} AS day,
+           u.signup_attribution->>'source' AS source, u.signup_attribution->>'utmSource' AS utm_source
+      FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+      WHERE e.name = 'signup_completed' AND e.household_id IS NOT NULL AND e.created_at >= ${from} AND ${counted}
+      ORDER BY e.household_id, e.created_at
+  `)
   const days = dayRange(fromDay, today)
   const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, menuSheetRows, growth] = await Promise.all([
     onboardingStepsQ,
@@ -652,7 +722,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     // PRO-379: the growth line, the trial today and time to the first menu. Counts only leave.
     loadGrowthReport({ includeInternal: inc, now }, db),
   ])
-  const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice] = await Promise.all([
+  const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice, signupAttribution] = await Promise.all([
     countsQ,
     householdDaysQ,
     sinceQ,
@@ -662,6 +732,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     loadProactiveReport(days, from, inc, db),
     familyInvitesQ,
     lastDeviceQ,
+    signupAttributionQ,
   ])
 
   const input: UsageInput = {
@@ -685,6 +756,10 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     daily: buildDaily(input),
     weekly: buildWeekly(input),
     funnel: buildFunnel(input),
+    signupSources: buildSignupSources(
+      input,
+      (signupAttribution.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day, source: r.source ?? null, utmSource: r.utm_source ?? null })),
+    ),
     totals: buildTotals(input),
     channelSplit: buildChannelSplit(input),
     householdsBySystem: buildHouseholdSystems(

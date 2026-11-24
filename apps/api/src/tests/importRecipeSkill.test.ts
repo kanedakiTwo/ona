@@ -47,14 +47,17 @@ describe('import_recipe_from_url skill', () => {
 describe('import_recipe_from_url: Instagram / TikTok without the recipe (PRO-30)', () => {
   const ctx = { userId: 'u1', db: null }
 
-  it('tells Mimo to ask for a screenshot with the exact sentence (WhatsApp + chat)', async () => {
-    const { SocialCaptionUnavailableError } = await import('../services/recipeUrlExtractor.js')
+  it('tells Mimo why and to ask for a screenshot (WhatsApp + chat); PRO-1301: the motive, not just «mándame una captura»', async () => {
+    const { SocialCaptionUnavailableError, SOCIAL_SCREENSHOT_MESSAGE } = await import('../services/recipeUrlExtractor.js')
     vi.mocked(importRecipeFromUrl).mockImplementation(async () => {
       throw new SocialCaptionUnavailableError()
     })
     const r = await importRecipeFromUrlSkill.handler({ url: 'https://www.tiktok.com/@x/video/1' }, ctx)
     expect(r).toMatchObject({ uiHint: 'text', data: null })
-    expect(r.summary).toContain('«No he podido leer la receta de este vídeo; mándame una captura»')
+    // Kept for whatsapp/photoSource.ts (a photo right after takes this link as its source).
+    expect(r.summary).toContain(SOCIAL_SCREENSHOT_MESSAGE)
+    expect(r.summary).toContain('«Ese vídeo no trae la receta escrita en su texto')
+    expect(r.summary).toContain('captura de la receta.»')
   })
 })
 

@@ -113,12 +113,13 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
     words: /\b(nutri\w*|sano|sana|saludable\w*|calorias?|proteinas?|macros?|equilibr\w*|variedad|verduras?|legumbres?|fritos?|procesad\w*|azucar\w*|sal|ventana|ayuno|salud|medico|diabet\w*|colesterol|tension|peso|adelgaz\w*|engord\w*|bueno para|malo para)\b/,
   },
   hogar: {
-    label: 'el hogar y el perfil: cuantos sois, restricciones, memoria (gustos, equipo, presupuesto), invitar, avisos y su hora, como cocinais, opiniones para el equipo y la encuesta de Mimoia',
+    label: 'el hogar y el perfil: cuantos sois, restricciones, memoria (gustos, equipo, presupuesto), invitar, avisos y su hora, el correo de los viernes (newsletter), como cocinais, opiniones para el equipo y la encuesta de Mimoia',
     tools: [
       'update_household', 'update_profile', 'update_memory', 'invite_to_household', 'share_invite_link',
       'set_whatsapp_notifications', 'get_alerts', 'set_alerts', 'set_alert_time', 'set_cooking_style', 'leave_feedback', 'answer_sean_ellis',
+      'get_newsletter', 'set_newsletter',
     ],
-    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|decepcionad\w*|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas)\b|\bhora del? (?:aviso|menu|resumen|pregunta)|\bcambia\w* (?:la )?hora\b|\ba que hora (?:me |nos )?(?:mandas|escribes|avisas|preguntas|llega)/,
+    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|decepcionad\w*|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas|newsletter|boletin|correos?|e-?mails?|mails?|(?:receta|correo|carta|menu) de los viernes)\b|\bhora del? (?:aviso|menu|resumen|pregunta)|\bcambia\w* (?:la )?hora\b|\ba que hora (?:me |nos )?(?:mandas|escribes|avisas|preguntas|llega)/,
   },
   ficha: {
     label: 'la ficha del hogar (lo que Mimoia sabe y aprende de la casa) y las valoraciones de «Afina tu menu»',
@@ -146,7 +147,7 @@ export const PAGE_GROUPS: Partial<Record<PageKind, ToolGroupId[]>> = {
 export const DEFAULT_GROUPS: ToolGroupId[] = ['menu']
 
 /** Questions about Mimoia itself: the «Sobre Mimoia» block (and prices) goes in. */
-const ABOUT_WORDS = /\b(mimoia|precios?|cuesta|cuestan|cuanto vale|planes|plan|gratis|esencial|plus|pagar|pago|pagos|tarjeta|suscrip\w*|cancela\w*|prueba|beta|cobr\w*|factura\w*|recibos?|privacidad|mis datos|datos personales|mi cuenta|la cuenta|contacto|telefono|email|correo|humano|persona|equipo|quien eres|que eres|que puedes|que sabes hacer|como funciona\w*|para que sirve|mision|vision|empresa|lanzamiento|telegram|instala\w*|app|aplicacion|web|iphone|android|stripe|link)\b/
+const ABOUT_WORDS = /\b(mimoia|precios?|cuesta|cuestan|cuanto vale|planes|plan|gratis|esencial|plus|pagar|pago|pagos|tarjeta|suscrip\w*|cancela\w*|prueba|beta|cobr\w*|factura\w*|recibos?|privacidad|mis datos|datos personales|mi cuenta|la cuenta|contacto|telefono|email|e-mail|mail|correo|newsletter|boletin|(?:receta|carta|menu) de los viernes|humano|persona|equipo|quien eres|que eres|que puedes|que sabes hacer|como funciona\w*|para que sirve|mision|vision|empresa|lanzamiento|telegram|instala\w*|app|aplicacion|web|iphone|android|stripe|link)\b/
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 

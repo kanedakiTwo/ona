@@ -48,6 +48,7 @@ import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
 import { alertTimeSkills } from './alertTimeSkills.js'
+import { newsletterSkills } from './newsletterSkills.js'
 import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
@@ -3394,6 +3395,8 @@ export const skills: SkillDefinition[] = [
   ...recipeOfTheDaySkills,
   // PRO-1301: la hora del menú del día y de la pregunta de la cena.
   ...alertTimeSkills,
+  // PRO-1054: el correo de los viernes (la newsletter), apuntarse o quitarse.
+  ...newsletterSkills,
 ]
 
 /**

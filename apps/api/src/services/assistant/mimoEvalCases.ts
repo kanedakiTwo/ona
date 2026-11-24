@@ -63,6 +63,11 @@
  *   text (mark_meal_eaten with dish, or set_meal_note), never as a new
  *   recipe; the menu's dish left unmade gets one offer of another day. A
  *   recipe only when asked («guárdamela»).
+ * - `newsletter` (PRO-1054, the newcomers of 24-oct to 17-nov): Mimo knows
+ *   the Friday email (a recipe of the week and Mimoia's news, the switch in
+ *   Perfil → Ajustes → Avisos) and signs the person up or off with
+ *   set_newsletter; never «no me consta», «por correo solo llegan los
+ *   avisos de la cuenta» or «escribe a hola@mimoia.com».
  */
 import { SIGNUP_FORBIDDEN_PHRASES } from '../whatsapp/signupReply.js'
 import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffects } from './healthGuard.js'
@@ -70,7 +75,7 @@ import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffe
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu'
+export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'newsletter'
 
 export interface MimoEvalCase {
   id: string
@@ -124,6 +129,16 @@ export const SAYS_PERSON_RE = /(?<!\bno )\bsoy (una persona|un humano|una humana
 export const MENU_REPLY_MAX = 700
 /** A line of a day-by-day list: «- Lunes 19: …», «*Martes*», «miercoles: …». */
 const WEEKDAY_LINE_RE = /^[\s\-•*_]*(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/
+
+/**
+ * PRO-1054: denying the Friday email, or sending the person elsewhere for it
+ * (folded): «no me consta», «Mimoia no manda recetas por correo», «por correo
+ * solo llegan los avisos de la cuenta», «escribe a hola@mimoia.com»,
+ * «se lo dejo al equipo como sugerencia».
+ */
+export const NEWSLETTER_DENIAL_RE = /no me consta|no te (lo|la) puedo confirmar|no (lo|la) tengo en lo que se|no (manda|mandamos|envia|enviamos)\w* (ninguna? )?(recetas?|correos?|emails?)|no manda\w* (ningun|nada)|solo (te )?(llega|llegan|manda\w*|envia\w*) (lo|los avisos|cosas|correos?) de (la|tu) cuenta|hola@mimoia|como sugerencia/
+/** PRO-1054: what the Friday email is or where it lives (folded). */
+const NEWSLETTER_WHERE_RE = /ajustes|avisos|apuntad[oa]s?|te he apuntado|ya te llega|estas apuntad/
 
 /** «¿Solo esta semana o siempre?» (PRO-275), folded. */
 const ASKS_WEEK_OR_ALWAYS_RE = /solo (para )?esta semana[\s\S]*siempre|siempre[\s\S]*solo (para )?esta semana/
@@ -401,6 +416,10 @@ export function milkAllergyProblems(reply: string): string[] {
  * - `no-guarda` / `herramienta-equivocada` / `semana-tipo-mal` (`semana-tipo`,
  *   live): didn't write it, wrote it where it doesn't go (the ficha, or the
  *   week type without the meal), or wrote the wrong day, meal or options.
+ * - `niega-newsletter` / `sin-donde` / `no-apunta` (`newsletter`): denies the
+ *   Friday email or sends them to the email or the team, says neither where
+ *   it lives nor that it's done, or (live) didn't call set_newsletter or
+ *   get_newsletter when the case needs it; `apunta-mal`: on/off the wrong way.
  */
 export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
@@ -451,13 +470,17 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
     if (SIGNUP_FORBIDDEN_PHRASES.some((re) => re.test(text))) problems.push('excusa-el-menu')
     if ((reply.match(/\?/g) ?? []).length > 1) problems.push('dos-preguntas')
   }
+  if (c.check === 'newsletter') {
+    if (NEWSLETTER_DENIAL_RE.test(text)) problems.push('niega-newsletter')
+    if (!NEWSLETTER_WHERE_RE.test(text)) problems.push('sin-donde')
+  }
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) {
-    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'no-guarda' : 'no-mira-menu')
+    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'newsletter' ? 'no-apunta' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'no-guarda' : 'no-mira-menu')
   }
   if (toolsUsed && c.mustNotCall?.some((t) => toolsUsed.includes(t))) problems.push(c.check === 'semana-tipo' || c.check === 'preferencia-menu' ? 'herramienta-equivocada' : 'compra-lo-hecho')
-  if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push(c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'guarda-mal' : 'semana-tipo-mal')
+  if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push(c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'guarda-mal' : c.check === 'newsletter' ? 'apunta-mal' : 'semana-tipo-mal')
   return problems
 }
 
@@ -497,6 +520,8 @@ const IMPROVISED_CONTEXT = [
 
 /** A household of two on a Wednesday evening, nothing about its week type in the context. */
 const WEEK_TYPE_CONTEXT = ['Hoy es miércoles 2026-11-11 (dayIndex 2), son las 20:00 en Madrid.', 'Hogar: 2 adultos'].join('\n')
+
+const NEWSLETTER_CONTEXT = ['Hoy es miércoles 2026-11-25 (dayIndex 2), son las 19:30 en Madrid.', 'Hogar: 2 adultos'].join('\n')
 
 export const MIMO_EVAL_CASES: MimoEvalCase[] = [
   {
@@ -1060,5 +1085,64 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     },
     expect: /lentejas/,
     badReply: 'Apuntado: hoy habéis cenado lentejas con chorizo. ¡Que aproveche!',
+  },
+  {
+    id: 'receta-viernes-como-me-apunto',
+    check: 'newsletter',
+    origin: 'Hogares de prueba, el recién llegado (Raúl, 2026-10-25; Irene, 27-oct): «no me consta que Mimoia mande recetas por email». PRO-1054',
+    context: NEWSLETTER_CONTEXT,
+    history: [],
+    message: 'lo de la receta de los viernes por email como me apunto?',
+    toolResults: {
+      get_newsletter: 'No está apuntado. Si quiere, le apuntas tú con set_newsletter. El correo de los viernes: cada viernes por la mañana, un email de Mimoia con una receta de la semana, una carta de Miguel (el fundador) y las novedades de Mimoia. Es aparte de los avisos de Mimo. Se activa o se quita en Perfil → Ajustes → Avisos, con la casilla «Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia» (también en el registro), y cada correo trae su enlace para darse de baja.',
+      set_newsletter: 'Hecho: apuntado al correo de los viernes. El próximo viernes por la mañana le llega una receta de la semana y las novedades de Mimoia. Se quita en Perfil → Ajustes → Avisos o con el enlace de baja de cada correo.',
+    },
+    expect: /viernes/,
+    badReply: 'No me consta que Mimoia mande recetas por email. Por correo solo llegan los avisos de la cuenta.',
+  },
+  {
+    id: 'receta-viernes-apuntame',
+    check: 'newsletter',
+    origin: 'Hogares de prueba, el recién llegado (Víctor, 2026-10-30): «Mimoia no manda recetas por correo… puedo dejárselo al equipo como sugerencia». PRO-1054',
+    context: NEWSLETTER_CONTEXT,
+    history: [],
+    message: 'apúntame a lo del correo de los viernes con una receta, porfa',
+    reconstructed: true,
+    toolResults: {
+      set_newsletter: 'Hecho: apuntado al correo de los viernes. El próximo viernes por la mañana le llega una receta de la semana y las novedades de Mimoia. Se quita en Perfil → Ajustes → Avisos o con el enlace de baja de cada correo.',
+    },
+    mustCallOneOf: ['set_newsletter'],
+    toolInput: { name: 'set_newsletter', match: [/"on":\s*true/] },
+    expect: /apuntad|viernes/,
+    badReply: 'Mimoia no manda recetas por correo, solo los avisos de tu cuenta. Si quieres, puedo dejárselo al equipo como sugerencia.',
+  },
+  {
+    id: 'receta-viernes-ya-apuntado',
+    check: 'newsletter',
+    origin: 'Hogares de prueba, el recién llegado (Iker, 2026-10-31; Óscar, 1-nov; 17-nov): con la casilla marcada, «Lo del correo de los viernes con la receta de la semana no me consta… pregúntalo en hola@mimoia.com». PRO-1054',
+    context: NEWSLETTER_CONTEXT,
+    history: [],
+    message: 'oye, marqué lo del correo de los viernes con una receta. cuándo me llega?',
+    toolResults: {
+      get_newsletter: 'Está apuntado: le llega cada viernes. El correo de los viernes: cada viernes por la mañana, un email de Mimoia con una receta de la semana, una carta de Miguel (el fundador) y las novedades de Mimoia. Es aparte de los avisos de Mimo. Se activa o se quita en Perfil → Ajustes → Avisos, con la casilla «Quiero recibir cada viernes por email una receta de la semana y novedades de Mimoia» (también en el registro), y cada correo trae su enlace para darse de baja.',
+    },
+    expect: /viernes/,
+    badReply: 'Lo del correo de los viernes con la receta de la semana no me consta. Por lo que sé, por correo solo llegan cosas de la cuenta. Pregúntalo también en hola@mimoia.com.',
+  },
+  {
+    id: 'receta-viernes-quitame',
+    check: 'newsletter',
+    origin: 'La otra mitad de PRO-1054 («puede apuntar o quitar a la persona»), inventado',
+    context: NEWSLETTER_CONTEXT,
+    history: [],
+    message: 'no me mandes más el correo de los viernes, gracias',
+    reconstructed: true,
+    toolResults: {
+      set_newsletter: 'Hecho: ya no le llegará el correo de los viernes. Se vuelve a activar en Perfil → Ajustes → Avisos.',
+    },
+    mustCallOneOf: ['set_newsletter'],
+    toolInput: { name: 'set_newsletter', match: [/"on":\s*false/] },
+    expect: /viernes|correo/,
+    badReply: 'No me consta que te mandemos ningún correo los viernes: por correo solo llegan los avisos de tu cuenta.',
   },
 ]

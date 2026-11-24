@@ -1550,7 +1550,8 @@ describe('skill export coverage', () => {
     // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
     // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
     // and 96 with set_alert_time (PRO-1301, alertTimes.test.ts).
-    expect(skills.length).toBe(96)
+    // and 98 with get_newsletter + set_newsletter (PRO-1054, mimoNewsletter.test.ts).
+    expect(skills.length).toBe(98)
   })
 
   it('every skill has a unique name', () => {

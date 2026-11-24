@@ -1549,7 +1549,7 @@ export function describeAlerts(o: AlertsOverview): string {
   const times = o.times
     ? `\nHoras (se cambian con set_alert_time): menu del dia a las ${o.times.daily_brief.time}${o.times.daily_brief.custom ? '' : ' (la de siempre)'}; "¿hiciste la cena?" a las ${o.times.dinner_checkin.time}${o.times.dinner_checkin.custom ? '' : ' (la de siempre)'}.`
     : ''
-  return `${wa} ${push}\n${lines.join('\n')}${times}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
+  return `${wa} ${push}\n${lines.join('\n')}${times}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el correo de los viernes (una receta de la semana y novedades de Mimoia; se mira con get_newsletter y se apunta o se quita con set_newsletter). Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
 }
 
 const getAlerts: SkillDefinition = {

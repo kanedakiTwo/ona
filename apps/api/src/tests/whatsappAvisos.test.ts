@@ -3,7 +3,8 @@
  * of the avisos rework — «hora de cocinar» only for long dishes and with two
  * buttons, «¿qué tal la cena?» never about a dessert, the shopping reminder
  * without «quedan N cosas», only to households that use the list and on their
- * day, the pause after 5 unanswered avisos, and the person's language.
+ * day, and the person's language. The pause after unanswered avisos is
+ * avisosPausa.test.ts (PRO-1303).
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -23,7 +24,6 @@ import {
   type PlannedMessage,
 } from '../services/whatsapp/proactive.js'
 import { checkinAnswerOf, checkinConfirmation, ratingToSave } from '../services/whatsapp/checkinButtons.js'
-import { FATIGUE_STREAK, fatigueAnswerOf, fatigueAskKind, fatigueQuestion, fatiguedKind, ignoredStreak, type ActivityRow } from '../services/whatsapp/fatigue.js'
 import { detectLanguage } from '../services/whatsapp/language.js'
 import { guideInLanguage, guidedSystemPrompt } from '../services/whatsapp/guided.js'
 import { optOutReasonOf, optOutWithReason } from '../services/whatsapp/optOutReason.js'
@@ -123,45 +123,6 @@ describe('compra (point 3)', () => {
     const once = shoppingUseFrom([thursdays[2]], new Date('2026-11-20T09:00:00Z'), madridParts)
     expect(once).toEqual({ usedRecently: true, day: null, hour: null })
     expect(isShoppingReminderWindow(parts({ weekday: 5, hour: 10 }), once)).toBe(true)
-  })
-})
-
-describe('fatiga (point 5)', () => {
-  const NOW = new Date('2026-11-19T12:00:00Z')
-  const HOUR = 60 * 60 * 1000
-  const sent = (daysAgo: number, kind = 'cooking_reminder'): ActivityRow => ({ direction: 'out', kind, status: 'sent', createdAt: new Date(NOW.getTime() - daysAgo * 24 * HOUR) })
-  const reply = (daysAgo: number, hoursAfter: number): ActivityRow => ({ direction: 'in', kind: 'text', status: 'processed', createdAt: new Date(NOW.getTime() - daysAgo * 24 * HOUR + hoursAfter * HOUR) })
-
-  it('5 avisos of a kind in a row with no answer in the 12 h after each → that kind', () => {
-    const rows = [1, 2, 3, 4, 5].map((d) => sent(d))
-    expect(ignoredStreak(rows, 'cooking_reminder', NOW)).toBe(FATIGUE_STREAK)
-    expect(fatiguedKind(rows, ['cooking_reminder'], NOW)).toBe('cooking_reminder')
-  })
-
-  it('an answer (message or button) within 12 h breaks the streak; a late one does not', () => {
-    const rows = [...[1, 2, 3, 4, 5].map((d) => sent(d)), reply(3, 2)]
-    expect(ignoredStreak(rows, 'cooking_reminder', NOW)).toBe(2)
-    expect(fatiguedKind(rows, ['cooking_reminder'], NOW)).toBeNull()
-    const late = [...[1, 2, 3, 4, 5].map((d) => sent(d)), reply(3, 13)]
-    expect(fatiguedKind(late, ['cooking_reminder'], NOW)).toBe('cooking_reminder')
-  })
-
-  it('asked once per kind (ever); prep alerts never pause; one sent < 12 h ago is not judged yet', () => {
-    const rows = [1, 2, 3, 4, 5].map((d) => sent(d))
-    const asked: ActivityRow = { direction: 'out', kind: fatigueAskKind('cooking_reminder'), status: 'sent', createdAt: new Date(NOW.getTime() - 100 * 24 * HOUR) }
-    expect(fatiguedKind([...rows, asked], ['cooking_reminder'], NOW)).toBeNull()
-    expect(fatiguedKind([1, 2, 3, 4, 5].map((d) => sent(d, 'alert')), ['prep_alerts', 'alert'], NOW)).toBeNull()
-    const fresh = [0.1, 1, 2, 3].map((d) => sent(d))
-    expect(ignoredStreak(fresh, 'cooking_reminder', NOW)).toBe(3)
-  })
-
-  it('the question: Sí / No, read back without the model', () => {
-    const q = fatigueQuestion('shopping_reminder', 'es')
-    expect(q.type).toBe('buttons')
-    expect(q.text).toContain('¿Te sigo avisando?')
-    expect(q.type === 'buttons' && q.buttons.map((b) => b.id)).toEqual(['avisos:si:shopping_reminder', 'avisos:no:shopping_reminder'])
-    expect(fatigueAnswerOf('avisos:no:shopping_reminder')).toEqual({ kind: 'shopping_reminder', keep: false })
-    expect(fatigueAnswerOf('avisos:si:alert')).toBeNull()
   })
 })
 

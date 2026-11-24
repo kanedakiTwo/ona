@@ -112,6 +112,7 @@ export {
   applyFreezeAnswer,
   freezeAnswerFromHabits,
   thawIsConditional,
+  habitTurnsOn,
 } from './types/freezeHabit.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
 export { missingQuantity, activeShoppingItems } from './types/shopping.js'

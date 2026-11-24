@@ -821,6 +821,50 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
   return prefixHit
 }
 
+/** Words of a line name that tell products apart: «sin» and «con» count («caldo de pollo sin sal»). */
+const LINE_FILLER = new Set([...STOPWORDS].filter((w) => w !== 'sin' && w !== 'con'))
+function lineWords(name: string): string[] {
+  const words = normalize(name).split(' ')
+  return words.filter((w) => !(LINE_FILLER.has(w) && words.length > 1))
+}
+
+/**
+ * The one line of the list the household means (PRO-1050), for the tools
+ * that change or remove it by its id: the same name first; otherwise the
+ * only line whose name has every word asked («los cherry» → «Tomate
+ * cherry»). Never a line whose name is only part of what was asked: «caldo
+ * de pollo» is not «Pollo». Before, bestMatch dropped «de» and «sin» and took
+ * «Pollo» for «caldo de pollo sin sal» (Marta y Jorge, 2026-10-25 → 11-17).
+ * Several lines with those words → `ambiguous`, to ask which.
+ */
+export function findListLine<T extends Pick<ListItem, 'name'>>(
+  items: readonly T[],
+  query: string,
+): { line: T } | { ambiguous: T[] } | null {
+  const q = lineWords(query)
+  if (q.length === 0 || !q[0]) return null
+  const full = normalize(query)
+  const exact = items.find((i) => normalize(i.name) === full)
+  if (exact) return { line: exact }
+  const has = (words: string[], w: string) => words.some((x) => sameWord(x, w))
+  const same = items.find((i) => {
+    const n = lineWords(i.name)
+    return n.length === q.length && n.every((w, k) => sameWord(w, q[k]))
+  })
+  if (same) return { line: same }
+  const wider = items.filter((i) => {
+    const n = lineWords(i.name)
+    return q.every((w) => has(n, w))
+  })
+  if (wider.length === 1) return { line: wider[0] }
+  if (wider.length > 1) return { ambiguous: wider }
+  return null
+}
+
+/** «Hay varias: Leche entera, Leche de coco. ¿Cuál?» */
+export const whichLine = (asked: string, lines: Array<Pick<ListItem, 'name'>>) =>
+  `Hay varias líneas con "${asked}": ${lines.slice(0, 6).map((l) => capitalize(prettyName(l.name))).join(', ')}. ¿Cuál?`
+
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:
@@ -950,13 +994,19 @@ const removeShoppingItems: SkillDefinition = {
     const removed: string[] = []
     const missing: string[] = []
     const staples: string[] = []
+    const which: string[] = []
     let items = [...(list.items ?? [])].filter((i) => !i.skipped)
     for (const name of p.names ?? []) {
-      const hit = bestMatch(items, name, (i) => i.name)
-      if (!hit) {
+      const found = findListLine(items, String(name ?? ''))
+      if (!found) {
         missing.push(name)
         continue
       }
+      if ('ambiguous' in found) {
+        which.push(whichLine(name, found.ambiguous))
+        continue
+      }
+      const hit = found.line
       items = items.filter((i) => i.id !== hit.id)
       if (hit.kind === 'staple') {
         staples.push(prettyName(hit.name))
@@ -971,6 +1021,7 @@ const removeShoppingItems: SkillDefinition = {
     if (removed.length) parts.push(`Quitado de la lista: ${removed.join(', ')}.`)
     if (staples.length) parts.push(`${staples.join(', ')} ${staples.length === 1 ? 'es uno de tus básicos' : 'son de tus básicos'}: si quieres, lo pauso (manage_staples).`)
     if (missing.length) parts.push(`No estaban en la lista: ${missing.join(', ')}.`)
+    parts.push(...which)
     return { data: null, summary: parts.join(' '), uiHint: 'shopping_list' }
   },
 }
@@ -987,8 +1038,10 @@ const changeShoppingItemAmount: SkillDefinition = {
   },
   async handler(p, ctx) {
     const list = await currentList(ctx)
-    const hit = bestMatch(list.items ?? [], String(p.name ?? ''), (i) => i.name)
-    if (!hit) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    const found = findListLine(list.items ?? [], String(p.name ?? ''))
+    if (!found) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    if ('ambiguous' in found) return text(whichLine(String(p.name), found.ambiguous))
+    const hit = found.line
     const name = prettyName(hit.name)
     const b = toBuyable(p.quantity, p.unit)
     if (hit.kind === 'staple') return text(`${name} es uno de tus básicos: su cantidad se cambia en tus básicos (manage_staples).`)

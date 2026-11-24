@@ -30,6 +30,7 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { estimateRecipeTimes } from '../catalogRecipeTimes.js'
+import { TIMES_ESTIMATED_TAG } from '../householdRecipeTimes.js'
 import { mealLinesForDay } from '../menuText.js'
 import { fillRecipeNames } from '../menuNames.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
@@ -370,8 +371,11 @@ export function recipeDetailsSummary(r: {
   steps: string[]
   tips?: string | null
   sourceUrl?: string | null
+  /** PRO-1037: the minutes were estimated from the steps, not given. */
+  timesEstimated?: boolean
 }): string {
-  const minutes = timesLabel(r) ?? '? min'
+  const label = timesLabel(r)
+  const minutes = label ? `${label}${r.timesEstimated ? ', estimado' : ''}` : '? min'
   const scaled = r.scaledTo != null && r.scaledTo > 0 && r.scaledTo !== (r.servings ?? 2)
   const head = scaled
     ? `${untrustedText(r.name)} (${minutes}; cantidades para ${r.scaledTo} raciones, la receta base es para ${r.servings ?? 2})`
@@ -594,6 +598,7 @@ const getRecipeDetails: SkillDefinition = {
       steps,
       tips: recipe.tips,
       sourceUrl: recipe.sourceUrl,
+      timesEstimated: (recipe.internalTags ?? []).includes(TIMES_ESTIMATED_TAG),
     })
     const withNotices = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
     // PRO-349: which recipe this is, so «la receta de hoy» is never answered from another one.

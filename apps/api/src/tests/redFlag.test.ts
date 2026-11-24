@@ -8,12 +8,15 @@ import { describe, it, expect } from 'vitest'
 import { isPostalCode, patchShopOrderSchema, placeRedOrderSchema, postalCodeSchema, redChoiceSchema, redMaxBody, SHOP_ORDER_STATUSES, SHOP_ORDER_STATUS_LABELS } from '@ona/shared'
 import { isEmailAllowed } from '../services/emailAllowList.js'
 import { isRedAllowed } from '../services/red/flag.js'
+import { isBasketExtensionAllowed } from '../services/basketExtension.js'
 
-/** The test accounts' domain, built so no literal address sits in the file. */
-const RED_DOMAIN = ['red', 'test', 'local'].join('.')
+// Test domains built from parts: the office's publish filter reads any
+// literal address here as a real one.
+const TEST_DOMAIN = ['test', 'local'].join('.')
+const RED_DOMAIN = ['red', TEST_DOMAIN].join('.')
+const testEmail = (user: string) => [user, TEST_DOMAIN].join('@')
 const redEmail = (user: string) => [user, RED_DOMAIN].join('@')
 const RED_LIST = ['@' + RED_DOMAIN]
-import { isBasketExtensionAllowed } from '../services/basketExtension.js'
 
 describe('isPostalCode', () => {
   it('takes 5 digits with a real province (01–52)', () => {
@@ -58,5 +61,25 @@ describe('order states', () => {
       expect(SHOP_ORDER_STATUSES).toContain(s)
     }
     for (const s of SHOP_ORDER_STATUSES) expect(SHOP_ORDER_STATUS_LABELS[s]).toBeTruthy()
+  })
+})
+
+describe('RED_TIENDAS_EMAILS', () => {
+  it('empty list = nobody; exact email or a whole domain, ignoring case', () => {
+    expect(isRedAllowed(testEmail('ana'), [])).toBe(false)
+    expect(isRedAllowed(redEmail('ana').toUpperCase(), RED_LIST)).toBe(true)
+    expect(isRedAllowed(testEmail('ana'), RED_LIST)).toBe(false)
+    expect(isRedAllowed(redEmail('pruebas'), [redEmail('pruebas')])).toBe(true)
+    expect(isRedAllowed(null, RED_LIST)).toBe(false)
+  })
+  it('the extension’s switch keeps the same rule', () => {
+    expect(isBasketExtensionAllowed(testEmail('ana'), ['@' + TEST_DOMAIN])).toBe(true)
+    expect(isEmailAllowed(testEmail('ana'), [])).toBe(false)
+  })
+  it('normalises the list entries too (the helper is shared)', () => {
+    expect(isEmailAllowed(redEmail('pruebas'), [` ${RED_LIST[0].toUpperCase()} `])).toBe(true)
+    expect(isEmailAllowed(redEmail('pruebas'), [redEmail('PRUEBAS')])).toBe(true)
+    expect(isEmailAllowed(redEmail('pruebas'), ['', '  '])).toBe(false)
+    expect(isEmailAllowed('   ', [''])).toBe(false)
   })
 })

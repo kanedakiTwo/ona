@@ -11,6 +11,11 @@
  * and then goes alone, so the order is kept. A burst is capped at `maxMs`
  * (20 s) from its first text.
  *
+ * PRO-1295: what arrives while a turn of that number is running waits for it
+ * (`busy`): the texts keep joining, with no time cap, and go as one turn once
+ * that turn has answered (`idle`), so they never cross its reply. Until
+ * 24-nov only the texts of the 5 s before a turn were joined.
+ *
  * In process, like the per-phone queue: Railway runs one API instance, and
  * each message is already stored (unique wamid, so Meta's retries are
  * dropped) before it reaches here. The texts that join a turn are marked
@@ -44,6 +49,8 @@ export function joinTexts(burst: readonly InboundMessage[]): InboundMessage {
 export interface Coalescer {
   /** Hand a stored inbound message over; resolves once the turn it went into is done. */
   push(msg: InboundMessage): Promise<void>
+  /** PRO-1295: the number's turns are done; the texts held meanwhile go now, as one turn. */
+  idle(phone: string): void
 }
 
 /**
@@ -54,17 +61,27 @@ export interface Coalescer {
 export function createCoalescer(opts: {
   run: (turn: InboundMessage, absorbed: string[]) => Promise<void>
   onWait?: (msg: InboundMessage) => void
+  /** PRO-1295: a turn of this number is running (or queued): the texts wait for it. */
+  busy?: (phone: string) => boolean
   windowMs?: number
   maxMs?: number
 }): Coalescer {
   const windowMs = opts.windowMs ?? COALESCE_WINDOW_MS
   const maxMs = opts.maxMs ?? COALESCE_MAX_MS
-  type Burst = { msgs: InboundMessage[]; first: number; timer: ReturnType<typeof setTimeout> | null; waiters: Array<() => void> }
+  type Burst = { msgs: InboundMessage[]; first: number; timer: ReturnType<typeof setTimeout> | null; waiters: Array<() => void>; held: boolean }
   const bursts = new Map<string, Burst>()
 
-  const flush = (phone: string) => {
+  /** `force`: a message that can't join goes after these texts, so they go now (in the queue, after the running turn). */
+  const flush = (phone: string, force = false) => {
     const b = bursts.get(phone)
     if (!b) return
+    if (!force && opts.busy?.(phone)) {
+      // Silence enough, but a turn is still answering: wait for it (idle).
+      if (b.timer) clearTimeout(b.timer)
+      b.timer = null
+      b.held = true
+      return
+    }
     bursts.delete(phone)
     if (b.timer) clearTimeout(b.timer)
     const done = opts.run(joinTexts(b.msgs), b.msgs.slice(0, -1).map((m) => m.wamid))
@@ -74,18 +91,23 @@ export function createCoalescer(opts: {
   return {
     push(msg) {
       if (!joinable(msg) || windowMs <= 0) {
-        flush(msg.from)
+        flush(msg.from, true)
         return opts.run(msg, [])
       }
       const now = Date.now()
-      const b: Burst = bursts.get(msg.from) ?? { msgs: [], first: now, timer: null, waiters: [] }
+      const b: Burst = bursts.get(msg.from) ?? { msgs: [], first: now, timer: null, waiters: [], held: false }
       b.msgs.push(msg)
       bursts.set(msg.from, b)
       opts.onWait?.(msg)
       if (b.timer) clearTimeout(b.timer)
+      b.held = false
       const wait = Math.max(0, Math.min(windowMs, b.first + maxMs - now))
       b.timer = setTimeout(() => flush(msg.from), wait)
       return new Promise<void>((resolve) => b.waiters.push(resolve))
+    },
+    idle(phone) {
+      // Only a burst whose silence already passed; one still in its window keeps its timer.
+      if (bursts.get(phone)?.held) flush(phone)
     },
   }
 }

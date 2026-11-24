@@ -37,7 +37,7 @@ import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
-import { appSkills, bestMatch, dishNoteText, searchWords, toBuyable } from './appSkills.js'
+import { appSkills, bestMatch, dishNoteText, markEatenAsNote, searchWords, toBuyable } from './appSkills.js'
 import { setHaveAtHome } from '../shoppingItemState.js'
 import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
@@ -1700,7 +1700,8 @@ const toggleFavorite: SkillDefinition = {
 
 const markMealEaten: SkillDefinition = {
   name: 'mark_meal_eaten',
-  description: 'Marca una comida como comida o no comida en el menu actual.',
+  description:
+    'Marca una comida como comida o no comida en el menu actual. Si comieron otra cosa que la del menu ("al final cenamos tortilla", "pedimos pizza"), pasa en dish lo que dicen: queda apuntado en esa comida como texto, sin crear receta.',
   parameters: {
     type: 'object',
     properties: {
@@ -1708,10 +1709,15 @@ const markMealEaten: SkillDefinition = {
       dayIndex: { type: 'number', description: 'Solo si no usas day: 0=lunes … 6=domingo de esta semana' },
       meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch, snack o dinner' },
       eaten: { type: 'boolean', description: 'true si se ha comido, false si no' },
+      dish: { type: 'string', description: 'Solo si comieron otra cosa que la del menu: lo que comieron, con sus palabras ("tortilla", "pizza pedida"). Sustituye los platos de esa comida por ese texto.' },
     },
     required: ['meal', 'eaten'],
   },
-  async handler(params: { day?: string; dayIndex?: number; meal: string; eaten: boolean }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { day?: string; dayIndex?: number; meal: string; eaten: boolean; dish?: string }, ctx: SkillContext): Promise<SkillResult> {
+    // PRO-1293: what they ate instead goes in as text, never as a recipe.
+    if (params.eaten !== false && typeof params.dish === 'string' && params.dish.trim()) {
+      return markEatenAsNote(ctx, { day: params.day, dayIndex: params.dayIndex, meal: params.meal, dish: params.dish })
+    }
     const { db } = ctx
     const { meal, eaten } = params
     const t = menuDayParam({ day: params.day, dayIndex: params.dayIndex })
@@ -1757,7 +1763,7 @@ const markMealEaten: SkillDefinition = {
 const createRecipe: SkillDefinition = {
   name: 'create_recipe',
   description:
-    'Crea y guarda una receta nueva del usuario. Si el usuario pide una receta basica sin dar detalles ("crea tu un filete a la parrilla"), inventa tu una version sencilla y razonable (ingredientes con cantidades y pasos) y creala sin hacer mas preguntas.',
+    'Crea y guarda una receta nueva del usuario. Si el usuario pide una receta basica sin dar detalles ("crea tu un filete a la parrilla"), inventa tu una version sencilla y razonable (ingredientes con cantidades y pasos) y creala sin hacer mas preguntas. No la uses para lo que ya han comido o improvisan para hoy ("al final cenamos tortilla", "pedimos pizza"): eso es mark_meal_eaten con dish o set_meal_note. Si lo piden ("hice lentejas, guardamela") o te dictan como se hace, si.',
   parameters: {
     type: 'object',
     properties: {

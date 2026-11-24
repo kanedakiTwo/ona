@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/lib/auth"
 import { useBilling, useCheckout } from "@/hooks/useBilling"
 import { PlanCards } from "./PlanCards"
+import { OfferInterestCard } from "./OfferInterestCard"
 
 const WAITLIST_HREF = "/#lista-de-espera"
 
@@ -156,6 +157,9 @@ export function PricingPage() {
           <p className="mt-4 text-[12px] leading-relaxed text-[#7A7066]">
             Precios con IVA incluido. {PLAN_CAPS_NOTE}
           </p>
+
+          {/* PRO-389 (D-160): with a session, once per household. */}
+          {user && <OfferInterestCard where="precios" className="mt-8 max-w-2xl" />}
         </div>
       </section>
 

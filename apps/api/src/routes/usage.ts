@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { deviceFromUserAgent, recordInstalledOpen, withScreenDevice } from '../services/appInstalls.js'
+import { offerInterestInput, offerInterestPending, recordOfferInterest } from '../services/offerInterest.js'
 import { clientEventProps, recordClientEvent, trackEvent } from '../services/usageEvents.js'
 
 /**
@@ -32,6 +33,11 @@ import { clientEventProps, recordClientEvent, trackEvent } from '../services/usa
  *   (false = invalid or already counted today). `screen_viewed` also stores
  *   the system of the browser (`device`: android / ios / desktop, PRO-307),
  *   deduced here from the request, never the browser string.
+ *   GET /usage/offer-interest — whether «Que Mimoia se pague sola» (PRO-389,
+ *   D-160) still shows: `{ show }`, false once anyone in the household has
+ *   answered. POST /usage/offer-interest `{ option, where }` (tiendas ·
+ *   carrefour · ninguna; suscripcion · precios) records `offer_interest`, once
+ *   per household: 200 `{ counted }`, 400 on anything else.
  */
 const router = Router()
 
@@ -66,6 +72,16 @@ router.post('/usage/event', authMiddleware, async (req: AuthRequest, res) => {
   // PRO-307: the screen views carry the system of the browser (android / ios / desktop), only that word.
   const ev = parsed && withScreenDevice(parsed, req.get('user-agent'))
   res.json({ counted: ev ? await recordClientEvent(req.userId!, ev) : false })
+})
+
+router.get('/usage/offer-interest', authMiddleware, async (req: AuthRequest, res) => {
+  res.json({ show: await offerInterestPending(req.userId!) })
+})
+
+router.post('/usage/offer-interest', authMiddleware, async (req: AuthRequest, res) => {
+  const answer = offerInterestInput(req.body)
+  if (!answer) return res.status(400).json({ error: 'Respuesta no válida' })
+  res.json({ counted: await recordOfferInterest(req.userId!, answer) })
 })
 
 export default router

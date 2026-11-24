@@ -95,6 +95,8 @@ export const USAGE_EVENTS = [
   'menu_sheet_action',
   // PRO-1292: a message to Mimo the code answered without the model (`props.kind`: ver_menu · paso_cocina).
   'mimo_code_reply',
+  // PRO-389 (D-160): «Que Mimoia se pague sola», once per household (`props.option`, `props.where`; offerInterest.ts).
+  'offer_interest',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -113,6 +115,8 @@ export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>
   // PRO-381: Mimo made the week, not the household; seeing the card is looking.
   'autoplan_generated',
   'autoplan_viewed',
+  // PRO-389: answering a question about offers to come is not using Mimoia.
+  'offer_interest',
 ])
 
 export const USAGE_CHANNELS = ['web', 'whatsapp', 'voice'] as const

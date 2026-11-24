@@ -15,6 +15,7 @@ import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
 import { GROWTH_DEFINITIONS, loadGrowthReport } from './growthReport.js'
 import { optInDeclinedSql } from './whatsapp/optInOffer.js'
+import { loadOfferInterest } from './offerInterest.js'
 import {
   ONBOARDING_STEPS,
   PASSIVE_USAGE_EVENTS,
@@ -530,6 +531,7 @@ export const USAGE_DEFINITIONS = {
   breakdown: 'PRO-120: for recipe_viewed (from), taste_tuning (action, where), push_opened (kind), alerts_changed (kind, on) and feedback_left (channel: boton, mimo, whatsapp) — and, since PRO-1024, the tricks\' events (menu_generated, shopping_list_viewed range, meal_adjusted, taper_set, leftover_dish_set, dish_added, template_changed, memory_set, recipe_rated, recipe_note_saved, favorite_toggled, recipe_photo_main, with_what_i_have_used, shopping_line_edited, staple_toggled, content_shared, week_printed, handsfree_started) — and, since PRO-1174, meal_swapped (how: auto = «al azar», picked = chosen; target: meal or dish; from: receta) and menu_sheet_action (sheet, action; crossed in menuSheetActions) — and, since PRO-1292, mimo_code_reply (kind: ver_menu = the menu of a day or the week read without the model, paso_cocina = «siguiente» / «anterior» / «repite» in cook mode) — how many events in the window had each value. tasteCards = cards answered, summed by action. Counts only, never text.',
   menuSheetActions: 'PRO-1174: menu_sheet_action in the window, the options tapped in the menu\'s «···» sheets, by sheet — comida (one dish), comida_varios (several dishes or a note), plato (each dish of that list), vacio (a meal with no dish), no_hay (a meal the day doesn\'t have), dia (the day\'s footer), semana (the week\'s sheet; a row of the week view opens the meal\'s sheets since PRO-1178) — with its total and the taps of each option (closed list MENU_SHEET_ACTIONS), most tapped first. A tap is counted when the option is tapped, before any confirmation. Web only. Counts only.',
   mimoSkills: 'PRO-1022: mimo_skill_used in the window, one row per Mimo tool (skill = the tool name) that returned data, most used first: total and by where the conversation was — web (chat in the app), whatsapp, telegram, voice. A tool that failed or found nothing (data null) leaves none. Counts only, never text.',
+  offerInterest: 'PRO-389 (D-160): «Que Mimoia se pague sola», the card in Perfil → Suscripción and /precios. Households that answered, per ISO week of the window and option: tiendas (5 % off in their neighbourhood shops), carrefour (Mimoia free the month they spend over 100 € at Carrefour), ninguna. Each household answers once. totals = the whole window. Counts only.',
   ...GROWTH_DEFINITIONS,
   referrals: 'By ISO week (inviteShared: of the tap; the rest: of the invited sign-up), all time, not the window. signupsWithInviter = accounts that signed up with someone else’s «Invitar a otro hogar» code (not into the inviter’s own household); week3Resolved = of those, households with a menu generated and the shopping list opened on days 14–20 after signing up; inviters = distinct codes. Counts only.',
 }
@@ -644,7 +646,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       ORDER BY e.household_id, e.created_at DESC
   `)
   const days = dayRange(fromDay, today)
-  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, menuSheetRows, growth] = await Promise.all([
+  const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, menuSheetRows, growth, offerInterest] = await Promise.all([
     onboardingStepsQ,
     screensQ,
     breakdownQ,
@@ -653,6 +655,8 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     menuSheetQ,
     // PRO-379: the growth line, the trial today and time to the first menu. Counts only leave.
     loadGrowthReport({ includeInternal: inc, now }, db),
+    // PRO-389: «Que Mimoia se pague sola», households per option and week.
+    loadOfferInterest(days, from, inc, db),
   ])
   const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice] = await Promise.all([
     countsQ,
@@ -725,6 +729,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     menuSheetActions: buildMenuSheetActions(
       (menuSheetRows.rows as any[]).map((r) => ({ sheet: String(r.sheet), action: String(r.action), count: Number(r.count) })),
     ),
+    offerInterest,
     growth: growth.growth,
     trial: growth.trial,
     timeToFirstMenu: growth.timeToFirstMenu,

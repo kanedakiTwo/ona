@@ -16,6 +16,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { CREATOR_TRIAL_DAYS, LAUNCH_DATE_LABEL, PLAN_CAPS_NOTE, TRIAL_DAYS, founderOfferText, trialLastDayLabel, planByKey, subscriptionSummary, type BillingPeriod, type PlanKey } from '@ona/shared'
 import { PlanCards } from '@/components/billing/PlanCards'
+import { OfferInterestCard } from '@/components/billing/OfferInterestCard'
 import { chargeNoticeLine, isPaymentPending } from '@/components/billing/AccountAccessNotice'
 import { useBilling, useCheckout, usePortal } from '@/hooks/useBilling'
 import { Accent, PILL_INK, PILL_OUTLINE, SUB_CARD, SUB_EYEBROW, SubNotice, SubPage } from '@/components/profile/SubPage'
@@ -230,6 +231,9 @@ function Suscripcion() {
           )}
         </>
       )}
+
+      {/* PRO-389 (D-160): once per household. */}
+      {state && <OfferInterestCard where="suscripcion" className="mt-6" />}
     </SubPage>
   )
 }

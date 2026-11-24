@@ -249,6 +249,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/usage/event',
   '/usage/invite-shared',
   '/usage/list-shared',
+  '/usage/offer-interest',
   '/user/:x',
   '/user/:x/allergies-none',
   '/user/:x/first-steps',

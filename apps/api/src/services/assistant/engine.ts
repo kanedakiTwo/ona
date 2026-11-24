@@ -94,7 +94,7 @@ export async function chat(
   // 2–4. System, tools and messages (see buildChatRequest). PRO-1291: every
   // tool and every rule on every turn, as before PRO-392: picking them per
   // turn changed the start of the request and the cache never held.
-  const { system, tools, messages } = buildChatRequest({
+  const { system, tools: allTools, messages } = buildChatRequest({
     userContext,
     history,
     message,
@@ -104,23 +104,9 @@ export async function chat(
     onboarding: opts.onboarding === true,
     surface: opts.surface,
   })
-<<<<<<< e7bc9c73974a5dbc0a7595ce38168977cc5a4f35
-  const system = [
-    { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
-    { type: 'text' as const, text: context },
-  ]
-
-  // 3. History (cache breakpoint at its end) + the new message with the clock.
-  const messages = buildTurnMessages(history, message, opts.images ?? [], new Date())
-
-  // 4. This turn's tools, the last one marked as a cache breakpoint.
-  const onboarding = opts.onboarding === true
-  const allowed = <T extends { name: string }>(defs: T[]) => (opts.withoutTools?.length ? defs.filter((t) => !opts.withoutTools!.includes(t.name)) : defs)
-  const tools = withLastToolCached(allowed(getToolDefinitions({ mode, onboarding, only: selection.tools })))
-  const moreTools = (groups: ToolGroupId[]) =>
-    allowed(getToolDefinitions({ mode, onboarding, only: new Set(groups.flatMap((g) => TOOL_GROUPS[g].tools)) }))
-=======
->>>>>>> 075996442f6ebfc8e77b32a2f05c73bdbcccf3fa
+  // PRO-1295: a turn that may not use some tools (an opinion: no `log_cooked`)
+  // sends the rest; only that turn misses the tools cache.
+  const tools = opts.withoutTools?.length ? withLastToolCached(allTools.filter((t) => !opts.withoutTools!.includes(t.name))) : allTools
 
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
   // PRO-313: none of the reply offers on Telegram (their texts and budgets are WhatsApp's).

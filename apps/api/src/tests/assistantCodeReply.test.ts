@@ -40,7 +40,7 @@ vi.mock('../middleware/auth.js', () => ({
     next()
   },
 }))
-vi.mock('../middleware/spendCap.js', () => ({ requireSpendCapacity: () => (_req: any, _res: any, next: any) => next() }))
+vi.mock('../services/spendCap.js', () => ({ spendCapStatus: async () => ({ exceeded: false, spentEur: 0, capEur: 6 }) }))
 vi.mock('../services/accountAccess.js', () => ({ requirePaidPlan: () => (_req: any, _res: any, next: any) => next() }))
 vi.mock('../services/advisorBudget.js', () => ({
   BUDGET_WARNING_LINE: 'aviso',

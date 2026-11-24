@@ -30,6 +30,9 @@ import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
 import { useFloatingButtonsHidden } from '@/hooks/useFloatingButtonsHidden'
 
+/** PRO-1302: the API's 429s for the month's cap; their text is Mimo's notice. */
+const CAP_CODES = new Set(['ADVISOR_BUDGET_EXCEEDED', 'SPEND_CAP_EXCEEDED'])
+
 export interface MimoMessage {
   id: string
   role: 'user' | 'assistant'
@@ -244,8 +247,14 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         if (res.actionTaken) queryClient.invalidateQueries()
       } catch (err: any) {
         const msg = err?.message || 'No he podido conectar.'
-        setError(msg)
-        append({ role: 'assistant', content: `No he podido responder: ${msg}` })
+        if (CAP_CODES.has(err?.code)) {
+          // PRO-1302: the month's cap is Mimo's own words (what still works and where), not an error.
+          reply = msg
+          append({ role: 'assistant', content: msg })
+        } else {
+          setError(msg)
+          append({ role: 'assistant', content: `No he podido responder: ${msg}` })
+        }
       } finally {
         busyRef.current = false
       }

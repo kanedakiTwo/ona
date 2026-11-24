@@ -330,10 +330,35 @@ const UNIT_WORDS: Partial<Record<string, [string, string]>> = {
   pizca: ['pizca', 'pizcas'],
 }
 
+const PLAIN_VOWEL: Record<string, string> = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u' }
+
+/** «patata» → «patatas», «limón» → «limones», «nuez» → «nueces»; one already in plural stays. */
+function pluralWord(w: string): string {
+  if (/s$/i.test(w)) return w
+  if (/[aeiouáéó]$/i.test(w)) return `${w}s`
+  if (/z$/i.test(w)) return `${w.slice(0, -1)}ces`
+  const m = /([áéíóú])([nl])$/.exec(w)
+  if (m) return `${w.slice(0, -2)}${PLAIN_VOWEL[m[1]]}${m[2]}es`
+  return `${w}es`
+}
+
+/**
+ * The name of something counted in more than one (24-nov: a photo import wrote
+ * «2 patata»): «2 patatas», «3 dientes de ajo». Only a lone noun, or the noun
+ * before «de»; «2 pimiento rojo» stays as it is (its adjective would need the
+ * plural too, and a wrong guess reads worse).
+ */
+export function countedIngredientName(name: string): string {
+  const words = name.split(' ')
+  if (words.length > 1 && words[1] !== 'de') return name
+  return [pluralWord(words[0]), ...words.slice(1)].join(' ')
+}
+
 /**
  * A saved row back as a line: «200 g de lentejas», «2 cucharadas de aceite»,
- * «1 cebolla», «sal al gusto», «200 g de bacalao, desalado (opcional)».
- * Reading the line again gives the same row.
+ * «1 cebolla», «2 patatas», «sal al gusto», «200 g de bacalao, desalado
+ * (opcional)». Reading the line again gives the same row (a counted name comes
+ * back in plural: the library folds it to the same ingredient).
  */
 export function formatIngredientLine(row: IngredientLineRow): string {
   const name = row.ingredientName.trim()
@@ -345,7 +370,7 @@ export function formatIngredientLine(row: IngredientLineRow): string {
   } else if (row.unit === 'al_gusto' || q <= 0) {
     line = `${name} al gusto`
   } else if (row.unit === 'u') {
-    line = `${formatLineQuantity(q)} ${name}`
+    line = `${formatLineQuantity(q)} ${q > 1 ? countedIngredientName(name) : name}`
   } else if (row.unit === 'pizca' && q === 1) {
     line = `una pizca de ${name}`
   } else {

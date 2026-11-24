@@ -9,12 +9,12 @@
  * Skips when the API isn't reachable.
  */
 import { describe, expect, it } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { API_URL, reachable } from './smokeEnv.js'
 import { db } from '../db/connection.js'
-import { costEvents, profileChanges, users } from '../db/schema.js'
-import { loadActivity } from '../services/businessMetrics.js'
-import { madridMidnightUtc, madridWeekStart } from '../services/madridTime.js'
+import { costEvents, menus, notificationSchedule, profileChanges, usageEvents, users } from '../db/schema.js'
+import { loadActivity, loadMenuWeeks } from '../services/businessMetrics.js'
+import { addDays, madridMidnightUtc, madridWeekStart } from '../services/madridTime.js'
 
 const id = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`
 let n = 0
@@ -64,5 +64,45 @@ describe.skipIf(!reachable)('active households: no night jobs (real DB)', () => 
     expect(active.has(onlyGuided.householdId)).toBe(false)
     expect(active.has(chatted.householdId)).toBe(true)
     expect(active.has(corrected.householdId)).toBe(true)
+  })
+})
+
+describe.skipIf(!reachable)('the Thursday autopilot does not make a household active (PRO-1208, real DB)', () => {
+  it('a week only the autopilot made → not active, not ready; seen before Monday → ready', async () => {
+    const pilotOnly = await register()
+    const seen = await register()
+    const byHand = await register()
+    const week = madridWeekStart(new Date())
+    const next = addDays(week, 7)
+
+    const menu = async (who: { userId: string; householdId: string }) => {
+      const [m] = await db.insert(menus).values({ userId: who.userId, householdId: who.householdId, weekStart: next, days: [] }).returning({ id: menus.id })
+      return m.id
+    }
+    const pilot = async (who: { userId: string; householdId: string }) => {
+      const menuId = await menu(who)
+      await db.insert(notificationSchedule).values({
+        userId: who.userId, dedupKey: `autoplan:${who.householdId}:${next}:${id}`, fireAt: new Date(), status: 'sent', sentAt: new Date(),
+        payload: { title: 'La semana, hecha', body: `Semana del ${next}`, tag: 'weekly_autoplan', menuId, viewedBy: [] } as any,
+      })
+    }
+    await pilot(pilotOnly)
+    await pilot(seen)
+    await db.insert(usageEvents).values({ userId: seen.userId, householdId: seen.householdId, name: 'autoplan_viewed', props: { week: next } })
+    await menu(byHand)
+
+    const activity = await loadActivity(madridMidnightUtc(week), false, db)
+    const active = new Set(activity.filter((a) => a.week === week).map((a) => a.householdId))
+    expect(active.has(pilotOnly.householdId)).toBe(false)
+    expect(active.has(seen.householdId)).toBe(false)
+    expect(active.has(byHand.householdId)).toBe(true)
+
+    const ids = [pilotOnly, seen, byHand].map((h) => h.householdId)
+    const rows = await loadMenuWeeks(sql`COALESCE(m.household_id, u.primary_household_id)::text IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`, db)
+    const of = (h: { householdId: string }) => rows.find((r) => r.householdId === h.householdId && r.week === next)
+    expect(of(pilotOnly)).toMatchObject({ firstCreatedAt: null, autoplanSeenAt: null })
+    expect(of(seen)?.firstCreatedAt).toBeNull()
+    expect(of(seen)?.autoplanSeenAt).toBeTruthy()
+    expect(of(byHand)?.firstCreatedAt).toBeTruthy()
   })
 })

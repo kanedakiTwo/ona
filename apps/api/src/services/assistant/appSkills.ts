@@ -1509,7 +1509,11 @@ export function describeAlerts(o: AlertsOverview): string {
   })
   const wa = o.whatsapp.linked ? (o.whatsapp.notify ? 'WhatsApp conectado con avisos.' : 'WhatsApp conectado, avisos apagados.') : 'WhatsApp sin conectar.'
   const push = o.push.subscribed ? 'Notificaciones del móvil activadas.' : 'Notificaciones del móvil sin activar.'
-  return `${wa} ${push}\n${lines.join('\n')}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
+  // PRO-1301: the two times the household can change (set_alert_time).
+  const times = o.times
+    ? `\nHoras (se cambian con set_alert_time): menu del dia a las ${o.times.daily_brief.time}${o.times.daily_brief.custom ? '' : ' (la de siempre)'}; "¿hiciste la cena?" a las ${o.times.dinner_checkin.time}${o.times.dinner_checkin.custom ? '' : ' (la de siempre)'}.`
+    : ''
+  return `${wa} ${push}\n${lines.join('\n')}${times}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
 }
 
 const getAlerts: SkillDefinition = {

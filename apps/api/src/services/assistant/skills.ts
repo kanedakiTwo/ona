@@ -47,6 +47,7 @@ import { fichaSkills } from './fichaSkills.js'
 import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
+import { alertTimeSkills } from './alertTimeSkills.js'
 import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
@@ -64,9 +65,8 @@ import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser, type AddPantryInput } from '../pantryStore.js'
 import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
-import { NotARecipeError, NeedsScreenshotError } from '../recipeUrlExtractor.js'
-import { NoExtractableContentError } from '../sources/youtube.js'
-import { PageFetchError, UnsafeUrlError } from '../net/publicFetch.js'
+import { NotARecipeError } from '../recipeUrlExtractor.js'
+import { importFailureReason, importFailureReply, IMPORT_WORKS, unsupportedNetwork, unsupportedNetworkReply } from '../sources/importFailure.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
 import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
 import { saveOnboarding } from '../onboarding.js'
@@ -3265,7 +3265,7 @@ const updateMemory: SkillDefinition = {
 export const importRecipeFromUrlSkill: SkillDefinition = {
   name: 'import_recipe_from_url',
   description:
-    'Importa una receta desde un enlace (video de YouTube, articulo/blog de cocina o post de Instagram/TikTok) y la guarda en las recetas del usuario. Usala cuando el usuario comparta o pegue un enlace de una receta o pida "guardame esta receta". Tarda unos segundos. Devuelve el id y el nombre de la receta guardada.',
+    'Importa una receta desde un enlace (video de YouTube, articulo/blog de cocina o post publico de Instagram/TikTok) y la guarda en las recetas del usuario. Usala cuando el usuario comparta o pegue un enlace de una receta o pida "guardame esta receta". Tarda unos segundos. Devuelve el id y el nombre de la receta guardada. Lee el texto (subtitulos, descripcion o pie del post), nunca el video en si; no lee Facebook, X/Twitter, Pinterest, Threads ni Vimeo: no ofrezcas pegar enlaces de esas redes. Si falla, dice el motivo en una frase y que si funciona: pasalo tal cual.',
   parameters: {
     type: 'object',
     properties: {
@@ -3278,6 +3278,11 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
     if (!/^https?:\/\/\S+$/i.test(url)) {
       return { data: null, summary: 'La URL no es valida. Pide al usuario el enlace completo.', uiHint: 'text' }
     }
+    // PRO-1301: a network the import doesn't read is said up front, without trying.
+    const network = unsupportedNetwork(url)
+    if (network) {
+      return { data: null, summary: `No se ha guardado nada. Responde al usuario con esto, tal cual: «${unsupportedNetworkReply(network)}»`, uiHint: 'text' }
+    }
     try {
       const saved = await importRecipeFromUrl(url, ctx.userId)
       const review = saved.warnings.length > 0
@@ -3289,23 +3294,20 @@ export const importRecipeFromUrlSkill: SkillDefinition = {
         uiHint: 'recipe',
       }
     } catch (err: any) {
-      if (err instanceof NeedsScreenshotError) {
-        // Plan B for Instagram/TikTok and unreadable pages: a screenshot, which the photo import
-        // reads (a WhatsApp photo is imported directly).
+      if (err instanceof NotARecipeError) {
+        return { data: null, summary: `El enlace no parece contener una receta cocinable: «${untrustedText(err.reason, 160)}». Si quiere guardar otra: ${IMPORT_WORKS}`, uiHint: 'text' }
+      }
+      // PRO-1301: the motive in one sentence and what does work (a screenshot
+      // among them: the photo import reads it, and a WhatsApp photo right after
+      // takes this link as its source, whatsapp/photoSource.ts, which looks for
+      // the screenshot message kept in brackets).
+      const reason = importFailureReason(err)
+      if (reason) {
         return {
           data: null,
-          summary: `No se ha guardado nada. Responde al usuario exactamente: «${err.message}».`,
+          summary: `No se ha guardado nada [${err.message}]. Responde al usuario con esto, tal cual, sin añadir otra causa: «${importFailureReply(reason)}»`,
           uiHint: 'text',
         }
-      }
-      if (err instanceof NotARecipeError) {
-        return { data: null, summary: `El enlace no parece contener una receta cocinable: «${untrustedText(err.reason, 160)}»`, uiHint: 'text' }
-      }
-      if (err instanceof NoExtractableContentError || err instanceof PageFetchError) {
-        return { data: null, summary: `No se pudo leer el contenido del enlace: ${err.message}`, uiHint: 'text' }
-      }
-      if (err instanceof UnsafeUrlError) {
-        return { data: null, summary: `No se puede importar ese enlace: ${err.message} Pide un enlace público a la receta.`, uiHint: 'text' }
       }
       throw err
     }
@@ -3372,6 +3374,8 @@ export const skills: SkillDefinition[] = [
   ...freezerSkills,
   // La receta del día (PRO-1099, specs/recipe-of-the-day.md):
   ...recipeOfTheDaySkills,
+  // PRO-1301: la hora del menú del día y de la pregunta de la cena.
+  ...alertTimeSkills,
 ]
 
 /**

@@ -102,7 +102,12 @@ export function isCookingReminderWindow(p: MadridParts, dinnerTime: string | nul
  * a late dinner moves it to 22:00–22:30, as long as that's at least 1 h
  * after dinner (dinner after 21:00 → no check-in that day).
  */
-export function isDinnerCheckinWindow(p: MadridParts, dinnerTime: string | null): boolean {
+export function isDinnerCheckinWindow(p: MadridParts, dinnerTime: string | null, householdTime?: string | null): boolean {
+  // PRO-1301: a time the household chose wins: that hour, for an hour.
+  if (minutesOf(householdTime, -1) >= 0) {
+    const t = minutesOf(householdTime, 0)
+    return nowMinutes(p) >= t && nowMinutes(p) < t + 60
+  }
   const d = minutesOf(dinnerTime, DEFAULT_DINNER_MIN)
   const start = Math.min(d + 120, 22 * 60)
   const end = Math.min(d + 180, 22 * 60 + 30)
@@ -210,9 +215,9 @@ export function isWeeklyNudgeWindow(p: MadridParts): boolean {
   return p.weekday === 6 && p.hour >= 18 && p.hour < 22
 }
 
-/** From the user's breakfast time (default 09:00) for 90 minutes. */
-export function isDailyBriefWindow(p: MadridParts, breakfastTime: string | null | undefined): boolean {
-  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(breakfastTime ?? '')
+/** From the household's time (PRO-1301) or else the user's breakfast time (default 09:00), for 90 minutes. */
+export function isDailyBriefWindow(p: MadridParts, breakfastTime: string | null | undefined, householdTime?: string | null): boolean {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(householdTime || breakfastTime || '')
   const start = m ? Number(m[1]) * 60 + Number(m[2]) : 9 * 60
   const now = p.hour * 60 + p.minute
   return now >= start && now < start + 90
@@ -436,10 +441,15 @@ export interface TodayDinner {
   totalMinutes: number | null
 }
 
+/** PRO-1301: times a household chose; null/absent = the default. */
+export type AlertTimesSaved = Partial<Record<'daily_brief' | 'dinner_checkin', string | null>>
+
 export interface ProactiveInput {
   parts: MadridParts
   breakfastTime: string | null
   dinnerTime: string | null
+  /** PRO-1301: the household's own times (`households.daily_brief_time` / `dinner_checkin_time`). */
+  alertTimes?: AlertTimesSaved
   prefs: Record<string, boolean>
   /** Kinds already sent within their cooldown. */
   sentRecently: Partial<Record<ProactiveKind, boolean>>
@@ -482,7 +492,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
   let langP: Promise<Lang> | null = null
   const lang = () => (langP ??= input.language ? input.language().catch(() => 'es' as const) : Promise.resolve('es' as const))
 
-  if (can('daily_brief') && isDailyBriefWindow(p, input.breakfastTime)) {
+  if (can('daily_brief') && isDailyBriefWindow(p, input.breakfastTime, input.alertTimes?.daily_brief)) {
     const day = await input.todayDay()
     const text = formatDailyBrief(day, input.webUrl)
     const guide = dailyBriefGuide(day, input.webUrl)
@@ -500,7 +510,7 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
     }
   }
 
-  if (can('dinner_checkin') && isDinnerCheckinWindow(p, input.dinnerTime)) {
+  if (can('dinner_checkin') && isDinnerCheckinWindow(p, input.dinnerTime, input.alertTimes?.dinner_checkin)) {
     const dinner = await input.todayDinner()
     const recipeId = dinner?.recipeIds?.[0]
     // 19-nov: never about leftovers already rated (the check-in asked about them again).
@@ -603,11 +613,17 @@ export function withoutMimoButtonAvisos(planned: PlannedMessage[], overCap: bool
 }
 
 /** Any proactive window that could fire now (cheap pre-check before DB work). */
-export function anyProactiveWindow(p: MadridParts, breakfastTime: string | null, dinnerTime: string | null, shoppingUse?: ShoppingUse | null): boolean {
+export function anyProactiveWindow(
+  p: MadridParts,
+  breakfastTime: string | null,
+  dinnerTime: string | null,
+  shoppingUse?: ShoppingUse | null,
+  alertTimes?: AlertTimesSaved,
+): boolean {
   return (
-    isDailyBriefWindow(p, breakfastTime) ||
+    isDailyBriefWindow(p, breakfastTime, alertTimes?.daily_brief) ||
     couldNeedCookingReminder(p, dinnerTime) ||
-    isDinnerCheckinWindow(p, dinnerTime) ||
+    isDinnerCheckinWindow(p, dinnerTime, alertTimes?.dinner_checkin) ||
     isShoppingReminderWindow(p, shoppingUse) ||
     isWeeklyNudgeWindow(p) ||
     isFreezerReviewWindow(p)

@@ -14,6 +14,8 @@ import { resolveScope, scopeWhere } from './scopeResolver.js'
 export interface PreviousWeek {
   /** The week's current menu row (none → undefined). */
   menuId?: string
+  /** PRO-1298: when that row was made (a menu made after the request = the request was a repeat). */
+  createdAt?: Date
   days: DayMenu[] | undefined
   locked: LockedSlots
   bannedRecipeIds: Set<string>
@@ -29,6 +31,7 @@ export async function loadPreviousWeek(userId: string, weekStart: string, db: an
       locked: menus.locked,
       bannedRecipeIds: menus.bannedRecipeIds,
       skippedDays: menus.skippedDays,
+      createdAt: menus.createdAt,
     })
     .from(menus)
     .where(and(scopeWhere(menus.userId, menus.householdId, scope), eq(menus.weekStart, weekStart)))
@@ -36,6 +39,7 @@ export async function loadPreviousWeek(userId: string, weekStart: string, db: an
     .limit(1)
   return {
     ...(typeof previous?.id === 'string' ? { menuId: previous.id } : {}),
+    ...(previous?.createdAt instanceof Date ? { createdAt: previous.createdAt } : {}),
     days: Array.isArray(previous?.days) ? (previous.days as DayMenu[]) : undefined,
     locked: lockedThatExist((previous?.locked as LockedSlots | null) ?? {}, previous?.days as DayMenu[] | undefined),
     bannedRecipeIds: new Set<string>(previous?.bannedRecipeIds ?? []),

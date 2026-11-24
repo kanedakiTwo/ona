@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
+import { loadMenuWaitReport } from '../services/menuWaitReport.js'
 import { loadCapHits } from '../services/capHits.js'
 import { loadApiSaldo } from '../services/apiSaldo.js'
 import { loadFeatureUsageReport } from '../services/featureUsageReport.js'
@@ -64,7 +65,10 @@ router.get('/admin/metrics', metricsAuth, async (req, res) => {
 router.get('/admin/usage', metricsAuth, async (req, res) => {
   try {
     const days = intParam(req.query.days, 28, 1, 180)
-    res.json(await loadUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
+    const includeInternal = flag(req.query.includeInternal)
+    // PRO-1298: the menu's wait, by week (its own file: services/menuWaitReport.ts).
+    const [report, menuWait] = await Promise.all([loadUsageReport({ days, includeInternal }), loadMenuWaitReport({ includeInternal })])
+    res.json({ ...report, menuWait })
   } catch (err: any) {
     console.error('[usage] report failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

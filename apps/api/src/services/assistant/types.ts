@@ -21,6 +21,18 @@ export interface SkillContext {
   channel?: import('./systemPrompt.js').AssistantMode
   /** PRO-313: the chat app the `whatsapp` mode runs in (Telegram); only the usage events read it (PRO-1022). */
   surface?: import('./systemPrompt.js').ChatSurface
+  /**
+   * PRO-1298: when the person sent this turn's message (WhatsApp: Meta's
+   * timestamp, so a message queued behind a slow turn keeps its own time).
+   * A menu made after it means the message asked for the menu it already got.
+   */
+  requestedAt?: Date
+  /**
+   * PRO-1298: the turn is a tapped button (WhatsApp): its title and the
+   * message it answered. A button never makes a whole week unless one of
+   * them asks for it.
+   */
+  button?: { title: string; asked?: string | null }
 }
 
 export interface SkillResult {
@@ -72,6 +84,8 @@ export interface ToolTrace {
   error?: boolean
   /** 21-nov: the tool said it changed nothing (`data.replaced === false`, e.g. the week already had a menu). */
   unchanged?: boolean
+  /** PRO-1298: how long the tool took, in ms (the menu's wait in /admin/usage). */
+  ms?: number
 }
 
 export interface ChatMessage {

@@ -63,6 +63,10 @@ export interface ChatOptions {
   surface?: ChatSurface
   /** PRO-392: the page the web companion writes from (its tools go in). */
   page?: PageKind
+  /** PRO-1298: when the person sent the message (`ctx.requestedAt`). */
+  requestedAt?: Date
+  /** PRO-1298: the message is a tapped button (`ctx.button`). */
+  button?: SkillContext['button']
 }
 
 /**
@@ -135,7 +139,11 @@ export async function chat(
     tools,
     messages,
     skills,
-    ctx: { userId, db, channel: mode, surface: opts.surface },
+    ctx: {
+      userId, db, channel: mode, surface: opts.surface,
+      ...(opts.requestedAt ? { requestedAt: opts.requestedAt } : {}),
+      ...(opts.button ? { button: opts.button } : {}),
+    },
     onToolStart: opts.onToolStart,
     moreTools,
   })
@@ -424,6 +432,7 @@ export async function runToolLoop(params: {
       const skill = params.skills.find((s) => s.name === toolUse.name)
       let result: SkillResult
       let isError = false
+      const started = Date.now()
       if (toolUse.name === MORE_TOOLS_NAME && params.moreTools) {
         const groups = validGroups((toolUse.input as { groups?: unknown })?.groups)
         const have = new Set((tools as { name?: string }[]).map((t) => t.name))
@@ -445,7 +454,7 @@ export async function runToolLoop(params: {
           isError = true
         }
       }
-      executed.push({ name: toolUse.name, input: toolUse.input, result, isError })
+      executed.push({ name: toolUse.name, input: toolUse.input, result, isError, ms: Date.now() - started })
       results.push({
         type: 'tool_result',
         tool_use_id: toolUse.id,
@@ -464,6 +473,8 @@ interface ExecutedTool {
   input: unknown
   result: SkillResult
   isError: boolean
+  /** PRO-1298: how long the tool took. */
+  ms?: number
 }
 
 // claimsAction lives in claims.ts (no imports) so the conversation flags can use it without the engine.
@@ -477,6 +488,7 @@ export function traceOf(executed: ExecutedTool[]): ToolTrace[] {
     summary: String(e.result.summary ?? '').replace(/\s+/g, ' ').slice(0, 400),
     ...(e.isError ? { error: true } : {}),
     ...((e.result.data as { replaced?: unknown } | null | undefined)?.replaced === false ? { unchanged: true } : {}),
+    ...(typeof e.ms === 'number' ? { ms: e.ms } : {}),
   }))
 }
 

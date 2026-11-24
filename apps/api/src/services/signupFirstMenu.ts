@@ -13,6 +13,7 @@
  * Pure, so the rules are unit-tested (`signupFirstMenu.test.ts`).
  */
 import type { CookingFrequency, DayMenu, LockedSlots, Meal, RecipeDish, WeekTypeSlot } from '@ona/shared'
+import { asksWeekType } from './weekTypePlan.js'
 import { nameHasTerm } from './nutrition/allergens.js'
 import { normalizeText } from './dietaryRestrictions.js'
 import { dishWords } from './onboardingPreferences.js'
@@ -105,7 +106,8 @@ const MAIN_SLOTS = ['dinner', 'lunch'] as const
  * Put each dish in the week: a recipe already drawn stays where it is;
  * otherwise it takes the main dish of a lunch or dinner (dinner first, one
  * dish per day, the earliest day first, a meal its recipe fits first). Locked
- * slots, leftovers and the week type's fixed dishes are never touched. The
+ * slots, leftovers and what the week type asks for (its recipe, a dish of
+ * its type; PRO-1296) are never touched. The
  * dishes that found no slot come back in `left` (next week takes them).
  */
 export function placeSignupDishes(
@@ -125,7 +127,7 @@ export function placeSignupDishes(
     const slot = next[dayIndex]?.[meal]
     if (!slot || locked[String(dayIndex)]?.[meal]) return -1
     return (slot.dishes ?? []).findIndex(
-      (d) => d.kind === 'recipe' && (d.variant ?? 'planned') === 'planned' && !d.leftoverOf && !d.fixedDish && (d.course == null || d.course === 'main'),
+      (d) => d.kind === 'recipe' && (d.variant ?? 'planned') === 'planned' && !d.leftoverOf && !asksWeekType(d) && (d.course == null || d.course === 'main'),
     )
   }
   const freeSlot = (recipe: DishCandidate | null): { dayIndex: number; meal: 'lunch' | 'dinner'; at: number } | null => {

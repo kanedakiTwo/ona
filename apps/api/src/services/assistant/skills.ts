@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { refreshRecipeDishTypes } from '../dishTypes.js'
-import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt } from '../weekType.js'
+import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt, weekTypeHasMeal } from '../weekType.js'
+import { unmetRulesLine } from '../weekTypePlan.js'
 import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
@@ -1093,6 +1094,8 @@ async function generateAndSaveWeek(
       { onlyFavorites },
     )
     const { favoritesShort } = generated
+    // PRO-1296: what the week couldn't keep, said with a way out.
+    const unmetLine = unmetRulesLine(generated.warnings ?? [])
     let days = generated.days
     let placedDishes: PlacedDish[] = []
     let left: SignupDish[] | undefined
@@ -1187,7 +1190,7 @@ async function generateAndSaveWeek(
         : '\nTodos los platos salen de sus favoritas.'
     return {
       data: { ...menu, fit, ...(onlyFavorites ? { favoritesShort: favoritesShort ?? 0 } : {}) },
-      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
+      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${unmetLine ? `\n${unmetLine}` : ''}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
       uiHint: 'menu',
       ...(left ? { left } : {}),
     }
@@ -1586,6 +1589,17 @@ const swapMeal: SkillDefinition = {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
         summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
+      }
+    }
+
+    // PRO-1296: «cámbiame la comida del martes» without a dish never creates a
+    // meal the household doesn't cook (its semana tipo says «no hay» there):
+    // before, it drew a recipe and created that meal («solo cenas» got a lunch).
+    if (!days[dayIndex]?.[meal]?.dishes?.length && !(await weekTypeHasMeal(userId, dayIndex, meal as Meal, db))) {
+      return {
+        data: null,
+        summary: `No he cambiado nada: la ${slotLabel} no esta en el menu (en su semana tipo ese dia no hay ${MEAL_LABEL[meal]}). Si queria cambiar otra comida de ese dia, vuelve a llamar con esa; si quiere ponerla solo esta vez, usa add_dish; si es para siempre, set_week_type_slot.`,
+        uiHint: 'text',
       }
     }
 

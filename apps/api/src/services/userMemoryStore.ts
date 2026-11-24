@@ -71,8 +71,10 @@ export { HealthConsentRequiredError, ReligionConsentRequiredError }
  * a diet for religious reasons, the consent text that names it (E-19).
  * Returns whether the user has the consent.
  */
-async function assertHealthConsentFor(userId: string, facts: ReadonlyArray<{ key: string; value: unknown }>): Promise<boolean> {
+async function assertHealthConsentFor(userId: string, facts: ReadonlyArray<{ key: string; value: unknown }>, opts?: MemoryWriteOptions): Promise<boolean> {
   if (!facts.some((f) => isHealthMemoryKey(f.key))) return false
+  // PRO-1305: the allergies said in the chat, under the chat's one-time permission (checked by the caller).
+  if (opts?.chatAllergyPermit && facts.every((f) => f.key === 'restrictions')) return true
   if (!(await hasHealthConsent(userId))) throw new HealthConsentRequiredError()
   for (const f of facts) if (f.key === 'restrictions') await assertReligionConsent(userId, f.value)
   return true
@@ -81,6 +83,12 @@ async function assertHealthConsentFor(userId: string, facts: ReadonlyArray<{ key
 /** Where a memory write comes from (the ficha's evidence). Without one, from the source. */
 export interface MemoryWriteOptions {
   signal?: FactSignal
+  /**
+   * PRO-1305: `restrictions` only, written by `chatAllergies` under the
+   * permission for the allergies said in the chat (the web box or the
+   * chat's one-time «Sí, doy mi permiso»), also from WhatsApp.
+   */
+  chatAllergyPermit?: boolean
 }
 
 function signalFor(source: MemorySource, opts?: MemoryWriteOptions): FactSignal {
@@ -163,7 +171,7 @@ export async function setMemoryFact(
         },
       })
       .returning()
-    await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: v.key, value: v.value, source, confidence, signal, hasHealthConsent: consent })
+    await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: v.key, value: v.value, source, confidence, signal, hasHealthConsent: consent, chatAllergyPermit: opts?.chatAllergyPermit === true })
     await syncHouseholdCounts(tx, userId, [v])
     return rowToFact(row)
   })
@@ -197,7 +205,7 @@ export async function setMemoryBatch(
     }
     validated.push({ key: v.key, value: v.value, confidence: f.confidence ?? 1, source: f.source ?? source })
   }
-  const consent = await assertHealthConsentFor(userId, validated)
+  const consent = await assertHealthConsentFor(userId, validated, opts)
   const signal = signalFor(source, opts)
   const review = validated.some((f) => f.key === 'restrictions') ? await menuReviewAfterSave(userId) : null
   await db.transaction(async (tx) => {

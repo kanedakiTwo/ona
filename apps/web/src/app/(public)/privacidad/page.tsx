@@ -27,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 13 de noviembre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 24 de noviembre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -44,8 +44,17 @@ export default function PrivacidadPage() {
               (para calcular tus calorías), alergias, intolerancias y restricciones (para que Mimoia no te
               proponga lo que no puedes comer), gustos y lo que cocinas. Las alergias y los datos físicos son
               datos de salud, y una dieta por motivos religiosos (como halal) revela tus creencias: solo los
-              tratamos porque tú nos los das, con tu consentimiento explícito, y puedes borrarlos cuando quieras
-              desde tu perfil.
+              tratamos porque tú nos los das, con tu consentimiento explícito.{" "}
+              <span data-testid="privacy-chat-allergies">
+                Lo das una sola vez, desde tu perfil o cuando Mimo te lo pide en el chat (en la web o por WhatsApp).
+                A partir de ahí, Mimo anota en la ficha de tu casa las alergias, intolerancias y cosas que no podéis
+                comer que le cuentes, y te avisa cada vez. Puedes borrar cualquiera, o retirar el permiso y borrarlas
+                todas, en tu perfil o diciéndoselo a Mimo. Si le cuentas a Mimo una alergia sin habernos dado ese
+                permiso, la tenemos en cuenta en tus menús durante un máximo de 30 días, solo con lo que escribiste y
+                sin pasarla a tu ficha; si nos pides que no la guardemos, dejamos de hacerlo. Si nos das las alergias de
+                alguien de tu casa que no usa Mimoia, nos confirmas que eres su madre, padre o tutor (si tiene menos de
+                14 años) o que esa persona está de acuerdo.
+              </span>
             </li>
             <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
             <li data-testid="privacy-signup-shopping">
@@ -119,8 +128,9 @@ export default function PrivacidadPage() {
             explícito (art. 9.2.a RGPD), que puedes retirar en cualquier momento borrando esos datos o tu cuenta.{" "}
             <span data-testid="privacy-religious-diet-basis">
               Los datos de salud y, si la indicas, tu dieta por motivos religiosos los tratamos solo con tu
-              consentimiento explícito (art. 9.2.a RGPD), que das aparte y puedes retirar cuando quieras desde tu
-              perfil. Si lo retiras, los borramos.
+              consentimiento explícito (art. 9.2.a RGPD), que nos das aparte, una única vez (desde tu perfil o con el
+              botón del chat), y que puedes retirar cuando quieras en tu perfil o pidiéndoselo a Mimo. Si lo retiras,
+              los borramos.
             </span>{" "}
             Los avisos proactivos por WhatsApp solo se envían si los activas, y puedes darte de baja escribiendo BAJA.
             El menú de los viernes por email es un consentimiento aparte (art. 6.1.a RGPD y art. 21 de la LSSI): lo

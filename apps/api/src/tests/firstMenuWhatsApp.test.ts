@@ -222,8 +222,9 @@ describe('complete_onboarding — their dishes never bring what the household ca
     // What they can eat still comes in: the catalogue's recipe, and the note for the dish the catalogue doesn't have.
     expect(dishes).toContainEqual(expect.objectContaining({ kind: 'recipe', recipeId: 'pollo' }))
     expect(dishes).toContainEqual({ kind: 'note', text: 'tortilla de mi abuela' })
-    expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
-    expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
+    // PRO-1305: applied for 30 days; the permission question goes from the code, no link from Mimo.
+    expect(r.summary).toMatch(/Aplicado a este menu y a los de los proximos 30 dias, pero no esta en su ficha: sin gluten/)
+    expect(r.summary).not.toContain('/profile/casa/alergias')
     // The household's recipe Mimo writes for that note can't have it either.
     expect(r.summary).toMatch(/Las recetas de la casa que crees en este turno tienen que respetarlo tambien \(sin gluten\)\./)
     // The tool's result carries nothing of the placement's bookkeeping.

@@ -26,6 +26,7 @@ import * as store from './store.js'
 import * as client from './client.js'
 import { isWhatsAppConfigured } from './config.js'
 import { env } from '../../config/env.js'
+import { flushChatAllergyOutbox, signupAsk } from '../chatAllergies.js'
 
 /** From the first menu to the health link. */
 export const SIGNUP_FOLLOWUP_DELAY_MS = 10 * 60 * 1000
@@ -55,7 +56,8 @@ export function dueSignupFollowUp(input: {
   // Already asked (the flow before 19-nov sent both with the menu), or BAJA.
   if (kinds.has('optin_prompt') || kinds.has('optout')) return null
   if (lastActivityAt && now.getTime() - lastActivityAt.getTime() < SIGNUP_FOLLOWUP_QUIET_MS) return null
-  if (!kinds.has('health_link')) return 'health_link'
+  // PRO-1305: the allergy permission's question stands for the health link.
+  if (!kinds.has('health_link') && !kinds.has('health_ask')) return 'health_link'
   // They wrote ALTA by themselves: nothing to ask.
   if (kinds.has('optin')) return null
   return 'optin_prompt'
@@ -101,6 +103,12 @@ export async function runSignupFollowUps(now: Date = new Date()): Promise<number
         .where(eq(whatsappMessages.phone, row.phone))
       const which = dueSignupFollowUp({ completedAt: row.completedAt!, kinds, lastActivityAt: last?.at ?? null, now })
       if (!which) continue
+      // PRO-1305 (E-103 §3): an allergy said in the sign-up, no permission and
+      // never asked → the one-time question instead of the link to the web.
+      if (which === 'health_link' && (await sendSignupAsk(row.userId, row.phone))) {
+        sent++
+        continue
+      }
       for (const m of signupFollowUpMessage(which, env.WEB_PUBLIC_URL)) {
         try {
           const wamid = await client.sendMessage(row.phone, m)
@@ -117,4 +125,34 @@ export async function runSignupFollowUps(now: Date = new Date()): Promise<number
     }
   }
   return sent
+}
+
+/** The one-time allergy question (PRO-1305), when it is due. True = it went out. */
+async function sendSignupAsk(userId: string, phone: string): Promise<boolean> {
+  const due = await signupAsk(userId, 'es').catch((err) => {
+    console.warn('[whatsapp] sign-up allergy question not read:', err?.message ?? err)
+    return null
+  })
+  if (!due) return false
+  const { languageForPhone } = await import('./outbound.js')
+  const lang = await languageForPhone(phone).catch(() => 'es' as const)
+  let wentOut = false
+  await flushChatAllergyOutbox(due.outbox, {
+    lang,
+    send: async (m) => {
+      const out: OutboundMessage = m.buttons?.length ? { type: 'buttons', text: m.text, buttons: m.buttons } : { type: 'text', text: m.text }
+      try {
+        const wamid = await client.sendMessage(phone, out)
+        void recordServiceMessageCost(userId)
+        await store.insertOutbound({ phone, userId, kind: m.kind, body: outboundBody(out), status: 'sent', wamid })
+        wentOut = true
+        return wamid
+      } catch (err: any) {
+        await store.insertOutbound({ phone, userId, kind: m.kind, body: outboundBody(out), status: 'failed', errorMessage: String(err?.message ?? err).slice(0, 500) })
+        wentOut = true
+        return null
+      }
+    },
+  })
+  return wentOut
 }

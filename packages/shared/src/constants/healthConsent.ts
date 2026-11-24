@@ -4,14 +4,21 @@
  * data: Mimoia only stores them after the user ticks a separate, unticked
  * box. Withdrawing the consent deletes them. A religion-based diet (halal,
  * 2026-10-25) is special-category data too (art. 9.1) and goes with them:
- * v2 of the text names it.
+ * v2 of the text names it. v3 (PRO-1305, Legal E-103 §2.1) says that the
+ * allergies told to Mimo in the chat are noted down with it, without asking
+ * again; whoever has v1 or v2 has that permission too (same purpose).
  */
 
 /** Bump when the consent text changes; stored with every consent. */
-export const HEALTH_CONSENT_VERSION = 'salud-v2-2026-10'
+export const HEALTH_CONSENT_VERSION = 'salud-v3-2026-11'
 
-export const HEALTH_CONSENT_TEXT =
+const HEALTH_CONSENT_TEXT_V2 =
   'Consiento que Mimoia trate mis datos de salud (alergias, intolerancias, restricciones, edad, sexo, peso, altura y nivel de actividad) y, si la indico, mi dieta por motivos religiosos (como halal), para adaptar mis menús y avisos. Puedo retirarlo cuando quiera desde mi perfil; si lo retiro, se borran esos datos. Más información en la política de privacidad.'
+
+export const HEALTH_CONSENT_TEXT = HEALTH_CONSENT_TEXT_V2.replace(
+  ' Puedo retirarlo cuando quiera desde mi perfil;',
+  ' También las alergias, intolerancias y cosas que no podemos comer que le cuente a Mimo en el chat, ya sea en la web o por WhatsApp, mías o, si soy su madre, padre o tutor, de los menores que viven en mi casa: Mimo las anota en la ficha de mi casa sin preguntarme de nuevo y me avisa cada vez. Puedo retirarlo cuando quiera desde mi perfil o pidiéndoselo a Mimo;',
+)
 
 /**
  * v1 of the text didn't name a diet for religious reasons. Whoever consented

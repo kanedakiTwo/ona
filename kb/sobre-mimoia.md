@@ -67,7 +67,7 @@ Hay tres planes: Gratis («lo haces tú»: tu menú de la semana y la lista, en 
 ## Privacidad y datos
 
 - No vendemos tus datos ni los usamos para publicidad. Mimoia no usa cookies de publicidad ni de analítica.
-- Tus alergias, intolerancias y otros datos de salud solo se guardan si das tu permiso, y solo desde la web o la app; por WhatsApp no se guardan.
+- Tus alergias, intolerancias y otros datos de salud solo se guardan si das tu permiso. Lo das una sola vez, en tu perfil o cuando Mimo te lo pregunta en el chat (en la web o por WhatsApp); desde entonces Mimo apunta en la ficha de tu casa las alergias que le digas y te avisa cada vez. Puedes borrar una diciéndoselo a Mimo («borra lo del gluten») o retirar el permiso entero, en tu perfil o pidiéndoselo. Sin permiso, Mimo tiene en cuenta en tus menús lo que le dijiste durante 30 días como mucho, sin guardarlo. Los datos físicos (edad, peso…) y una dieta por motivos religiosos se guardan solo desde la web.
 - Lo que hablas con Mimo en la web se guarda 90 días, para conocer mejor los gustos y costumbres de tu hogar, y después se borra solo. Si borras la cuenta, se borra al momento.
 - Puedes borrar tu cuenta en Perfil → Borrar mi cuenta. Mimo no puede borrarla por chat.
 - Cada noche se guarda una copia de seguridad cifrada de la base de datos, en Madrid, que dura 14 días y se borra sola. Si borras la cuenta o retiras el permiso de los datos de salud, desaparecen al momento de la base y de las copias en 14 días como mucho.

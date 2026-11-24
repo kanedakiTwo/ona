@@ -23,12 +23,24 @@ import { db } from '../db/connection.js'
 import { profileChanges, profileFacts, userMemories, users, userSettings } from '../db/schema.js'
 import { env } from '../config/env.js'
 import { ensureErasureLog, recordErasure } from './erasureLog.js'
+import { clearPending, hasChatPermission } from './chatAllergies.js'
 
 /**
  * WhatsApp is not for special-category data (Meta's terms 4.2, PRO-24): over
- * WhatsApp health data is never stored, consent or not.
+ * WhatsApp health data is never stored, consent or not — still so on
+ * Telegram (LEG-35). PRO-1305 (D-1025): on WhatsApp allergies, intolerances
+ * and food not eaten for health are, with the chat's one-time permission
+ * (chatAllergies.ts); the physical data and a religious diet still aren't.
  */
 export const WHATSAPP_HEALTH_DATA_REPLY = `Por WhatsApp no guardo datos de salud (alergias, intolerancias, restricciones ni datos físicos). Añádelos en tu perfil de la web: ${env.WEB_PUBLIC_URL}/profile`
+
+/** PRO-1305: what WhatsApp still doesn't store (the allergies go through the chat's permission). */
+export const WHATSAPP_PHYSICAL_DATA_REPLY = `Por WhatsApp no guardo datos de salud físicos (edad, sexo, peso, altura, actividad) ni una dieta por motivos religiosos. Añádelos en tu perfil de la web: ${env.WEB_PUBLIC_URL}/profile`
+
+/** The refusal for health data over WhatsApp: the physical one where the chat takes allergies, the old one on Telegram. */
+export function whatsappHealthReply(ctx: { surface?: string }): string {
+  return ctx.surface === 'telegram' ? WHATSAPP_HEALTH_DATA_REPLY : WHATSAPP_PHYSICAL_DATA_REPLY
+}
 
 /** What the assistant says when asked to store health data without consent. */
 export const HEALTH_CONSENT_SKILL_REPLY = `No lo he guardado: las alergias, intolerancias y datos físicos son datos de salud y solo los guardo si das tu consentimiento en tu perfil: ${env.WEB_PUBLIC_URL}/profile`
@@ -119,7 +131,8 @@ export async function getHealthConsent(userId: string): Promise<HealthConsentSta
     version: u.version,
     withdrawnAt: u.withdrawnAt?.toISOString() ?? null,
     hasHealthData,
-    needsPrompt: needsHealthConsentPrompt({ hasHealthData, consentAt: u.consentAt, withdrawnAt: u.withdrawnAt }),
+    // PRO-1305: allergies saved under the chat's permission don't bring the web's one-time screen.
+    needsPrompt: needsHealthConsentPrompt({ hasHealthData, consentAt: u.consentAt, withdrawnAt: u.withdrawnAt }) && !(await hasChatPermission(userId)),
   }
 }
 
@@ -200,6 +213,8 @@ export async function withdrawHealthConsent(userId: string, opts: { db?: typeof 
     }
     await recordErasure(tx, 'health_consent', userId, at)
   })
+  // PRO-1305: what was said in the chat and kept out of the menus goes too.
+  await clearPending(userId, { db: conn }).catch((err) => console.warn('[health-consent] said allergies not cleared:', err?.message ?? err))
 }
 
 /** `PUT /user/:id` body without the health fields (no consent). */

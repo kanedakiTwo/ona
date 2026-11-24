@@ -44,6 +44,7 @@ import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecip
 import { shopOrderSkills } from './shopOrderSkills.js'
 import { householdHabitsSkills } from './householdHabitsSkills.js'
 import { fichaSkills } from './fichaSkills.js'
+import { chatAllergySkills } from './chatAllergySkills.js'
 import { tasteSkills } from './tasteSkills.js'
 import { fixedMealSkills } from './fixedMealSkills.js'
 import { taperSkills } from './taperSkills.js'
@@ -61,6 +62,8 @@ import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave
 import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { withMenuOnlyRestrictions } from '../menuOnlyRestrictions.js'
 import { loadRecentUserTexts, saidRestrictionsForMenu, saidRestrictionsLine, type SaidRestrictions } from '../saidRestrictions.js'
+import { addPending, chatAllergyChannel } from '../chatAllergies.js'
+import { deleteChatAllergies, noteChatAllergies } from '../chatAllergySave.js'
 import { isCoeliacHousehold, needsGlutenFreeLabel, recipeDietNotices } from '../glutenFreeCharcuterie.js'
 import { compileRestrictions, hasMilkAllergy, nameHasTerm, normalizeText, violatesRestrictions, type RestrictableRecipe } from '../dietaryRestrictions.js'
 import { addPantryForUser, deletePantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser, type AddPantryInput } from '../pantryStore.js'
@@ -68,7 +71,7 @@ import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { importFailureReason, importFailureReply, IMPORT_WORKS, unsupportedNetwork, unsupportedNetworkReply } from '../sources/importFailure.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
-import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, hasHealthConsent, saidAllergyReply } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, hasHealthConsent, saidAllergyReply, whatsappHealthReply } from '../healthConsent.js'
 import { divertDietFacts } from './dietFacts.js'
 import { saveOnboarding } from '../onboarding.js'
 import { ingredientMarksOf } from '../ingredientRoles.js'
@@ -193,7 +196,10 @@ async function restrictionsFor(ctx: SkillContext): Promise<{ restrictions: strin
  */
 async function saidForMenu(ctx: SkillContext, fromModel: unknown): Promise<SaidRestrictions | null> {
   const saved = () => restrictionsFor(ctx).then((own) => withHouseholdRestrictions(own.restrictions, ctx.userId, ctx.db))
-  return saidRestrictionsForMenu(ctx.userId, ctx.db, fromModel, saved, loadRecentUserTexts)
+  const said = await saidRestrictionsForMenu(ctx.userId, ctx.db, fromModel, saved, loadRecentUserTexts)
+  // PRO-1305: and the next menus of the 30 days too (the autopilot's included), not only this one.
+  if (said && chatAllergyChannel(ctx)) await addPending(ctx.userId, said.apply).catch((err) => console.warn('[said-allergies] pending not kept:', err?.message ?? err))
+  return said
 }
 
 const RESTRICTIONS_SAID_PROP = {
@@ -1061,7 +1067,7 @@ const generateWeeklyMenu: SkillDefinition = {
     const result = await withMenuOnlyRestrictions(said?.apply ?? [], () =>
       generateAndSaveWeek(ctx, weekStart, previous, undefined, fridge.plan, params?.only_favorites === true),
     )
-    const lines = [result.summary, fridge.saved?.trim(), said && saidRestrictionsLine(said, ctx.channel)].filter(Boolean)
+    const lines = [result.summary, fridge.saved?.trim(), said && saidRestrictionsLine(said, ctx.surface === 'telegram' ? 'telegram' : ctx.channel)].filter(Boolean)
     return { ...result, summary: lines.join('\n') }
   },
 }
@@ -1405,7 +1411,7 @@ const completeOnboarding: SkillDefinition = {
     }
     const menu = results[0] ?? (await generateWeeklyMenu.handler({ restrictions_said: params?.restrictions_said }, ctx))
     const nextLine = results.length > 1 ? ` Tambien he generado la semana que viene (${results[1].summary})` : ''
-    const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.channel)}${ownVersionLine}` : ''
+    const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.surface === 'telegram' ? 'telegram' : ctx.channel)}${ownVersionLine}` : ''
     return {
       data: menu.data,
       uiHint: menu.uiHint,
@@ -3201,10 +3207,28 @@ const updateMemory: SkillDefinition = {
       .filter((f) => f.key === 'restrictions')
       .flatMap((f) => (Array.isArray(f.value) ? f.value : [f.value]))
       .filter((v): v is string => typeof v === 'string')
+    // PRO-1305 (D-1025): an allergy said in the chat (web or WhatsApp) goes
+    // through the chat's permission: saved with the code's notice, or the
+    // one-time question; «ya no…» deletes it. The rest of the facts go on.
+    let allergyNote = ''
+    if (params.facts.some((f) => f.key === 'restrictions')) {
+      const removed = params.facts
+        .filter((f) => f.key === 'restrictions')
+        .flatMap((f) => (Array.isArray((f as { remove?: unknown }).remove) ? ((f as { remove?: unknown[] }).remove as unknown[]) : []))
+      const notes = [
+        saidAllergies.length ? await noteChatAllergies(ctx, saidAllergies) : null,
+        removed.length ? await deleteChatAllergies(ctx, removed) : null,
+      ]
+      if (notes.some((n) => n !== null)) {
+        allergyNote = notes.filter(Boolean).join(' ')
+        params = { facts: params.facts.filter((f) => f.key !== 'restrictions') }
+        if (params.facts.length === 0) return { data: null, summary: allergyNote, uiHint: 'text' }
+      }
+    }
     if (ctx.channel === 'whatsapp' && params.facts.some((f) => isHealthMemoryKey(f.key))) {
       params = { facts: params.facts.filter((f) => !isHealthMemoryKey(f.key)) }
       if (params.facts.length === 0) {
-        return { data: null, summary: saidAllergies.length ? saidAllergyReply(saidAllergies, 'whatsapp') : WHATSAPP_HEALTH_DATA_REPLY, uiHint: 'text' }
+        return { data: null, summary: [allergyNote, !allergyNote && saidAllergies.length ? saidAllergyReply(saidAllergies, 'whatsapp') : whatsappHealthReply(ctx)].filter(Boolean).join(' '), uiHint: 'text' }
       }
     }
     // PRO-201: what the household doesn't eat by diet («vegetariano», «sin
@@ -3268,7 +3292,7 @@ const updateMemory: SkillDefinition = {
     const kept = keptManual.length ? ` No he tocado ${keptManual.join(', ')}: lo puso el usuario a mano.` : ''
     return {
       data: { updated: merged.length },
-      summary: `Apuntado. (${keys})${kept}`,
+      summary: `Apuntado. (${keys})${kept}${allergyNote ? ` ${allergyNote}` : ''}`,
       uiHint: 'confirmation',
     }
   },
@@ -3378,6 +3402,8 @@ export const skills: SkillDefinition[] = [
   ...householdHabitsSkills,
   // Mimo habla de la ficha (PRO-319, specs/household-profile.md) — fichaSkills.ts:
   ...fichaSkills,
+  // PRO-1305: borrar una alergia o retirar el permiso desde el chat.
+  ...chatAllergySkills,
   // «Afina tu menú»: ver y quitar valoraciones (PRO-297) — tasteSkills.ts:
   ...tasteSkills,
   // Comidas fijas (PRO-218, specs/menus.md):

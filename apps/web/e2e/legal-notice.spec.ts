@@ -77,7 +77,7 @@ test('/privacidad: AiKit only makes the recipe images, with OpenAI models', asyn
   const main = page.getByTestId('reading-column')
   await expect(main).not.toContainText('cuando lo pides')
   await expect(main).not.toContainText('Gemini')
-  await expect(main).toContainText('Última actualización: 13 de noviembre de 2026')
+  await expect(main).toContainText('Última actualización: 24 de noviembre de 2026')
   // D-189: the daily reviewer also reads Mimo's chat in the app.
   await expect(main).toContainText('conversaciones con Mimo, en la web y por WhatsApp, para detectar errores del asistente')
 })
@@ -109,8 +109,26 @@ test('/privacidad: a diet for religious reasons goes with the health data', asyn
   )
   // «4. Base legal», in Legal's words (E-19).
   await expect(page.getByTestId('privacy-religious-diet-basis')).toHaveText(
-    'Los datos de salud y, si la indicas, tu dieta por motivos religiosos los tratamos solo con tu consentimiento explícito (art. 9.2.a RGPD), que das aparte y puedes retirar cuando quieras desde tu perfil. Si lo retiras, los borramos.',
+    /que nos das aparte, una única vez \(desde tu perfil o con el botón del chat\), y que puedes retirar cuando quieras en tu perfil o pidiéndoselo a Mimo\. Si lo retiras, los borramos\.$/,
   )
+})
+
+// PRO-1305 (Legal E-103 §2.6, D-1025): the allergies told to Mimo in the chat, as Legal asked (same meaning, own words).
+test('/privacidad: one permission and Mimo notes down the allergies said in the chat; 30 days without it', async ({ page }) => {
+  await page.goto('/privacidad')
+  const chat = page.getByTestId('privacy-chat-allergies')
+  await expect(chat).toContainText('Lo das una sola vez, desde tu perfil o cuando Mimo te lo pide en el chat (en la web o por WhatsApp).')
+  await expect(chat).toContainText('Mimo anota en la ficha de tu casa las alergias, intolerancias y cosas que no podéis comer que le cuentes, y te avisa cada vez.')
+  await expect(chat).toContainText('la tenemos en cuenta en tus menús durante un máximo de 30 días')
+  await expect(chat).toContainText('nos confirmas que eres su madre, padre o tutor (si tiene menos de 14 años) o que esa persona está de acuerdo.')
+})
+
+// PRO-1305 (Legal E-103 §2.5): the sentence at the end of «6. Aviso sobre salud».
+test('/terminos: Mimo notes down the allergies with the permission; check the labels', async ({ page }) => {
+  await page.goto('/terminos')
+  const terms = page.getByTestId('terms-chat-allergies')
+  await expect(terms).toContainText('Mimo lo anota en la ficha de tu casa y te lo dice.')
+  await expect(terms).toContainText('Revisa siempre las etiquetas')
 })
 
 // PRO-120 (Legal, 2026-10-20): the app's own usage events, screens included, in Legal's exact words.

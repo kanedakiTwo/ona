@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Mic, Send, Square, Volume2, VolumeX, X, Headphones, RotateCcw } from 'lucide-react'
 import { AI_DISCLOSURE, founderOfferText } from '@ona/shared'
-import { useMimo, type MimoStatus } from './MimoProvider'
+import { useMimo, type HealthButton, type MimoMessage, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
@@ -210,6 +210,9 @@ export default function MimoPanel() {
                       : text}
                   </div>
                 </div>
+                {m.role === 'assistant' && m.buttons?.length ? (
+                  <HealthButtons message={m} onAnswer={mimo.answerButton} />
+                ) : null}
                 {last && options.length > 0 && !busy && !listening && (
                   <div className="flex flex-wrap gap-2 pl-9" role="group" aria-label="Opciones">
                     {options.map((o) => (
@@ -332,6 +335,38 @@ export default function MimoPanel() {
         )}
       </section>
     </>
+  )
+}
+
+/** PRO-1305: an allergy notice's buttons (permission, withdrawal); each is answered once. */
+function HealthButtons({ message, onAnswer }: { message: MimoMessage; onAnswer: (messageId: string, button: HealthButton) => Promise<void> }) {
+  const [failed, setFailed] = useState(false)
+  // Stays mounted while answered (nothing shown), so a failed save can say so and offer the buttons again.
+  if (message.answered) return null
+  return (
+    <div className="flex flex-col gap-1.5 pl-9">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Respuestas">
+        {message.buttons!.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            data-testid="mimo-health-button"
+            onClick={() => {
+              setFailed(false)
+              onAnswer(message.id, b).catch(() => setFailed(true))
+            }}
+            className="min-h-9 rounded-full border border-[#1A1612] px-3.5 py-1.5 text-[13px] font-medium text-[#1A1612] active:bg-[#F2EDE0]"
+          >
+            {b.title}
+          </button>
+        ))}
+      </div>
+      {failed && (
+        <p role="alert" className="text-[12px] text-[#A3302A]">
+          No se ha podido guardar tu respuesta. Inténtalo otra vez.
+        </p>
+      )}
+    </div>
   )
 }
 

@@ -33,4 +33,14 @@ describe('dueSignupFollowUp', () => {
     expect(signupFollowUpMessage('health_link', 'https://mimoia.com/')).toEqual([{ type: 'text', text: COPY.healthOnWeb('https://mimoia.com/profile') }])
     expect(signupFollowUpMessage('optin_prompt', 'https://mimoia.com')[0]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
   })
+
+describe('PRO-1305: the allergy permission question stands for the health link', () => {
+  it('after it, the avisos question is next (no link)', () => {
+    expect(due(30, [['onboarding', 40], ['health_ask', 20]], 15)).toBe('optin_prompt')
+  })
+  it('the link text no longer says WhatsApp can’t save allergies', () => {
+    expect(COPY.healthOnWeb('https://mimoia.com/profile')).not.toMatch(/no me dejan guardar/)
+    expect(COPY.healthOnWeb('https://mimoia.com/profile')).toMatch(/dímelo por aquí y lo apunto \(te pediré permiso una sola vez\)/)
+  })
+})
 })

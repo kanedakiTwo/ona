@@ -570,7 +570,7 @@ describe('generate_weekly_menu', () => {
     expect(r.summary).toContain('Menu generado')
   })
 
-  it('PRO-1041: «soy celíaca» without the consent — the generator runs with it (this menu only) and Mimo gets the marked link', async () => {
+  it('PRO-1041: «soy celíaca» without the consent — the generator runs with it and Mimo is told to save it with its tools', async () => {
     const { generateMenu } = await import('../services/menuGenerator.js')
     const { menuOnlyRestrictions } = await import('../services/menuOnlyRestrictions.js')
     const inserted = { id: 'm-new', days: [{}, {}, {}, {}, {}, {}, {}] }
@@ -584,8 +584,9 @@ describe('generate_weekly_menu', () => {
     expect(during).toEqual(['sin gluten'])
     expect(menuOnlyRestrictions()).toEqual([])
     expect(r.summary).toContain('Menu generado')
-    expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
-    expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
+    expect(r.summary).toMatch(/Aplicado a este menu y a los de los proximos 30 dias, pero no esta en su ficha: sin gluten/)
+    // PRO-1305: no link from Mimo; saving goes through the chat's permission.
+    expect(r.summary).not.toContain('/profile/casa/alergias')
   })
 
   it('hands Mimo how close the week came to their tastes (PRO-155), and nothing when the evaluator fails', async () => {
@@ -1550,7 +1551,7 @@ describe('skill export coverage', () => {
     // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
     // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
     // and 96 with set_alert_time (PRO-1301, alertTimes.test.ts).
-    expect(skills.length).toBe(96)
+    expect(skills.length).toBe(98)
   })
 
   it('every skill has a unique name', () => {

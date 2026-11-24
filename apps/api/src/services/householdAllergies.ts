@@ -169,13 +169,29 @@ export async function loadHouseholdRestrictions(userId: string, db: typeof defau
  * regenerating one dish and Mimo's `swap_meal`. A read error of the household
  * keeps the owner's own (never fails the pick). PRO-1041: plus the allergies
  * said to Mimo and not saved, while Mimo generates a menu with them
- * (`withMenuOnlyRestrictions`).
+ * (`withMenuOnlyRestrictions`). PRO-1305: and, for 30 days, what any member
+ * said in the chat and isn't saved (no permission, or no answer yet): every
+ * menu of the household, the autopilot's too.
  */
 export async function withHouseholdRestrictions(
   own: readonly string[],
   userId: string,
   db: typeof defaultDb = defaultDb,
   load: (userId: string, db: typeof defaultDb) => Promise<string[]> = loadHouseholdRestrictions,
+  pending: (userId: string, db: typeof defaultDb) => Promise<string[]> = loadSaidPending,
 ): Promise<string[]> {
-  return mergeRestrictions([...own, ...(await load(userId, db).catch(() => [] as string[])), ...menuOnlyRestrictions()])
+  const [saved, said] = await Promise.all([
+    load(userId, db).catch(() => [] as string[]),
+    pending(userId, db).catch((err) => {
+      console.warn('[household-restrictions] said in the chat:', (err as Error)?.message ?? err)
+      return [] as string[]
+    }),
+  ])
+  return mergeRestrictions([...own, ...saved, ...said, ...menuOnlyRestrictions()])
+}
+
+/** PRO-1305: the household members' allergies said in the chat and not saved, within their 30 days. */
+export async function loadSaidPending(userId: string, db: typeof defaultDb = defaultDb): Promise<string[]> {
+  const { loadHouseholdPending } = await import('./chatAllergies.js')
+  return loadHouseholdPending(await householdMemberIds(userId, db), { db })
 }

@@ -31,6 +31,7 @@ import { fatigueAnswerOf, fatigueConfirmation, type FatigueKind } from './fatigu
 import { optOutReasonOf, optOutReasonThanks, optOutWithReason, type OptOutReason } from './optOutReason.js'
 import type { Lang } from './language.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
+import { isTypedAnswer, parseConsentButton, withChatAllergyOutbox, type ChatAllergyOutbox, type ConsentButton, type FlushMessage } from '../chatAllergies.js'
 import {
   ASK_SOURCE_COPY,
   PHOTO_SOURCE_WINDOW_MS,
@@ -183,6 +184,25 @@ export interface InboundDeps {
    * fixed text. Absent → the fixed text (COPY).
    */
   guided?: (userId: string, phone: string, spec: GuideSpec, fallback: string) => Promise<GuidedResult>
+  /**
+   * PRO-1305 (D-1025): the allergies said in the chat (chatAllergies.ts).
+   * `beforeTurn` reads the person's words and `finishTurn` sends what the
+   * turn left (the «Apuntado…» notice, the one-time permission question…);
+   * the permission's buttons are answered by the code. Absent → off.
+   */
+  chatAllergies?: ChatAllergiesDeps
+}
+
+export interface ChatAllergiesDeps {
+  beforeTurn: (userId: string, text: string) => Promise<void>
+  answerButton: (userId: string, button: ConsentButton, tap: { wamid: string; title: string | null; lang: Lang }, send: (m: FlushMessage) => Promise<string | null>) => Promise<{ tools: string[] }>
+  repeatButtons: (userId: string, lang: Lang) => Promise<FlushMessage | null>
+  finishTurn: (outbox: ChatAllergyOutbox, lang: Lang, send: (m: FlushMessage) => Promise<string | null>) => Promise<void>
+}
+
+/** A fixed message of the allergy permission → WhatsApp. */
+export function flushMessageOf(m: FlushMessage): OutboundMessage {
+  return m.buttons?.length ? { type: 'buttons', text: m.text, buttons: m.buttons } : { type: 'text', text: m.text }
 }
 
 /** Skills after which the reply carries the week's menu (not just a link to it). */
@@ -481,9 +501,12 @@ export const COPY = {
    */
   linkedOnboarding: (name: string | null) =>
     `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. Soy un asistente de inteligencia artificial (IA) especializado en cocina: puedo equivocarme y no sustituyo a un profesional sanitario, pero puedo encargarme de las tareas rutinarias para que cocinar vuelva a ser divertido.\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nPara entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber ${countWord(WHATSAPP_ONBOARDING_QUESTIONS.length)} cosas.\n\n${WHATSAPP_ONBOARDING_QUESTIONS.map((q, i) => `*${i + 1}.* ${q}`).join('\n')}`,
-  /** ~10 min after the first menu (signupFollowUps.ts): health data goes to the web, never through WhatsApp (PRO-24). */
+  /**
+   * ~10 min after the first menu (signupFollowUps.ts), when no allergy was
+   * said in the sign-up (PRO-1305: then the one-time permission question goes instead).
+   */
   healthOnWeb: (url: string) =>
-    `Si en casa hay alergias, intolerancias o algo que no podáis o queráis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no me dejan guardar datos de salud.`,
+    `Si en casa hay alergias, intolerancias o algo que no podáis comer, dímelo por aquí y lo apunto (te pediré permiso una sola vez), o añádelo en tu perfil: ${url}`,
   linked: (name: string | null) =>
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   /** Explicit opt-in for proactive messages: right after linking an account; ~10 min after the WhatsApp sign-up's first menu, after the health link (signupFollowUps.ts). */
@@ -833,6 +856,40 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     }
     return
   }
+  // PRO-1305: the allergy permission's buttons (and the withdrawal's) are
+  // answered by the code — no model, also with the monthly cap used up. A
+  // typed «sí» to the question gets the buttons again (only the tap counts).
+  const sendFixed = async (userId: string, m: FlushMessage): Promise<string | null> => {
+    const out = flushMessageOf(m)
+    try {
+      const wamid = await client.sendMessage(msg.from, out)
+      void recordServiceMessageCost(userId)
+      await store.insertOutbound({ phone: msg.from, userId, kind: m.kind, body: outboundBody(out), status: 'sent', wamid })
+      return wamid
+    } catch (err: any) {
+      await store.insertOutbound({ phone: msg.from, userId, kind: m.kind, body: outboundBody(out), status: 'failed', errorMessage: String(err?.message ?? err).slice(0, 500) })
+      return null
+    }
+  }
+  const consentButton = link && msg.kind === 'interactive' ? parseConsentButton(msg.replyId) : null
+  if (link && consentButton && deps.chatAllergies) {
+    const lang = await languageOf()
+    const done = await deps.chatAllergies.answerButton(link.userId, consentButton, { wamid: msg.wamid, title: msg.text, lang }, (m) => sendFixed(link.userId, m))
+    await store.updateInbound(msg.wamid, { status: 'processed', userId: link.userId, body: msg.text, meta: { tools: done.tools } })
+    return
+  }
+  if (link && deps.chatAllergies && msg.kind === 'text' && isTypedAnswer(msg.text)) {
+    const kinds = await store.recentOutboundKinds(msg.from, new Date(now.getTime() - 24 * 60 * 60 * 1000))
+    const asked = kinds.get('health_ask')
+    if (asked && [...kinds.entries()].every(([k, t]) => k === 'health_ask' || t <= asked)) {
+      const again = await deps.chatAllergies.repeatButtons(link.userId, await languageOf())
+      if (again) {
+        await store.updateInbound(msg.wamid, { status: 'processed', userId: link.userId, body: msg.text, meta: { tools: [] } })
+        await sendFixed(link.userId, again)
+        return
+      }
+    }
+  }
   // "No, gracias" only means something as the answer to the opt-in question.
   if (link && msg.text && msg.text.trim().toLowerCase() === OPT_IN_NO.toLowerCase()) {
     const kinds = await store.recentOutboundKinds(msg.from, new Date(now.getTime() - 24 * 60 * 60 * 1000))
@@ -1097,7 +1154,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
     const lateCheckin = lateDinnerCheckinNote(rows, now)
     const chatText = lateCheckin ? `${lateCheckin}\n\n${text}` : text
-    const { usage, ...response } = await deps.chat(userId, chatText, history, {
+    const runChat = () => deps.chat(userId, chatText, history, {
       mode: 'whatsapp',
       ...(images ? { images } : {}),
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
@@ -1107,6 +1164,21 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         if (ack) acker.now(ack)
       },
     })
+    // PRO-1305: an allergy said here is kept out of the menus at once (read by
+    // the code) and whatever Mimo saves or asks goes out after its reply.
+    let allergyOutbox: ChatAllergyOutbox | null = null
+    const turn = deps.chatAllergies
+      ? (() => {
+          const ca = deps.chatAllergies
+          const t = withChatAllergyOutbox({ userId, channel: 'whatsapp', messageId: msg.wamid, quiet: link.onboardingDone === false }, async () => {
+            await ca.beforeTurn(userId, text!).catch((err) => console.warn('[whatsapp] said allergies not read:', err?.message ?? err))
+            return runChat()
+          })
+          allergyOutbox = t.outbox
+          return t.run
+        })()
+      : runChat()
+    const { usage, ...response } = await turn
     // 18-nov: the WhatsApp sign-up (and the first menu it ends with) doesn't
     // count toward Mimo's monthly cap; the cost ledger still sees it.
     let added = 0
@@ -1136,6 +1208,13 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     })
     const reply = await replyMessages(response, userId, deps, lastSentButtons(rows))
     await out('reply', nearCap ? withBudgetWarning(reply) : reply)
+    // PRO-1305: «Apuntado en la ficha de tu casa: …» (or the one-time question), the code's own words.
+    if (allergyOutbox && deps.chatAllergies) {
+      await acker.settle()
+      await deps.chatAllergies.finishTurn(allergyOutbox, await languageOf(), (m) => sendFixed(userId, m)).catch((err) =>
+        console.warn('[whatsapp] allergy notices not sent:', err?.message ?? err),
+      )
+    }
     // 19-nov: a survey always goes as a message of its own (never stuck to the
     // reply nor under another question's buttons).
     if (response.survey) await out('survey', renderPlainText(response.survey))

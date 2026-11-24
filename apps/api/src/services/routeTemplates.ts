@@ -75,6 +75,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/agent/mimo-remoto/:x/respuesta',
   '/agent/mimo-remoto/siguiente',
   '/assistant/:x/chat',
+  '/assistant/:x/health-consent',
   '/auth/forgot',
   '/auth/reset',
   '/billing',

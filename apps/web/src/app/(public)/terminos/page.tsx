@@ -18,7 +18,7 @@ export default function TerminosPage() {
         <h1 className="mb-8 font-display text-4xl text-[#1A1612] md:text-5xl">Términos y condiciones</h1>
 
         <div className="prose-ona space-y-6 text-[#444444] leading-relaxed">
-          <p className="text-sm text-[#777777]">Última actualización: octubre 2026</p>
+          <p className="text-sm text-[#777777]">Última actualización: noviembre 2026</p>
 
           <h2 className="text-h3 mt-10 text-[#1A1A1A]">1. Aceptación de los términos</h2>
           <p>
@@ -58,6 +58,12 @@ export default function TerminosPage() {
             de la salud. Si tienes condiciones médicas, alergias graves u otras necesidades
             dietéticas específicas, consulta a un profesional antes de seguir cualquier plan
             alimentario.
+          </p>
+          <p data-testid="terms-chat-allergies">
+            Si le cuentas a Mimo una alergia, una intolerancia o algo que no podéis comer, y ya nos has
+            dado permiso para guardar tus datos de salud, Mimo lo anota en la ficha de tu casa y te lo dice.
+            Revisa siempre las etiquetas: Mimoia no puede garantizar que una receta o un producto estén libres
+            de alérgenos o trazas.
           </p>
 
           <h2 className="text-h3 mt-10 text-[#1A1A1A]">7. Propiedad intelectual</h2>

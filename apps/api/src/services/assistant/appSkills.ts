@@ -29,7 +29,8 @@ import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
-import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, saidAllergyReply, whatsappHealthReply } from '../healthConsent.js'
+import { deleteChatAllergies, noteChatAllergies } from '../chatAllergySave.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
@@ -1366,13 +1367,33 @@ const updateProfile: SkillDefinition = {
     required: [],
   },
   async handler(p, ctx) {
+    // PRO-1305 (D-1025): allergies said in the chat (web or WhatsApp) go
+    // through the chat's permission: saved with the code's notice, or the
+    // one-time question; removing deletes them. The rest goes on below.
+    const added = p.addRestrictions?.length ? await noteChatAllergies(ctx, p.addRestrictions) : null
+    const removed = p.removeRestrictions?.length ? await deleteChatAllergies(ctx, p.removeRestrictions) : null
+    if (added !== null || removed !== null) {
+      const allergyNote = [added, removed].filter(Boolean).join(' ')
+      const rest = { ...p, addRestrictions: added === null ? p.addRestrictions : undefined, removeRestrictions: removed === null ? p.removeRestrictions : undefined }
+      const more = ['priority', 'sex', 'age', 'weight', 'height', 'activityLevel'].some((k) => rest[k] != null) || !!rest.addRestrictions?.length || !!rest.removeRestrictions?.length
+      if (!more) return text(allergyNote)
+      const out = await updateProfileFields(rest, ctx)
+      return { ...out, summary: `${allergyNote} ${out.summary}` }
+    }
+    return updateProfileFields(p, ctx)
+  },
+}
+
+async function updateProfileFields(p: any, ctx: SkillContext): Promise<SkillResult> {
+  {
     // Over WhatsApp health data is never stored (PRO-24): only `priority` goes through.
+    // PRO-1305: allergies, intolerances and food not eaten for health do (above); physical data and a religious diet still don't.
     if (ctx.channel === 'whatsapp') {
       const health = ['sex', 'age', 'weight', 'height', 'activityLevel'].some((k) => p[k] != null) ||
         !!p.addRestrictions?.length || !!p.removeRestrictions?.length
       if (health) {
         // PRO-1041: an allergy said here goes to the web link, already marked.
-        const reply = p.addRestrictions?.length ? saidAllergyReply(p.addRestrictions, 'whatsapp') : WHATSAPP_HEALTH_DATA_REPLY
+        const reply = p.addRestrictions?.length ? saidAllergyReply(p.addRestrictions, 'whatsapp') : whatsappHealthReply(ctx)
         if (!p.priority) return text(reply)
         await api(ctx)('PUT', `/user/${ctx.userId}`, { priority: p.priority })
         return text(`Hecho: perfil actualizado (priority: ${p.priority}). ${reply}`)
@@ -1410,7 +1431,7 @@ const updateProfile: SkillDefinition = {
     }
     await api(ctx)('PUT', `/user/${ctx.userId}`, body)
     return text(`Hecho: perfil actualizado (${Object.entries(body).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') || 'ninguna' : v}`).join('; ')}).${religionNote}`)
-  },
+  }
 }
 
 const TEMPLATE_DAYS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']

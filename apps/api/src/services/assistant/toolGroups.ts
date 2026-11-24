@@ -117,8 +117,9 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
     tools: [
       'update_household', 'update_profile', 'update_memory', 'invite_to_household', 'share_invite_link',
       'set_whatsapp_notifications', 'get_alerts', 'set_alerts', 'set_alert_time', 'set_cooking_style', 'leave_feedback', 'answer_sean_ellis',
+      'forget_allergy', 'withdraw_health_permission',
     ],
-    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|decepcionad\w*|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas)\b|\bhora del? (?:aviso|menu|resumen|pregunta)|\bcambia\w* (?:la )?hora\b|\ba que hora (?:me |nos )?(?:mandas|escribes|avisas|preguntas|llega)/,
+    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|permiso|datos de salud|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|decepcionad\w*|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas)\b|\bhora del? (?:aviso|menu|resumen|pregunta)|\bcambia\w* (?:la )?hora\b|\ba que hora (?:me |nos )?(?:mandas|escribes|avisas|preguntas|llega)/,
   },
   ficha: {
     label: 'la ficha del hogar (lo que Mimoia sabe y aprende de la casa) y las valoraciones de «Afina tu menu»',

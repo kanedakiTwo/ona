@@ -71,7 +71,7 @@ describe.skipIf(!reachable)('health-data consent (smoke)', () => {
     expect((await api('POST', `/user/${b.userId}/onboarding`, onboarding(true))).status).toBe(200)
     const user = (await api('GET', `/user/${b.userId}`)).json
     expect(user.restrictions).toEqual(['sin gluten'])
-    expect(user.healthConsentVersion).toBe('salud-v2-2026-10')
+    expect(user.healthConsentVersion).toBe('salud-v3-2026-11')
     expect(Date.parse(user.healthConsentAt)).toBeGreaterThan(Date.now() - 120_000)
   })
 

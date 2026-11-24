@@ -108,8 +108,15 @@ export async function saidRestrictionsForMenu(
   return apply.length > 0 ? { apply, link: healthConsentLink(apply) } : null
 }
 
-/** The line the menu tools add for Mimo when they applied said allergies. */
+/**
+ * The line the menu tools add for Mimo when they applied said allergies.
+ * PRO-1305: they stay out of the household's menus for 30 days
+ * (`chatAllergies`, `said_allergies_pending`); saving them is the chat's
+ * permission flow (the code asks, once), never a link from Mimo.
+ */
 export function saidRestrictionsLine(said: SaidRestrictions, channel?: string): string {
-  const where = channel === 'whatsapp' ? 'Por WhatsApp no se guardan datos de salud' : 'Sin su consentimiento no se guardan'
-  return `Aplicado solo a este menu (no esta guardado): ${said.apply.join(', ')}. ${where}: diselo en una linea y mandale este enlace para guardarlo en la web, con su permiso (ya va marcado): ${said.link}`
+  if (channel === 'telegram') {
+    return `Aplicado a este menu (no esta guardado): ${said.apply.join(', ')}. Por aqui no se guardan datos de salud: diselo en una linea y mandale este enlace para guardarlo en la web, con su permiso (ya va marcado): ${said.link}`
+  }
+  return `Aplicado a este menu y a los de los proximos 30 dias, pero no esta en su ficha: ${said.apply.join(', ')}. Si es una alergia o intolerancia suya o de alguien de la casa, guardala con update_profile (o note_ficha_fact restrictions con person): el sistema guarda con su permiso o se lo pide. No mandes enlaces ni pidas tu el permiso.`
 }

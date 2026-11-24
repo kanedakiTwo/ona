@@ -38,6 +38,22 @@ export interface MimoMessage {
   uiHint?: string
   /** PRO-85: recipes this reply is about; their names render as links to their page. */
   recipes?: RecipeRef[]
+  /** PRO-1305: a fixed allergy notice's buttons (permission, withdrawal); answered via `/health-consent`. */
+  buttons?: HealthButton[]
+  /** Set once one of `buttons` is tapped, so it can't be answered twice. */
+  answered?: boolean
+}
+
+export interface HealthButton {
+  id: string
+  title: string
+}
+
+/** PRO-1305: fixed messages the code (not the model) writes about allergies said in the chat. */
+interface HealthMessage {
+  id: string
+  text: string
+  buttons?: HealthButton[]
 }
 
 interface AssistantResponse {
@@ -46,6 +62,7 @@ interface AssistantResponse {
   data?: any
   uiHint?: string
   actionTaken?: boolean
+  healthMessages?: HealthMessage[]
 }
 
 export type MimoStatus = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'
@@ -69,6 +86,8 @@ interface MimoContextValue {
   status: MimoStatus
   error: string | null
   send: (text: string) => Promise<void>
+  /** Answer an allergy notice's button; throws (and leaves it answerable) if it couldn't be saved. */
+  answerButton: (messageId: string, button: HealthButton) => Promise<void>
   /** Tap the mic: start listening, or stop and send what was said. */
   toggleListening: () => void
   micLevel: number
@@ -206,6 +225,44 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   const append = (m: Omit<MimoMessage, 'id'>) =>
     setMessages((prev) => [...prev, { ...m, id: `${m.role[0]}-${Date.now()}-${prev.length}` }].slice(-MAX_KEPT))
 
+  /** The code's allergy notices, after Mimo's reply and in order. */
+  const appendHealth = (list: HealthMessage[] | undefined) => {
+    if (!list?.length) return
+    setMessages((prev) =>
+      [
+        ...prev,
+        ...list.map((h, i) => ({
+          id: `h-${h.id || `${Date.now()}-${prev.length + i}`}`,
+          role: 'assistant' as const,
+          content: h.text,
+          ...(h.buttons?.length ? { buttons: h.buttons } : {}),
+        })),
+      ].slice(-MAX_KEPT),
+    )
+  }
+
+  const markAnswered = (messageId: string, answered: boolean) =>
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, answered } : m)))
+
+  const answerButton = useCallback(
+    async (messageId: string, button: HealthButton) => {
+      if (!userId) return
+      markAnswered(messageId, true)
+      try {
+        const res = await api.post<{ healthMessages?: HealthMessage[] }>(`/assistant/${userId}/health-consent`, {
+          buttonId: button.id,
+          title: button.title,
+        })
+        appendHealth(res.healthMessages)
+        queryClient.invalidateQueries()
+      } catch (err) {
+        markAnswered(messageId, false)
+        throw err
+      }
+    },
+    [userId, queryClient],
+  )
+
   const listenRef = useRef<() => void>(() => {})
 
   /** One turn with the assistant. `spoken` = it came from the mic (short spoken reply). */
@@ -230,6 +287,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         reply = res.message || 'No he podido responder.'
         const recipes = recipeRefsFrom(res.uiHint, res.data)
         append({ role: 'assistant', content: reply, uiHint: res.uiHint, ...(recipes.length ? { recipes } : {}) })
+        appendHealth(res.healthMessages)
 
         // Same dispatchers the cook mode listens to.
         const d = res.data
@@ -374,6 +432,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
       status,
       error,
       send,
+      answerButton,
       toggleListening,
       micLevel: recorder.level,
       canListen,
@@ -394,7 +453,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         void voice.speak('Hola, soy Mimo. Así sueno con esta voz. ¿Qué cocinamos hoy?', key)
       },
     }),
-    [isOpen, open, close, draft, clearDraft, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
+    [isOpen, open, close, draft, clearDraft, messages, status, error, send, answerButton, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
   )
 
   // PRO-122: also out of the way while a sheet is open or the keyboard is up.

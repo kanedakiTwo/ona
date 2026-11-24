@@ -20,6 +20,16 @@ import { generatedWeeksOf } from '../services/menuWeek.js'
 import { menuCodeReply, recognizeCodeIntent, stepCodeReply } from '../services/assistant/codeReply.js'
 import { channelOfMode, trackEvent } from '../services/usageEvents.js'
 import type { AssistantResponse } from '../services/assistant/types.js'
+import { randomUUID } from 'node:crypto'
+import { answerConsentButton, finishChatTurn, parseConsentButton, withChatAllergyOutbox } from '../services/chatAllergies.js'
+import { answerDeps, noteSaidByCode } from '../services/chatAllergySave.js'
+
+/** PRO-1305: a fixed message of the allergy permission, shown under Mimo's reply (with its buttons). */
+interface WebHealthMessage {
+  id: string
+  text: string
+  buttons?: { id: string; title: string }[]
+}
 
 /** Web modes: the companion's chat and voice, and the voice onboarding. WhatsApp has its own route. */
 const WEB_MODES: AssistantMode[] = ['text', 'voice', 'onboarding']
@@ -99,7 +109,34 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
 
     const startedAt = Date.now()
-    const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
+    // PRO-1305: an allergy said here is kept out of the menus at once and
+    // what Mimo saves or asks (the code's own words) goes with the reply.
+    const chatAllergyMode = mode === 'text' || mode === 'voice'
+    const turn = chatAllergyMode
+      ? withChatAllergyOutbox({ userId, channel: 'web', messageId: randomUUID() }, async () => {
+          await noteSaidByCode(userId, message).catch((e) => console.warn('[assistant] said allergies not read (continuing):', e))
+          return chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
+        })
+      : null
+    const { usage, ...response }: Awaited<ReturnType<typeof chat>> & { healthMessages?: WebHealthMessage[] } = turn
+      ? await turn.run
+      : await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
+    if (turn) {
+      const healthMessages: WebHealthMessage[] = []
+      try {
+        await finishChatTurn(turn.outbox, {
+          lang: 'es',
+          send: async (m) => {
+            const id = randomUUID()
+            healthMessages.push({ id, text: m.text, ...(m.buttons ? { buttons: m.buttons } : {}) })
+            return id
+          },
+        })
+      } catch (e) {
+        console.warn('[assistant] allergy notices failed (continuing):', e)
+      }
+      if (healthMessages.length) response.healthMessages = healthMessages
+    }
 
     // «Efecto bola de nieve» (PRO-170): after generating a menu in the
     // household's first generated weeks, the reply opens with the same line
@@ -154,6 +191,36 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
       res.json({ message: API_SALDO_REPLY, actionTaken: false, corrections: [API_SALDO_TYPE] })
       return
     }
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+/**
+ * PRO-1305: a button of the allergy permission tapped in the web chat («Sí,
+ * doy mi permiso» / «No, gracias», the other adult's, the withdrawal's). The
+ * code records it and answers with fixed texts, no model.
+ */
+router.post('/assistant/:userId/health-consent', async (req: AuthRequest, res) => {
+  const userId = String(req.params.userId)
+  if (userId !== req.userId) {
+    res.status(403).json({ error: 'No puedes contestar por otro usuario.' })
+    return
+  }
+  const button = parseConsentButton(typeof req.body?.buttonId === 'string' ? req.body.buttonId : null)
+  if (!button) {
+    res.status(400).json({ error: 'Botón no válido' })
+    return
+  }
+  try {
+    const healthMessages: WebHealthMessage[] = []
+    await answerConsentButton(userId, button, { channel: 'web', wamid: null, title: typeof req.body?.title === 'string' ? req.body.title.slice(0, 40) : null, lang: 'es' }, answerDeps(userId, 'web', async (m) => {
+      const id = randomUUID()
+      healthMessages.push({ id, text: m.text, ...(m.buttons ? { buttons: m.buttons } : {}) })
+      return id
+    }))
+    res.json({ healthMessages })
+  } catch (err: any) {
+    console.error('Health consent button error:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

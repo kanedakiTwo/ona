@@ -1,4 +1,6 @@
 import { env } from '../../config/env.js'
+import { answerConsentButton, finishChatTurn, repeatAskButtons } from '../chatAllergies.js'
+import { answerDeps, noteSaidByCode } from '../chatAllergySave.js'
 import { claimOptInReoffer, markOptInDeclined } from './optInOffer.js'
 import { db } from '../../db/connection.js'
 import { and, desc, eq, inArray } from 'drizzle-orm'
@@ -134,6 +136,13 @@ export function buildInboundDeps(): InboundDeps {
     // 18-nov: a tapped «¿hiciste la cena?» button, recorded without the model.
     recordDinnerCheckin: (userId, answer, checkinAt) => recordDinnerCheckinAnswer(userId, answer, checkinAt),
     language: languageForPhone,
+    // PRO-1305: the allergies said in the chat (chatAllergies.ts).
+    chatAllergies: {
+      beforeTurn: (userId, text) => noteSaidByCode(userId, text),
+      answerButton: (userId, button, tap, send) => answerConsentButton(userId, button, { channel: 'whatsapp', ...tap }, answerDeps(userId, 'whatsapp', send)),
+      repeatButtons: (userId, lang) => repeatAskButtons(userId, lang),
+      finishTurn: (outbox, lang, send) => finishChatTurn(outbox, { lang, send }),
+    },
     setAvisoKind,
     saveOptOutReason,
     isPaused: (userId) => isOnFreePlan(userId),

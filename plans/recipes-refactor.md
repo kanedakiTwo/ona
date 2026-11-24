@@ -94,7 +94,7 @@ Rebuild the recipe data model so recipes are actually cookable: explicit `servin
     - `POST /recipes` and `PUT /recipes/:id`: validate body via shared zod schema, run `recipeLint`, on `errors` return `422 { errors, warnings }`, on success persist + recompute `nutritionPerServing` and `allergens` via aggregator + recompute `totalTime` (sum of `step.durationMin` if all steps have it, else `prepTime + cookTime`)
   + Edit [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) to emit the new shape and to pipe through `recipeLint` before persisting; on lint failure, return the issues to the client so the user can correct them
   + Done when: `curl /recipes/<id>?servings=4` returns scaled quantities; `PUT` with a known-bad body returns `422` with the relevant lint codes; `nutritionPerServing` is non-empty on the returned object
-  + See specs: ([spec: API Endpoints](../specs/recipes.md#api-endpoints)) ([spec: Quantity Scaling](../specs/recipes.md#quantity-scaling)) ([spec: Lint Rules](../specs/recipe-quality.md#lint-rules))
+  + See specs: ([spec: API Endpoints](../specs/recipes-editar.md#api-endpoints)) ([spec: Quantity Scaling](../specs/recipes.md#quantity-scaling)) ([spec: Lint Rules](../specs/recipe-quality.md#lint-rules))
 
 - [ ] Build the `ServingsScaler` component and wire it into the recipe detail page
   + Create [apps/web/src/components/recipes/ServingsScaler.tsx](../apps/web/src/components/recipes/ServingsScaler.tsx): –/+ control bound to a local state, defaulting to the user's `householdSize` (parsed from the profile values `solo`/`pair`/`family-no-kids`/`family-with-kids` → 1/2/3/4) or to `recipe.servings` if no household is set. Emits the chosen value to the parent
@@ -106,7 +106,7 @@ Rebuild the recipe data model so recipes are actually cookable: explicit `servin
     - Render new sections: `Equipo` (equipment), `Alérgenos` (badges), `Nutrición por ración` (kcal + macros), `Notas` / `Trucos` / `Sustituciones` / `Conservación` when present
     - Use `totalTime` and `activeTime` in the meta row when present
   + Done when: the recipe detail page for a regenerated recipe shows correct grouped ingredients, scales when the scaler changes, displays nutrition + allergens, and renders rich steps. Verified by opening `http://localhost:3000/recipes/<id>` for at least 5 different recipes (with and without sections)
-  + See specs: ([spec: User Capabilities](../specs/recipes.md#user-capabilities)) ([spec: Display Constraints](../specs/recipes.md#display-constraints)) ([spec: Quantity Scaling](../specs/recipes.md#quantity-scaling))
+  + See specs: ([spec: User Capabilities](../specs/recipes-catalogo.md#user-capabilities)) ([spec: Display Constraints](../specs/recipes-editar.md#display-constraints)) ([spec: Quantity Scaling](../specs/recipes.md#quantity-scaling))
 
 - [ ] Sweep the frontend for `prepTime`, label, and mojibake bugs
   + In [apps/web/src/app/recipes/page.tsx](../apps/web/src/app/recipes/page.tsx) line ~302, change `{recipe.prepTime && (...)}` to `{recipe.prepTime ? (...) : null}` (or `recipe.prepTime > 0`); same fix in [apps/web/src/components/recipes/RecipeCard.tsx](../apps/web/src/components/recipes/RecipeCard.tsx) and any other place where `prepTime` is rendered conditionally with `&&`
@@ -114,7 +114,7 @@ Rebuild the recipe data model so recipes are actually cookable: explicit `servin
   + Centralize `MEAL_LABELS`, `SEASON_LABELS`, and `DIFFICULTY_LABELS` in [apps/web/src/lib/labels.ts](../apps/web/src/lib/labels.ts) (new); replace inline maps in `recipes/page.tsx`, `recipes/[id]/page.tsx`, `RecipeCard.tsx`, and the menu components with the shared map
   + Replace mojibake fallbacks: `Otono` → `Otoño`, `Anadir` → `Añadir`, `Preparacion` → `Preparación`, `Albondigas` → `Albóndigas`, `compartida` filtered out (handled below). Verify globals.css loads a font with full Latin coverage; if any layout still strips accents, fix at the source
   + Done when: catalog and menu surfaces show no `0` next to the clock icon for `prepTime: 0`, no English meal label leaks (`lunch`, `dinner`), all Spanish accented characters render correctly
-  + See specs: ([spec: Display Constraints](../specs/recipes.md#display-constraints)) ([spec: Tag Visibility](../specs/recipes.md#tag-visibility))
+  + See specs: ([spec: Display Constraints](../specs/recipes-editar.md#display-constraints)) ([spec: Tag Visibility](../specs/recipes.md#tag-visibility))
 
 - [ ] Filter `internalTags` out of every public surface and remove duplicate tags
   + Add a `publicTags(recipe)` helper in [apps/web/src/lib/recipeView.ts](../apps/web/src/lib/recipeView.ts) (new) that returns `recipe.tags` filtered against meal labels, season labels, difficulty, and `recipe.internalTags`
@@ -131,7 +131,7 @@ Rebuild the recipe data model so recipes are actually cookable: explicit `servin
     - Group items by `aisle` (fallback `otros`)
   + Add `POST /shopping-list/:listId/regenerate` to [apps/api/src/routes/shopping.ts](../apps/api/src/routes/shopping.ts): wipes the existing list and rebuilds from the menu (uses the aggregator)
   + Done when: a generated list for a sample 7-day menu contains correct totals (e.g. cebolla in grams, huevos in units), grouped under `produce` / `proteinas` / `lacteos` / `despensa`, with no duplicate lines for the same ingredient
-  + See specs: ([spec: Aggregation](../specs/shopping.md#aggregation)) ([spec: Item Model](../specs/shopping.md#item-model))
+  + See specs: ([spec: Aggregation](../specs/shopping-suma.md#aggregation)) ([spec: Item Model](../specs/shopping.md#item-model))
 
 - [ ] Update the shopping list UI for aisle grouping, real units, and regenerate
   + Edit [apps/web/src/components/shopping/ShoppingList.tsx](../apps/web/src/components/shopping/ShoppingList.tsx) to render items grouped by `aisle` with section headers; show the new units (`u`, `cda`) verbatim, no fallback to `g`
@@ -145,7 +145,7 @@ Rebuild the recipe data model so recipes are actually cookable: explicit `servin
   + Edit [apps/api/src/services/menuGenerator.ts](../apps/api/src/services/menuGenerator.ts): score candidates using `recipe.nutritionPerServing` × `householdSize / recipe.servings`. Recipes whose `nutritionPerServing` is empty (unmapped) get a fitness penalty so the algorithm prefers fully mapped recipes. Drop any duplicate computation from [apps/api/src/services/nutrientCalculator.ts](../apps/api/src/services/nutrientCalculator.ts) where now obsoleted by the cached field
   + Edit [apps/api/src/services/recipeMatcher.ts](../apps/api/src/services/recipeMatcher.ts) only if the matcher needs to expose the nutrition profile to the generator
   + Done when: `POST /menu/generate` returns a 7-day menu where the sum of `nutritionPerServing × scale` across slots is within ±10 % of the user's calorie target, verified manually for two profiles
-  + See spec: ([spec: Generation Algorithm](../specs/menus.md#generation-algorithm))
+  + See spec: ([spec: Generation Algorithm](../specs/menus-generacion.md#generation-algorithm))
 
 - [ ] Build the cooking mode route, shell, and supporting hooks
   + Create [apps/web/src/app/recipes/[id]/cook/page.tsx](../apps/web/src/app/recipes/[id]/cook/page.tsx)

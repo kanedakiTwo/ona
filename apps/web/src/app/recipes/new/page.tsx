@@ -309,7 +309,7 @@ function NewRecipePageInner() {
 
         {photoExtracted && (
           <div className="mt-4 rounded-2xl border border-border-soft bg-cream-deep px-4 py-3 text-[14px] text-ink">
-            Receta extraida de la foto. Revisa los datos y ajusta lo que sea
+            Receta extraída de la foto. Revisa los datos y ajusta lo que sea
             necesario antes de guardar.
           </div>
         )}

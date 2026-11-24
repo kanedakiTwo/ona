@@ -37,6 +37,7 @@ import { TOOL_GROUPS, selectToolGroups } from '../src/services/assistant/toolGro
 import { HEALTH_EVAL_CASES, healthReplyProblems } from '../src/services/assistant/healthGuard.js'
 import { MIMO_EVAL_CASES, mimoReplyProblems } from '../src/services/assistant/mimoEvalCases.js'
 import { CLAIM_EVAL_CASES, claimReplyProblems } from '../src/services/assistant/mimoClaimEvalCases.js'
+import { CONDUCT_EVAL_CASES, conductReplyProblems } from '../src/services/assistant/mimoConductEvalCases.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
@@ -71,6 +72,8 @@ const cases: EvalCase[] = [
   ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => mimoReplyProblems(reply, c, tools, trace) })),
   // PRO-349: «Hecho» only when a tool confirmed it.
   ...CLAIM_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => claimReplyProblems(reply, c, tools, trace) })),
+  // PRO-1297: acts instead of asking, reads before it says, no tail-ends.
+  ...CONDUCT_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[]) => conductReplyProblems(reply, c, tools) })),
 ]
 for (const c of cases.filter((x) => !only || x.id === only)) {
   // `primer-menu`: the WhatsApp sign-up's turn (its prompt block and complete_onboarding).

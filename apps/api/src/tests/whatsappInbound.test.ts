@@ -20,6 +20,7 @@ import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo
 import { captionWithoutInvite, signupCaption, signupWords } from '../services/whatsapp/signupReply.js'
 import { COALESCE_WINDOW_MS } from '../services/whatsapp/coalesce.js'
 import { checkinReplyIdOfEmoji } from '../services/whatsapp/checkinButtons.js'
+import { menuCodeReply, recognizeCodeIntent, type RunSkill } from '../services/assistant/codeReply.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -1536,5 +1537,91 @@ describe('enqueueInbound — texts sent one after another are one turn (19-nov)'
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('processInbound — PRO-1292: el menú lo lee el código, sin modelo', () => {
+  const recipe = (name: string) => ({ kind: 'recipe', recipeId: `r-${name}`, recipeName: name })
+  const DAY = { lunch: { dishes: [recipe('Lentejas')] }, dinner: { dishes: [recipe('Pollo al horno')] } }
+  const JPEG = Buffer.from('jpeg')
+  // The real recognizer and reply; only the menu tools are fakes.
+  const codeReply = (runSkill: RunSkill): InboundDeps['codeReply'] => async (userId, text) => {
+    const intent = recognizeCodeIntent(text)
+    if (intent?.kind !== 'ver_menu') return null
+    const response = await menuCodeReply(intent, { userId, db: {} }, { runSkill, now: NOW })
+    return response ? { kind: intent.kind, response } : null
+  }
+  const daySkill: RunSkill = async () => ({
+    data: { date: '2026-10-06', weekStart: '2026-10-05', menuId: 'm-1', day: DAY },
+    summary: 'Menu del martes 6 de octubre: comida: Lentejas; cena: Pollo al horno',
+    uiHint: 'menu',
+  })
+
+  it('«¿Qué hay hoy?»: una línea por comida, sin enlaces, sin modelo ni coste, y el rastro para ⟦hecho: …⟧', async () => {
+    const t = setup({ extra: { codeReply: codeReply(daySkill) } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    // No model turn → nothing metered: no chat row in cost_events, nothing toward the monthly cap.
+    expect(t.recordUsage).not.toHaveBeenCalled()
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([{ type: 'text', text: 'Hoy, martes 6:\n- Comida: Lentejas\n- Cena: Pollo al horno' }])
+    const update = t.inboundUpdates.at(-1)!
+    expect(update).toMatchObject({ status: 'processed', body: '¿Qué hay hoy?', meta: { tools: ['get_todays_menu'], codeReply: 'ver_menu' } })
+    const history = buildChatHistory(
+      [
+        { direction: 'in', body: '¿Qué hay hoy?', status: 'processed', createdAt: new Date(NOW.getTime() - 2000), meta: update.meta },
+        { direction: 'out', kind: 'reply', body: t.outbound[0].body, status: 'sent', createdAt: new Date(NOW.getTime() - 1000) },
+      ],
+      NOW,
+    )
+    expect(history[1].content).toBe(
+      '⟦hecho: get_todays_menu {"day":"hoy"} → Menu del martes 6 de octubre: comida: Lentejas; cena: Pollo al horno⟧\nHoy, martes 6:\n- Comida: Lentejas\n- Cena: Pollo al horno',
+    )
+  })
+
+  it('también con el tope del mes agotado (no gasta)', async () => {
+    const t = setup({ budgetExceeded: true, extra: { codeReply: codeReply(daySkill) } })
+    await processInbound(msg({ text: 'qué cenamos hoy' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: 'Hoy, martes 6:\n- Cena: Pollo al horno' }])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it('«mándame el menú»: la imagen de la semana, como siempre', async () => {
+    const days = [DAY, {}, {}, {}, {}, {}, {}]
+    const weekSkill: RunSkill = async () => ({ data: { menuId: 'm-1', weekStart: '2026-10-05', days, skippedDays: [] }, summary: 'Menu de la semana…', uiHint: 'menu' })
+    const menuImage = vi.fn(async () => ({ jpeg: JPEG, caption: 'Tu menú de esta semana 🍽️\nona.test/menu' }))
+    const t = setup({ menuImage, menuDigest: async () => 'digest', extra: { codeReply: codeReply(weekSkill) } })
+    await processInbound(msg({ text: 'Mándame el menú' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-1', 'viewing')
+    expect(t.sent).toHaveLength(1)
+    expect(t.sent[0]).toMatchObject({ type: 'image', text: 'Tu menú de esta semana 🍽️\nona.test/menu' })
+  })
+
+  it('«¿qué hay hoy? y cámbiame el jueves» va al modelo, como hoy', async () => {
+    const runSkill = vi.fn(daySkill)
+    const t = setup({ extra: { codeReply: codeReply(runSkill) } })
+    await processInbound(msg({ text: '¿qué hay hoy? y cámbiame el jueves' }), t.deps)
+    expect(runSkill).not.toHaveBeenCalled()
+    expect(t.chat).toHaveBeenCalledOnce()
+    expect(t.recordUsage).toHaveBeenCalledOnce()
+  })
+
+  it('sin menú guardado contesta el modelo (puede ofrecer hacerlo)', async () => {
+    const t = setup({ extra: { codeReply: codeReply(async () => ({ data: null, summary: 'No hay menu', uiHint: 'text' })) } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), t.deps)
+    expect(t.chat).toHaveBeenCalledOnce()
+  })
+
+  it('en el alta por WhatsApp, y a quien escribe en inglés, contesta el modelo', async () => {
+    const runSkill = vi.fn(daySkill)
+    const signup = setup({ link: { ...LINK, onboardingDone: false }, extra: { codeReply: codeReply(runSkill) } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), signup.deps)
+    expect(signup.chat).toHaveBeenCalledOnce()
+    expect(runSkill).not.toHaveBeenCalled()
+    const english = setup({ extra: { codeReply: codeReply(runSkill), language: async () => 'en' } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), english.deps)
+    expect(english.chat).toHaveBeenCalledOnce()
+    expect(english.sent.every((m) => m.type !== 'text' || !m.text.startsWith('Hoy, '))).toBe(true)
   })
 })

@@ -17,6 +17,7 @@ import { getMemoryForUser } from '../userMemoryStore.js'
 import { regionFromMemory } from '../menuHolidays.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
+import { menuCodeReply, recognizeCodeIntent } from '../assistant/codeReply.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
 import { isSttConfigured, transcribeAudio } from '../stt.js'
 import { importRecipeFromImage, setRecipeSourceUrl } from '../recipeImport.js'
@@ -123,6 +124,13 @@ export function buildInboundDeps(): InboundDeps {
       return { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) }
     },
     recordUsage: (userId, usage, opts) => recordAdvisorUsage(userId, usage, db, undefined, opts),
+    // PRO-1292: the menu read by the code, with the same tools as Mimo.
+    codeReply: async (userId, text) => {
+      const intent = recognizeCodeIntent(text)
+      if (intent?.kind !== 'ver_menu') return null
+      const response = await menuCodeReply(intent, { userId, db, channel: 'whatsapp' })
+      return response ? { kind: intent.kind, response } : null
+    },
     // 18-nov: a tapped «¿hiciste la cena?» button, recorded without the model.
     recordDinnerCheckin: (userId, answer, checkinAt) => recordDinnerCheckinAnswer(userId, answer, checkinAt),
     language: languageForPhone,

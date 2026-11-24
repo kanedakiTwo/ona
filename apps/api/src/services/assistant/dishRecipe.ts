@@ -28,7 +28,7 @@ export interface NewRecipeParam {
 export const NEW_RECIPE_PROP = {
   type: 'object',
   description:
-    'Solo para un plato de casa que puede no estar en sus recetas ni en el catalogo (pizza casera, pollo empanado, tortilla francesa…): una version sencilla y razonable que te inventas tu, con raciones, ingredientes con cantidades y pasos. Si el plato no existe, lo guardo como receta del hogar (raciones e ingredientes estimados) y la pongo en el menu, asi sus ingredientes salen en la lista de la compra. Si ya existe, se ignora.',
+    'Solo para un plato de casa que puede no estar en sus recetas ni en el catalogo (pizza casera, pollo empanado, tortilla francesa…): una version sencilla y razonable que te inventas tu, con raciones, ingredientes con cantidades y pasos. Si el plato no existe, lo guardo como receta del hogar (raciones e ingredientes estimados) y la pongo en el menu, asi sus ingredientes salen en la lista de la compra. Si ya existe, se ignora. Nunca para lo que ya han comido o improvisan para hoy ("al final cenamos tortilla"): eso va como texto con mark_meal_eaten (dish) o set_meal_note.',
   properties: {
     servings: { type: 'number', description: 'Raciones de la receta (por defecto 2)' },
     ingredients: {

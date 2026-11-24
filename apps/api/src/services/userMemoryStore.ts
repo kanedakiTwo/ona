@@ -176,23 +176,26 @@ export async function setMemoryFact(
  * `update_memory` skill. Each fact is validated independently; the first
  * failure rolls back the whole batch so the user never ends up with a
  * half-written memory.
+ *
+ * A fact may carry its own `source` (PRO-201: the diet a person tells Mimo is
+ * theirs, `manual`, in a batch Mimo otherwise writes as `inferred`).
  */
 export async function setMemoryBatch(
   userId: string,
-  facts: Array<{ key: string; value: unknown; confidence?: number }>,
+  facts: Array<{ key: string; value: unknown; confidence?: number; source?: MemorySource }>,
   source: MemorySource = 'manual',
   opts?: MemoryWriteOptions,
 ): Promise<UserMemory> {
   // Validate everything first — fail fast outside the transaction so the
   // 400 includes the offending key.
-  const validated: Array<{ key: MemoryKey; value: unknown; confidence: number }> = []
+  const validated: Array<{ key: MemoryKey; value: unknown; confidence: number; source: MemorySource }> = []
   for (const f of facts) {
     const v = validateMemoryFactValue(f.key, f.value)
     if (!v.ok) {
       if (v.reason.startsWith('unknown')) throw new UnknownMemoryKeyError(f.key)
       throw new MemoryValueValidationError(f.key, v.reason)
     }
-    validated.push({ key: v.key, value: v.value, confidence: f.confidence ?? 1 })
+    validated.push({ key: v.key, value: v.value, confidence: f.confidence ?? 1, source: f.source ?? source })
   }
   const consent = await assertHealthConsentFor(userId, validated)
   const signal = signalFor(source, opts)
@@ -205,20 +208,20 @@ export async function setMemoryBatch(
           userId,
           key: f.key,
           value: f.value as object,
-          source,
+          source: f.source,
           confidence: f.confidence,
         })
         .onConflictDoUpdate({
           target: [userMemories.userId, userMemories.key],
           set: {
             value: f.value as object,
-            source,
+            source: f.source,
             confidence: f.confidence,
             updatedAt: new Date(),
           },
         })
         .returning({ id: userMemories.id })
-      await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: f.key, value: f.value, source, confidence: f.confidence, signal, hasHealthConsent: consent })
+      await mirrorMemoryWrite(tx, { userId, memoryId: row.id, key: f.key, value: f.value, source: f.source, confidence: f.confidence, signal, hasHealthConsent: consent })
     }
     await syncHouseholdCounts(tx, userId, validated)
   })

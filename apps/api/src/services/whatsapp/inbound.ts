@@ -69,7 +69,7 @@ export interface InboundDeps {
         body?: string | null
         userId?: string | null
         errorMessage?: string | null
-        meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: ToolTrace[] } & PhotoSourceMeta
+        meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: ToolTrace[]; /** PRO-1292: answered by the code (its kind), no model. */ codeReply?: string } & PhotoSourceMeta
       },
     ) => Promise<void>
     insertOutbound: (row: {
@@ -130,6 +130,12 @@ export interface InboundDeps {
    * dinner recipe to record (the tap goes to Mimo). Absent → always Mimo.
    */
   recordDinnerCheckin?: (userId: string, answer: CheckinAnswer, checkinAt: Date) => Promise<{ name: string } | null>
+  /**
+   * PRO-1292: a message the code answers without the model («¿qué hay hoy?»,
+   * «mándame el menú»): the reply, shaped like a model turn, and its kind for
+   * `mimo_code_reply`. Null → Mimo answers. Absent → always Mimo.
+   */
+  codeReply?: (userId: string, text: string) => Promise<{ kind: string; response: AssistantResponse } | null>
   /** 19-nov: the language this number writes in, for the fixed lines (language.ts). Absent → Spanish. */
   language?: (phone: string) => Promise<Lang>
   /** 19-nov: «¿Te sigo avisando de…?» answered (fatigue.ts): the kind on or off. Absent → Mimo answers. */
@@ -979,6 +985,33 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // ── 1d. The other avisos' buttons answered without the model (19-nov):
     // «Lo hago» under «hora de cocinar», «¿Te sigo avisando…?» and why BAJA.
     if (msg.kind === 'interactive' && (await answerAvisoButton(msg, userId, deps, languageOf, outText))) return
+
+    // ── 1e. PRO-1292: «¿qué hay hoy?», «mándame el menú»… read by the code
+    // (no model, no cost, also with the monthly cap used up). Not in the
+    // sign-up, nor for whoever writes in English (the reply is Spanish).
+    if (msg.kind === 'text' && link.onboardingDone !== false && deps.codeReply && msg.text?.trim()) {
+      const text = msg.text.trim()
+      const coded = await deps.codeReply(userId, text).catch((err) => {
+        console.warn('[whatsapp] code reply failed (Mimo answers):', err?.message ?? err)
+        return null
+      })
+      if (coded && (await languageOf()) === 'es') {
+        const { response } = coded
+        await store.updateInbound(msg.wamid, {
+          status: 'processed',
+          userId,
+          body: text,
+          // Same trace as a model turn: the next turns see ⟦hecho: …⟧.
+          meta: { tools: response.toolsUsed ?? [], toolTrace: response.toolTrace ?? [], codeReply: coded.kind, ms: deps.now().getTime() - now.getTime() },
+        })
+        trackEvent('mimo_message', { userId, channel: 'whatsapp', props: { kind: 'text' } })
+        trackEvent('mimo_code_reply', { userId, channel: 'whatsapp', props: { kind: coded.kind } })
+        // One day's menu: its lines, no links nobody asked for. The week: the picture, as always.
+        const reply = response.toolsUsed?.includes('get_weekly_menu') ? response : { ...response, uiHint: undefined }
+        await out('reply', await replyMessages(reply, userId, deps, null))
+        return
+      }
+    }
 
     // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
     // transcription, photo extraction and the chat itself.

@@ -261,6 +261,12 @@ function stepMentionsIngredient(
   cat: CatalogIndex['rows'][number],
 ): boolean {
   if (cat.normName.length === 0) return false
+  // «Salpimentar» names salt and pepper at once, and «sazonar» the salt (24-nov:
+  // a home recipe with «Salpimentar al gusto» got «"sal" no se menciona en
+  // ningún paso» and the same for its pepper).
+  const seasoned = cat.nameTokens[0]
+  if ((seasoned === 'sal' || seasoned === 'pimienta') && textTokens.some((t) => t.startsWith('salpim'))) return true
+  if (seasoned === 'sal' && textTokens.some((t) => t.startsWith('sazon'))) return true
   // Full-name substring at word boundaries (cheap and precise; avoids "sal"
   // matching inside "saltea")
   if (cat.nameTokens.length >= 2 && containsWholePhrase(fullNormalizedText, cat.normName)) return true
@@ -690,6 +696,9 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
   if (recipe.servings && recipe.servings >= 1) {
     ingredients.forEach((ing, i) => {
       if (!ML_OR_G.has(ing.unit)) return
+      // No amount given («mantequilla al gusto» comes in as 0 g): nothing to
+      // measure against the range (24-nov: «0 g por ración, fuera del rango razonable»).
+      if (!(ing.quantity > 0)) return
       const cat = catalog.byId.get(ing.ingredientId)
       // Frying/confit fat: the range applies to what is eaten, not to the pan,
       // and only its ceiling (a small fry absorbs less than the usual minimum).

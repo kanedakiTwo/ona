@@ -25,6 +25,7 @@ describe('addAnthropicUsage', () => {
       inputTokens: 1000,
       outputTokens: 200,
       cacheWriteTokens: 0,
+      cacheWrite1hTokens: 0,
       cacheReadTokens: 0,
     })
   })
@@ -46,6 +47,7 @@ describe('addAnthropicUsage', () => {
       inputTokens: 3400,
       outputTokens: 400,
       cacheWriteTokens: 5000,
+      cacheWrite1hTokens: 0,
       cacheReadTokens: 5000,
     })
   })

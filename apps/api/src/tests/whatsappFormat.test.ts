@@ -205,8 +205,22 @@ describe('buildChatHistory', () => {
   it('caps at the last N messages', () => {
     const rows: HistoryRow[] = []
     for (let i = 0; i < 30; i += 1) rows.push(row(i % 2 === 0 ? 'in' : 'out', `m${i}`, 100 - i))
-    const h = buildChatHistory(rows, now, { maxMessages: 4 })
+    const h = buildChatHistory(rows, now, { maxMessages: 4, trimStep: 1 })
     expect(h.map((m) => m.content)).toEqual(['m26', 'm27', 'm28', 'm29'])
+  })
+
+  it('drops the oldest 10 at a time, so the start holds for several turns (PRO-393: prompt cache)', () => {
+    const rows = (n: number) => Array.from({ length: n }, (_, i) => row(i % 2 === 0 ? 'in' : 'out', `m${i}`, 100 - i))
+    const first = (n: number) => buildChatHistory(rows(n), now)[0].content
+    const size = (n: number) => buildChatHistory(rows(n), now).length
+    expect(size(20)).toBe(20)
+    // 22 … 28 messages: the same first message, nothing dropped.
+    expect([22, 24, 26, 28].map(first)).toEqual(['m0', 'm0', 'm0', 'm0'])
+    expect(size(28)).toBe(28)
+    // At 30 the first 10 go at once; then it holds again until 40.
+    expect([30, 32, 38].map(first)).toEqual(['m10', 'm10', 'm10'])
+    expect(size(30)).toBe(20)
+    expect(first(40)).toBe('m20')
   })
 })
 

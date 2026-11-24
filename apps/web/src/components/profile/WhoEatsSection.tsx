@@ -83,7 +83,7 @@ export function WhoEatsSection() {
   }
 
   return (
-    <section data-testid="who-eats" aria-labelledby="who-eats-title">
+    <section id="who-eats" className="scroll-mt-4" data-testid="who-eats" aria-labelledby="who-eats-title">
       <div className="flex items-center justify-between gap-3">
         <span id="who-eats-title">
           <GroupLabel>Quién come</GroupLabel>

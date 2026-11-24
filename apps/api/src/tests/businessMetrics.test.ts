@@ -255,6 +255,22 @@ describe('menu households per week (PRO-246): who prepared the week, and who had
     expect(at('2026-10-04T23:30:00Z')).toBe(0) // still Sunday in UTC, already Monday in Madrid
   })
 
+  it('a week only the Thursday autopilot made counts as ready only if seen or changed before Monday (PRO-1208)', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [
+          { householdId: 'pilot', week: '2026-10-05', firstCreatedAt: null, autoplanSeenAt: null },
+          { householdId: 'seen', week: '2026-10-05', firstCreatedAt: null, autoplanSeenAt: '2026-10-03T10:00:00Z' },
+          { householdId: 'late', week: '2026-10-05', firstCreatedAt: null, autoplanSeenAt: '2026-10-05T07:00:00Z' },
+          { householdId: 'redone', week: '2026-10-05', firstCreatedAt: '2026-10-04T10:00:00Z', autoplanSeenAt: null },
+        ],
+      }),
+    )
+    expect(weekly[2].menuHouseholds).toBe(4)
+    expect(weekly[2].menuReadyByMondayHouseholds).toBe(2)
+    expect(weekly[2].activeHouseholds).toBe(0)
+  })
+
   it('in winter (CET) the cut-off is 23:00 UTC on Sunday', () => {
     const at = (iso: string) =>
       buildWeekly(input({ weeks: ['2026-11-02'], currentWeek: '2026-11-02', menus: [{ householdId: 'h1', week: '2026-11-02', firstCreatedAt: iso }] }))[0].menuReadyByMondayHouseholds

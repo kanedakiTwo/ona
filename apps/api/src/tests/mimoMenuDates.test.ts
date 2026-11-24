@@ -175,7 +175,7 @@ describe('2. a dish change lands in the right week and the tool says where', () 
 
     expect(thisWeek.days[5].lunch).toEqual({ dishes: [{ kind: 'recipe', recipeId: 'r-mac', recipeName: 'Macarrones con tomate' }] })
     expect(nextWeek.days[5].lunch).toEqual(slot('siguiente comida 5'))
-    expect(r.summary).toBe('Hecho. He puesto "Macarrones con tomate" en la comida del sábado 17 de octubre.')
+    expect(r.summary).toBe('Hecho. He puesto "Macarrones con tomate" en la comida del sábado 17 de octubre. [recipeId r-mac]')
     expect(r.data.change).toEqual({ weekStart: '2026-10-12', date: '2026-10-17', dayIndex: 5, meal: 'lunch', dish: 'Macarrones con tomate' })
   })
 

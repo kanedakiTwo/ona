@@ -204,7 +204,7 @@ describe('get_todays_menu', () => {
     const db = makeDb([{ id: 'm-1', days: [day] }], /* diners */ [], /* recipe times */ [])
     const r = await skill.handler({ dayIndex: 0 }, ctx(db)).finally(() => vi.useRealTimers())
     expect(r.summary).toBe(
-      'Menu del lunes 12 de octubre: comida · 2 raciones: Lentejas estofadas + Ensalada verde; cena · 2 raciones: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
+      'Menu del lunes 12 de octubre: comida · 2 raciones: Lentejas estofadas [recipeId a] + Ensalada verde [recipeId b]; cena · 2 raciones: Cenamos en casa de Paqui + Crema de calabaza (sobras) [recipeId c]',
     )
   })
 
@@ -241,7 +241,7 @@ describe('menu tools cite the app\'s servings and minutes (PRO-183)', () => {
   it('get_todays_menu: servings of the meal and minutes of the dish', async () => {
     const db = makeDb([{ id: 'm-1', days }], [{ adults: 2, kidsCount: 0 }], times)
     const r = await at(() => get('get_todays_menu').handler({ day: 'hoy' }, ctx(db)))
-    expect(r.summary).toBe('Menu del lunes 19 de octubre: cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo)')
+    expect(r.summary).toBe('Menu del lunes 19 de octubre: cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo) [recipeId pollo]')
   })
 
   it('get_weekly_menu: the same facts day by day', async () => {
@@ -289,7 +289,7 @@ describe('menu tools name the tápers and added dishes saved without a name (PRO
   it('get_todays_menu says the same names as the card', async () => {
     const db = makeDb([{ id: 'm-1', days }], names, [{ adults: 2, kidsCount: 0 }], [])
     const r = await at(() => get('get_todays_menu').handler({ day: 'hoy' }, ctx(db)))
-    expect(r.summary).toContain('Albóndigas en salsa + Huevo duro')
+    expect(r.summary).toContain('Albóndigas en salsa [recipeId alb] + Huevo duro [recipeId huevo]')
     expect(r.summary).toContain('Lentejas estofadas (del congelador)')
     expect(r.summary).not.toContain('sin nombre')
   })
@@ -325,7 +325,7 @@ describe('get_weekly_menu', () => {
     expect(r.uiHint).toBe('menu')
     expect(r.data).toMatchObject({ menuId: 'm-7', weekStart: '2026-10-12', skippedDays: [1] })
     expect(r.summary).toBe(
-      'Menu de la semana del lunes 12 de octubre:\nlunes 12 de octubre: comida · 2 raciones: Lentejas\nmartes 13 de octubre: sin cocinar\nmiércoles 14 de octubre: cena: Cenamos fuera',
+      'Menu de la semana del lunes 12 de octubre:\nlunes 12 de octubre: comida · 2 raciones: Lentejas [recipeId a]\nmartes 13 de octubre: sin cocinar\nmiércoles 14 de octubre: cena: Cenamos fuera',
     )
   })
 
@@ -724,6 +724,31 @@ describe('swap_meal', () => {
     expect(r.summary).toContain('Ojo: "Pollo empanado" ya esta esta semana en la cena del domingo 25 de octubre.')
   })
 
+  // PRO-1299: two recipes with a similar name; the meal used to get the first one.
+  it('a name that fits two recipes changes nothing and asks which, with their recipeIds', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-x', recipeName: 'Merluza' }] } }))
+    const menu = { id: 'm-1', days }
+    const two = [
+      { id: 'r-cal-asada', name: 'Crema de calabaza asada', authorId: null },
+      { id: 'r-cal-jengibre', name: 'Crema de calabaza y jengibre', authorId: null },
+    ]
+    const sets: any[] = []
+    const r = await skill.handler({ dayIndex: 1, meal: 'dinner', recipeName: 'crema de calabaza' }, ctx(recordingDb(sets, [menu], two)))
+    expect(sets).toEqual([])
+    expect(r.uiHint).toBe('text')
+    expect(r.summary).toContain('recipeId r-cal-asada')
+    expect(r.summary).toContain('recipeId r-cal-jengibre')
+  })
+
+  it('with the recipeId of one of the two, puts that one and hands its id back', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-x', recipeName: 'Merluza' }] } }))
+    const menu = { id: 'm-1', days }
+    const db = makeDb([menu], [{ id: 'r-cal-jengibre', name: 'Crema de calabaza y jengibre' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ dayIndex: 1, meal: 'dinner', recipeId: 'r-cal-jengibre', recipeName: 'crema de calabaza' }, ctx(db))
+    expect(r.summary).toContain('He puesto "Crema de calabaza y jengibre"')
+    expect(r.summary).toContain('[recipeId r-cal-jengibre]')
+  })
+
   it('no repeat line when the dish is nowhere else', async () => {
     const days: any[] = Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-x', recipeName: 'Crema de calabaza' }] } }))
     const menu = { id: 'm-1', days }
@@ -907,25 +932,57 @@ describe('swap_meal', () => {
 
 describe('toggle_favorite', () => {
   const skill = get('toggle_favorite')
+  // PRO-1299: two recipes with a similar name (the favourite used to mark the first one with a word in common).
+  const twoCreams = [
+    { id: 'r-cal', name: 'Crema de calabaza', authorId: null },
+    { id: 'r-cal-asada', name: 'Crema de calabaza asada', authorId: null },
+  ]
 
   it('reports recipe not found', async () => {
-    const db = makeDb([])
+    const db = makeDb(/* menu */ [], /* recipes */ [])
     const r = await skill.handler({ recipeName: 'inexistente' }, ctx(db))
     expect(r.summary).toContain('No he encontrado')
   })
 
   it('adds to favorites when not yet favorited', async () => {
-    const recipe = { id: 'r-1', name: 'Tortilla' }
-    const db = makeDb([recipe], /* existing favs */ [], /* insert */ undefined)
+    const db = makeDb(/* menu */ [], [{ id: 'r-1', name: 'Tortilla', authorId: null }], /* existing favs */ [], /* insert */ undefined)
     const r = await skill.handler({ recipeName: 'tortilla' }, ctx(db))
     expect(r.summary).toMatch(/anadida a favoritos|favorit/i)
   })
 
   it('removes from favorites when already favorited', async () => {
-    const recipe = { id: 'r-1', name: 'Tortilla' }
-    const db = makeDb([recipe], [{ id: 'fav-1', recipeId: 'r-1' }], undefined)
+    const db = makeDb(/* menu */ [], [{ id: 'r-1', name: 'Tortilla', authorId: null }], [{ id: 'fav-1', recipeId: 'r-1' }], undefined)
     const r = await skill.handler({ recipeName: 'tortilla' }, ctx(db))
     expect(r.summary).toContain('eliminada de favoritos')
+  })
+
+  it('with the recipeId Mimo has just read, marks that recipe — not another with a similar name', async () => {
+    const db = makeDb(/* by id */ [{ id: 'r-cal-asada', name: 'Crema de calabaza asada' }], /* favs */ [], /* insert */ undefined)
+    const r = await skill.handler({ recipeId: 'r-cal-asada', recipeName: 'crema de calabaza' }, ctx(db))
+    expect(r.data).toEqual({ recipeId: 'r-cal-asada', favorited: true })
+    expect(r.summary).toContain('Crema de calabaza asada')
+  })
+
+  it('a name that is exactly one of the two takes that one', async () => {
+    const db = makeDb(/* menu */ [], twoCreams, [], undefined)
+    const r = await skill.handler({ recipeName: 'crema de calabaza' }, ctx(db))
+    expect(r.data).toEqual({ recipeId: 'r-cal', favorited: true })
+  })
+
+  it('a name that fits both marks nothing and asks which, with their recipeIds', async () => {
+    const db = makeDb(/* menu */ [], [{ id: 'r-cal-asada', name: 'Crema de calabaza asada', authorId: null }, { id: 'r-cal-jengibre', name: 'Crema de calabaza y jengibre', authorId: null }])
+    const r = await skill.handler({ recipeName: 'crema calabaza' }, ctx(db))
+    expect(r.summary).toContain('No he hecho nada')
+    expect(r.summary).toContain('recipeId r-cal-asada')
+    expect(r.summary).toContain('recipeId r-cal-jengibre')
+    expect(r.data?.candidates).toHaveLength(2)
+  })
+
+  it('never marks a recipe that only shares a word with the name', async () => {
+    const db = makeDb(/* menu */ [], [{ id: 'r-pollo', name: 'Crema de pollo', authorId: null }])
+    const r = await skill.handler({ recipeName: 'crema de calabaza' }, ctx(db))
+    expect(r.summary).toContain('No he encontrado')
+    expect(r.data).toBeNull()
   })
 })
 
@@ -1452,24 +1509,61 @@ describe('start_cooking_mode', () => {
   const skill = get('start_cooking_mode')
 
   it('emits cooking_navigate with the resolved recipe', async () => {
-    const recipe = { id: 'r-1', name: 'Tortilla' }
-    const db = makeDb([recipe])
+    const db = makeDb(/* menu */ [], [{ id: 'r-1', name: 'Tortilla', authorId: null }])
     const r = await skill.handler({ recipeName: 'tortilla' }, ctx(db))
     expect(r.uiHint).toBe('cooking_navigate')
     expect(r.data).toMatchObject({ recipeId: 'r-1', recipeName: 'Tortilla' })
   })
 
   it('forwards a servings hint when provided', async () => {
-    const recipe = { id: 'r-1', name: 'Tortilla' }
-    const db = makeDb([recipe])
-    const r = await skill.handler({ recipeName: 'tortilla', servings: 6 }, ctx(db))
+    const db = makeDb([{ id: 'r-1', name: 'Tortilla' }])
+    const r = await skill.handler({ recipeId: 'r-1', servings: 6 }, ctx(db))
     expect(r.data?.servings).toBe(6)
   })
 
   it('reports recipe not found', async () => {
-    const db = makeDb([])
+    const db = makeDb(/* menu */ [], [])
     const r = await skill.handler({ recipeName: 'nada' }, ctx(db))
     expect(r.summary).toContain('No he encontrado')
+  })
+
+  it('PRO-1299: opens the recipe of the recipeId, not another with a similar name', async () => {
+    const db = makeDb(/* by id */ [{ id: 'r-tort-cal', name: 'Tortilla de calabacin' }])
+    const r = await skill.handler({ recipeId: 'r-tort-cal', recipeName: 'tortilla' }, ctx(db))
+    expect(r.data).toMatchObject({ recipeId: 'r-tort-cal', recipeName: 'Tortilla de calabacin' })
+  })
+
+  it('PRO-1299: an unknown recipeId opens nothing (never a guess by name)', async () => {
+    const r = await skill.handler({ recipeId: 'r-gone', recipeName: 'tortilla' }, ctx(makeDb([])))
+    expect(r.uiHint).toBe('text')
+    expect(r.data).toBeNull()
+  })
+
+  it('PRO-1299: by name, the dish in this week\'s menu before the catalogue ones', async () => {
+    const days = Array.from({ length: 7 }, () => ({}))
+    days[2] = { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-tort-pat', recipeName: 'Tortilla de patatas' }] } }
+    const r = await skill.handler({ recipeName: 'la tortilla' }, ctx(makeDb([{ id: 'm-1', days }])))
+    expect(r.data).toMatchObject({ recipeId: 'r-tort-pat' })
+  })
+
+  it('PRO-1299: a name that fits two recipes opens nothing and asks which', async () => {
+    const two = [
+      { id: 'r-tort-pat', name: 'Tortilla de patatas', authorId: null },
+      { id: 'r-tort-cal', name: 'Tortilla de calabacin', authorId: null },
+    ]
+    const r = await skill.handler({ recipeName: 'tortilla' }, ctx(makeDb(/* menu */ [], two)))
+    expect(r.uiHint).toBe('text')
+    expect(r.summary).toContain('encaja con 2 recetas')
+    expect(r.summary).toContain('recipeId r-tort-cal')
+  })
+
+  it('PRO-1299: of two, the household\'s own one wins', async () => {
+    const two = [
+      { id: 'r-tort-pat', name: 'Tortilla de patatas', authorId: null },
+      { id: 'r-mia', name: 'Tortilla de la abuela', authorId: 'u-1' },
+    ]
+    const r = await skill.handler({ recipeName: 'tortilla' }, ctx(makeDb(/* menu */ [], two)))
+    expect(r.data).toMatchObject({ recipeId: 'r-mia' })
   })
 })
 

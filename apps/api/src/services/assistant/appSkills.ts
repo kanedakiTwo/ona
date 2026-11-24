@@ -32,6 +32,7 @@ import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
+import { askWhichRecipe, matchRecipeName } from './recipeRef.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
 
 /**
@@ -183,8 +184,8 @@ export function dishNoteText(name: unknown): string {
 async function findRecipe(
   ctx: SkillContext,
   name: string,
-  opts: { menuFirst?: boolean } = {},
-): Promise<{ id: string; name: string; approximate?: boolean } | null> {
+  opts: { menuFirst?: boolean; askIfMany?: boolean } = {},
+): Promise<{ id: string; name: string; approximate?: boolean; many?: Array<{ id: string; name: string }> } | null> {
   if (opts.menuFirst) {
     const menu = await loadMenu(ctx).catch(() => null)
     const dishes = (menu?.days ?? [])
@@ -198,6 +199,11 @@ async function findRecipe(
     'GET',
     `/recipes?search=${encodeURIComponent(name)}&perPage=30`,
   )
+  // PRO-1299: with askIfMany, a name that fits several recipes comes back as `many` to ask which.
+  if (opts.askIfMany) {
+    const named = matchRecipeName(cards ?? [], name)
+    if (named.kind === 'many') return { id: '', name, many: named.recipes.map((r) => ({ id: r.id, name: r.name })) }
+  }
   let hit = bestMatch(cards ?? [], name, (c) => c.name)
   let approximate = false
   if (!hit) {
@@ -303,7 +309,7 @@ const setDaySkipped: SkillDefinition = {
 const addDish: SkillDefinition = {
   name: 'add_dish',
   description:
-    'Añade un plato mas a una comida sin quitar los que ya hay (ej. "añade una ensalada a la comida del lunes"). Con recipeName busca esa receta en sus recetas y el catalogo; si no existe y mandas newRecipe (version sencilla estimada), la crea como receta del hogar y la añade, para que sus ingredientes lleguen a la lista de la compra; sin newRecipe, lo añade como nota con su nombre y te dice lo mas parecido que hay. Sin nombre añade uno aleatorio compatible.',
+    'Añade un plato mas a una comida sin quitar los que ya hay (ej. "añade una ensalada a la comida del lunes"). Con recipeId (el de una receta que acabas de leer o de proponer) pone esa; con recipeName busca esa receta en sus recetas y el catalogo, y si el nombre encaja con varias no añade nada y te las da: pregunta cual; si no existe y mandas newRecipe (version sencilla estimada), la crea como receta del hogar y la añade, para que sus ingredientes lleguen a la lista de la compra; sin newRecipe, lo añade como nota con su nombre y te dice lo mas parecido que hay. Sin nombre añade uno aleatorio compatible. Si el hogar ya lo tiene hecho o le sobro, no uses esta: add_freezer_dish.',
   parameters: {
     type: 'object',
     properties: { ...dayMealProps, recipeName: { type: 'string' }, recipeId: { type: 'string' }, newRecipe: NEW_RECIPE_PROP },
@@ -321,7 +327,8 @@ const addDish: SkillDefinition = {
       await api(ctx)('POST', `${path}/dish/random`)
       return menuDone(`Hecho: he añadido un plato aleatorio a ${where(t, p.meal)}.${reactivatedNote(menu, t)}`, changed(t, p.meal))
     }
-    const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
+    const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName, { askIfMany: true })
+    if (recipe && 'many' in recipe && recipe.many) return text(askWhichRecipe(p.recipeName, recipe.many), { candidates: recipe.many })
     if (!p.recipeId && (!recipe || ('approximate' in recipe && recipe.approximate))) {
       // PRO-74: a household recipe (ingredients reach the list); note as fallback.
       const created = await createDishRecipe(ctx.userId, p.recipeName, p.newRecipe)
@@ -332,7 +339,7 @@ const addDish: SkillDefinition = {
         if (notePos >= 0) await api(ctx)('DELETE', `${path}/dish/${notePos}`)
         await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: created.id })
         return menuDone(
-          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })}`,
+          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })} [recipeId ${created.id}]`,
           changed(t, p.meal, { recipeId: created.id, recipeName: created.name }),
         )
       }
@@ -347,7 +354,7 @@ const addDish: SkillDefinition = {
     if (!recipe) return text(`No encontre la receta "${p.recipeId}"; no he añadido nada.`)
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id })
     return menuDone(
-      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })}`,
+      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })} [recipeId ${recipe.id}]`,
       changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }),
     )
   },

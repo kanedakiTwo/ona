@@ -68,7 +68,8 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
   sobras: {
     label: 'platos que ya estan hechos, sobras, taper y congelador en el menu',
     tools: ['add_freezer_dish', 'set_leftovers', 'set_taper', 'plan_freezer_items'],
-    words: /\b(sobr\w*|resto\w*|taper\w*|tupper\w*|tuper\w*|congel\w*|hech[oa]s?|aprovech\w*|metelo|metelos)\b/,
+    // PRO-1299: «me quedó crema del finde», «la tengo preparada»: a dish already made.
+    words: /\b(sobr\w*|resto\w*|taper\w*|tupper\w*|tuper\w*|congel\w*|hech[oa]s?|aprovech\w*|metelo|metelos|quedo|quedaron|quedado|preparad[oa]s?)\b/,
   },
   fijas: {
     label: 'comidas fijas (siempre lo mismo) y el menu del comedor escolar',

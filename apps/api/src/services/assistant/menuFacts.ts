@@ -62,7 +62,7 @@ export function cookedRecipeIds(days: readonly (DayMenu | null | undefined)[]): 
 
 /**
  * One line per meal of `days[dayIndex]` with the facts the app shows:
- * `cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo) + Ensalada (5 min)`.
+ * `cena [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo) [recipeId r-1] + Ensalada (5 min) [recipeId r-2]`.
  * Without facts for a dish its name goes alone; leftovers and tápers carry no minutes.
  */
 export function mealLinesWithFacts(
@@ -83,9 +83,12 @@ export function mealLinesWithFacts(
       .map((d) => {
         const label = dishLabel(d)
         if (!label) return null
-        if (d.kind !== 'recipe' || d.variant === 'leftover' || isTaperDish(d)) return label
+        if (d.kind !== 'recipe') return label
+        // PRO-1299: the id Mimo passes back to favourite it, cook it or read it.
+        const id = d.recipeId ? ` [recipeId ${d.recipeId}]` : ''
+        if (d.variant === 'leftover' || isTaperDish(d)) return `${label}${id}`
         const t = timesLabel(times.get(d.recipeId))
-        return t ? `${label} (${t})` : label
+        return t ? `${label} (${t})${id}` : `${label}${id}`
       })
       .filter((x): x is string => Boolean(x))
     out.push(`${MEAL_LABEL_ES[e.meal] ?? e.meal}${diners}${servings}: ${dishes.join(' + ')}`)

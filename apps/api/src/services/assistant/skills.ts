@@ -38,6 +38,7 @@ import { slotWithDishes } from '../menuDishes.js'
 import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, searchWords, toBuyable } from './appSkills.js'
+import { askWhichRecipe, matchRecipeName, nameSearchWords, namesAllWords, type RecipeNameMatch } from './recipeRef.js'
 import { setHaveAtHome } from '../shoppingItemState.js'
 import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
@@ -173,6 +174,47 @@ function dishNow(row: { days?: unknown } | undefined, dayIndex: number, meal: st
  */
 async function visibleWhere(ctx: SkillContext) {
   return visibleRecipeWhere(await visibleAuthorIds(ctx.userId, ctx.db))
+}
+
+/**
+ * PRO-1299 · the recipe a tool call means (recipeRef.ts): its `recipeId`, if
+ * the household can see it; with only a name, the one it names in this
+ * week's menu, else in their recipes and the catalogue — or `many` to ask.
+ */
+async function recipeByRef(
+  ctx: SkillContext,
+  params: { recipeId?: unknown; recipeName?: unknown },
+): Promise<RecipeNameMatch<{ id: string; name: string }>> {
+  const id = typeof params.recipeId === 'string' ? params.recipeId.trim() : ''
+  if (id) {
+    const [row] = await ctx.db
+      .select({ id: recipes.id, name: recipes.name })
+      .from(recipes)
+      .where(and(await visibleWhere(ctx), eq(recipes.id, id)))
+      .limit(1)
+    return row ? { kind: 'one', recipe: { id: row.id, name: row.name } } : { kind: 'none' }
+  }
+  const name = String(params.recipeName ?? '').trim()
+  if (!name) return { kind: 'none' }
+  const menuDishes = menuRecipeDishes(await menuOfWeek(ctx, getWeekStart())).map((d) => ({ id: d.recipeId, name: d.recipeName }))
+  const inMenu = matchRecipeName(menuDishes, name)
+  if (inMenu.kind !== 'none') return inMenu
+  const words = nameSearchWords(name)
+  const rows: Array<{ id: string; name: string; authorId: string | null }> = await ctx.db
+    .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
+    .from(recipes)
+    .where(and(await visibleWhere(ctx), or(
+      ilike(recipes.name, `%${name}%`),
+      ...(words.length > 0 ? [and(...words.map((w) => ilike(recipes.name, `%${w}%`)))] : []),
+    )))
+    .limit(30)
+  const found = matchRecipeName((rows ?? []).map((r) => ({ id: r.id, name: r.name, own: r.authorId === ctx.userId })), name)
+  return found.kind === 'one' ? { kind: 'one', recipe: { id: found.recipe.id, name: found.recipe.name } } : found
+}
+
+const RECIPE_ID_PROP = {
+  type: 'string',
+  description: 'El recipeId de la receta que acabas de leer o de poner (te lo dan get_todays_menu, get_weekly_menu, get_recipe_details y las herramientas que ponen un plato). Pasalo siempre que lo tengas.',
 }
 
 /**
@@ -388,18 +430,8 @@ export function recipeDetailsSummary(r: {
   return out.length > 4000 ? `${out.slice(0, 3990)}…` : out
 }
 
-const NAME_FILLER = new Set(['con', 'sin', 'del', 'las', 'los', 'una', 'unos', 'unas', 'para', 'por', 'receta', 'plato'])
-/**
- * True when every meaningful word the user said appears in a recipe name
- * (singular/plural tolerant): "hamburguesa gipsy chef" ⊂ "Hamburguesa
- * perfecta de Gipsy Chef", but "filete de vaca" ⊄ "Entrecot a la plancha".
- */
-export function namesAllWords(recipeName: string, query: string): boolean {
-  const name = normalizeText(recipeName).split(/\s+/)
-  const words = normalizeText(query).split(/\s+/).filter((w) => w.length > 2 && !NAME_FILLER.has(w))
-  const same = (a: string, b: string) => a === b || `${a}s` === b || `${b}s` === a || `${a}es` === b || `${b}es` === a
-  return words.length > 0 && words.every((w) => name.some((t) => same(t, w)))
-}
+// PRO-1299: lives in recipeRef.ts with the rest of «which recipe is it».
+export { namesAllWords } from './recipeRef.js'
 
 export interface MemoryFactInput {
   key: string
@@ -459,7 +491,7 @@ export function mergeMemoryFacts(
  * recipe with a similar name, not the menu's (2026-10-22).
  */
 async function recipeForDetails(
-  params: { recipeName?: string; day?: string; meal?: string },
+  params: { recipeId?: string; recipeName?: string; day?: string; meal?: string },
   ctx: SkillContext,
 ): Promise<{ recipe: any; menuSlot: string | null } | { summary: string }> {
   const { db } = ctx
@@ -467,6 +499,12 @@ async function recipeForDetails(
     (await db.select().from(recipes).where(and(await visibleWhere(ctx), eq(recipes.id, id))).limit(1))[0] ?? null
   const slotOf = (d: { meal: string }, t: MenuDay) => `${MEAL_LABEL[d.meal] ?? d.meal} del ${t.label}`
   const name = String(params.recipeName ?? '').trim()
+
+  // PRO-1299: the recipe Mimo has just read or put, by its id.
+  if (typeof params.recipeId === 'string' && params.recipeId.trim()) {
+    const recipe = await byId(params.recipeId.trim())
+    return recipe ? { recipe, menuSlot: null } : { summary: `No he encontrado la receta con recipeId ${params.recipeId}.` }
+  }
 
   if (params.day != null || params.meal) {
     const t = menuDayParam({ day: params.day ?? 'hoy' })
@@ -533,6 +571,7 @@ const getRecipeDetails: SkillDefinition = {
   parameters: {
     type: 'object',
     properties: {
+      recipeId: { type: 'string', description: 'El recipeId de una receta que ya te ha dado otra herramienta (menu, la que la puso). Con el, no hace falta nada mas.' },
       recipeName: { type: 'string', description: 'Nombre de la receta a buscar. Con day/meal, solo para elegir entre varios platos de esa comida.' },
       day: DAY_PROP,
       meal: { type: 'string', enum: [...MEAL_KEYS], description: 'Con day: la comida del menu cuya receta quiere (breakfast, lunch, snack, dinner)' },
@@ -540,7 +579,7 @@ const getRecipeDetails: SkillDefinition = {
     },
     required: [],
   },
-  async handler(params: { recipeName?: string; day?: string; meal?: string; servings?: number }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { recipeId?: string; recipeName?: string; day?: string; meal?: string; servings?: number }, ctx: SkillContext): Promise<SkillResult> {
     const { db } = ctx
     const found = await recipeForDetails(params, ctx)
     if ('summary' in found) return { data: null, summary: found.summary, uiHint: 'text' }
@@ -596,7 +635,7 @@ const getRecipeDetails: SkillDefinition = {
     })
     const withNotices = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
     // PRO-349: which recipe this is, so «la receta de hoy» is never answered from another one.
-    const summary = menuSlot ? `Es la receta del menu (${menuSlot}).\n${withNotices}` : withNotices
+    const summary = `${menuSlot ? `Es la receta del menu (${menuSlot}).\n` : ''}${withNotices}\nrecipeId: ${recipe.id}`
 
     return {
       data: {
@@ -1428,7 +1467,7 @@ function reactivatedLine(menu: { skippedDays?: number[] | null } | null | undefi
 const swapMeal: SkillDefinition = {
   name: 'swap_meal',
   description:
-    'Cambia un plato concreto del menu (nunca rehace la semana). Pasa day con las palabras del usuario ("el sábado", "la cena de hoy" → day "hoy", "el jueves de la semana que viene") o la fecha; la herramienta calcula la fecha en hora de Madrid y te devuelve el dia, la fecha y el plato que han quedado. meal: breakfast, lunch, snack o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces) y la receta se asigna directamente sin elegir aleatorio. Si ese plato no está en sus recetas ni en el catálogo y mandas newRecipe (una versión sencilla estimada), lo creo como receta del hogar y la pongo, para que sus ingredientes lleguen a la lista de la compra; sin newRecipe, se pone como nota con su nombre (y te digo lo más parecido que hay). Llámala igualmente, no hace falta crear la receta antes. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones.',
+    'Cambia un plato concreto del menu (nunca rehace la semana). Pasa day con las palabras del usuario ("el sábado", "la cena de hoy" → day "hoy", "el jueves de la semana que viene") o la fecha; la herramienta calcula la fecha en hora de Madrid y te devuelve el dia, la fecha y el plato que han quedado. meal: breakfast, lunch, snack o dinner. Si el usuario nombra una receta concreta, pásala en `recipeName` (o `recipeId` si lo conoces: el de una receta que acabas de leer o de proponer) y la receta se asigna directamente sin elegir aleatorio; si el nombre encaja con varias recetas, no cambia nada y te las da: pregunta cual y vuelve a llamar con su recipeId. Si ese plato no está en sus recetas ni en el catálogo y mandas newRecipe (una versión sencilla estimada), lo creo como receta del hogar y la pongo, para que sus ingredientes lleguen a la lista de la compra; sin newRecipe, se pone como nota con su nombre (y te digo lo más parecido que hay). Llámala igualmente, no hace falta crear la receta antes. Si no se nombra, el sistema escoge automáticamente un plato compatible con la temporada y restricciones. Si el hogar ya lo tiene hecho o le sobro, no uses esta: add_freezer_dish.',
   parameters: {
     type: 'object',
     properties: {
@@ -1500,8 +1539,13 @@ const swapMeal: SkillDefinition = {
           .from(recipes)
           .where(and(visible, ilike(recipes.name, `%${params.recipeName}%`)))
           .limit(20)
-        const owned = candidates.find((c: { authorId: string | null }) => c.authorId === userId)
-        chosen = owned ?? candidates[0] ?? null
+        // PRO-1299: the one it names (theirs first); several → ask which, nothing changed.
+        const named = matchRecipeName(candidates.map((c: { id: string; name: string; authorId: string | null }) => ({ id: c.id, name: c.name, own: c.authorId === userId })), params.recipeName)
+        if (named.kind === 'many') {
+          return { data: { candidates: named.recipes }, summary: askWhichRecipe(params.recipeName, named.recipes), uiHint: 'text' }
+        }
+        const only = named.kind === 'none' && candidates.length === 1 ? candidates[0] : null
+        chosen = named.kind === 'one' ? { id: named.recipe.id, name: named.recipe.name } : only ? { id: only.id, name: only.name } : null
         if (!chosen) {
           // "filete de vaca" → closest real recipe ("Entrecot a la plancha"),
           // which is only offered: the slot gets the user's dish as a note.
@@ -1539,7 +1583,7 @@ const swapMeal: SkillDefinition = {
           if (dishNow(updatedNew, dayIndex, meal) !== created.name) return notSaved(slotLabel)
           return {
             data: { ...updatedNew, change: changeOf(t, meal, created.name), recipeId: created.id },
-            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: created.id, name: created.name })}`,
+            summary: `Hecho. "${untrustedText(created.name, 80)}" no estaba en sus recetas ni en el catalogo: la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he puesto en la ${slotLabel}. Sus ingredientes ya salen en la lista de la compra.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: created.id, name: created.name })} [recipeId ${created.id}]`,
             uiHint: 'menu',
           }
         }
@@ -1584,7 +1628,7 @@ const swapMeal: SkillDefinition = {
       if (dishNow(updatedManual, dayIndex, meal) !== chosen.name) return notSaved(slotLabel)
       return {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
-        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
+        summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })} [recipeId ${chosen.id}]`,
         uiHint: 'menu',
       }
     }
@@ -1637,7 +1681,7 @@ const swapMeal: SkillDefinition = {
     if (dishNow(updated, dayIndex, meal) !== newRecipe.name) return notSaved(slotLabel)
     return {
       data: { ...updated, change: changeOf(t, meal, newRecipe.name) },
-      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: newRecipe.id, name: newRecipe.name })}`,
+      summary: `Cambiado: la ${slotLabel} ahora es "${newRecipe.name}".${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: newRecipe.id, name: newRecipe.name })} [recipeId ${newRecipe.id}]`,
       uiHint: 'menu',
     }
   },
@@ -1645,30 +1689,26 @@ const swapMeal: SkillDefinition = {
 
 const toggleFavorite: SkillDefinition = {
   name: 'toggle_favorite',
-  description: 'Anade o quita una receta de favoritos del usuario.',
+  description: 'Anade o quita una receta de favoritos del usuario. Pasa recipeId si lo tienes (del menu, get_recipe_details o la herramienta que la puso); recipeName solo si no. Si el nombre encaja con varias recetas no marca nada y te las da: pregunta cual.',
   parameters: {
     type: 'object',
     properties: {
-      recipeName: { type: 'string', description: 'Nombre de la receta' },
+      recipeId: RECIPE_ID_PROP,
+      recipeName: { type: 'string', description: 'Nombre de la receta, solo si no tienes su recipeId' },
     },
-    required: ['recipeName'],
+    required: [],
   },
-  async handler(params: { recipeName: string }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { recipeId?: string; recipeName?: string }, ctx: SkillContext): Promise<SkillResult> {
     const { userId, db } = ctx
 
-    // Find recipe by name
-    const [recipe] = await db
-      .select({ id: recipes.id, name: recipes.name })
-      .from(recipes)
-      .where(and(await visibleWhere(ctx), or(
-        ilike(recipes.name, `%${params.recipeName}%`),
-        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map((w: string) => ilike(recipes.name, `%${w}%`)),
-      )))
-      .limit(1)
-
-    if (!recipe) {
-      return { data: null, summary: `No he encontrado la receta "${params.recipeName}".`, uiHint: 'text' }
+    const found = await recipeByRef(ctx, params)
+    if (found.kind === 'many') {
+      return { data: { candidates: found.recipes }, summary: askWhichRecipe(String(params.recipeName), found.recipes), uiHint: 'text' }
     }
+    if (found.kind === 'none') {
+      return { data: null, summary: `No he encontrado la receta "${params.recipeName ?? params.recipeId ?? ''}"; no he marcado nada.`, uiHint: 'text' }
+    }
+    const recipe = found.recipe
 
     // Check if already favorited
     const existing = await db
@@ -2672,31 +2712,28 @@ const getWeekBalance: SkillDefinition = {
 // 12. ── start_cooking_mode ────────────────────────────────
 const startCookingMode: SkillDefinition = {
   name: 'start_cooking_mode',
-  description: 'Abre el modo cocina paso a paso para una receta. El cliente navega a /recipes/:id/cook al recibir esta respuesta.',
+  description: 'Abre el modo cocina paso a paso para una receta. El cliente navega a /recipes/:id/cook al recibir esta respuesta. Pasa recipeId si lo tienes (del menu, get_recipe_details o la herramienta que la puso); recipeName solo si no. Si el nombre encaja con varias recetas no abre nada y te las da: pregunta cual.',
   parameters: {
     type: 'object',
     properties: {
-      recipeName: { type: 'string', description: 'Nombre de la receta' },
+      recipeId: RECIPE_ID_PROP,
+      recipeName: { type: 'string', description: 'Nombre de la receta, solo si no tienes su recipeId' },
       servings: { type: 'number', description: 'Comensales para el cooking mode (opcional)' },
     },
-    required: ['recipeName'],
+    required: [],
   },
-  async handler(params: { recipeName: string; servings?: number }, ctx) {
-    const { db } = ctx
-    const [recipe] = await db
-      .select({ id: recipes.id, name: recipes.name })
-      .from(recipes)
-      .where(and(await visibleWhere(ctx), or(
-        ilike(recipes.name, `%${params.recipeName}%`),
-        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
-      )))
-      .limit(1)
-    if (!recipe) {
-      return { data: null, summary: `No he encontrado "${params.recipeName}".`, uiHint: 'text' }
+  async handler(params: { recipeId?: string; recipeName?: string; servings?: number }, ctx) {
+    const found = await recipeByRef(ctx, params)
+    if (found.kind === 'many') {
+      return { data: { candidates: found.recipes }, summary: askWhichRecipe(String(params.recipeName), found.recipes), uiHint: 'text' }
     }
+    if (found.kind === 'none') {
+      return { data: null, summary: `No he encontrado "${params.recipeName ?? params.recipeId ?? ''}"; no he abierto el modo cocina.`, uiHint: 'text' }
+    }
+    const recipe = found.recipe
     return {
-      data: { recipeId: (recipe as any).id, recipeName: (recipe as any).name, servings: params.servings ?? null },
-      summary: `Empezando a cocinar ${(recipe as any).name}.`,
+      data: { recipeId: recipe.id, recipeName: recipe.name, servings: params.servings ?? null },
+      summary: `Empezando a cocinar ${recipe.name} (recipeId ${recipe.id}).`,
       uiHint: 'cooking_navigate',
     }
   },

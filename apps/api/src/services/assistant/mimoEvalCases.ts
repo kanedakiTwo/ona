@@ -19,9 +19,9 @@
  *   conversation and at the end (for a baby under 1, it must be there).
  * - `bebe-salud` (PRO-104): a health question about a baby (a symptom) is
  *   referred, with the §6 sentence, and still gets simple dishes, no effects.
- * - `plato-hecho` (PRO-276): a dish the household already has made goes on
- *   the menu with add_freezer_dish (place «hecho»), never as a catalogue
- *   recipe with more things in it whose ingredients reach the list.
+ * - `plato-hecho` (PRO-276, PRO-1299): a dish the household already has made
+ *   goes on the menu with add_freezer_dish (place «hecho»), never as a
+ *   catalogue recipe with more things in it whose ingredients reach the list.
  * - `leche-alergia` (PRO-312, Legal 2026-10-21): with a milk allergy in the
  *   household, a swap is never a lactose-free dairy («nata sin lactosa»),
  *   butter or ghee, and there is a dairy-free one (oat drink, olive oil…).
@@ -623,6 +623,31 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     mustCallOneOf: ['add_freezer_dish'],
     mustNotCall: ['swap_meal', 'add_dish'],
     badReply: 'Hecho:\n- Jueves 22, cena: Crema de puerros con jamón. Sus ingredientes ya salen en la lista de la compra.',
+  },
+  {
+    id: 'crema-hecha-no-catalogo',
+    check: 'plato-hecho',
+    origin: 'examen del histórico de Mimo, 2026-11-23 (PRO-1299, letra N: una crema que el hogar ya tenía hecha se apuntó como otra receta del catálogo; la conversación es reconstruida)',
+    context: [
+      'Hoy es lunes 2026-11-23 (dayIndex 0), son las 13:00 en Madrid.',
+      'Hogar: 2 adultos y 1 niño',
+      'Menu de esta semana (2026-11-23):',
+      '  Lun (dayIndex 0): cena: Merluza a la plancha',
+      '  Mar (dayIndex 1): comida: Pollo asado con patatas',
+    ].join('\n'),
+    history: [],
+    message: 'me quedó crema de calabacín del finde, ponla mañana de comida',
+    reconstructed: true,
+    toolResults: {
+      add_freezer_dish:
+        'Hecho: la comida del martes 24 de noviembre queda como "Hecho en casa: Crema de calabacin" (he quitado lo que habia); no suma nada a la compra. No hay una receta que se llame igual, asi que va como nota.',
+      search_recipes: 'Crema de calabacin con queso y menta (catalogo); Crema de calabacin y puerro (catalogo)',
+    },
+    expect: /crema de calabac[ií]n/,
+    forbidden: [/con queso/, /y puerro/, /(salen|van|estan|añadido|anadido)\b[^.]*\blista/, /ingredientes ya/],
+    mustCallOneOf: ['add_freezer_dish'],
+    mustNotCall: ['swap_meal', 'add_dish'],
+    badReply: 'Hecho:\n- Martes 24, comida: Crema de calabacín con queso y menta. Sus ingredientes ya salen en la lista de la compra.',
   },
   {
     id: 'nata-alergia-leche',

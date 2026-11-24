@@ -167,6 +167,20 @@ describe('menu skills', () => {
     expect(r.summary).toContain('receta del hogar')
   })
 
+  // PRO-1299: two recipes with a similar name.
+  it('add_dish: a name that fits two recipes adds nothing and asks which; with its recipeId, that one', async () => {
+    const two = [{ id: 'r-cal-asada', name: 'Crema de calabaza asada' }, { id: 'r-cal-jengibre', name: 'Crema de calabaza y jengibre' }]
+    const f = fakeApi({ 'GET /recipes': two })
+    const r = await get('add_dish').handler({ dayIndex: 0, meal: 'lunch', recipeName: 'crema de calabaza' }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([])
+    expect(r.summary).toContain('recipeId r-cal-asada')
+    expect(r.summary).toContain('recipeId r-cal-jengibre')
+    const g = fakeApi({ 'GET /recipes': two })
+    const s = await get('add_dish').handler({ dayIndex: 0, meal: 'lunch', recipeId: 'r-cal-jengibre', recipeName: 'Crema de calabaza y jengibre' }, ctx(g.api))
+    expect(writes(g.calls)).toEqual([{ method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish', body: { kind: 'recipe', recipeId: 'r-cal-jengibre' } }])
+    expect(s.summary).toContain('[recipeId r-cal-jengibre]')
+  })
+
   it('add_dish finds the closest catalogue recipe; random when unnamed', async () => {
     const f = fakeApi({ 'GET /recipes': [{ id: 'r9', name: 'Ensalada de tomate y ventresca' }] })
     const r = await get('add_dish').handler({ dayIndex: 0, meal: 'lunch', recipeName: 'ensalada de tomate' }, ctx(f.api))

@@ -49,8 +49,8 @@ describe('mealLinesWithFacts', () => {
     ]
     const times = new Map([['pollo', { totalTime: 25, activeTime: 10 }], ['ens', { prepTime: 5 }], ['crema', { totalTime: 40 }]])
     expect(mealLinesWithFacts(days, 0, times, 2)).toEqual([
-      'comida [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo) + Ensalada verde (5 min)',
-      'cena · 2 raciones: Cenamos fuera + Crema de calabaza (sobras)',
+      'comida [solo hoy: 4] · 4 raciones: Pollo a la plancha (25 min en total, 10 de trabajo) [recipeId pollo] + Ensalada verde (5 min) [recipeId ens]',
+      'cena · 2 raciones: Cenamos fuera + Crema de calabaza (sobras) [recipeId crema]',
     ])
     expect(cookedRecipeIds(days)).toEqual(['pollo', 'ens'])
   })

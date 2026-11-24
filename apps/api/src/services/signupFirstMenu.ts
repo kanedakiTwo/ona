@@ -144,6 +144,12 @@ export function placeSignupDishes(
     }
     return null
   }
+  // The days of the dishes already drawn are taken before placing the others:
+  // else an earlier dish could take that very slot and drop the drawn one.
+  for (const d of dishes) {
+    const already = d.recipe ? where.get(d.recipe.id) : undefined
+    if (already) usedDays.add(already.dayIndex)
+  }
   for (const d of dishes) {
     const already = d.recipe ? where.get(d.recipe.id) : undefined
     if (already) {

@@ -38,7 +38,7 @@ vi.mock('../middleware/auth.js', () => ({
     next()
   },
 }))
-vi.mock('../middleware/spendCap.js', () => ({ requireSpendCapacity: () => (_req: any, _res: any, next: any) => next() }))
+vi.mock('../services/spendCap.js', () => ({ spendCapStatus: async () => ({ exceeded: false, spentEur: 0, capEur: 6 }) }))
 vi.mock('../services/advisorBudget.js', () => ({
   checkAdvisorBudget: async () => ({ exceeded: false, budgetMicros: 5_000_000 }),
   recordAdvisorUsage: async () => {},

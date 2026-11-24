@@ -12,8 +12,8 @@
 import { sql } from 'drizzle-orm'
 import { accountAccess, trialDaysFor, type SubscriptionStatus } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
-import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
+import { addDays, madridParts } from './madridTime.js'
+import { isoWeekLabel, loadMenuWeeks, readyByMonday, weekOfDay, type MenuWeekReady } from './businessMetrics.js'
 import { creatorRefsSql } from './creatorTrial.js'
 
 type Db = typeof defaultDb
@@ -53,12 +53,10 @@ export interface GrowthEvent {
   at: string
 }
 
-export interface GrowthMenuWeek {
+export interface GrowthMenuWeek extends MenuWeekReady {
   householdId: string
   /** Monday of the menu's week. */
   week: string
-  /** When the first menu for that week was created (ISO instant). */
-  firstCreatedAt: string
 }
 
 export interface GrowthInput {
@@ -124,14 +122,16 @@ function tally(step: GrowthStep, windowOver: boolean, reached: boolean): void {
 /**
  * Pure: two ISO weeks in a row, both starting (Monday) on days 0…20 from
  * signup, each with its first menu created before 00:00 of its Monday,
- * Europe/Madrid (as `menuReadyByMondayHouseholds` in /admin/metrics).
+ * Europe/Madrid (as `menuReadyByMondayHouseholds` in /admin/metrics): a week
+ * the Thursday autopilot made counts only if the household saw it or changed
+ * it before that Monday (PRO-1208).
  */
 export function hasTwoWeeksInARow(day0: string, menus: readonly GrowthMenuWeek[]): boolean {
   const ready = new Set(
     menus
       .filter((m) => {
         const n = dayDiff(day0, m.week)
-        return n >= 0 && n < GROWTH_TWO_WEEKS_DAYS && Date.parse(m.firstCreatedAt) < madridMidnightUtc(m.week).getTime()
+        return n >= 0 && n < GROWTH_TWO_WEEKS_DAYS && readyByMonday(m)
       })
       .map((m) => m.week),
   )
@@ -293,7 +293,7 @@ export function buildTrialReport(rows: readonly TrialHouseholdRow[], now: Date):
 
 export const GROWTH_DEFINITIONS = {
   growth:
-    'PRO-379, D-158: the growth line by signup cohort (ISO week of the household’s first signup_completed, Europe/Madrid), every signup kept (180 days), not the window. Steps are not nested. firstMenu = menu_generated on days 0–6 from signup; firstHit = on days 0–6, cooked (meal_cooked or cook_mode_started) and used or sent the list (shopping_item_checked, shopping_list_shared, shop_order_prepared, carrefour_click or basket_extension_sent); firstHitCooked and firstHitList (PRO-1148) = each half of firstHit on its own, same days 0–6 and same eligible: cooked, or used or sent the list (firstHit is both; its definition does not change); twoWeeks = two consecutive ISO weeks whose Mondays fall on days 0–20 from signup, each with its first menu created before 00:00 of its Monday (as menuReadyByMondayHouseholds in /admin/metrics); paid = the household’s latest subscription is active or trialing (a plan with the card left) today. eligible = households whose window is over (day 7 for firstMenu, firstHit, firstHitCooked and firstHitList, day 21 for twoWeeks; paid has no window: every signup); reached counts only among eligible; reachedInOpenWindow = already made it inside an open window. Counts only.',
+    'PRO-379, D-158: the growth line by signup cohort (ISO week of the household’s first signup_completed, Europe/Madrid), every signup kept (180 days), not the window. Steps are not nested. firstMenu = menu_generated on days 0–6 from signup; firstHit = on days 0–6, cooked (meal_cooked or cook_mode_started) and used or sent the list (shopping_item_checked, shopping_list_shared, shop_order_prepared, carrefour_click or basket_extension_sent); firstHitCooked and firstHitList (PRO-1148) = each half of firstHit on its own, same days 0–6 and same eligible: cooked, or used or sent the list (firstHit is both; its definition does not change); twoWeeks = two consecutive ISO weeks whose Mondays fall on days 0–20 from signup, each with its first menu created before 00:00 of its Monday (as menuReadyByMondayHouseholds in /admin/metrics: a week the Thursday autopilot made counts only if the household saw it or changed it — autoplan_viewed or autoplan_changed — before that Monday, PRO-1208); paid = the household’s latest subscription is active or trialing (a plan with the card left) today. eligible = households whose window is over (day 7 for firstMenu, firstHit, firstHitCooked and firstHitList, day 21 for twoWeeks; paid has no window: every signup); reached counts only among eligible; reachedInOpenWindow = already made it inside an open window. Counts only.',
   trial:
     'PRO-379: every household with a counted member, today, by its latest subscription and the trial rule (accountAccess): beta (before launch day, no plan), inTrial (trial without card), withCard (trialing: card left, not charged yet), paying (active), paused (trial over without a plan), free (plan Gratis, PRO-385: 0 until it ships), pastDue (past_due or unpaid). Those seven add up to the households. cancelScheduled = of withCard and paying, cancelling at the end of the period; cancellations = households whose latest subscription is canceled, byReason (PRO-386: until then all unknown). Counts only.',
   timeToFirstMenu:
@@ -323,13 +323,7 @@ export async function loadGrowthReport(opts: { includeInternal: boolean; now: Da
       WHERE e.name IN (${names}) AND e.household_id IN ${signupHouseholds} AND ${counted}
       GROUP BY 1, 2, 3
   `)
-  const menusQ = db.execute(sql`
-    SELECT COALESCE(m.household_id, u.primary_household_id)::text AS household_id, to_char(m.week_start, 'YYYY-MM-DD') AS week,
-           MIN(m.created_at) AS first_created_at
-      FROM menus m JOIN users u ON u.id = m.user_id
-      WHERE COALESCE(m.household_id, u.primary_household_id) IN ${signupHouseholds} AND ${counted}
-      GROUP BY 1, 2
-  `)
+  const menusQ = loadMenuWeeks(sql`COALESCE(m.household_id, u.primary_household_id) IN ${signupHouseholds} AND ${counted}`, db)
   // Every household with a counted member, its trial length and latest subscription. Ids stay here.
   const householdsQ = db.execute(sql`
     SELECT h.id::text AS household_id, h.created_at, ${creatorRefsSql('h')} AS creator_refs,
@@ -356,9 +350,7 @@ export async function loadGrowthReport(opts: { includeInternal: boolean; now: Da
     now: opts.now,
     signups: (signups.rows as any[]).map((r) => ({ householdId: r.household_id, at: iso(r.at) })),
     events: (events.rows as any[]).map((r) => ({ householdId: r.household_id, name: r.name, day: r.day, at: iso(r.at) })),
-    menus: (menus.rows as any[])
-      .filter((r) => r.first_created_at)
-      .map((r) => ({ householdId: r.household_id, week: r.week, firstCreatedAt: iso(r.first_created_at) })),
+    menus,
     subscriptions: trialRows.filter((r) => r.latestStatus).map((r) => ({ householdId: r.householdId, status: r.latestStatus! })),
   }
   return {

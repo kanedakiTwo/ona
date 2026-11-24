@@ -65,7 +65,6 @@ describe('every route that pays a provider checks the cap', () => {
     ['recipes.ts', "'/recipes/:id/regenerate-image'"],
     ['ingredients.ts', "'/ingredients/auto-create'"],
     ['ingredients.ts', "'/ingredients/estimate-nutrition'"],
-    ['assistant.ts', "'/assistant/:userId/chat'"],
     ['stt.ts', "'/stt'"],
     ['tts.ts', "'/tts'"],
     ['shopOrders.ts', "'/shop-orders/:id/quote'"],
@@ -76,5 +75,13 @@ describe('every route that pays a provider checks the cap', () => {
     // The middleware list sits between the path and the handler.
     const decl = src.slice(at, src.indexOf('async (req', at))
     expect(decl).toContain('requireSpendCapacity()')
+  })
+
+  it('assistant.ts checks it in the handler, after what the code answers for free (PRO-1302)', () => {
+    const src = read('assistant.ts')
+    const handler = src.slice(src.indexOf("'/assistant/:userId/chat'"))
+    expect(handler.indexOf('capReached(')).toBeGreaterThan(handler.indexOf('answerByCode('))
+    expect(handler.indexOf('capReached(')).toBeLessThan(handler.indexOf('await chat('))
+    expect(src).toMatch(/spendCapStatus\(userId\)/)
   })
 })

@@ -1123,51 +1123,137 @@ interface PantryRow { id: string; name: string; quantity: number; unit: string; 
 
 // Reading the pantry is get_pantry_stock (skills.ts): pantry + list flags in one answer.
 
+/** PRO-1294: how many products one update_pantry / mark_in_stock call takes. */
+export const PANTRY_BATCH_MAX = 100
+
+/** PRO-1294: a name worth writing down (a voice note can leave «eh» or «…»). */
+export const pantryNameOk = (name: unknown): boolean =>
+  typeof name === 'string' && (normalize(name).match(/[a-zñ]/g) ?? []).length >= 2
+
+/**
+ * PRO-1294: the reply to a list of products — how many went in, where, and
+ * the doubts («no he reconocido X e Y»), never one line per product nor a
+ * technical error. The list is the household's dictation, so the reply stays short.
+ */
+export function pantryBatchSummary(done: { location?: string; removed?: boolean }[], doubts: string[]): string {
+  const added = done.filter((d) => !d.removed)
+  const removed = done.length - added.length
+  const where = (['nevera', 'congelador'] as const)
+    .map((l) => [l, added.filter((d) => d.location === l).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([l, n]) => `${n} en ${l === 'nevera' ? 'la nevera' : 'el congelador'}`)
+  const parts: string[] = []
+  if (added.length) parts.push(`${added.length} ${added.length === 1 ? 'producto apuntado' : 'productos apuntados'} en la despensa${where.length ? ` (${where.join(', ')})` : ''}`)
+  if (removed) parts.push(`${removed} ${removed === 1 ? 'quitado' : 'quitados'}`)
+  const quoted = doubts.map((d) => `"${d}"`)
+  const doubtLine = quoted.length
+    ? `Dudas: no he reconocido ${quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(', ')} y ${quoted[quoted.length - 1]}`}; pregúntale qué es${quoted.length === 1 ? '' : ' cada uno'}, como una duda, sin hablar de fallos.`
+    : ''
+  if (!parts.length) return `No he apuntado nada. ${doubtLine}`.trim()
+  return `Hecho: ${parts.join(' y ')}.${doubtLine ? ` ${doubtLine}` : ''} Resúmeselo en una línea, sin recitar la lista.`
+}
+
+const PANTRY_LOCATIONS = ['nevera', 'congelador', 'despensa']
+
+type PantryChange = { action?: string; name?: string; quantity?: number; unit?: string; expiresAt?: string; location?: string }
+
+/** One product of update_pantry against the rows read once; keeps `rows` up to date for the next one. */
+async function applyPantryChange(p: PantryChange, rows: PantryRow[], ctx: SkillContext): Promise<{ ok: boolean; line: string; location?: string; removed?: boolean }> {
+  const name = String(p.name ?? '').trim()
+  const hit = bestMatch(rows, name, (r) => r.name)
+  const b = toBuyable(p.quantity, p.unit)
+  const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
+  // PRO-228: where it is; a move restarts its date in the new place.
+  const location = p.location && PANTRY_LOCATIONS.includes(p.location) ? p.location : undefined
+  if (p.action === 'remove') {
+    if (!hit) return { ok: false, line: `"${name}" no estaba en la despensa.` }
+    await api(ctx)('DELETE', `/pantry/${hit.id}`)
+    if (rows.includes(hit)) rows.splice(rows.indexOf(hit), 1)
+    return { ok: true, removed: true, line: `Hecho: "${hit.name}" fuera de la despensa.` }
+  }
+  if (hit && (p.action === 'set' || p.action === 'add')) {
+    const quantity = b.quantity == null ? undefined : p.action === 'add' && hit.unit === b.unit ? hit.quantity + b.quantity : b.quantity
+    const patch = {
+      ...(quantity != null ? { quantity } : {}),
+      ...(b.unit ? { unit: b.unit } : {}),
+      ...(exp ? { expiresAt: exp } : {}),
+      ...(location ? { location } : {}),
+    }
+    if (Object.keys(patch).length) await api(ctx)('PATCH', `/pantry/${hit.id}`, patch)
+    if (quantity != null) hit.quantity = quantity
+    if (b.unit) hit.unit = b.unit
+    return { ok: true, location, line: `Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.` }
+  }
+  const created = await api(ctx)<PantryRow | undefined>('POST', '/pantry', {
+    name: String(b.suffix ? `${name} (${b.suffix})` : name).slice(0, 80),
+    ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
+    ...(exp ? { expiresAt: exp } : {}),
+    ...(location ? { location } : {}),
+  })
+  // Two «leche» in one dictation go to one row.
+  if (created?.id && created.name) rows.push(created)
+  return { ok: true, location, line: `Hecho: "${name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.` }
+}
+
 const updatePantry: SkillDefinition = {
   name: 'update_pantry',
   description:
-    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio.',
+    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio. Varios productos ("tengo en la nevera leche, huevos, yogures…", la despensa dictada) van en UNA sola llamada con items (hasta 100), nunca una llamada por producto; cada item hereda action y location si no los lleva. Devuelve cuantos ha apuntado y las dudas: lo que no ha reconocido se lo preguntas al usuario.',
   parameters: {
     type: 'object',
     properties: {
       action: { type: 'string', enum: ['add', 'set', 'remove'] },
-      name: { type: 'string' },
+      name: { type: 'string', description: 'Un solo producto; para varios, items' },
       quantity: { type: 'number' },
       unit: { type: 'string' },
       expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
       location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+      items: {
+        type: 'array',
+        maxItems: PANTRY_BATCH_MAX,
+        description: 'Varios productos en una llamada',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            action: { type: 'string', enum: ['add', 'set', 'remove'] },
+            quantity: { type: 'number' },
+            unit: { type: 'string' },
+            expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
+            location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+          },
+          required: ['name'],
+        },
+      },
     },
-    required: ['action', 'name'],
+    required: ['action'],
   },
   async handler(p, ctx) {
     const rows = await api(ctx)<PantryRow[]>('GET', '/pantry')
-    const hit = bestMatch(rows, p.name, (r) => r.name)
-    const b = toBuyable(p.quantity, p.unit)
-    const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
-    // PRO-228: where it is; a move restarts its date in the new place.
-    const location = ['nevera', 'congelador', 'despensa'].includes(p.location) ? (p.location as string) : undefined
-    if (p.action === 'remove') {
-      if (!hit) return text(`"${p.name}" no estaba en la despensa.`)
-      await api(ctx)('DELETE', `/pantry/${hit.id}`)
-      return text(`Hecho: "${hit.name}" fuera de la despensa.`)
+    if (!Array.isArray(p.items) || p.items.length === 0) {
+      if (!pantryNameOk(p.name)) return text('Falta el nombre del producto; no he cambiado nada.')
+      return text((await applyPantryChange(p, rows, ctx)).line)
     }
-    if (hit && (p.action === 'set' || p.action === 'add')) {
-      const quantity = b.quantity == null ? undefined : p.action === 'add' && hit.unit === b.unit ? hit.quantity + b.quantity : b.quantity
-      await api(ctx)('PATCH', `/pantry/${hit.id}`, {
-        ...(quantity != null ? { quantity } : {}),
-        ...(b.unit ? { unit: b.unit } : {}),
-        ...(exp ? { expiresAt: exp } : {}),
-        ...(location ? { location } : {}),
-      })
-      return text(`Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.`)
+    // PRO-1294: the whole dictation in one call; a product it can't place is a doubt, not an error.
+    const done: { location?: string; removed?: boolean }[] = []
+    const doubts: string[] = []
+    for (const raw of (p.items as PantryChange[]).slice(0, PANTRY_BATCH_MAX)) {
+      const item = { action: p.action, location: p.location, ...raw }
+      const name = String(item.name ?? '').trim()
+      if (!pantryNameOk(name)) {
+        if (name) doubts.push(name.slice(0, 40))
+        continue
+      }
+      try {
+        const r = await applyPantryChange(item, rows, ctx)
+        if (r.ok) done.push(r)
+        else doubts.push(name.slice(0, 40))
+      } catch (err) {
+        console.warn('[update_pantry] item failed:', name, (err as Error)?.message ?? err)
+        doubts.push(name.slice(0, 40))
+      }
     }
-    await api(ctx)('POST', '/pantry', {
-      name: String(b.suffix ? `${p.name} (${b.suffix})` : p.name).slice(0, 80),
-      ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
-      ...(exp ? { expiresAt: exp } : {}),
-      ...(location ? { location } : {}),
-    })
-    return text(`Hecho: "${p.name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.`)
+    return text(pantryBatchSummary(done, doubts), { added: done.filter((d) => !d.removed).length, removed: done.filter((d) => d.removed).length, doubts })
   },
 }
 

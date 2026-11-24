@@ -221,13 +221,8 @@ Migration `0032_assistant_reviews.sql` (new table + nullable `meta` column; idem
 - [apps/api/src/routes/whatsapp.ts](../apps/api/src/routes/whatsapp.ts): webhook router (raw body) + authed endpoints.
 - [apps/api/src/services/whatsapp/](../apps/api/src/services/whatsapp/)
   - `inbound.ts`: orchestrator + per-phone queue; `replyMessages` (week picture or text digest).
-<<<<<<< 82aa607b5605fc03e19488db7b5b9b919e666c94
-  - `coalesce.ts`: texts sent one after another → one turn; `signupReply.ts`: the sign-up's one closing message; `signupFollowUps.ts`: health link and avisos question ~10 min after the sign-up (scheduler tick).
-  - `guided.ts`: guides, validation and the Claude writer of the messages Mimo sends by itself (PRO-156); `guidedReplay.ts`: the five-day replay; `proactive.ts`: windows, fixed texts and guide facts; `outbound.ts`: sending, `writeGuided`, `recordDinnerCheckinAnswer`; `checkinButtons.ts`: the «¿qué tal la cena?» buttons without the model; `fatigue.ts`: the pause of every aviso after 3 unanswered, and the households not cooking from the menu; `language.ts`: the language of the avisos; `optOutReason.ts`: why BAJA.
-=======
   - `coalesce.ts`: texts sent one after another (and during a turn) → one turn; `answerTarget.ts` + `answerTurn.ts`: each tap and each «sí» / «no» to its own question (PRO-1295); `signupReply.ts`: the sign-up's one closing message; `signupFollowUps.ts`: health link and avisos question ~10 min after the sign-up (scheduler tick).
-  - `guided.ts`: guides, validation and the Claude writer of the messages Mimo sends by itself (PRO-156); `guidedReplay.ts`: the five-day replay; `proactive.ts`: windows, fixed texts and guide facts; `outbound.ts`: sending, `writeGuided`, `recordDinnerCheckinAnswer`; `checkinButtons.ts`: the «¿qué tal la cena?» buttons without the model; `fatigue.ts`: the pause after 5 unanswered avisos; `language.ts`: the language of the avisos; `optOutReason.ts`: why BAJA.
->>>>>>> c041b3f5f965c49303582eb409558f78b20a0273
+  - `guided.ts`: guides, validation and the Claude writer of the messages Mimo sends by itself (PRO-156); `guidedReplay.ts`: the five-day replay; `proactive.ts`: windows, fixed texts and guide facts; `outbound.ts`: sending, `writeGuided`, `recordDinnerCheckinAnswer`; `checkinButtons.ts`: the «¿qué tal la cena?» buttons without the model; `fatigue.ts`: the pause of every aviso after 3 unanswered, and the households not cooking from the menu; `language.ts`: the language of the avisos; `optOutReason.ts`: why BAJA.
   - `photoSource.ts`: the link to the original of a screenshot's recipe (PRO-66), pure over stored rows.
   - `wiring.ts`: real dependencies.
   - `store.ts`: DB.

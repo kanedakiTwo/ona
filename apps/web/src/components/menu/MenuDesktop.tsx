@@ -111,6 +111,8 @@ interface Props {
   weekTypeLink?: boolean
   /** Rendered under the week (vetoes panel, pantry card). */
   footer?: ReactNode
+  /** PRO-1046: «Cocinas hoy» of the selected day, above its meals. */
+  dayTop?: ReactNode
 }
 
 interface DragData {
@@ -208,6 +210,7 @@ export function MenuDesktop(p: Props) {
       >
         {/* Hero row */}
         <div ref={heroRef}>
+          {p.dayTop && <div className="mb-4">{p.dayTop}</div>}
           {!isSkipped && <WeekTypeDayLine weekStart={p.weekStart} day={p.selectedDay} className="-mt-3 mb-2" />}
           {isSkipped ? (
             <SkippedDay readOnly={p.readOnly} onUnskip={() => p.onUnskipDay(p.selectedDay)} />

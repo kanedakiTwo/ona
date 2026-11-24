@@ -51,6 +51,7 @@ import { alertTimeSkills } from './alertTimeSkills.js'
 import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
+import { batchDaySkills } from './batchDaySkills.js'
 import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
@@ -3465,6 +3466,8 @@ export const skills: SkillDefinition[] = [
   ...schoolMenuSkills,
   // PRO-228: «Sí, mételo» al repaso mensual del congelador.
   ...freezerSkills,
+  // PRO-1046: el día de lote («el domingo hacemos batch para lunes a jueves»).
+  ...batchDaySkills,
   // La receta del día (PRO-1099, specs/recipe-of-the-day.md):
   ...recipeOfTheDaySkills,
   // PRO-1301: la hora del menú del día y de la pregunta de la cena.

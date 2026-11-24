@@ -30,7 +30,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { CalendarRange, ChevronLeft, ChevronRight, MoreHorizontal, Share2 } from "lucide-react"
 import type { DayMenu, MealSlot } from "@ona/shared"
-import { menuShareText, weekTypeOptionLabel } from "@ona/shared"
+import { addDaysIso, batchCookingOn, menuShareText, weekdayNameOfIso, weekTypeOptionLabel } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
 import { menuDiners } from "@/lib/menuDiners"
 import { mealWhen, weekTypeSavedLine, type WeekTypeApplied } from "@/lib/mealSheet"
@@ -82,7 +82,7 @@ import { mealsByDay } from "@/lib/weekPlanForm"
 import { FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthAnswer, type FridgeHealthQuestion as FridgeQuestion, type WeekPlan } from "@ona/shared"
 import { FridgeHealthQuestion } from "@/components/menu/FridgeHealthQuestion"
 import { ApiError } from "@/lib/api"
-import { DayFooter, DayMeals, SkippedDay, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
+import { BatchCookCard, DayFooter, DayMeals, SkippedDay, type AbsentMeals, type SlotPropsFn } from "@/components/menu/DayMeals"
 import { WeekTypeDayLine } from "@/components/menu/WeekTypeDayLine"
 import type { SlotHandlers } from "@/components/menu/MealOptions"
 
@@ -193,6 +193,8 @@ export default function MenuPage() {
   const menuUserId = onboardingGate === "ok" ? user?.id : undefined
   const menuQuery = useMenu(menuUserId, weekStart)
   const { data: menu, isLoading: menuLoading, isError: menuFailed, isFetching: menuFetching } = menuQuery
+  // PRO-1046: a Sunday batch cooks for next week's meals («Cocinas hoy»).
+  const { data: nextMenu } = useMenu(menuUserId, shiftWeek(weekStart, 1))
   // A week that hasn't answered after 8 s (API_SLOW_MS) shows «Reintentar»
   // instead of «Cargando...» for good (the installed app on Windows sat on an
   // empty cream page after its first menu, 2026-10-21); retrying cancels the
@@ -482,6 +484,11 @@ export default function MenuPage() {
             haptic.light()
             patchDish.mutate({ ...base, position, patch: { variant: on ? "cooked" : "planned" } })
           },
+          // PRO-1046: «Lo cocino en el lote del domingo» — the Sunday before this week.
+          setBatch: (position, on) => {
+            haptic.light()
+            patchDish.mutate({ ...base, position, patch: { batchDate: on ? addDaysIso(weekStart, -1) : null } })
+          },
           // PRO-74: «Usar "<lo escrito>" como plato» swaps the dish for the
           // text (before, a note was only added next to it). Keeps «Solo hoy».
           // PRO-223: «Me lo llevo en táper» / «Quitar táper».
@@ -559,6 +566,13 @@ export default function MenuPage() {
   const days = (menu?.days ?? []) as DayMenu[]
   const blankWeek = Boolean(menu) && !weekHasDishes(days) && !isPastWeek
   const skippedDays = menu?.skippedDays ?? []
+  // PRO-1046: what the selected day cooks for later days (a Sunday batch: next week's).
+  const selectedDate = addDaysIso(weekStart, selectedDay)
+  const batchItems = menu ? batchCookingOn(
+        selectedDate,
+        [{ weekStart, days }, nextMenu ? { weekStart: nextMenu.weekStart, days: (nextMenu.days ?? []) as DayMenu[] } : null],
+        defaultDiners,
+      ) : []
   const banned = !isPastWeek && menu ? menu.bannedRecipeIds ?? [] : []
 
   // «Primeros pasos» (PRO-07): once the week is on screen, so step 1 has a dish to light up.
@@ -869,6 +883,7 @@ export default function MenuPage() {
             onAddNote={(d, meal, text) => absentFor(d).onAddNote(meal, text)}
             onAddFreezer={addFreezerDish}
             weekTypeLink={!isPastWeek}
+            dayTop={<BatchCookCard items={batchItems} isToday={selectedDay === todayIndex} dayName={weekdayNameOfIso(selectedDate)} compact />}
             footer={extras}
           />
         ) : (
@@ -934,6 +949,10 @@ export default function MenuPage() {
 
       {favoritesNotice}
       {statusCard}
+
+      {menu && !loadFailed && !generating && !showWeekGrid && (
+        <BatchCookCard items={batchItems} isToday={selectedDay === todayIndex} dayName={weekdayNameOfIso(selectedDate)} />
+      )}
 
       {menu && !loadFailed && !generating && (
         showWeekGrid ? (

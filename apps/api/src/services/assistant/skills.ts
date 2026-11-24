@@ -37,11 +37,7 @@ import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
-<<<<<<< 972d59441e75913751ef6b29a1a539fec72ce07e
-import { appSkills, bestMatch, dishNoteText, PANTRY_BATCH_MAX, pantryBatchSummary, pantryNameOk, searchWords, toBuyable } from './appSkills.js'
-=======
-import { appSkills, bestMatch, dishNoteText, markEatenAsNote, searchWords, toBuyable } from './appSkills.js'
->>>>>>> 075996442f6ebfc8e77b32a2f05c73bdbcccf3fa
+import { appSkills, bestMatch, dishNoteText, markEatenAsNote, PANTRY_BATCH_MAX, pantryBatchSummary, pantryNameOk, searchWords, toBuyable } from './appSkills.js'
 import { setHaveAtHome } from '../shoppingItemState.js'
 import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'

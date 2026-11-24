@@ -58,18 +58,15 @@
  *   dinners, dishes, what doesn't go in) and the closing words name their
  *   dishes, ask one question at most, never «no he conseguido acercarme»,
  *   «se parece poco», «genérico», nor talk about a meal already gone.
-<<<<<<< 972d59441e75913751ef6b29a1a539fec72ce07e
  * - `despensa-una-llamada` (PRO-1294, history of 23-nov: 70 calls, 206 s,
  *   0,53 €): a dictated pantry («tengo en la nevera…» with 20 things) goes in
  *   one update_pantry / mark_in_stock call with items; the reply is short,
  *   asks about what it didn't recognise and never reports technical errors.
-=======
  * - `comida-improvisada` (PRO-1293, Mimo's history 2026-11-23): what was
  *   eaten or improvised for today instead of the menu goes in that meal as
  *   text (mark_meal_eaten with dish, or set_meal_note), never as a new
  *   recipe; the menu's dish left unmade gets one offer of another day. A
  *   recipe only when asked («guárdamela»).
->>>>>>> 075996442f6ebfc8e77b32a2f05c73bdbcccf3fa
  */
 import { SIGNUP_FORBIDDEN_PHRASES } from '../whatsapp/signupReply.js'
 import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffects } from './healthGuard.js'
@@ -77,11 +74,7 @@ import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffe
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-<<<<<<< 972d59441e75913751ef6b29a1a539fec72ce07e
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'despensa-una-llamada'
-=======
-export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu'
->>>>>>> 075996442f6ebfc8e77b32a2f05c73bdbcccf3fa
+export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'despensa-una-llamada'
 
 export interface MimoEvalCase {
   id: string
@@ -1050,22 +1043,6 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     badReply: 'Hecho: tu primer menú. Con las recetas que tengo no he conseguido acercarme mucho a lo que os gusta: el salmón al horno con patatas no cabía esta semana. ¿Te lo pongo en lugar de otro plato? ¿Cambio algo?',
   },
   {
-<<<<<<< 972d59441e75913751ef6b29a1a539fec72ce07e
-    id: 'despensa-dictada-nevera',
-    check: 'despensa-una-llamada',
-    origin: 'Histórico de Mimo, 23-nov (letra O): un hogar dictó su despensa por voz y Mimo hizo 70 llamadas, una por producto (206 s, 0,53 €), y le devolvió errores de productos sueltos. PRO-1294',
-    context: ['Hoy es lunes 2026-11-23 (dayIndex 0), son las 19:30 en Madrid.', 'Hogar: 2 adultos y 1 niño'].join('\n'),
-    history: [],
-    message: 'tengo en la nevera leche, yogures naturales, huevos, mantequilla, queso fresco, jamón york, pechugas de pollo, carne picada, salmón, zanahorias, calabacín, pimientos rojos, tomates, lechugas, espinacas, champiñones, limones, nata para cocinar, tofu y fuet',
-    reconstructed: true,
-    toolResults: {
-      update_pantry: 'Hecho: 19 productos apuntados en la despensa (19 en la nevera). Dudas: no he reconocido "fuet"; pregúntale qué es, como una duda, sin hablar de fallos. Resúmeselo en una línea, sin recitar la lista.',
-      mark_in_stock: 'Hecho: 19 productos apuntados en la despensa (19 en la nevera). Dudas: no he reconocido "fuet"; pregúntale qué es, como una duda, sin hablar de fallos. Resúmeselo en una línea, sin recitar la lista.',
-    },
-    expect: /fuet/,
-    mustCallOneOf: PANTRY_WRITE_TOOLS,
-    badReply: 'He apuntado en la nevera: leche, yogures naturales, huevos, mantequilla, queso fresco, jamón york, pechugas de pollo, carne picada, salmón, zanahorias, calabacín, pimientos rojos, tomates, lechugas, espinacas, champiñones, limones, nata para cocinar y tofu. Error al añadir "fuet": Datos invalidos (400). Inténtalo de nuevo más tarde.',
-=======
     id: 'cenamos-tortilla-nota',
     check: 'comida-improvisada',
     origin: 'Examen del histórico de Mimo, 2026-11-23 (hallazgo G): «hoy cenamos otra cosa» creaba una o dos recetas estimadas, 16–60 s y 0,22–0,33 €; apuntado como nota, 9 s y 0,035 €. PRO-1293',
@@ -1109,6 +1086,21 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     },
     expect: /lentejas/,
     badReply: 'Apuntado: hoy habéis cenado lentejas con chorizo. ¡Que aproveche!',
->>>>>>> 075996442f6ebfc8e77b32a2f05c73bdbcccf3fa
+  },
+  {
+    id: 'despensa-dictada-nevera',
+    check: 'despensa-una-llamada',
+    origin: 'Histórico de Mimo, 23-nov (letra O): un hogar dictó su despensa por voz y Mimo hizo 70 llamadas, una por producto (206 s, 0,53 €), y le devolvió errores de productos sueltos. PRO-1294',
+    context: ['Hoy es lunes 2026-11-23 (dayIndex 0), son las 19:30 en Madrid.', 'Hogar: 2 adultos y 1 niño'].join('\n'),
+    history: [],
+    message: 'tengo en la nevera leche, yogures naturales, huevos, mantequilla, queso fresco, jamón york, pechugas de pollo, carne picada, salmón, zanahorias, calabacín, pimientos rojos, tomates, lechugas, espinacas, champiñones, limones, nata para cocinar, tofu y fuet',
+    reconstructed: true,
+    toolResults: {
+      update_pantry: 'Hecho: 19 productos apuntados en la despensa (19 en la nevera). Dudas: no he reconocido "fuet"; pregúntale qué es, como una duda, sin hablar de fallos. Resúmeselo en una línea, sin recitar la lista.',
+      mark_in_stock: 'Hecho: 19 productos apuntados en la despensa (19 en la nevera). Dudas: no he reconocido "fuet"; pregúntale qué es, como una duda, sin hablar de fallos. Resúmeselo en una línea, sin recitar la lista.',
+    },
+    expect: /fuet/,
+    mustCallOneOf: PANTRY_WRITE_TOOLS,
+    badReply: 'He apuntado en la nevera: leche, yogures naturales, huevos, mantequilla, queso fresco, jamón york, pechugas de pollo, carne picada, salmón, zanahorias, calabacín, pimientos rojos, tomates, lechugas, espinacas, champiñones, limones, nata para cocinar y tofu. Error al añadir "fuet": Datos invalidos (400). Inténtalo de nuevo más tarde.',
   },
 ]

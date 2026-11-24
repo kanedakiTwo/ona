@@ -14,7 +14,7 @@
  *   - `new` («nuevo, se crea al guardar»).
  */
 import { foldIngredientName } from '@ona/shared'
-import { STOPWORDS, tokenSetMatch, type CatalogEntry } from './ingredientTokenMatch.js'
+import { STOPWORDS, tokenSetMatch, usualVariantFirst, type CatalogEntry } from './ingredientTokenMatch.js'
 
 export type LineMatch =
   | { status: 'match'; ingredient: CatalogEntry }
@@ -66,15 +66,19 @@ export function matchIngredientName(name: string, catalog: readonly CatalogEntry
 
   const mine = words(k)
   if (verdict.kind === 'user-generic') {
-    // Every entry that holds all the typed words, shortest first.
-    const generic = keyed
-      .filter((c) => {
-        const theirs = words(c.k)
-        return theirs.length > mine.length && mine.every((w) => theirs.includes(w))
-      })
-      .sort((a, b) => a.entry.name.length - b.entry.name.length || a.entry.name.localeCompare(b.entry.name, 'es'))
-      .slice(0, MAX_CANDIDATES)
-      .map((c) => c.entry)
+    // Every entry that holds all the typed words, shortest first; the usual
+    // variant of the name, if it has one, before them («pimienta» → the black
+    // one: it is also what goes in when the question is left unanswered).
+    const generic = usualVariantFirst(
+      k,
+      keyed
+        .filter((c) => {
+          const theirs = words(c.k)
+          return theirs.length > mine.length && mine.every((w) => theirs.includes(w))
+        })
+        .sort((a, b) => a.entry.name.length - b.entry.name.length || a.entry.name.localeCompare(b.entry.name, 'es'))
+        .map((c) => c.entry),
+    ).slice(0, MAX_CANDIDATES)
     if (generic.length > 0) return { status: 'doubt', candidates: generic, fallback: 'first' }
   }
 

@@ -9,14 +9,17 @@ import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { recordCapHit } from '../services/capHits.js'
 import { API_SALDO_REPLY, API_SALDO_TYPE, noteApiBalanceError } from '../services/apiSaldo.js'
 import { requirePaidPlan } from '../services/accountAccess.js'
-import { eq } from 'drizzle-orm'
-import { recipes } from '../db/schema.js'
-import { describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
+import { asc, eq } from 'drizzle-orm'
+import { recipes, recipeSteps } from '../db/schema.js'
+import { cookStepOf, describePage, pageContextNote, withPageContext } from '../services/assistant/pageContext.js'
 import { canViewRecipe } from '../services/recipeVisibility.js'
 import type { AssistantMode } from '../services/assistant/systemPrompt.js'
 import { recordWebChatTurn } from '../services/chatMessages.js'
 import { generatedMenuThisTurn, withSnowballLine } from '../services/menuText.js'
 import { generatedWeeksOf } from '../services/menuWeek.js'
+import { menuCodeReply, recognizeCodeIntent, stepCodeReply } from '../services/assistant/codeReply.js'
+import { channelOfMode, trackEvent } from '../services/usageEvents.js'
+import type { AssistantResponse } from '../services/assistant/types.js'
 
 /** Web modes: the companion's chat and voice, and the voice onboarding. WhatsApp has its own route. */
 const WEB_MODES: AssistantMode[] = ['text', 'voice', 'onboarding']
@@ -41,10 +44,32 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     const { message, history } = req.body
     const mode: AssistantMode = WEB_MODES.includes(req.body?.mode) ? req.body.mode : 'text'
     const path = typeof req.body?.context?.path === 'string' ? req.body.context.path.slice(0, 200) : null
+    const cookStep = cookStepOf(req.body?.context?.cookStep)
 
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required' })
       return
+    }
+
+    // PRO-1292: «¿qué hay hoy?», «mándame el menú» and, in cook mode,
+    // «siguiente» / «anterior» / «repite» are answered by the code — no model,
+    // no cost, also with the monthly cap used up. Anything more goes on below.
+    if (mode !== 'onboarding') {
+      try {
+        const coded = await answerByCode(userId, message, mode, describePage(path), cookStep)
+        if (coded) {
+          trackEvent('mimo_code_reply', { userId, channel: channelOfMode(mode), props: { kind: coded.kind } })
+          try {
+            await recordWebChatTurn({ userId, userMessage: message, response: coded.response, mode, path, ms: 0 }, db)
+          } catch (e) {
+            console.warn('[assistant] recordWebChatTurn failed (continuing):', e)
+          }
+          res.json(coded.response)
+          return
+        }
+      } catch (e) {
+        console.warn('[assistant] code reply failed (the model answers):', e)
+      }
     }
 
     // Monthly spend cap: reject before spending any tokens once the user has
@@ -71,7 +96,7 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
       // Only recipes this user may see: someone else's private recipe stays unnamed.
       recipeName = r && (await canViewRecipe(userId, r.authorId)) ? r.name : null
     }
-    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName))
+    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
 
     const startedAt = Date.now()
     const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
@@ -132,5 +157,32 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     res.status(500).json({ error: 'Internal server error' })
   }
 })
+
+/**
+ * PRO-1292: the reply the code gives (and its kind for `mimo_code_reply`), or
+ * null when the model has to answer. The step is read from the recipe on
+ * screen, only if this user may see it and the step the web sent fits it.
+ */
+async function answerByCode(
+  userId: string,
+  message: string,
+  mode: AssistantMode,
+  page: ReturnType<typeof describePage>,
+  cookStep: ReturnType<typeof cookStepOf>,
+): Promise<{ kind: 'ver_menu' | 'paso_cocina'; response: AssistantResponse } | null> {
+  const cooking = page.kind === 'cooking' && !!page.recipeId && !!cookStep
+  const intent = recognizeCodeIntent(message, { cooking })
+  if (!intent) return null
+  if (intent.kind === 'ver_menu') {
+    const response = await menuCodeReply(intent, { userId, db, channel: mode })
+    return response ? { kind: 'ver_menu', response } : null
+  }
+  const [r] = await db.select({ authorId: recipes.authorId }).from(recipes).where(eq(recipes.id, page.recipeId!)).limit(1)
+  if (!r || !(await canViewRecipe(userId, r.authorId))) return null
+  const steps = await db.select({ text: recipeSteps.text }).from(recipeSteps).where(eq(recipeSteps.recipeId, page.recipeId!)).orderBy(asc(recipeSteps.index))
+  if (steps.length !== cookStep!.total) return null
+  const response = stepCodeReply(steps.map((s: { text: string }) => s.text), cookStep!, intent.direction)
+  return response ? { kind: 'paso_cocina', response } : null
+}
 
 export default router

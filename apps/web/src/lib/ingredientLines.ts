@@ -35,6 +35,8 @@ export type LineChoice = LibraryEntry | "new"
 
 /** A row as the recipe stores it (and as the API returns it). */
 export interface SavedIngredientRow {
+  /** The row's id: sent back so the steps that point at it keep it (PRO-1259). */
+  id?: string
   ingredientId: string
   ingredientName: string
   quantity: number
@@ -134,6 +136,8 @@ export function namesToMatch(views: readonly IngredientLineView[]): string[] {
 
 /** One recipe row ready for the payload. */
 export interface ResolvedIngredientRow {
+  /** Only on a saved line left as it was (PRO-1259). */
+  id?: string
   ingredientId: string
   ingredientName: string
   quantity: number
@@ -184,6 +188,7 @@ export async function resolveIngredientRows(
   return views.map((v, i) => {
     if (v.saved) {
       return {
+        ...(v.saved.id ? { id: v.saved.id } : {}),
         ingredientId: v.saved.ingredientId,
         ingredientName: v.saved.ingredientName,
         quantity: v.saved.quantity,

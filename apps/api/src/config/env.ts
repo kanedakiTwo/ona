@@ -120,6 +120,12 @@ export const env = {
    */
   USER_MONTHLY_SPEND_CAP_EUR: parseFloat(process.env.USER_MONTHLY_SPEND_CAP_EUR || '10'),
   /**
+   * Per-person caps (Miguel, 2026-11-23): `<userId>:<euros>` pairs separated by
+   * commas, e.g. `0f5c…:20`. For those users the number replaces BOTH monthly
+   * caps above (Mimo's and all paid AI). Malformed pairs are ignored. Empty by default.
+   */
+  USER_CAP_OVERRIDES_EUR: process.env.USER_CAP_OVERRIDES_EUR || '',
+  /**
    * EUR per USD used to convert Anthropic's USD list price into the euro budget
    * above. The token rates live in `advisorBudget.ts` (Haiku 4.5 list price);
    * this single knob lets ops re-peg the FX without a code change. Default 0.92.

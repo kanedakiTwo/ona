@@ -93,7 +93,7 @@ export default function InstallSheet() {
                 <ol className="mt-2 space-y-2">
                   <li className="flex items-center gap-2">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cream font-medium text-ink">1</span>
-                    Toca <Share2 size={14} className="inline align-middle" /> en la barra de Safari
+                    Toca <Share2 size={14} className="inline align-middle" /> Compartir en tu navegador (en Chrome y Edge está en la barra de la dirección)
                   </li>
                   <li className="flex items-center gap-2">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cream font-medium text-ink">2</span>

@@ -16,6 +16,7 @@ import {
   type GrowthMenuWeek,
 } from '../services/growthReport.js'
 import { USAGE_DEFINITIONS } from '../services/usageReport.js'
+import { addDays } from '../services/madridTime.js'
 
 // Madrid is UTC+2 until 2026-10-25 and UTC+1 after: these instants stay on the same Madrid day.
 const ev = (householdId: string, name: string, day: string, time = '10:00:00'): GrowthEvent => ({ householdId, name, day, at: `${day}T${time}Z` })
@@ -175,6 +176,36 @@ describe('two weeks in a row', () => {
       ['2026-10-05', { eligible: 2, reached: 1, reachedInOpenWindow: 0 }],
       ['2026-10-19', { eligible: 0, reached: 0, reachedInOpenWindow: 1 }],
     ])
+  })
+})
+
+describe('two weeks in a row: the Thursday autopilot (PRO-1208)', () => {
+  // Signup Wednesday 2026-10-07; the autopilot makes the weeks of 10-12 and 10-19 on the Thursdays before.
+  const day0 = '2026-10-07'
+  const mine = menu('h', '2026-10-12', '2026-10-11T19:00:00Z')
+  const pilot = (seen: string | null): GrowthMenuWeek => ({ householdId: 'h', week: '2026-10-19', firstCreatedAt: null, autoplanSeenAt: seen })
+
+  it('a week only the autopilot made, never seen → not ready', () => {
+    expect(hasTwoWeeksInARow(day0, [mine, pilot(null)])).toBe(false)
+  })
+
+  it('seen or changed before its Monday → ready', () => {
+    expect(hasTwoWeeksInARow(day0, [mine, pilot('2026-10-17T10:00:00Z')])).toBe(true)
+  })
+
+  it('seen only on Monday (00:30 Madrid) → not ready', () => {
+    expect(hasTwoWeeksInARow(day0, [mine, pilot('2026-10-18T22:30:00Z')])).toBe(false)
+  })
+
+  it('in the cohort: a household whose weeks only the autopilot made does not count', () => {
+    const signups = ['pilotOnly', 'seen'].map((householdId) => ({ householdId, at: `${day0}T09:00:00Z` }))
+    const weeks = ['2026-10-12', '2026-10-19']
+    const menus: GrowthMenuWeek[] = [
+      ...weeks.map((week) => ({ householdId: 'pilotOnly', week, firstCreatedAt: null, autoplanSeenAt: null })),
+      ...weeks.map((week) => ({ householdId: 'seen', week, firstCreatedAt: null, autoplanSeenAt: `${addDays(week, -2)}T10:00:00Z` })),
+    ]
+    const [c] = buildGrowth(input({ signups, menus }))
+    expect(c.twoWeeks).toEqual({ eligible: 2, reached: 1, reachedInOpenWindow: 0 })
   })
 })
 

@@ -19,6 +19,13 @@ export const SIGNUP_FORBIDDEN_PHRASES: readonly RegExp[] = [
 ]
 
 /**
+ * A sentence that asks something. The «?» of a link doesn't count (PRO-1041:
+ * the link to save an allergy told in the sign-up is
+ * `…/profile/casa/alergias?next=…`, and it went out with the extra questions).
+ */
+const asks = (sentence: string) => sentence.replace(/https?:\/\/\S+/g, '').includes('?')
+
+/**
  * Pure: Mimo's words for the sign-up's picture — without a sentence that
  * says the menu is far from their tastes, and with one question at most (the
  * last one).
@@ -29,8 +36,8 @@ export function signupWords(text: string): string {
     .flatMap((line) => line.split(/(?<=[.!?…])\s+/))
     .map((s) => s.trim())
     .filter((s) => s && !SIGNUP_FORBIDDEN_PHRASES.some((re) => re.test(s)))
-  const lastQuestion = sentences.map((s) => s.includes('?')).lastIndexOf(true)
-  return sentences.filter((s, i) => !s.includes('?') || i === lastQuestion).join(' ').trim()
+  const lastQuestion = sentences.map(asks).lastIndexOf(true)
+  return sentences.filter((s, i) => !asks(s) || i === lastQuestion).join(' ').trim()
 }
 
 /** The caption's opener after generating («Listo: tu menú hasta el domingo 🍽️»). */

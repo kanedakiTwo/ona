@@ -30,6 +30,7 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { estimateRecipeTimes } from '../catalogRecipeTimes.js'
+import { totalWithWaits } from '../recipeWaitTime.js'
 import { mealLinesForDay } from '../menuText.js'
 import { fillRecipeNames } from '../menuNames.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
@@ -1798,8 +1799,10 @@ const createRecipe: SkillDefinition = {
     // PRO-308: the minutes it was saved with (given, or estimated from the steps).
     const t = estimateRecipeTimes(params, params.steps ?? [])
     const given = typeof params.prepTime === 'number' && params.prepTime > 0 || typeof params.cookTime === 'number' && params.cookTime > 0
-    const times = t.totalTime
-      ? ` Tiempo: ${t.totalTime} min en total, ${t.activeTime} de trabajo${given ? '' : ' (estimado de los pasos)'}.`
+    // PRO-1078: the total as saved, with the waits (resting, the fridge…).
+    const total = totalWithWaits(t, (params.steps ?? []).map((text) => ({ text })))
+    const times = total
+      ? ` Tiempo: ${total} min en total, ${t.activeTime} de trabajo${given ? '' : ' (estimado de los pasos)'}.`
       : ''
     return {
       data: { recipeId: saved.recipeId, name: saved.name },

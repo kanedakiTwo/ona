@@ -29,7 +29,7 @@
  *      touching the DB.
  *   5. Computes nutrition (`aggregateNutrition`), allergens (`allergenUnion`),
  *      and `totalTime` (sum of `step.durationMin` if all set, else
- *      `prepTime + cookTime`, else null).
+ *      `prepTime + cookTime` with the steps' waits, PRO-1078, else null).
  *   6. Performs the write inside a Drizzle transaction:
  *        INSERT mode: insert the recipe row, then ingredients, then steps.
  *        UPDATE mode: delete recipe_steps + recipe_ingredients, update the
@@ -70,6 +70,7 @@ import {
 import { allergenUnion } from './nutrition/allergens.js'
 import { refreshRecipeDishTypes } from './dishTypes.js'
 import { carryIngredientMarks, ingredientMarksOf, type IngredientMarks } from './ingredientRoles.js'
+import { isDayBeforeStep, totalWithWaits, waitFloor } from './recipeWaitTime.js'
 import type {
   Difficulty,
   IngredientRole,
@@ -445,15 +446,21 @@ function resolveSteps(
 
 // ─── totalTime ──────────────────────────────────────────────────
 
-function computeTotalTime(input: RecipeWriteInput): number | null {
-  const steps = input.steps ?? []
+/**
+ * Sum of `step.durationMin` if all set (a soak or a night in the fridge
+ * left out: done the day before), else `prepTime + cookTime` with the waits
+ * (resting, rising, the fridge…) the steps give (PRO-1078).
+ */
+export function computeTotalTime(input: Pick<RecipeWriteInput, 'steps' | 'prepTime' | 'cookTime'>): number | null {
+  const steps = (input.steps ?? []).map((s) => ({ text: s.text ?? '', durationMin: s.durationMin ?? null, technique: s.technique ?? null }))
   if (steps.length > 0 && steps.every((s) => s.durationMin != null)) {
-    return steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    const sum = steps.filter((s) => !isDayBeforeStep(s)).reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    return sum > 0 ? sum : steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
   }
   const prep = input.prepTime ?? 0
   const cook = input.cookTime ?? 0
-  if (prep === 0 && cook === 0) return null
-  return prep + cook
+  if (prep === 0 && cook === 0) return waitFloor(null, null, steps)
+  return totalWithWaits({ prepTime: prep, cookTime: cook, totalTime: prep + cook }, steps)
 }
 
 // ─── Main entry point ───────────────────────────────────────────

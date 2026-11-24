@@ -188,6 +188,12 @@ describe('slotMinutes + mealEyebrow', () => {
     expect(slotMinutes({ dishes: [recipe('a', { prepTime: 10 })] })).toBe(10)
     expect(slotMinutes({ dishes: [recipe('a')] })).toBeNull()
   })
+  it('two dishes: the longest one (PRO-1078: «Cena · 34 min» with 43-min buñuelos)', () => {
+    const crema = recipe('Crema de zanahoria', { totalTime: 34 })
+    const bunuelos = recipe('Buñuelos de bacalao', { totalTime: 43 })
+    expect(slotMinutes({ dishes: [crema, bunuelos] })).toBe(43)
+    expect(slotMinutes({ dishes: [{ kind: 'note', text: 'Pan' } as any, crema] })).toBe(34)
+  })
   it('"Comida · 28 min · 3 raciones", skipping unknowns', () => {
     expect(mealEyebrow('Comida', 28, 3)).toBe('Comida · 28 min · 3 raciones')
     expect(mealEyebrow('Cena', 25)).toBe('Cena · 25 min')

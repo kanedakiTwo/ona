@@ -36,6 +36,8 @@ export interface AnswerContext {
   note?: string
   historyBody?: string
   withoutTools?: readonly string[]
+  /** PRO-1298: the question a tap answers, when it isn't Mimo's last message (null: none of them). */
+  asked?: string | null
 }
 
 /** Rows within this of each other are the same message (the question and its buttons). */
@@ -66,10 +68,10 @@ export async function resolveAnswer(
       const rows = await loadRows(new Date(Math.min(now.getTime() - OPEN_QUESTION_WINDOW_MS, (at?.getTime() ?? now.getTime()) - 60_000)))
       const said = ambiguousBody(rows) ?? (clarified.answer === 'si' ? 'Sí' : 'No')
       const q = askedQuestion(rows, clarified.ref)
-      if (!q) return { text: said }
+      if (!q) return { text: said, asked: null }
       return clarified.before
-        ? { text: said, note: notThatNote(said, q), historyBody: `${said} (a lo que hablábamos antes)` }
-        : { text: said, note: answerNote(said, q, now), historyBody: `${said} (a «${q.text}»)` }
+        ? { text: said, note: notThatNote(said, q), historyBody: `${said} (a lo que hablábamos antes)`, asked: null }
+        : { text: said, note: answerNote(said, q, now), historyBody: `${said} (a «${q.text}»)`, asked: q.text }
     }
 
     // «Ahora no» of the Sunday menu or the freezer review: closed, by code.
@@ -95,7 +97,7 @@ export async function resolveAnswer(
     const last = lastMimoRow(rows)
     if (!row || !q || !last || Math.abs(last.createdAt.getTime() - row.createdAt.getTime()) <= SAME_ROW_MS) return null
     const said = msg.text?.trim() || ''
-    return { note: answerNote(said, q, now), historyBody: `${said} (a «${q.text}»)` }
+    return { note: answerNote(said, q, now), historyBody: `${said} (a «${q.text}»)`, asked: q.text }
   }
 
   if (msg.kind !== 'text' || opts.onboarding) return null

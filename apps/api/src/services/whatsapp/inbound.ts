@@ -1123,10 +1123,16 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
       onboarding: link.onboardingDone === false,
       // PRO-1298: when it was sent (a repeat queued behind the menu's turn
-      // doesn't make a second one) and, for a button, what it answered.
+      // doesn't make a second one) and, for a button, what it answered
+      // (PRO-1295: the question its ref points at, else Mimo's last message).
       requestedAt: sentAt(msg, now),
-      ...(msg.kind === 'interactive' && msg.text?.trim()
-        ? { button: { title: msg.text.trim(), asked: [...history].reverse().find((m) => m.role === 'assistant')?.content ?? null } }
+      ...(msg.kind === 'interactive' && (answer.text ?? msg.text)?.trim()
+        ? {
+            button: {
+              title: (answer.text ?? msg.text)!.trim(),
+              asked: answer.asked !== undefined ? answer.asked : ([...history].reverse().find((m) => m.role === 'assistant')?.content ?? null),
+            },
+          }
         : {}),
       onToolStart: (names) => {
         const ack = ackTextForTools(names)

@@ -13,6 +13,9 @@
  *   POST   /households/me/people/undescribed/remove { group } — «No está»: one fewer adult / child the counter had
  *   GET    /households/me/week-type                    — the household's «semana tipo» (D-182)
  *   PUT    /households/me/week-type/:day/:meal { slot } — change that one slot (the rest as they are)
+ *   GET    /households/me/postal-code                 — the household's postal code and whether it was asked (PRO-1124)
+ *   PUT    /households/me/postal-code { postalCode }  — save it («» or null deletes it); not a child
+ *   POST   /households/me/postal-code/skip            — «Ahora no»: the question doesn't come back
  *   GET    /households/me/family-offer                — show the invitation offer in the sign-up / list? (PRO-261)
  *   POST   /households/me/family-offer { moment }     — the offer was shown: never again (PRO-261)
  *   POST   /households/me/members/:userId/remove     — owner kicks a member
@@ -43,6 +46,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../services/recipeVisibili
 import { currentWeekStart, isChildOfHousehold, loadWeekType, saveWeekTypeSlots } from '../services/weekType.js'
 import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
 import { requestChannel } from '../services/usageEvents.js'
+import { getPostalCode, PostalCodeError, setPostalCode, skipPostalCode } from '../services/postalCode.js'
 import { familyOfferDue, familyOfferEligible, loadFamilyOfferInput, stampFamilyOffer } from '../services/familyInviteOffers.js'
 import {
   loadHouseholdForUser,
@@ -347,6 +351,47 @@ router.post('/households/me/invites/:inviteId/shared', async (req: AuthRequest, 
  * sign-up may offer it (the form checks its own adults count, ≥ 2, since it
  * isn't saved yet); `compra` already includes `users.adults` ≥ 2.
  */
+// PRO-1124 (D-179): the postal code, asked once in «Hazme la compra» and
+// changed or deleted in Perfil → Tu casa.
+function postalFail(res: any, err: unknown, what: string) {
+  if (err instanceof PostalCodeError) {
+    res.status(err.status).json({ error: err.message })
+    return
+  }
+  console.error(`${what} error:`, err)
+  res.status(500).json({ error: 'Internal server error' })
+}
+
+router.get('/households/me/postal-code', async (req: AuthRequest, res) => {
+  try {
+    const pc = await getPostalCode(req.userId!)
+    if (!pc) {
+      res.status(404).json({ error: 'No household' })
+      return
+    }
+    res.json(pc)
+  } catch (err) {
+    postalFail(res, err, 'GET /households/me/postal-code')
+  }
+})
+
+router.put('/households/me/postal-code', async (req: AuthRequest, res) => {
+  try {
+    res.json(await setPostalCode(req.userId!, req.body?.postalCode))
+  } catch (err) {
+    postalFail(res, err, 'PUT /households/me/postal-code')
+  }
+})
+
+router.post('/households/me/postal-code/skip', async (req: AuthRequest, res) => {
+  try {
+    await skipPostalCode(req.userId!)
+    res.status(204).end()
+  } catch (err) {
+    postalFail(res, err, 'POST /households/me/postal-code/skip')
+  }
+})
+
 router.get('/households/me/family-offer', async (req: AuthRequest, res) => {
   try {
     const input = await loadFamilyOfferInput(req.userId!)

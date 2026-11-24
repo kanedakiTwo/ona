@@ -1,5 +1,5 @@
 import type { Shop, ShopOrder, ShopOrderLine } from '@ona/shared'
-import { SHOP_KIND_LABELS, normalizePhone, resolveBuyRule } from '@ona/shared'
+import { POSTAL_CODE_QUESTION, POSTAL_CODE_WHY, SHOP_KIND_LABELS, normalizePhone, resolveBuyRule } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
 import { bestMatch, toBuyable } from './appSkills.js'
@@ -195,7 +195,7 @@ const prepareShopOrders: SkillDefinition = {
     'Prepara (o rehace) los pedidos de la compra para las tiendas del usuario a partir de su lista actual. Llámala SIEMPRE que pida la compra, los pedidos o los enlaces de las tiendas, aunque ya los preparases antes en la conversación: la lista cambia y los enlaces anteriores no valen (en el historial salen como "[enlace de un pedido anterior]"; nunca los reutilices). No la llames después de editar: para cambiar un pedido preparado usa edit_shop_order. Reparte cada producto a su frutería, carnicería, pescadería o súper y devuelve un enlace por tienda que abre SU WhatsApp con el pedido escrito. Usala cuando pida "hazme la compra", "haz el pedido", "pídeselo a la frutería". Mimoia no envía nada: lo envía el usuario.',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
-    const r = await api(ctx)<{ orders: ShopOrder[]; unassigned: Array<{ name: string }>; skipped: Array<{ name: string }>; pantry?: string[]; hasShops: boolean }>(
+    const r = await api(ctx)<{ orders: ShopOrder[]; unassigned: Array<{ name: string }>; skipped: Array<{ name: string }>; pantry?: string[]; hasShops: boolean; askPostalCode?: boolean }>(
       'POST',
       '/shop-orders/prepare',
       {},
@@ -203,7 +203,11 @@ const prepareShopOrders: SkillDefinition = {
     if (!r.hasShops) {
       return { data: { navigateTo: '/compra/tiendas' }, uiHint: 'text', summary: 'El usuario aún no tiene tiendas guardadas. Pídele nombre, tipo (frutería, carnicería, pescadería, súper) y WhatsApp de cada una y guárdalas con manage_shops; o que las añada en la app.' }
     }
-    if (!r.orders.length) return toCompra('No hay nada pendiente en la lista para pedir (o ya está todo en pedidos abiertos).')
+    // PRO-1124 (D-179): once per household, Legal's question (LEG-506) at the end of the reply.
+    const postal = r.askPostalCode
+      ? `Al final de tu respuesta, pregunta una sola vez, con estas palabras: «${POSTAL_CODE_QUESTION} ${POSTAL_CODE_WHY}». Si lo da, guárdalo con set_postal_code; si no quiere o no contesta, no insistas. Solo el código postal, nunca la calle.`
+      : null
+    if (!r.orders.length) return toCompra(['No hay nada pendiente en la lista para pedir (o ya está todo en pedidos abiertos).', postal].filter(Boolean).join('\n'))
     const parts = ['Pedidos preparados. Copia los enlaces TAL CUAL en tu respuesta:', ...r.orders.map(sendLine)]
     if (r.unassigned.length) parts.push(`Sin tienda (no tiene ni súper guardado): ${r.unassigned.map((u) => u.name).join(', ')}.`)
     const pantry = r.pantry ?? []
@@ -213,7 +217,39 @@ const prepareShopOrders: SkillDefinition = {
     parts.push(
       'Responde con UNA línea por tienda: las que están listas con su enlace copiado TAL CUAL; las que tienen "antes de enviarlo falta", con esa pregunta (corta) — luego se aplica con edit_shop_order, sin volver a preparar. Termina preguntando si quiere añadir algo más (por ejemplo fruta para la semana): se añade con edit_shop_order y el enlace sigue siendo el mismo. Cuando la tienda conteste, que te reenvíe o pegue su respuesta y la reviso.',
     )
+    if (postal) parts.push(postal)
     return toCompra(parts.join('\n'), { orderIds: r.orders.map((o) => o.id) })
+  },
+}
+
+// PRO-1124 (D-179): the household's postal code (only the code, never the street).
+const setPostalCode: SkillDefinition = {
+  name: 'set_postal_code',
+  description:
+    'Guarda, cambia o borra el código postal del hogar (5 cifras de España, como 28012). Sirve para buscarle tiendas de barrio cerca. Llámala cuando el usuario diga su código postal, también al contestar a la pregunta de prepare_shop_orders. Con postal_code vacío, lo borra. Si no quiere darlo («ahora no», «paso»), llámala con skip: true y no insistas. Nunca pidas ni guardes la calle.',
+  parameters: {
+    type: 'object',
+    properties: { postal_code: { type: 'string' }, skip: { type: 'boolean' } },
+    required: [],
+  },
+  async handler(p, ctx) {
+    if (p.skip === true) {
+      await api(ctx)('POST', '/households/me/postal-code/skip', {})
+      return { data: {}, uiHint: 'text', summary: 'Hecho: no se lo vuelvo a preguntar. Si quiere, lo puede poner en Perfil → Tu casa.' }
+    }
+    try {
+      const r = await api(ctx)<{ postalCode: string | null }>('PUT', '/households/me/postal-code', { postalCode: typeof p.postal_code === 'string' ? p.postal_code : null })
+      return {
+        data: { postalCode: r.postalCode },
+        uiHint: 'text',
+        summary: r.postalCode
+          ? `Código postal guardado: ${r.postalCode}. Se cambia o se borra en Perfil → Tu casa.`
+          : 'Código postal borrado.',
+      }
+    } catch (err) {
+      if (err instanceof AppApiError && (err.status === 400 || err.status === 403)) return { data: {}, uiHint: 'text', summary: err.message }
+      throw err
+    }
   },
 }
 
@@ -419,5 +455,6 @@ export const shopOrderSkills: SkillDefinition[] = [
   approveShopOrder,
   closeShopOrder,
   getShopOrders,
+  setPostalCode,
   ...shoppingLineSkills,
 ]

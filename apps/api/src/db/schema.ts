@@ -713,6 +713,14 @@ export const households = pgTable('households', {
    */
   dailyBriefTime: text('daily_brief_time'),
   dinnerCheckinTime: text('dinner_checkin_time'),
+  /**
+   * PRO-1124 (D-179): the household's Spanish postal code («28012»), asked once
+   * in «Hazme la compra» and changed in Perfil → Tu casa. Only the code, never
+   * the street. `postalCodeAskedAt`: when the question was offered (answered,
+   * skipped or ignored), so it never comes back by itself.
+   */
+  postalCode: text('postal_code'),
+  postalCodeAskedAt: timestamp('postal_code_asked_at', { withTimezone: true }),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])

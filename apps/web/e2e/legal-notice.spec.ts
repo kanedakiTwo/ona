@@ -77,7 +77,7 @@ test('/privacidad: AiKit only makes the recipe images, with OpenAI models', asyn
   const main = page.getByTestId('reading-column')
   await expect(main).not.toContainText('cuando lo pides')
   await expect(main).not.toContainText('Gemini')
-  await expect(main).toContainText('Última actualización: 13 de noviembre de 2026')
+  await expect(main).toContainText('Última actualización: 24 de noviembre de 2026')
   // D-189: the daily reviewer also reads Mimo's chat in the app.
   await expect(main).toContainText('conversaciones con Mimo, en la web y por WhatsApp, para detectar errores del asistente')
 })
@@ -151,4 +151,12 @@ test('/aviso-legal and /terminos show no phone without NEXT_PUBLIC_SUPPORT_PHONE
     await expect(page.getByTestId('support-phone')).toHaveCount(0)
     await expect(page.getByTestId('reading-column')).not.toContainText('Teléfono:')
   }
+})
+
+// PRO-1124 (D-179): the postal code, a new datum for every household, in Legal's words (LEG-506, 2026-11-06).
+test('/privacidad: the postal code, optional, in Legal’s words', async ({ page }) => {
+  await page.goto('/privacidad')
+  await expect(page.getByTestId('privacy-postal-code')).toHaveText(
+    'Código postal (opcional): lo usamos para proponerte tiendas de la Red de tu zona y para saber, en recuento y sin identificar a nadie, en qué zonas faltan tiendas. Lo puedes cambiar o borrar en Perfil y se borra con tu cuenta. No lo recibe ninguna tienda hasta que le haces un pedido.',
+  )
 })

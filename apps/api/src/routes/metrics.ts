@@ -5,6 +5,7 @@ import { loadUsageReport } from '../services/usageReport.js'
 import { loadMimoCacheWeekly } from '../services/mimoTurnCost.js'
 import { loadCapHits } from '../services/capHits.js'
 import { loadApiSaldo } from '../services/apiSaldo.js'
+import { loadPostalDemand } from '../services/postalCode.js'
 import { loadFeatureUsageReport } from '../services/featureUsageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
 import { basketGapsForToken, basketSendsForToken, loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
@@ -16,7 +17,9 @@ import { flagsForAgents } from '../services/agentView.js'
  *   - GET /admin/metrics?weeks=8[&includeInternal=1] — weekly business metrics
  *     and cost per active household (specs/metrics.md), plus `capHits`: who
  *     reached a spend cap this Madrid month (PRO-1090, services/capHits.ts),
- *     and `apiSaldo`: since when Anthropic has no credit (PRO-1101, services/apiSaldo.ts);
+ *     `apiSaldo`: since when Anthropic has no credit (PRO-1101, services/apiSaldo.ts),
+ *     and `postalDemand`: households per postal code × shop kind they lack, no
+ *     group under 3 (PRO-1124, services/postalCode.ts);
  *   - GET /admin/usage?days=28[&includeInternal=1] — product analytics from
  *     `usage_events`: counts per day and event, active households, activation
  *     funnel (specs/metrics.md "Usage events"), and `mimoCache`: Mimo's cache
@@ -51,12 +54,14 @@ const flag = (raw: unknown) => raw === '1' || raw === 'true'
 router.get('/admin/metrics', metricsAuth, async (req, res) => {
   try {
     const weeks = intParam(req.query.weeks, 8, 1, 52)
-    const [metrics, capHits, apiSaldo] = await Promise.all([
-      loadBusinessMetrics({ weeks, includeInternal: flag(req.query.includeInternal) }),
+    const includeInternal = flag(req.query.includeInternal)
+    const [metrics, capHits, apiSaldo, postalDemand] = await Promise.all([
+      loadBusinessMetrics({ weeks, includeInternal }),
       loadCapHits(),
       loadApiSaldo(),
+      loadPostalDemand({ includeInternal }),
     ])
-    res.json({ ...metrics, capHits, apiSaldo })
+    res.json({ ...metrics, capHits, apiSaldo, postalDemand })
   } catch (err: any) {
     console.error('[metrics] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

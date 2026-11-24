@@ -7,7 +7,8 @@
  *   DELETE /shops/:id                   — delete a shop (and its drafts)
  *   PATCH  /shops/:id { move }          — { move: up | down | first } alone: reorder within its kind → the shops in their new order
  *
- *   POST   /shop-orders/prepare         — draft one order per shop from the list for the next `days` (default 7)
+ *   POST   /shop-orders/prepare         — draft one order per shop from the list for the next `days` (default 7);
+ *                                          `askPostalCode` true once per household (PRO-1124)
  *   GET    /shop-orders                 — open orders (?all=1 adds closed ones, last 30 days)
  *   GET    /shop-orders/:id
  *   PATCH  /shop-orders/:id             — edit a draft (lines, cap)
@@ -41,6 +42,7 @@ import { requireSpendCapacity } from '../middleware/spendCap.js'
 import { requirePaidPlan } from '../services/accountAccess.js'
 import { appApiFor } from '../services/assistant/appApi.js'
 import { addDays, madridParts } from '../services/madridTime.js'
+import { claimPostalCodeQuestion } from '../services/postalCode.js'
 import { basketSentProps, carrefourClickProps, trackEvent } from '../services/usageEvents.js'
 import { acceptBasketConsent, basketExtensionEnabledFor, listBasketConsents, revokeBasketConsent } from '../services/basketExtension.js'
 import {
@@ -180,7 +182,10 @@ router.post('/shop-orders/prepare', paidPlanForOrders, async (req: AuthRequest, 
       const list = await appApiFor(req.userId!)<{ id: string }>('GET', `/shopping-list?from=${from}&to=${to}`)
       listId = list?.id
     }
-    res.json(await prepareOrders(req.userId!, { listId }))
+    const result = await prepareOrders(req.userId!, { listId })
+    // PRO-1124 (D-179): the postal code question, once per household (web and Mimo).
+    const askPostalCode = result.hasShops ? await claimPostalCodeQuestion(req.userId!).catch(() => false) : false
+    res.json({ ...result, askPostalCode })
   } catch (err) {
     fail(res, err, 'POST /shop-orders/prepare')
   }

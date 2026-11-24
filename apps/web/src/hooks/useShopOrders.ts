@@ -62,6 +62,8 @@ export interface PrepareResult {
   /** Pantry staples the recipes use, assumed at home ("¿Te falta algo de esto?"). */
   pantry: string[]
   hasShops: boolean
+  /** PRO-1124: ask the household's postal code (once; the API marks it as asked). */
+  askPostalCode?: boolean
 }
 
 export function usePrepareShopOrders() {

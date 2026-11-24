@@ -18,6 +18,7 @@ import { usePatchShopOrder, usePrepareShopOrders, useShopOrders, useShops, type 
 import type { ShopOrder } from "@ona/shared"
 import { OrderCard } from "@/components/compra/OrderCard"
 import { ClosedOrder } from "@/components/compra/ClosedOrder"
+import { PostalCodeQuestion } from "@/components/household/PostalCode"
 import { haptic } from "@/lib/pwa/haptics"
 
 /** Same order as a walk through the neighbourhood: fresh first, súper last. */
@@ -64,6 +65,8 @@ export default function CompraPage() {
   const { data: orders, isLoading } = useShopOrders(true)
   const prepare = usePrepareShopOrders()
   const [result, setResult] = useState<PrepareResult | null>(null)
+  // PRO-1124: once per household; kept after «Rehacer los pedidos» until answered or skipped.
+  const [askPostalCode, setAskPostalCode] = useState(false)
 
   if (authLoading) return <div className="flex min-h-screen items-center justify-center bg-[#FAF6EE] text-eyebrow">Cargando...</div>
   if (!user) return null
@@ -116,7 +119,12 @@ export default function CompraPage() {
             disabled={prepare.isPending || !shops}
             onClick={() => {
               haptic.light()
-              prepare.mutate({}, { onSuccess: setResult })
+              prepare.mutate({}, {
+                onSuccess: (r) => {
+                  setResult(r)
+                  if (r.askPostalCode) setAskPostalCode(true)
+                },
+              })
             }}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1A1612] py-4 text-[13px] uppercase tracking-[0.14em] text-[#FAF6EE] disabled:opacity-50"
           >
@@ -124,6 +132,8 @@ export default function CompraPage() {
             {prepare.isPending ? "Preparando…" : hasDrafts ? "Rehacer los pedidos" : "Preparar los pedidos"}
           </button>
           {prepare.error && <p role="alert" className="text-[12px] text-[#C65D38]">{prepare.error.message}</p>}
+
+          {askPostalCode && <PostalCodeQuestion />}
 
           {result && (result.skipped.length > 0 || result.unassigned.length > 0 || result.orders.length === 0) && (
             <div className="rounded-xl bg-[#F7F2E7] px-3 py-2 text-[12px] text-[#7A7066]">

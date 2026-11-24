@@ -27,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 13 de noviembre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 24 de noviembre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -39,6 +39,11 @@ export default function PrivacidadPage() {
           <H2>2. Qué datos tratamos</H2>
           <ul className="ml-5 list-disc space-y-2">
             <li><strong>Cuenta:</strong> nombre de usuario, email y contraseña (guardada cifrada, nunca en claro).</li>
+            <li data-testid="privacy-postal-code">
+              <strong>Código postal</strong> (opcional): lo usamos para proponerte tiendas de la Red de tu zona y para saber,
+              en recuento y sin identificar a nadie, en qué zonas faltan tiendas. Lo puedes cambiar o borrar en Perfil y se
+              borra con tu cuenta. No lo recibe ninguna tienda hasta que le haces un pedido.
+            </li>
             <li>
               <strong>Datos de salud y alimentación:</strong> sexo, edad, peso, altura y nivel de actividad
               (para calcular tus calorías), alergias, intolerancias y restricciones (para que Mimoia no te

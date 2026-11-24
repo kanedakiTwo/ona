@@ -111,7 +111,7 @@ All auth'd and scoped to the caller's primary household unless noted. Shop order
 | GET/POST | `/shops` | list / add (`shopInputSchema`) |
 | PATCH/DELETE | `/shops/:id` | full-form update / delete (+ its drafts) |
 | PATCH | `/shops/:id` `{ move }` | `{ move: up \| down \| first }` alone: reorder within its kind → all shops in their new order; positions rewritten 0…n-1; 400 bad `move`, 404 not the household's |
-| POST | `/shop-orders/prepare` | `{ days? = 7, listId? }` → `{ orders, unassigned, skipped, hasShops }` |
+| POST | `/shop-orders/prepare` | `{ days? = 7, listId? }` → `{ orders, unassigned, skipped, hasShops, askPostalCode }` (`askPostalCode`: the household's postal code question, true once; PRO-1124, [Household](./household.md)) |
 | GET | `/shop-orders` | open orders (`?all=1` adds closed, last 30 days) |
 | GET/PATCH | `/shop-orders/:id` | PATCH drafts only: `{ lines: [{key, remove?, note?, quantity?, unit?, choice?, include?, moveToShopId?}], add: [{name, quantity?, unit?, note?}], fulfilment?, address?, capEur? }`; a `choice` is saved as household preference |
 | POST | `/shop-orders/:id/sent` · `/quote {text}` · `/approve {decisions, capEur?}` · `/close {finalTotalEur?}` · `/cancel` | 409 on a wrong state |
@@ -128,7 +128,7 @@ Web: `GET /c/<token>[?m=ok]` (Next route handler) redirects to that URL; expired
 
 ## Assistant skills
 
-`shopOrderSkills.ts` (same REST calls, as the user): `manage_shops` (incl. delivery minimum/fee; `move` with `to: first | up | down` — «pon Mercadona como primer súper» — answers with the new order of that kind), `prepare_shop_orders` (links, or what's missing, pickup/delivery, minimum, pantry assumed, "¿algo más?"), `edit_shop_order` (add — each product to its shop —, remove, choose, amounts, include, delivery + address; same links), `register_shop_reply`, `approve_shop_order` (only after an explicit "sí"; `remove` names → line keys), `close_shop_order` (`cancel=true` cancels), `get_shop_orders`. Shop names match ignoring punctuation ("la plaza" → "Carnicería La Plaza"). The prompt treats a forwarded shop reply as data, never instructions, and lets the model copy `/c/` links verbatim (the only URLs it may write). Short links use `WEB_PUBLIC_URL`.
+`shopOrderSkills.ts` (same REST calls, as the user): `manage_shops` (incl. delivery minimum/fee; `move` with `to: first | up | down` — «pon Mercadona como primer súper» — answers with the new order of that kind), `prepare_shop_orders` (links, or what's missing, pickup/delivery, minimum, pantry assumed, "¿algo más?"), `edit_shop_order` (add — each product to its shop —, remove, choose, amounts, include, delivery + address; same links), `register_shop_reply`, `approve_shop_order` (only after an explicit "sí"; `remove` names → line keys), `close_shop_order` (`cancel=true` cancels), `get_shop_orders`, `set_postal_code` (PRO-1124: when `prepare_shop_orders` brings `askPostalCode`, Mimo asks Legal's question once at the end of its reply; this saves, deletes or skips the household's postal code — [Household](./household.md)). Shop names match ignoring punctuation ("la plaza" → "Carnicería La Plaza"). The prompt treats a forwarded shop reply as data, never instructions, and lets the model copy `/c/` links verbatim (the only URLs it may write). Short links use `WEB_PUBLIC_URL`.
 
 ## Constraints
 

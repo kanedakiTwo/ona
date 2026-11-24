@@ -72,6 +72,18 @@ The invitation is offered in three moments, **once each and never again** (like 
 - **WhatsApp sign-up (PRO-383, D-051):** Mimo asks the same «¿Quién hace la compra?» only when the household said 2 adults or more, and with «Otra persona de casa» or «Nos turnamos» `complete_onboarding` hands over the same message and link to forward (`services/shopperInvite.ts`: `source: alta`, sent at once, `alta` stamped; nothing when the account isn't the owner or the household already has 2 accounts). See [WhatsApp](./whatsapp.md). The Mimo moment (PRO-262) still covers those who said «Yo» or didn't invite.
 - **Mimo (`mimo`, PRO-262):** the same in the web chat and on WhatsApp (D-051; `chat()` in `engine.ts`, text and WhatsApp modes, never voice or the sign-up chat). Once the household has a **resolved week** (a menu for that week and the list used that week or the weekend before — the `/admin/metrics` definition), Mimo adds once, at the end of its next reply: «Esta semana ya tienes menú y lista. ¿Se los mando también a tu pareja o a quien vive contigo? Si me dices que sí, te preparo el mensaje con el enlace para que entre en tu casa y lo vea todo.» A «sí» → `invite_to_household` (`source: 'mimo'`). Only in a reply, so on WhatsApp always inside the 24-hour window, never a message of its own or a template. Same «who» as above, and not while an invitation is pending (they're already inviting, e.g. in that same turn). Stamped atomically (`mimo`); a «no» as the next message (the whole message: «no», «no gracias», «vivo sola»…; not «No, cámbiame el jueves») stamps `mimoDeclined` and it never comes back, nor the list card. **Weekly aviso budget (D-069):** `familyOfferBudgetGate` must say yes (and spend the unit, kind `family_invite`, priority 4) before it's stamped; until the PRO-215 budget is merged the gate lets it through (`TODO(PRO-215)` in `services/familyInviteMimo.ts`). A failure leaves the reply as it was. Tests `familyInviteMimo.test.ts`.
 
+## El código postal del hogar (PRO-1124, D-179)
+
+One per household (`households.postal_code`, five digits; migration `0116_household_postal_code.sql`, additive). Only the code, never the street: the address is asked only when ordering with delivery (Red de tiendas design, §5). It's for proposing shops of the Red near home and for counting, without identifying anyone, where households are waiting for a shop.
+
+- **Asked once, in the next «Hazme la compra»:** `POST /shop-orders/prepare` answers `askPostalCode: true` the first time a household with at least one shop prepares its orders and has neither a code nor `postal_code_asked_at`; the same UPDATE stamps `postal_code_asked_at`, so it's offered once (web or Mimo, whichever comes first) and never again by itself, answered, skipped or ignored. A child of the house is never asked. Without shops there's no «Hazme la compra» yet: not asked, not stamped.
+- **The question** (Legal, LEG-506, word for word; `POSTAL_CODE_QUESTION` + `POSTAL_CODE_WHY` in `@ona/shared`): «¿Cuál es tu código postal? Lo usamos para buscarte tiendas de barrio cerca. Puedes saltarlo.» On /compra it's a card under «Preparar los pedidos» (`PostalCodeQuestion`, `components/household/PostalCode.tsx`) with «Ahora no» and «Guardar» side by side, **same pill and size** (Legal: «Ahora no» as visible as «Guardar»). Saved → «Guardado: 28012. Lo puedes cambiar o borrar en Perfil → Tu casa.» With Mimo (web chat and WhatsApp), `prepare_shop_orders` tells it to ask with those same words at the end of its reply, once; `set_postal_code` saves it (`postal_code`), deletes it (empty) or skips (`skip: true`), never insisting ([Shop orders](./shop-orders.md)).
+- **Perfil → Tu casa** (`PostalCodeSection`): «Código postal», the current one or «Sin poner», «Cambiar»/«Poner» and «Borrar». Any adult of the house; a child sees it but can't change it (403).
+- **Valid:** Spanish codes only, five digits with a province 01–52 (`normalizePostalCode`; spaces dropped). Otherwise 400 «Escribe un código postal de España: 5 cifras, como 28012.»
+- **Counted** in `/admin/metrics` → `postalDemand` ([Metrics](./metrics.md)): households per postal code and shop kind they lack, never a group under 3 households (D-094).
+- **Privacy:** a new datum for every household, so `/privacidad` names it in Legal's words ([Privacy](./privacy.md)). It goes with the household: deleted with the account when it's a one-person household; in a shared one it stays with the household, like the menu, until someone deletes it in Perfil.
+- Tests: `postalCode.test.ts` (validation, grouping, Mimo), `postalCode.smoke.ts` (asked once, skip, Perfil, child, the count, real database), e2e `postal-code.spec.ts` (390×844).
+
 ## REST Surface
 
 | Method | Path | Auth | Notes |
@@ -83,6 +95,9 @@ The invitation is offered in three moments, **once each and never again** (like 
 | PUT | `/households/me/people/:personId/:list` | adult | `restrictions` (health consent) or `dislikes` of a person without an account (PRO-1203) |
 | POST | `/households/me/people/undescribed/remove` | adult | Body `{ group: 'adult' \| 'kid' }`: one fewer undescribed person (PRO-1203) |
 | GET | `/households/me` | required | Returns `HouseholdDetails` with members + pendingInvites |
+| GET | `/households/me/postal-code` | required | `{ postalCode: string \| null, asked: boolean }` (PRO-1124) |
+| PUT | `/households/me/postal-code` | adult | Body `{ postalCode }`; `""` or `null` deletes it. 400 if not Spanish, 403 for a child |
+| POST | `/households/me/postal-code/skip` | required | «Ahora no»: stamps `postal_code_asked_at`; 204 |
 | PATCH | `/households/me` | owner | Body: `{ name: string }` |
 | POST | `/households/me/invites` | owner | Body: `{ role: 'member' \| 'child', email?: string }` |
 | POST | `/households/me/invites/:inviteId/revoke` | owner | 204 on success |
@@ -91,7 +106,7 @@ The invitation is offered in three moments, **once each and never again** (like 
 
 ## Data Model
 
-- `households(id uuid pk, name text default 'Mi casa', owner_id uuid -> users, created_at)`
+- `households(id uuid pk, name text default 'Mi casa', owner_id uuid -> users, created_at, …, postal_code text?, postal_code_asked_at timestamptz?)` — the last two, PRO-1124
 - `household_members(id uuid pk, household_id, user_id, role check IN ('owner','member','child'), joined_at)` — unique on `(household_id, user_id)`
 - `household_invites(id, household_id, invited_by_user_id, email?, token unique, role check IN ('member','child'), expires_at, consumed_at?, consumed_by_user_id?, created_at)`
 - `users.primary_household_id uuid` — pointer to the household this user currently scopes reads/writes to

@@ -788,3 +788,5 @@ export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/l
 export { moveSlotInWeek, dishKey, slotKey, MENU_CHANGED_CODE, withLock, swapLocks } from './utils/menuSlots.js'
 export type { MenuSheetName, MenuSheetAction } from './constants/menuSheets.js'
 export { MENU_SHEETS, MENU_SHEET_ACTIONS, isMenuSheetAction } from './constants/menuSheets.js'
+// El código postal del hogar (PRO-1124, D-179, specs/household.md)
+export { POSTAL_CODE_QUESTION, POSTAL_CODE_WHY, POSTAL_CODE_INVALID, normalizePostalCode } from './utils/postalCode.js'

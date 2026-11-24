@@ -32,6 +32,7 @@ import {
 } from '@/components/profile/SubPage'
 import { FoundingBadge } from '@/components/profile/FoundingBadge'
 import { SchoolMenuLink } from '@/components/profile/SchoolMenuLink'
+import { PostalCodeSection } from '@/components/household/PostalCode'
 import { FamilyInviteShare } from '@/components/household/FamilyInviteShare'
 import { SubLoadError, useSlowLoad } from '@/components/profile/SubLoadError'
 
@@ -382,6 +383,9 @@ export default function HouseholdPage() {
           </section>
         )}
       </div>
+
+      {/* PRO-1124: the household's postal code; a child sees it, doesn't change it. */}
+      <PostalCodeSection canEdit={household.members.find((m) => m.userId === user?.id)?.role !== 'child'} />
 
       {/* PRO-224: «Menú del cole», only with a child in the household. */}
       <SchoolMenuLink />

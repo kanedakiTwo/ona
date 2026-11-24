@@ -85,8 +85,8 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
   },
   tiendas: {
     label: 'pedidos a las tiendas del hogar: tiendas, preparar, cambiar, respuesta de la tienda, confirmar, cerrar',
-    tools: ['manage_shops', 'prepare_shop_orders', 'edit_shop_order', 'register_shop_reply', 'approve_shop_order', 'close_shop_order', 'get_shop_orders'],
-    words: /\b(tiendas?|pedidos?|fruter\w*|carnicer\w*|pescader\w*|charcuter\w*|panader\w*|tender\w*|recog\w*|domicilio|encarg\w*|envia\w*|precios?|euros?|total|te pongo|no queda|no hay|haz la compra|hazme la compra)\b|€/,
+    tools: ['manage_shops', 'prepare_shop_orders', 'edit_shop_order', 'register_shop_reply', 'approve_shop_order', 'close_shop_order', 'get_shop_orders', 'set_postal_code'],
+    words: /\b(tiendas?|pedidos?|fruter\w*|carnicer\w*|pescader\w*|charcuter\w*|panader\w*|tender\w*|recog\w*|domicilio|encarg\w*|envia\w*|precios?|euros?|total|te pongo|no queda|no hay|haz la compra|hazme la compra|codigo postal)\b|€/,
   },
   despensa: {
     label: 'la despensa: que hay en casa, lo que se acaba o caduca, que cocinar con lo que hay',

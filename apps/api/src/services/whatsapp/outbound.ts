@@ -236,7 +236,9 @@ export async function recordDinnerCheckinAnswer(
   const [logged] = await db
     .select({ id: cookLogs.id })
     .from(cookLogs)
-    .where(and(eq(cookLogs.userId, userId), gte(cookLogs.cookedAt, checkinAt)))
+    // PRO-1295: this dinner's log — an old check-in tapped days later isn't
+    // «logged» by another day's dinner.
+    .where(and(eq(cookLogs.userId, userId), eq(cookLogs.recipeId, recipeId), gte(cookLogs.cookedAt, checkinAt)))
     .limit(1)
   if (!logged) {
     await api('POST', '/cook-logs', {

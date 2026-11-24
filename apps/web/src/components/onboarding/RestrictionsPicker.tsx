@@ -116,9 +116,16 @@ export function RestrictionsPicker({
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={handleTagKeyDown}
             disabled={!consent}
-            placeholder="Otra: escríbela (p. ej. pimiento)"
+            aria-describedby={consent ? undefined : `${otherId}-why`}
+            placeholder={consent ? "Otra: escríbela (p. ej. pimiento)" : "Marca antes el permiso de datos de salud"}
             className={FIELD}
           />
+          {/* PRO-1263: a disabled box says why. */}
+          {!consent && (
+            <p id={`${otherId}-why`} className="mt-1.5 text-[13px] text-ink-muted">
+              Marca antes el permiso de datos de salud para escribirla.
+            </p>
+          )}
         </div>
         <ReligionConsentNote
           restrictions={restrictions}

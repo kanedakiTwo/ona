@@ -8,6 +8,7 @@ import {
   buildDaily,
   buildFunnel,
   buildHouseholdSnapshot,
+  buildSignupSources,
   buildTotals,
   buildWeekly,
   dayRange,
@@ -176,5 +177,56 @@ describe('PRO-106 — households: WhatsApp, avisos, members, channel split', () 
       { week: '2026-10-05', isoWeek: '2026-W41', webOnly: 2, whatsappOnly: 1, both: 1, unknownOnly: 1 },
       { week: '2026-10-12', isoWeek: '2026-W42', webOnly: 1, whatsappOnly: 0, both: 0, unknownOnly: 0 },
     ])
+  })
+})
+
+describe('buildSignupSources (PRO-1288)', () => {
+  it('counts signups by week, closed ?ref label and utm_source, each with its first menu', () => {
+    const input: UsageInput = {
+      days: dayRange('2026-11-16', '2026-11-29'),
+      today: '2026-11-29',
+      counts: [],
+      householdDays: [
+        hd('h1', '2026-11-23', 'signup_completed'),
+        hd('h1', '2026-11-24', 'menu_generated'),
+        hd('h2', '2026-11-23', 'signup_completed'),
+        hd('h3', '2026-11-25', 'signup_completed'),
+        hd('h3', '2026-11-25', 'menu_generated'),
+        // h4: menu on day 8 → no first menu.
+        hd('h4', '2026-11-17', 'signup_completed'),
+        hd('h4', '2026-11-25', 'menu_generated'),
+      ],
+    }
+    const known = new Set(['directo', 'receta', 'iar-receta'])
+    const rows = buildSignupSources(
+      input,
+      [
+        { householdId: 'h1', day: '2026-11-23', source: 'iar-receta', utmSource: 'Instagram' },
+        { householdId: 'h2', day: '2026-11-23', source: 'Juan García', utmSource: null },
+        { householdId: 'h3', day: '2026-11-25', source: null, utmSource: null },
+        { householdId: 'h4', day: '2026-11-17', source: '', utmSource: 'boletin-raro' },
+      ],
+      known,
+    )
+    expect(rows).toEqual([
+      { week: '2026-11-16', isoWeek: '2026-W47', source: 'directo', utmSource: 'otro', signups: 1, firstMenu: 0 },
+      { week: '2026-11-23', isoWeek: '2026-W48', source: 'directo', utmSource: 'ninguna', signups: 1, firstMenu: 1 },
+      { week: '2026-11-23', isoWeek: '2026-W48', source: 'iar-receta', utmSource: 'instagram', signups: 1, firstMenu: 1 },
+      { week: '2026-11-23', isoWeek: '2026-W48', source: 'otro', utmSource: 'ninguna', signups: 1, firstMenu: 0 },
+    ])
+    expect(JSON.stringify(rows)).not.toMatch(/h[1-4]|Juan/)
+  })
+
+  it('a household with two signups counts once, with the first one', () => {
+    const input: UsageInput = { days: dayRange('2026-11-23', '2026-11-29'), today: '2026-11-29', counts: [], householdDays: [] }
+    const rows = buildSignupSources(
+      input,
+      [
+        { householdId: 'h1', day: '2026-11-26', source: null, utmSource: null },
+        { householdId: 'h1', day: '2026-11-24', source: 'receta', utmSource: 'wa' },
+      ],
+      new Set(['directo', 'receta']),
+    )
+    expect(rows).toEqual([{ week: '2026-11-23', isoWeek: '2026-W48', source: 'receta', utmSource: 'whatsapp', signups: 1, firstMenu: 0 }])
   })
 })

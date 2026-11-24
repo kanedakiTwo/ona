@@ -178,6 +178,10 @@ const GLUTEN_KEYWORDS = [
   'rebozad*',
   'tempura',
   'picatost*',
+  // PRO-399: green wheat and emmer (the freekeh of 2026-11-12 went out without gluten).
+  'freekeh',
+  'frikeh',
+  'farro',
 ]
 
 /** Flour-like products: gluten unless they name a gluten-free base. */
@@ -201,7 +205,7 @@ const GLUTEN_FLOUR_LIKE = [
 /** «Pasta de …» that is a paste, not pasta (PRO-193). */
 const NOT_PASTA_PHRASES = ['pasta de tomate', 'pasta de curry', 'pasta de sesamo']
 
-const GLUTEN_FREE_BASES = ['arroz', 'maiz', 'garbanzo', 'almendra', 'trigo sarraceno', 'mandioca']
+const GLUTEN_FREE_BASES = ['arroz', 'maiz', 'garbanzo', 'almendra', 'trigo sarraceno', 'mandioca', 'shirataki']
 
 const SOY_SAUCE_KEYWORDS = ['salsa de soja', 'tamari', 'shoyu']
 /** Usually made or thickened with wheat: oyster sauce, Shaoxing wine, teriyaki and hoisin (soy-based too). */
@@ -276,6 +280,9 @@ const LACTOSE_KEYWORDS = [
   'mozzarella',
   'feta',
   'cuajada',
+  // PRO-399: ice cream is made with milk or cream («helado de vainilla»,
+  // «helado de turrón», 2026-11-12). Only at the start: «té helado» is tea.
+  '^helado',
   ...PRO332_MILK_TERMS,
 ]
 
@@ -290,6 +297,31 @@ const NOT_MILK_PHRASES = [
   // PRO-332: water kefir is not dairy; «pisto manchego» is a vegetable stew.
   'kefir de agua',
   'pisto manchego',
+  // PRO-399: plant yogurts, cheeses, creams and butters (Cocina, 2026-11-11:
+  // «yogur de soja», «yogur de coco» and «queso vegano rallado» hid vegan
+  // recipes from people who don't take milk) and nut butters.
+  'yogur de soja',
+  'yogures de soja',
+  'yogur de coco',
+  'yogures de coco',
+  'yogur de avena',
+  'yogur de almendra',
+  'yogur vegetal',
+  'yogures vegetales',
+  'yogur vegano',
+  'queso vegano',
+  'quesos veganos',
+  'queso vegetal',
+  'nata vegetal',
+  'nata de coco',
+  'nata de soja',
+  'nata de avena',
+  'helado vegano',
+  'mantequilla vegetal',
+  'mantequilla de cacahuete',
+  'mantequilla de almendra',
+  'crema de cacahuete',
+  'crema de almendra',
 ]
 
 const EGG_KEYWORDS = ['huevo', 'clara', 'yema', 'mayonesa']
@@ -305,6 +337,8 @@ const TREE_NUT_KEYWORDS = [
   'pecana',
   'castana',
   'frutos secos',
+  // PRO-399: turrón is almonds (or hazelnuts) with honey and egg white.
+  'turron',
 ]
 
 /** Nutmeg is a spice, not a nut (PRO-193). */
@@ -355,6 +389,9 @@ const FISH_KEYWORDS = [
   'mero',
   'dashi',
   'katsuobushi',
+  // PRO-399: crab sticks are surimi, made of fish (Cocina, 2026-11-11).
+  'palito de cangrejo',
+  'palitos de cangrejo',
 ]
 
 const CRUSTACEAN_KEYWORDS = [
@@ -452,6 +489,14 @@ export function lacksPro1096Sesame(name: string, stored: readonly string[] | nul
   const n = normalize(name)
   return PRO1096_SESAME_TERMS.some((t) => nameHasTerm(n, t))
 }
+/**
+ * PRO-399: mole (the Mexican sauce or paste) is ground with peanuts, nuts,
+ * sesame and bread or biscuits — the «mole rojo» of 2026-11-12 went out with
+ * none of them. Whole word, so «guacamole» stays out.
+ */
+const MOLE_KEYWORDS = ['mole']
+const MOLE_TAGS: readonly AllergenTag[] = ['cacahuetes', 'frutos_secos', 'gluten', 'sesamo']
+
 const LUPIN_KEYWORDS = ['altramuz', 'altramuces']
 /** PRO-363: raisins («pasas», «uvas pasas») are usually kept with sulphites. Exported for the boot step. */
 export const PRO363_SULFITE_TERMS = ['pasa'] as const
@@ -489,6 +534,9 @@ export function inferAllergenTagsFromName(name: string): AllergenTag[] {
   if (hasAnyTerm(n, MUSTARD_KEYWORDS)) tags.add('mostaza')
   if (hasAnyTerm(n, SESAME_KEYWORDS)) tags.add('sesamo')
   if (hasAnyTerm(n, LUPIN_KEYWORDS)) tags.add('altramuces')
+  if (hasAnyTerm(n, MOLE_KEYWORDS)) {
+    for (const t of MOLE_TAGS) if (t !== 'gluten' || !n.includes('sin gluten')) tags.add(t)
+  }
   if (hasAnyTerm(n, SULFITE_KEYWORDS)) tags.add('sulfitos')
 
   return Array.from(tags).sort()

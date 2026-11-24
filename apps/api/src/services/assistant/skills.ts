@@ -208,7 +208,7 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
   const { restrictions } = await restrictionsFor(ctx)
   if (restrictions.length === 0) return []
   const [row] = await ctx.db
-    .select({ allergens: recipes.allergens })
+    .select({ name: recipes.name, allergens: recipes.allergens })
     .from(recipes)
     .where(eq(recipes.id, recipeId))
     .limit(1)
@@ -227,7 +227,7 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
   const recipe: RestrictableRecipe = {
     allergens: row?.allergens ?? [],
     ingredients: ingredientRows,
-    stepMentions: unlistedDietMentions(stepTexts, ingredientRows.map((i) => i.ingredientName)),
+    stepMentions: unlistedDietMentions(stepTexts, ingredientRows.map((i) => i.ingredientName), row?.name),
   }
   return restrictions.filter((r) => violatesRestrictions(recipe, compileRestrictions([r])))
 }

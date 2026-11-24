@@ -241,7 +241,9 @@ describe('words of the rewrite that read as unlisted ingredients', () => {
 
   it('strayDietWords: what the rewrite names and neither the ingredients nor the source do', () => {
     const names = AUBERGINE.ingredients.map((i) => i.name)
-    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne con una cuchara y mézclala con el yogur.']), names)).toEqual(['carne'])
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la pulpa y mézclala con el yogur y un poco de mantequilla.']), names)).toEqual(['mantequilla'])
+    // PRO-401: the aubergine's flesh is not meat.
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne con una cuchara y mézclala con el yogur.']), names)).toEqual([])
     expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne de la berenjena y mézclala con el yogur.']), names)).toEqual([])
     // Already in the source: not the rewrite's doing.
     expect(strayDietWords(['Añade el chorizo.'], rewriteFor(AUBERGINE, ['Incorpora el chorizo al final.']), names)).toEqual([])
@@ -254,13 +256,13 @@ describe('words of the rewrite that read as unlisted ingredients', () => {
         avoided.push(opts.avoidWords)
         return rewriteFor(d, opts.avoidWords?.length
           ? ['Asa las berenjenas en mitades hasta que estén blandas.', 'Vacía la pulpa y mézclala con el yogur y el aceite.']
-          : ['Asa las berenjenas en mitades hasta que estén blandas.', 'Saca la carne y mézclala con el yogur y el aceite.'])
+          : ['Asa las berenjenas en mitades hasta que estén blandas.', 'Saca la pulpa y mézclala con el yogur y la mantequilla.'])
       },
     })
     const [out] = await importCatalogBatch([AUBERGINE], 't', deps)
     expect(out.status).toBe('draft')
-    expect(avoided).toEqual([undefined, ['carne']])
-    expect(saved[0].steps.map((s) => s.text).join(' ')).toContain('pulpa')
+    expect(avoided).toEqual([undefined, ['mantequilla']])
+    expect(saved[0].steps.map((s) => s.text).join(' ')).toContain('Vacía la pulpa')
     expect(rewriteMessage(AUBERGINE, [], ['carne'])).toContain('«carne»')
   })
 })

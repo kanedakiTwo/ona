@@ -45,13 +45,22 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   // CI: `github` turns each failure into an annotation (file, line and
   // message) that Mimoia HQ's estado_ci reads from the API without a token.
-  reporter: process.env.CI ? [['list'], ['github'], ['html', { open: 'never' }]] : 'list',
+  // flaky-reporter (PRO-398) lists the tests that only passed on the retry:
+  // a warning annotation each and playwright-report/flaky.{json,md}. It goes
+  // after `html`, which empties that folder when it finishes.
+  reporter: process.env.CI
+    ? [['list'], ['github'], ['html', { open: 'never' }], ['./e2e/flaky-reporter.ts']]
+    : [['list'], ['./e2e/flaky-reporter.ts']],
   use: {
     baseURL: WEB_URL,
     // The app's weeks are Madrid weeks (firstMenuWeeks, the API). A UTC
     // browser disagrees between 00:00 and 02:00 on Monday, Madrid time, and
     // /menu then generates a second week (PRO-243).
     timezoneId: 'Europe/Madrid',
+    // A production build (`next build`, the CI since PRO-398) registers the
+    // service worker, which caches API answers and reloads the page when it
+    // takes over. No spec tests it, so it stays off, as under `next dev`.
+    serviceWorkers: 'block',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

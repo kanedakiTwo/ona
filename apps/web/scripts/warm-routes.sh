@@ -8,7 +8,8 @@
 # once before Playwright starts moves that cost out of the specs.
 #
 # Usage: apps/web/scripts/warm-routes.sh <web-base-url>
-# Used by .github/workflows/ci.yml (e2e job) and apps/web/scripts/test-e2e.sh.
+# Used by apps/web/scripts/test-e2e.sh (local, `next dev`). The CI e2e job
+# runs against a build instead (scripts/boot-built-web.sh, PRO-398).
 # Never fails the caller: a route that errors here will fail its spec anyway,
 # with a better message.
 

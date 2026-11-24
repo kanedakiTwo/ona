@@ -63,6 +63,11 @@ vi.mock('../services/householdAllergies.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/householdAllergies.js')>()),
   withHouseholdRestrictions: vi.fn(async (own: readonly string[]) => [...own]),
 }))
+// PRO-1041: the person's recent messages (their reads are tested in saidAllergies.smoke.ts) — none here.
+vi.mock('../services/saidRestrictions.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/saidRestrictions.js')>()),
+  loadRecentUserTexts: vi.fn(async () => [] as string[]),
+}))
 // PRO-155: the menu evaluator is a Haiku call — off by default here, one test turns it on.
 vi.mock('../services/menuFit.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/menuFit.js')>()),
@@ -563,6 +568,24 @@ describe('generate_weekly_menu', () => {
     const r = await skill.handler({}, ctx(db))
     expect(r.uiHint).toBe('menu')
     expect(r.summary).toContain('Menu generado')
+  })
+
+  it('PRO-1041: «soy celíaca» without the consent — the generator runs with it (this menu only) and Mimo gets the marked link', async () => {
+    const { generateMenu } = await import('../services/menuGenerator.js')
+    const { menuOnlyRestrictions } = await import('../services/menuOnlyRestrictions.js')
+    const inserted = { id: 'm-new', days: [{}, {}, {}, {}, {}, {}, {}] }
+    let during: readonly string[] = []
+    vi.mocked(generateMenu).mockImplementationOnce(async () => {
+      during = menuOnlyRestrictions()
+      return { days: inserted.days, warnings: [] }
+    })
+    // previous week → the saved restrictions (none) → generator → insert menu → insert log
+    const r = await skill.handler({ restrictions_said: ['celiaca'] }, ctx(makeDb([], [{ restrictions: [] }], [inserted], [{ id: 'log-1' }])))
+    expect(during).toEqual(['sin gluten'])
+    expect(menuOnlyRestrictions()).toEqual([])
+    expect(r.summary).toContain('Menu generado')
+    expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
+    expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
   })
 
   it('hands Mimo how close the week came to their tastes (PRO-155), and nothing when the evaluator fails', async () => {
@@ -1526,7 +1549,8 @@ describe('skill export coverage', () => {
     // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
     // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
     // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
-    expect(skills.length).toBe(95)
+    // and 96 with set_alert_time (PRO-1301, alertTimes.test.ts).
+    expect(skills.length).toBe(96)
   })
 
   it('every skill has a unique name', () => {

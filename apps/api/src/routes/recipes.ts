@@ -8,7 +8,9 @@
  * script.
  *
  * Tag visibility (spec/recipes.md "Tag Visibility"):
- *   - Public responses NEVER include `internalTags` or notes/tips/etc.
+ *   - Public responses NEVER include `internalTags` or notes/tips/etc.;
+ *     the detail for its author or an admin carries notes/tips/
+ *     substitutions/storage/course (PRO-1259, for «Editar receta»).
  *   - The card list filters tags via `publicTagsOf` so reserved values
  *     (meal/season/difficulty/internal) never leak.
  */
@@ -58,6 +60,7 @@ import {
   RETIRED_RECIPE_TAG,
   PLAN_GRATIS_IMPORTS_MESSAGE,
   isDishType,
+  type Course,
   type Difficulty,
   type Meal,
   type Recipe,
@@ -405,6 +408,19 @@ function toDetailRecipe(
   return detail
 }
 
+/**
+ * PRO-1259: what only the author and admins see on the detail — the texts
+ * and the course «Editar receta» loads so a save doesn't drop them.
+ */
+function withEditorFields(recipe: Recipe, row: RecipeRow): Recipe {
+  const out: Recipe = { ...recipe, course: (row.course as Course | null) ?? null }
+  if (row.notes != null) out.notes = row.notes
+  if (row.tips != null) out.tips = row.tips
+  if (row.substitutions != null) out.substitutions = row.substitutions
+  if (row.storage != null) out.storage = row.storage
+  return out
+}
+
 // ─── DB read helpers ──────────────────────────────────────────────
 
 async function fetchIngredientsForRecipes(recipeIds: string[]): Promise<IngredientRow[]> {
@@ -688,7 +704,8 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
       fetchStepsForRecipes([id]),
     ])
 
-    const recipe = toDetailRecipe(row, ings, steps)
+    const isEditor = !!req.userId && (row.authorId === req.userId || req.user?.role === 'admin')
+    const recipe = isEditor ? withEditorFields(toDetailRecipe(row, ings, steps), row) : toDetailRecipe(row, ings, steps)
     // PRO-373: «Usa: Sofrito (2 raciones)», with a link to each base.
     const bases = await loadRecipeBaseUses(id, { userId: req.userId, isAdmin: req.user?.role === 'admin' })
     if (bases.length > 0) recipe.bases = bases
@@ -696,7 +713,7 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
     // saved the favourite and the refetch said «not favourite» again).
     if (req.userId) recipe.is_favorite = (await favoriteIdsOf(req.userId, [id])).has(id)
     // "¿Se puede comprar?" — for whoever can fix the recipe.
-    if (req.userId && (row.authorId === req.userId || req.user?.role === 'admin')) {
+    if (isEditor) {
       recipe.shoppingIssues = recipeShoppingIssues(
         ings.map((i) => ({ id: i.id, name: i.ingredientName, quantity: i.quantity, unit: i.unit as Unit, note: i.note, optional: i.optional })),
       )
@@ -956,14 +973,28 @@ router.post(
 
 // PUT /recipes/:id — update (auth required, author only, lint-validated).
 /**
- * The edit form never sends `internalTags` (the public payload strips them),
- * so a save used to wipe them: `compartida`, `retirada`, `tiempos-pro284`
- * (PRO-284: without it the next boot would cut the prep a second time).
- * Kept unless the body sends its own.
+ * What a PUT that leaves a field out keeps from the saved recipe (PRO-1259).
+ * The edit form never sends `internalTags` (the public payload strips them:
+ * `compartida`, `retirada`, `tiempos-pro284`…) nor `substitutions`,
+ * `storage`, `activeTime`…, and a save used to set them to NULL. A field
+ * sent (even null or '') wins. Not here: `mealFit` / `seasonFit`, derived
+ * from `meals` / `seasons` when absent.
  */
-export function withKeptInternalTags<T extends { internalTags?: string[] | null }>(body: T, existing: string[] | null | undefined): T {
-  if (body.internalTags !== undefined) return body
-  return { ...body, internalTags: existing ?? [] }
+export const KEPT_ON_UPDATE = [
+  'notes', 'tips', 'substitutions', 'storage', 'course',
+  'yieldText', 'prepTime', 'cookTime', 'activeTime', 'servingsConfidence', 'difficulty',
+  'seasons', 'equipment', 'tags', 'internalTags', 'frequency', 'sourceUrl', 'sourceType',
+] as const satisfies ReadonlyArray<keyof RecipeWriteInput>
+
+export function withKeptFields<T extends Partial<RecipeWriteInput>>(
+  body: T,
+  existing: Partial<Record<(typeof KEPT_ON_UPDATE)[number], unknown>>,
+): T {
+  const out: Record<string, unknown> = { ...body }
+  for (const key of KEPT_ON_UPDATE) {
+    if (out[key] === undefined && existing[key] !== undefined) out[key] = existing[key]
+  }
+  return out as T
 }
 
 router.put(
@@ -975,11 +1006,7 @@ router.put(
     try {
       const recipeId = String(req.params.id)
 
-      const [existing] = await db
-        .select({ authorId: recipes.authorId, internalTags: recipes.internalTags })
-        .from(recipes)
-        .where(eq(recipes.id, recipeId))
-        .limit(1)
+      const existing = await fetchRecipeById(recipeId)
 
       if (!existing) {
         res.status(404).json({ error: 'Recipe not found' })
@@ -1024,7 +1051,7 @@ router.put(
       const force =
         req.query.force === '1' ||
         (req.body && (req.body as { force?: unknown }).force === true)
-      const result = await persistRecipe(withKeptInternalTags(body, existing.internalTags) as RecipeWriteInput, {
+      const result = await persistRecipe(withKeptFields(body, existing) as RecipeWriteInput, {
         authorId: existing.authorId,
         recipeId,
         softLint: force,
@@ -1051,7 +1078,7 @@ router.put(
         fetchIngredientsForRecipes([recipeId]),
         fetchStepsForRecipes([recipeId]),
       ])
-      res.json(toDetailRecipe(newRow, ings, steps))
+      res.json(withEditorFields(toDetailRecipe(newRow, ings, steps), newRow))
     } catch (err) {
       console.error('Update recipe error:', err)
       res.status(500).json({ error: 'Internal server error' })

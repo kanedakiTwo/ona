@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js'
 import type { OutboundMessage } from './render.js'
+import { tagButtons } from './answerTarget.js'
 
 /**
  * Thin WhatsApp Cloud API (Graph) client. Every call is a plain fetch so the
@@ -50,6 +51,8 @@ export async function sendMessage(to: string, msg: OutboundMessage): Promise<str
     const id = await uploadMedia(msg.image, msg.mimeType, 'menu-semana.jpg')
     body = { to, type: 'image', image: { id, caption: msg.text } }
   } else {
+    // PRO-1295: every button carries the question it belongs to (its ref).
+    const tagged = tagButtons(msg, new Date()) as Extract<OutboundMessage, { type: 'buttons' }>
     body = {
       to,
       type: 'interactive',
@@ -57,7 +60,7 @@ export async function sendMessage(to: string, msg: OutboundMessage): Promise<str
         type: 'button',
         body: { text: msg.text },
         action: {
-          buttons: msg.buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
+          buttons: tagged.buttons.map((b) => ({ type: 'reply', reply: { id: b.id, title: b.title } })),
         },
       },
     }

@@ -67,6 +67,24 @@ export interface CatalogEntry {
   name: string
 }
 
+/**
+ * The variant people mean when they write the generic name (24-nov). Without
+ * it the SHORTEST catalogue name won, so a handwritten «pimienta» came in as
+ * «pimienta rosa» (13 letters, against the 14 of «pimienta negra»). Keys and
+ * values as `tokenize` leaves them, joined by a space.
+ */
+export const USUAL_VARIANT: Readonly<Record<string, string>> = {
+  pimienta: 'pimienta negra',
+}
+
+/** `entries` with the usual variant of `userName` first, if it is among them; the rest as they came. */
+export function usualVariantFirst<T extends { name: string }>(userName: string, entries: T[]): T[] {
+  const usual = USUAL_VARIANT[tokenize(userName).join(' ')]
+  if (!usual) return entries
+  const i = entries.findIndex((e) => tokenize(e.name).join(' ') === usual)
+  return i <= 0 ? entries : [entries[i], ...entries.slice(0, i), ...entries.slice(i + 1)]
+}
+
 export type TokenMatchVerdict =
   | { kind: 'exact'; catalog: CatalogEntry }
   | { kind: 'noise-stripped'; catalog: CatalogEntry; stripped: string[] }
@@ -156,9 +174,10 @@ export function tokenSetMatch(
     }
   }
   if (generic.length > 0) {
-    // Shortest catalog name wins — closest to the user's intent.
+    // Shortest catalog name wins — closest to the user's intent — unless the
+    // generic name has a usual variant («pimienta» is the black one).
     generic.sort((a, b) => a.name.length - b.name.length)
-    return { kind: 'user-generic', catalog: generic[0] }
+    return { kind: 'user-generic', catalog: usualVariantFirst(userName, generic)[0] }
   }
   return { kind: 'no-match' }
 }

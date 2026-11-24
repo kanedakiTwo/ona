@@ -54,7 +54,7 @@ import { listPantryForUser } from '../pantryStore.js'
 import { freezerItemsDue } from '@ona/shared'
 import { quietAfterSignUp } from './signUpQuiet.js'
 import { isShoppingReminderWindow } from './proactive.js'
-import { loadUserAlertPrefs, mergeAlertPrefs, setAlertPrefs } from '../notifications/alertPrefs.js'
+import { loadHouseholdAlertTimes, loadUserAlertPrefs, mergeAlertPrefs, setAlertPrefs } from '../notifications/alertPrefs.js'
 import { ratingToSave } from './checkinButtons.js'
 import { detectLanguage, type Lang } from './language.js'
 import { FATIGUE_STREAK, fatigueAskKind, fatigueQuestion, fatiguedKind, type FatigueKind } from './fatigue.js'
@@ -236,7 +236,9 @@ export async function recordDinnerCheckinAnswer(
   const [logged] = await db
     .select({ id: cookLogs.id })
     .from(cookLogs)
-    .where(and(eq(cookLogs.userId, userId), gte(cookLogs.cookedAt, checkinAt)))
+    // PRO-1295: this dinner's log — an old check-in tapped days later isn't
+    // «logged» by another day's dinner.
+    .where(and(eq(cookLogs.userId, userId), eq(cookLogs.recipeId, recipeId), gte(cookLogs.cookedAt, checkinAt)))
     .limit(1)
   if (!logged) {
     await api('POST', '/cook-logs', {
@@ -362,7 +364,7 @@ async function sawMenuThisMorning(userId: string, parts: MadridParts, now: Date)
  * turn checks it. Then the fixed text goes out instead of a guided one.
  */
 export async function guidedOverBudget(userId: string): Promise<boolean> {
-  if ((await getMonthlySpendMicros(userId, db)) >= budgetMicros()) return true
+  if ((await getMonthlySpendMicros(userId, db)) >= budgetMicros(userId)) return true
   const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
   if (row?.role === 'admin') return false
   return (await spendCapStatus(userId)).exceeded
@@ -524,9 +526,11 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       // PRO-385 (D-158): Mimo writing first isn't in the Gratis plan (never before launch day).
       if (await isOnFreePlan(link.userId, now)) continue
       const times = await loadMealTimes(link.userId)
+      // PRO-1301: the household's own time for the morning menu and the dinner question.
+      const alertTimes = await loadHouseholdAlertTimes(link.userId)
       const shoppingUse = await shoppingUseFor(link.userId, parts, now)
       // Only touch the DB for cooldowns inside a window that could fire.
-      if (!anyProactiveWindow(parts, times.breakfast, times.dinner, shoppingUse)) continue
+      if (!anyProactiveWindow(parts, times.breakfast, times.dinner, shoppingUse, alertTimes)) continue
       const since = new Date(now.getTime() - WEEKLY_NUDGE_COOLDOWN_MS)
       const [recent, noticed, fellBack, userPrefs] = await Promise.all([
         store.recentOutboundKinds(link.phone, since),
@@ -554,6 +558,7 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         parts,
         breakfastTime: times.breakfast,
         dinnerTime: times.dinner,
+        alertTimes,
         // A kind is off if WhatsApp's prefs, «Avisos» (PRO-237) or the household
         // recipient rule (PRO-236: shopping/Sunday to one person) say so.
         prefs: mergeAlertPrefs(link.prefs, userPrefs, household.offFor(link.userId)),

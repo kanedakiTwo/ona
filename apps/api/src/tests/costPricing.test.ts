@@ -104,6 +104,7 @@ describe('price table coverage', () => {
       input: p.inputPerMTok,
       output: p.outputPerMTok,
       cacheWrite: p.cacheWritePerMTok,
+      cacheWrite1h: p.cacheWrite1hPerMTok,
       cacheRead: p.cacheReadPerMTok,
     })
   })

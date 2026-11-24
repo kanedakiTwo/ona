@@ -185,3 +185,20 @@ describe('tokenSetMatch — empty / degenerate', () => {
     expect(tokenSetMatch('de la', CATALOG).kind).toBe('no-match')
   })
 })
+
+// 24-nov: the imports took «pimienta rosa» for a plain «pimienta».
+describe('tokenSetMatch — the usual variant of a generic name', () => {
+  it('«pimienta» is the black one, not the shortest name', async () => {
+    const { tokenSetMatch } = await import('../services/ingredientTokenMatch.js')
+    const catalog = [{ id: 'a', name: 'pimienta rosa' }, { id: 'b', name: 'pimienta negra' }, { id: 'c', name: 'pimienta blanca molida' }]
+    const v = tokenSetMatch('pimienta', catalog)
+    expect(v.kind).toBe('user-generic')
+    expect(v.kind === 'user-generic' && v.catalog.name).toBe('pimienta negra')
+  })
+  it('without the black one in the library, the shortest as before', async () => {
+    const { tokenSetMatch } = await import('../services/ingredientTokenMatch.js')
+    const v = tokenSetMatch('pimienta', [{ id: 'a', name: 'pimienta rosa' }, { id: 'c', name: 'pimienta blanca molida' }])
+    expect(v.kind === 'user-generic' && v.catalog.name).toBe('pimienta rosa')
+  })
+})
+

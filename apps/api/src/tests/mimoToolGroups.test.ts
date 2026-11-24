@@ -3,7 +3,7 @@
  * without AI (words of the message and of Mimo's last reply, tools of the
  * last turns, the page), with a core that always goes and `more_tools` to
  * load a group the choice missed. The battery (`MIMO_EVAL_CASES`,
- * `CLAIM_EVAL_CASES`, `HEALTH_EVAL_CASES`) must keep getting every tool it
+ * `CLAIM_EVAL_CASES`, `CONDUCT_EVAL_CASES`, `HEALTH_EVAL_CASES`) must keep getting every tool it
  * needs.
  */
 import { describe, expect, it } from 'vitest'
@@ -18,6 +18,7 @@ import {
 } from '../services/assistant/toolGroups.js'
 import { MIMO_EVAL_CASES } from '../services/assistant/mimoEvalCases.js'
 import { CLAIM_EVAL_CASES } from '../services/assistant/mimoClaimEvalCases.js'
+import { CONDUCT_EVAL_CASES } from '../services/assistant/mimoConductEvalCases.js'
 import { HEALTH_EVAL_CASES } from '../services/assistant/healthGuard.js'
 import { buildSystemParts, TOOL_INSTRUCTIONS } from '../services/assistant/systemPrompt.js'
 import { runToolLoop, withLastToolCached } from '../services/assistant/engine.js'
@@ -54,7 +55,7 @@ const EXTRA_NEEDS: Record<string, string[]> = {
 }
 
 describe('every case of the battery gets the tools it needs (whatsapp and web)', () => {
-  const cases = [...MIMO_EVAL_CASES, ...CLAIM_EVAL_CASES, ...HEALTH_EVAL_CASES] as {
+  const cases = [...MIMO_EVAL_CASES, ...CLAIM_EVAL_CASES, ...CONDUCT_EVAL_CASES, ...HEALTH_EVAL_CASES] as {
     id: string
     message: string
     history: { role: 'user' | 'assistant'; content: string }[]

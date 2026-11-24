@@ -86,8 +86,9 @@ test('imported recipe: fix the rows "al gusto" in the editor → the notice goes
 
   // The saved rows as lines (PRO-1115); an amount replaces «al gusto».
   const box = page.locator('#recipe-ingredients')
-  await expect(box).toHaveValue('2 calabacin\njengibre fresco al gusto\ncilantro al gusto')
-  await box.fill('2 calabacin\n1 jengibre fresco\n1 cilantro')
+  // something counted in more than one reads in plural (24-nov)
+  await expect(box).toHaveValue('2 calabacines\njengibre fresco al gusto\ncilantro al gusto')
+  await box.fill('2 calabacines\n1 jengibre fresco\n1 cilantro')
   await expect(page.getByTestId('ingredient-line').nth(1)).toContainText(/1\s*·\s*jengibre fresco/)
   await expect(page.locator('[data-testid="ingredient-line"][data-status="match"]')).toHaveCount(3, { timeout: 10_000 })
   await save(page, recipe.id)

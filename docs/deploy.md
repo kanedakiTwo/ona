@@ -8,15 +8,28 @@ Mimoia runs on Railway in two services + a Postgres:
 
 Custom domain (since 2026-10-07): `mimoia.com` and `www.mimoia.com` → `ona-web` (port 3000), DNS at Namecheap (ALIAS `@` + CNAME `www` to the `*.up.railway.app` targets Railway gave, plus two `_railway-verify` TXT; MX records are Namecheap email forwarding for `hola@`). `www.mimoia.com` 308-redirects to the apex (`redirects()` in `apps/web/next.config.ts`, pinned by `e2e/canonical-host.spec.ts`). `ona-web-production.up.railway.app` still serves too; `ona-api` keeps its Railway URL. `WEB_PUBLIC_URL` on `ona-api` = `https://mimoia.com`.
 
-There is **no GitHub-Railway repo connection**. Deploys are manual via the Railway CLI from your local machine. Both services are configured with **Railpack** (Railway's new builder); legacy `NIXPACKS_*` vars are no longer respected. Railpack takes the Node version from the root `package.json` `engines.node` (**22.x**; CI uses the same). `apps/*/Dockerfile` are not used by Railway (kept for local container experiments).
+There is **no GitHub-Railway repo connection**: nothing deploys on push. Both services are built with **Railpack** (Railway's builder; legacy `NIXPACKS_*` vars are no longer respected), which takes the Node version from the root `package.json` `engines.node` (**22.x**; CI uses the same). `apps/*/Dockerfile` are not used by Railway (kept for local container experiments).
 
-## One-time setup per machine
+## How code reaches production (the only way)
 
-**Account (since 2026-10-08):** the `ona-app` project lives in Miguel's **personal** Railway workspace, «Miguel's Projects» (Hobby, `mmartinlacoma@gmail.com`). It was transferred from the AiKit company workspace, which no longer has access. On Miguel's laptop the CLI's own login is the AiKit company account (used for other projects), so don't `railway logout`. Run every Mimoia command with Miguel's personal account token in the environment instead; it overrides the login for that command only:
+Code reaches `master` and production **only by publishing from the HQ office** (the «Publicar» button in its app, or `hq publicar`). Straight to `master`, only docs-only commits (the `paths-ignore` list in `ci.yml`).
+
+1. **Branch.** Every change lives on a `claude/…` branch started from `master` (the Taller's are `claude/pro-NNN-<short>`).
+2. **CI on the branch.** `ci.yml` runs on every push to `claude/**`: type-check + unit tests, the route smoke and the e2e shards (see `.github/README.md`). Only a green branch can be published.
+3. **The office's publishing queue** (no AI, one branch at a time): it merges the latest `master` into the branch and runs CI on that merge; deploys it to **staging** under the staging lock and runs the deep smoke (`scripts/smoke-remote.sh … --deep`); then moves `master` to it and deploys **production** from a clean checkout of that commit, with the production smoke. Sensitive changes (prices, plans, billing, legal texts, migrations that do more than add) wait on their branch for Miguel's tap, without holding up the rest.
+4. **If a step fails** (the merge conflicts, the merge's CI or the staging smoke is red) the branch goes back to whoever made it, with `master` already merged in.
+
+Rolling back is publishing the previous commit again. `scripts/deploy.sh` below is the **reserve**, for when the office can't publish (an emergency hotfix, the office down).
+
+## Reserve: deploying by hand with `scripts/deploy.sh`
+
+### One-time setup per machine
+
+**Account (since 2026-10-08):** the `ona-app` project lives in Miguel's **personal** Railway workspace, «Miguel's Projects» (Hobby). It was transferred from the AiKit company workspace, which no longer has access. On Miguel's laptop the CLI's own login is the AiKit company account (used for other projects), so don't `railway logout`. Run every Mimoia command with Miguel's personal account token in the environment instead; it overrides the login for that command only:
 
 ```bash
 export RAILWAY_API_TOKEN="$(cat ~/.config/mimoia/railway-token)"   # personal account token, chmod 600, never in a repo
-railway whoami                             # → Miguel (mmartinlacoma@gmail.com)
+railway whoami                             # → Miguel's personal account (not AiKit)
 ```
 
 `scripts/deploy.sh` loads that file by itself when neither `RAILWAY_TOKEN` nor `RAILWAY_API_TOKEN` is set. Plain `railway …` commands still need the `export`.
@@ -29,11 +42,11 @@ railway login                              # opens browser, paste-back code
 railway link                               # pick `ona-app` project
 ```
 
-The Taller's project tokens (`taller-staging`, `taller-production`) belong to the project and survived the transfer.
+The office's project tokens (`taller-staging`, `taller-production`) belong to the project and survived the transfer.
 
-## Deploy flow
+### The guarded wrapper
 
-**Use the guarded wrapper** from a checkout of `master`:
+From a clean checkout of `master`:
 
 ```bash
 scripts/deploy.sh             # api, then web
@@ -45,7 +58,7 @@ scripts/deploy.sh --dry-run   # run the checks + print the plan, deploy nothing
 
 1. the working tree is clean — no staged, unstaged **or untracked** files (they would be uploaded too);
 2. `HEAD` equals `origin/master` after a fresh `git fetch` — i.e. the commit is pushed. If `HEAD` is *behind* `origin/master` it refuses as well, unless you pass `--allow-behind` for an intentional rollback;
-3. **production only: CI is green for this code** (2026-10-15). It looks for a successful run of the `CI` workflow on `HEAD` **or on any commit whose diff with `HEAD` only touches docs** (`specs/`, `docs/`, `CLAUDE.md`, `plans/`, `reports/`, `README.md` — the same list as `paths-ignore` in `ci.yml`). So the **PR's green run is enough**: squash-merging an up-to-date PR gives `master` the same code, and you don't wait for `master`'s own run. If CI is still running it says so; `--skip-ci-check` overrides it (emergencies only). Needs the `gh` CLI with read access to the repo.
+3. **production only: CI is green for this code** (2026-10-15). It looks for a successful run of the `CI` workflow on `HEAD` **or on any commit whose diff with `HEAD` only touches docs** (`specs/`, `docs/`, `CLAUDE.md`, `plans/`, `reports/`, `README.md` — the same list as `paths-ignore` in `ci.yml`). So the branch's green run is enough when `master` has the same code. If CI is still running it says so; `--skip-ci-check` overrides it (emergencies only). Needs the `gh` CLI with read access to the repo.
 
 **Why a deploy is faster since 2026-10-15** (it used to take about an hour from PR to production):
 - **E2E in 6 shards** on 6 runners (`e2e-shard` matrix, `playwright test --shard=N/6`, 30 minutes each), each with its own Postgres, API and web; the `E2E (Playwright)` check is an aggregator that is green only when every shard is. Serially the 71 specs took 16 of the CI's ~20 minutes; with 4 shards, shard 2 passed its 20 minutes on 2026-10-22 and master's CI was cancelled.
@@ -104,7 +117,7 @@ scripts/smoke-remote.sh https://ona-api-staging.up.railway.app https://ona-web-s
 
 `--wait` waits for each new deployment to report `SUCCESS` (exit 1 on `FAILED`/`CRASHED` or after 15 min). **Staging lock (PRO-OF-4):** the HQ office also deploys staging (the Taller's branches) under a lock; before any staging deploy `deploy.sh` asks it with `ssh hq-lectura cerrojo` (`scripts/staging-lock.sh`) and exits **3** while the office holds it. Free or held by Miguel (`ssh -t hq sudo hq cerrojo staging tomar`, 2 h, before deploying by hand) → it goes on; no answer (no WireGuard, e.g. a cloud routine) → it warns and goes on. `smoke-remote.sh` runs the production smoke checks; `--deep` also registers a user, generates the week's menu and reads the shopping list, and refuses to run against production.
 
-**Nightly Taller (Mimoia HQ, D-018 → D-027).** The routine "Mimoia HQ · Taller" (00:00 Madrid) implements the backlog tasks Miguel marked `lista`, joins them on its own branch `claude/taller-AAAA-MM-DD` (CI green) and deploys **that branch to staging** with `scripts/deploy.sh --staging-branch --wait` (refused against production), then the deep smoke and screenshots. **It never pushes to `master` nor deploys production**: since 2026-10-10 (D-027) Miguel gives the OK in `/ona-dia`, and that session fast-forwards `master` to the branch and deploys production from a clean worktree, then the smoke (rollback: `scripts/deploy.sh --allow-behind` on the previous commit). Why: the cloud session's safety check blocks an unattended push to `master` as a production deploy (2026-10-10). It uses the `taller-staging` Railway project token, held only in the Taller's cloud environment. The protocol lives in `kanedakiTwo/ona-hq` → `loops/taller.md`.
+**The office publishes to staging** as step 3 of the flow above (the Taller's branches, one at a time, under the staging lock, then the deep smoke). Deploying staging by hand is for the reserve only, with the lock taken.
 
 ## Required env vars
 
@@ -121,7 +134,7 @@ Both are configured in the Railway dashboard, not committed.
 | `ANTHROPIC_API_KEY` | For photo + URL recipe extraction |
 | `GROQ_API_KEY` | First in the transcription chain (WhatsApp voice notes and Mimo's voice in the app, `POST /stt`; `specs/voice-mode.md`): Groq Whisper, free plan at console.groq.com. `GROQ_TRANSCRIBE_MODEL` defaults to `whisper-large-v3-turbo`. Then OpenAI; never AiKit (PRO-1122: no processor contract, so no users' audio; `AIKIT_TRANSCRIBE_MODEL` is no longer read and can go). With neither `/stt` answers 503 and Mimo is text-only |
 | `OPENAI_API_KEY` | Last in the transcription chain (after Groq and AiKit), and the recipe-image reserve |
-| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Production and staging since 2026-10-09: one voice, Miguel's clone (`Miguel:qvz8MPUNfIEXPflIyvbY`, ElevenLabs Starter on mmartinlacoma@gmail.com). See `specs/voice-mode.md` |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICES` / `ELEVENLABS_MODEL` | Optional: Mimo's replies read aloud (`POST /tts`). `ELEVENLABS_VOICES` = `Nombre:voiceId,Nombre:voiceId` (first = default); `ELEVENLABS_MODEL` defaults to `eleven_multilingual_v2`. Library voices need a paid ElevenLabs plan. Unset = the browser's voice. Production and staging since 2026-10-09: one voice, Miguel's clone (`Miguel:qvz8MPUNfIEXPflIyvbY`, ElevenLabs Starter on Miguel's personal account). See `specs/voice-mode.md` |
 | `RESEND_API_KEY` / `EMAIL_FROM` / `RESEND_BASE_URL` | Optional: email through Resend (`specs/email.md`, PRO-93). Unset key = no email (each send logs `[email] not configured`). `EMAIL_FROM` defaults to `Mimoia <hola@mimoia.com>` (mimoia.com verified in Resend, EU region); `RESEND_BASE_URL` only for a mock. **Production: a session of Miguel sets the key, after Legal reviews `/privacidad` (D-050). Never in staging.** |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Optional: subscriptions ([specs/billing.md](../specs/billing.md)). Payments are on only when both are set; otherwise every pay button says payments aren't open yet. Staging: test keys (`sk_test_…`). Production: live keys only once there's a business to invoice (MIG-21). The webhook secret comes from `apps/api/scripts/stripeSetup.ts --webhook-url=<api>/billing/webhook --secret-out=<file>`, which also creates the products, prices and portal. |
 | `USDA_FDC_API_KEY` | For ingredient auto-create |

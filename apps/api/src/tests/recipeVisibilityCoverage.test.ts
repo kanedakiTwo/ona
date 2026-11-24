@@ -42,7 +42,14 @@ const SCOPED_FILES = [
   'services/menuGenerator.ts',
   'services/cookNow/load.ts',
   'services/advisor.ts',
-  'services/assistant/skills.ts',
+  // Mimo's tools, split out of skills.ts by group (PRO-400).
+  'services/assistant/skillHelpers.ts',
+  'services/assistant/menuSkills.ts',
+  'services/assistant/mealSkills.ts',
+  'services/assistant/recipeSearchSkills.ts',
+  'services/assistant/recipeEditSkills.ts',
+  'services/assistant/nutritionSkills.ts',
+  'services/assistant/cookingSkills.ts',
   'routes/menus.ts',
 ]
 
@@ -64,8 +71,8 @@ describe('recipe visibility coverage', () => {
     )
     expect(read('services/menuGenerator.ts')).toContain('loadMatchableRecipes(userId, db)')
     // Mimo: the search (suggest_recipes) and, since 2026-11-19, swap_meal through «Cambiar»'s context.
-    expect(read('services/assistant/skills.ts')).toContain('loadMatchableRecipes(ctx.userId, ctx.db)')
-    expect(read('services/assistant/skills.ts')).toContain('await loadSlotPickContext(menu, userId)')
+    expect(read('services/assistant/recipeSearchSkills.ts')).toContain('loadMatchableRecipes(ctx.userId, ctx.db)')
+    expect(read('services/assistant/mealSkills.ts')).toContain('await loadSlotPickContext(menu, userId)')
     // generate-slot, household slot, add-course: all through the loader
     // (a school-day dinner wraps it in schoolDinnerPool, PRO-224); regenerate-dish
     // through «Cambiar»'s context since 2026-11-19 (below).

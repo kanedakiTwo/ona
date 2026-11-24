@@ -120,6 +120,6 @@ describe('withHouseholdRestrictions (PRO-305)', () => {
     expect(read('services/menuSlotPick.ts')).toContain('const restrictions = await withHouseholdRestrictions(')
     expect(read('services/menuGenerator.ts')).toContain('withHouseholdRestrictions(')
     // Mimo's swap_meal without a dish is the app's «Cambiar» (2026-11-19).
-    expect(read('services/assistant/skills.ts')).toContain('await loadSlotPickContext(menu, userId)')
+    expect(read('services/assistant/mealSkills.ts')).toContain('await loadSlotPickContext(menu, userId)')
   })
 })

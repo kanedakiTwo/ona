@@ -77,7 +77,10 @@ describe("Mimo's prompt: cooking principles, no health framework", () => {
       expect(hits(`${s.name} ${s.description} ${JSON.stringify(s.parameters)}`), s.name).toEqual([])
     }
     // Advice strings returned by get_variety_score / get_eating_window live in the handlers.
-    const source = readFileSync(resolve(__dirname, '../services/assistant/skills.ts'), 'utf8')
+    // skills.ts split by group (PRO-400): every module that was in it.
+    const source = ['skills', 'skillHelpers', 'menuSkills', 'recipeSearchSkills', 'householdSkills', 'onboardingSkills', 'mealSkills', 'recipeEditSkills', 'nutritionSkills', 'pantrySkills', 'cookingSkills']
+      .map((f) => readFileSync(resolve(__dirname, `../services/assistant/${f}.ts`), 'utf8'))
+      .join('\n')
     expect(hits(source)).toEqual([])
   })
 

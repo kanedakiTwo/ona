@@ -107,7 +107,7 @@ describe('roleOf', () => {
 
 describe('both copy paths carry the marks', () => {
   const src = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8')
-  it.each(['routes/recipes.ts', 'services/assistant/skills.ts'])('%s spreads ingredientMarksOf into the copied rows', (file) => {
+  it.each(['routes/recipes.ts', 'services/assistant/recipeEditSkills.ts'])('%s spreads ingredientMarksOf into the copied rows', (file) => {
     expect(src(file)).toMatch(/\.\.\.ingredientMarksOf\(ing\)/)
   })
 })

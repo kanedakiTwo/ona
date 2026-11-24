@@ -115,6 +115,16 @@ export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>
   'autoplan_viewed',
 ])
 
+/**
+ * The passive events as a SQL list, for «the last thing the household did»:
+ * `e.name NOT IN (${passiveEventsSql()})`. 24-nov: the weekly menu Mimo makes
+ * by itself (`autoplan_generated`) made every household look active in the
+ * «días sin actividad» filter of the admin's questions.
+ */
+export function passiveEventsSql() {
+  return sql.join([...PASSIVE_USAGE_EVENTS].map((name) => sql`${name}`), sql`, `)
+}
+
 export const USAGE_CHANNELS = ['web', 'whatsapp', 'voice'] as const
 export type UsageChannel = (typeof USAGE_CHANNELS)[number]
 

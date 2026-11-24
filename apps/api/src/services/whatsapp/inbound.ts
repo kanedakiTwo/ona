@@ -12,6 +12,8 @@ import { shoppingItemsOf, shoppingListDigest } from '../shoppingText.js'
 import { captionVariants, type WeekView } from '../menuText.js'
 import { captionWithoutInvite, signupCaption, signupWords } from './signupReply.js'
 import { createCoalescer } from './coalesce.js'
+import { refTime } from './answerTarget.js'
+import { resolveAnswer, type AnswerContext } from './answerTurn.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, NotASchoolMenuError, SchoolMenuFileError, schoolLunchLines, type SchoolLunch } from '@ona/shared'
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
@@ -20,6 +22,7 @@ import { recordServiceMessageCost } from './serviceCost.js'
 import { needsReturnDisclosure, stripAiSignature, withReturnDisclosure } from './aiNotice.js'
 import {
   CHECKIN_ANSWER_WINDOW_MS,
+  CHECKIN_REF_WINDOW_MS,
   checkinAnswerOf,
   checkinConfirmation,
   checkinReplyIdOfEmoji,
@@ -853,10 +856,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     return
   }
   // "No, gracias" only means something as the answer to the opt-in question.
-  if (link && msg.text && msg.text.trim().toLowerCase() === OPT_IN_NO.toLowerCase()) {
+  // PRO-1295: its button always answers it, whatever Mimo sent after.
+  const optInButton = msg.kind === 'interactive' && msg.replyId === 'optin_no'
+  if (link && msg.text && (optInButton || msg.text.trim().toLowerCase() === OPT_IN_NO.toLowerCase())) {
     const kinds = await store.recentOutboundKinds(msg.from, new Date(now.getTime() - 24 * 60 * 60 * 1000))
     const prompt = kinds.get('optin_prompt')
-    if (prompt && [...kinds.values()].every((t) => t <= prompt)) {
+    if (optInButton || (prompt && [...kinds.values()].every((t) => t <= prompt))) {
       await store.updateInbound(msg.wamid, { status: 'ignored', userId: link.userId })
       await deps.optIn?.markDeclined(link.userId)
       // PRO-248: the answer is always confirmed, also before the suggestions.
@@ -980,7 +985,12 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // the monthly cap used up.
     const checkin = msg.kind === 'interactive' ? checkinAnswerOf(msg.replyId) : typedCheckin
     if (checkin && deps.recordDinnerCheckin) {
-      const sentAt = (await store.recentOutboundKinds(msg.from, new Date(now.getTime() - CHECKIN_ANSWER_WINDOW_MS))).get('dinner_checkin')
+      // PRO-1295: a tapped button says which check-in it answers (an old one
+      // too, up to a week): that day's dinner. Without its ref, the last one.
+      const askedAt = msg.kind === 'interactive' ? refTime(msg.replyRef) : null
+      const sentAt = askedAt
+        ? now.getTime() - askedAt.getTime() <= CHECKIN_REF_WINDOW_MS ? askedAt : undefined
+        : (await store.recentOutboundKinds(msg.from, new Date(now.getTime() - CHECKIN_ANSWER_WINDOW_MS))).get('dinner_checkin')
       const done = sentAt
         ? await deps.recordDinnerCheckin(userId, checkin, sentAt).catch((err) => {
             console.warn('[whatsapp] check-in button not recorded (Mimo answers instead):', err?.message ?? err)
@@ -1000,6 +1010,15 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         return
       }
     }
+
+    // ── 1c'. PRO-1295: each answer to its question. A «¿a cuál?» first when a
+    // written «sí» / «no» could answer more than one (or one not seen yet), a
+    // closed «Ahora no» by code, the rest to Mimo with the question it answers.
+    const answer: AnswerContext | null = await (async () => {
+      const r = await resolveAnswer(msg, userId, now, deps, { onboarding: link.onboardingDone === false, languageOf, out })
+      return r === 'done' ? null : (r ?? {})
+    })()
+    if (!answer) return
 
     // ── 1d. The other avisos' buttons answered without the model (19-nov):
     // «Lo hago» under «hora de cocinar», «¿Te sigo avisando…?» and why BAJA.
@@ -1075,7 +1094,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         break
       case 'interactive':
         // 19-nov: «Cambia a algo rápido» reaches Mimo as a clear request, so it swaps tonight's dinner.
-        text = msg.replyId === 'cooking:swap' ? COOKING_SWAP_REQUEST[await languageOf()] : msg.text?.trim() || null
+        text = answer.text ?? (msg.replyId === 'cooking:swap' ? COOKING_SWAP_REQUEST[await languageOf()] : msg.text?.trim() || null)
         break
       case 'audio': {
         if (!deps.transcribe || !msg.mediaId) {
@@ -1131,10 +1150,11 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     const history = buildChatHistory(rows, now)
     // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
     const lateCheckin = lateDinnerCheckinNote(rows, now)
-    const chatText = lateCheckin ? `${lateCheckin}\n\n${text}` : text
+    const chatText = [lateCheckin, answer.note, text].filter(Boolean).join('\n\n')
     const { usage, ...response } = await deps.chat(userId, chatText, history, {
       mode: 'whatsapp',
       ...(images ? { images } : {}),
+      ...(answer.withoutTools ? { withoutTools: answer.withoutTools } : {}),
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
       onboarding: link.onboardingDone === false,
       onToolStart: (names) => {
@@ -1158,7 +1178,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     await store.updateInbound(msg.wamid, {
       status: 'processed',
       userId,
-      body: historyBody ?? text,
+      body: historyBody ?? answer.historyBody ?? text,
       meta: {
         tools: response.toolsUsed ?? [],
         corrections: response.corrections ?? [],
@@ -1476,13 +1496,18 @@ function queueTurn(msg: InboundMessage, absorbed: string[], deps: InboundDeps): 
     .catch((err) => console.error('[whatsapp] inbound queue error:', err))
   queues.set(msg.from, next)
   void next.finally(() => {
-    if (queues.get(msg.from) === next) queues.delete(msg.from)
+    if (queues.get(msg.from) !== next) return
+    queues.delete(msg.from)
+    // PRO-1295: the texts that arrived during the turn go now, as one turn.
+    coalescer.idle(msg.from)
   })
   return next
 }
 
 const coalescer = createCoalescer({
   run: (turn, absorbed) => queueTurn(turn, absorbed, turnDeps.get(turn.from)!),
+  // PRO-1295: what arrives while Mimo answers waits for that answer.
+  busy: (phone) => queues.has(phone),
   // «escribiendo…» right away while the next text may still come.
   onWait: (msg) => void turnDeps.get(msg.from)?.client.markReadWithTyping(msg.wamid).catch(() => undefined),
 })

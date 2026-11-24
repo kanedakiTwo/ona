@@ -713,6 +713,12 @@ export const households = pgTable('households', {
    */
   dailyBriefTime: text('daily_brief_time'),
   dinnerCheckinTime: text('dinner_checkin_time'),
+  /**
+   * PRO-1290: this household's own monthly Mimo cap in euros, set by an admin
+   * (`PUT /admin/households/:id/mimo-cap`, up to 3× its plan's). Null = the
+   * plan's. Applies to every member (services/householdMimoCap.ts).
+   */
+  mimoCapEur: real('mimo_cap_eur'),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])

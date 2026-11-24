@@ -186,7 +186,15 @@ export interface PersistOptions {
    * `softLint = false` so they enforce the full ruleset.
    */
   softLint?: boolean
+  /**
+   * PRO-1290: runs inside the write's transaction, once the rows are written
+   * (the admin audit row of a catalogue fix). A throw rolls the save back.
+   */
+  inTransaction?: (tx: PersistTx, recipeId: string) => Promise<void>
 }
+
+/** The Drizzle transaction client `persistRecipe` writes with. */
+export type PersistTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 export interface PersistOk {
   ok: true
@@ -661,6 +669,7 @@ export async function persistRecipe(
       )
     }
 
+    if (opts.inTransaction) await opts.inTransaction(tx, id)
     return id
   })
 

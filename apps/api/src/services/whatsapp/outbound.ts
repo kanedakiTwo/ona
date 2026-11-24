@@ -41,7 +41,7 @@ import {
 } from './proactive.js'
 import { recordCost } from '../costLedger.js'
 import { recordServiceMessageCost } from './serviceCost.js'
-import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
+import { budgetMicrosFor, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 import { isOnFreePlan } from '../accountAccess.js'
@@ -364,7 +364,7 @@ async function sawMenuThisMorning(userId: string, parts: MadridParts, now: Date)
  * turn checks it. Then the fixed text goes out instead of a guided one.
  */
 export async function guidedOverBudget(userId: string): Promise<boolean> {
-  if ((await getMonthlySpendMicros(userId, db)) >= budgetMicros(userId)) return true
+  if ((await getMonthlySpendMicros(userId, db)) >= (await budgetMicrosFor(userId, db))) return true
   const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
   if (row?.role === 'admin') return false
   return (await spendCapStatus(userId)).exceeded

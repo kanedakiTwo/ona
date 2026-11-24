@@ -8,6 +8,7 @@ import { applyCatalogTimeTrim } from '../services/recipeTimeTrim.js'
 import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisles.js'
 import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
+import { applyIngredientRepairs } from '../services/nutrition/ingredientRepairs.js'
 import { applyCompoundIngredientTags } from '../services/compoundIngredients.js'
 import { applyNameAllergenTags } from '../services/nutrition/allergenBackfill.js'
 import { logRecipeAllergenMismatches } from '../services/nutrition/recipeAllergenSync.js'
@@ -70,6 +71,14 @@ async function main() {
     await applyEdibleFractions(db)
   } catch (err) {
     console.error('[edible-fraction] failed:', err)
+  }
+  // Idempotent (PRO-1047): the ingredients auto-create saved with another
+  // food's USDA entry («pechuga de pollo» = dulce de leche) get their values,
+  // only while they still hold the wrong ones, and their recipes are recomputed.
+  try {
+    await applyIngredientRepairs(db)
+  } catch (err) {
+    console.error('[ingredient-repairs] failed:', err)
   }
   // Idempotent (PRO-198): the obvious compound ingredients («Sobras del
   // cocido», «Caldo de cocido», generic sausages…) get what they contain,

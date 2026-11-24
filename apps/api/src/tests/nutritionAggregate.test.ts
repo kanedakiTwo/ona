@@ -11,6 +11,7 @@ import {
   aggregateNutrition,
   catalogEntryFromRow,
   edibleShare,
+  gramsPerUnitFromNote,
   lacksNutrition,
   lineEdibleShare,
   type IngredientCatalogEntry,
@@ -718,5 +719,40 @@ describe('aggregateNutrition — ingredient with no nutrition yet (PRO-1125)', (
     })
     expect(r.skipped).toEqual([{ ingredientId: 'agua', reason: 'no-nutrition' }])
     expect(r.incomplete).toBe(false)
+  })
+})
+
+describe('aggregateNutrition — u with the weight in the note (PRO-1047)', () => {
+  it('reads the weight of a piece', () => {
+    expect(gramsPerUnitFromNote('lomos de unos 150 g')).toBe(150)
+    expect(gramsPerUnitFromNote('lata de 400 g')).toBe(400)
+    expect(gramsPerUnitFromNote('de 150-200 g')).toBe(175)
+    expect(gramsPerUnitFromNote('pieza de 1,5 kg')).toBe(1500)
+    expect(gramsPerUnitFromNote('en 4 gajos')).toBeNull()
+    expect(gramsPerUnitFromNote('en dados de 2 cm')).toBeNull()
+    expect(gramsPerUnitFromNote(null)).toBeNull()
+  })
+
+  it('«Salmón en papillote»: 4 u «lomos de unos 150 g» count 600 g, not nothing (1,4 g of protein)', () => {
+    const salmon = makeEntry({ id: 'salmon', name: 'salmón', calories: 208, protein: 20.42, fat: 13.42 })
+    const r = aggregateNutrition({
+      servings: 4,
+      ingredients: [makeIngredient({ ingredientId: 'salmon', quantity: 4, unit: 'u', note: 'lomos de unos 150 g' })],
+      catalog: catalogOf([salmon]),
+    })
+    expect(r.skipped).toEqual([])
+    expect(r.incomplete).toBe(false)
+    expect(r.perServing.proteinG).toBe(30.6)
+    expect(r.perServing.kcal).toBe(312)
+  })
+
+  it('the ingredient\'s unitWeight still goes first', () => {
+    const egg = makeEntry({ id: 'egg', name: 'huevo', calories: 143, unitWeight: 50 })
+    const r = aggregateNutrition({
+      servings: 1,
+      ingredients: [makeIngredient({ ingredientId: 'egg', quantity: 2, unit: 'u', note: 'de 70 g' })],
+      catalog: catalogOf([egg]),
+    })
+    expect(r.perServing.kcal).toBe(143)
   })
 })

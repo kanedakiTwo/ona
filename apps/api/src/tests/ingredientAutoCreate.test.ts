@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DISH_FOOD_CATEGORIES,
   isIngredientCandidate,
+  isRelevantUsdaHit,
   pickNutritionCandidate,
   similarIngredients,
   suggestAisleForName,
@@ -305,5 +306,32 @@ describe('pickNutritionCandidate — the nutrition a new ingredient takes', () =
   it('falls back to the first candidate (BEDCA) and to null when there is none', () => {
     expect(pickNutritionCandidate([c('BEDCA', 3)])?.dataType).toBe('BEDCA')
     expect(pickNutritionCandidate([])).toBeNull()
+  })
+})
+
+describe('isRelevantUsdaHit — a USDA hit about another food is out (PRO-1047)', () => {
+  it('«pechuga de pollo» in Spanish no longer takes «Dulce de Leche» by its «de», nor the copos a dry bean', () => {
+    expect(isRelevantUsdaHit('pechuga de pollo', 'Dulce de Leche')).toBe(false)
+    expect(isRelevantUsdaHit('zumo de naranja', 'Dulce de Leche')).toBe(false)
+    expect(isRelevantUsdaHit('copos de maiz sin gluten certificados (sin malta de cebada)', 'Beans, Dry, Flor de Mayo (0% moisture)')).toBe(false)
+  })
+
+  it('the translated query keeps its food', () => {
+    expect(isRelevantUsdaHit('chicken broiler breast raw', 'Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw')).toBe(true)
+    expect(isRelevantUsdaHit('eggs raw whole', 'Egg, whole, raw, fresh')).toBe(true)
+    expect(isRelevantUsdaHit('tomatoes crushed canned', 'Tomatoes, crushed, canned')).toBe(true)
+    expect(isRelevantUsdaHit('coriander leaves fresh', 'Coriander (cilantro) leaves, raw')).toBe(true)
+    expect(isRelevantUsdaHit('oil olive', 'Oil, olive, salad or cooking')).toBe(true)
+    expect(isRelevantUsdaHit('tamari', 'Soy sauce made from soy (tamari)')).toBe(true)
+  })
+
+  it('suggestIngredient drops the unrelated hit, so a stub (or BEDCA) beats a wrong food', async () => {
+    const client = makeMockClient({
+      search: [{ fdcId: 173461, description: 'Dulce de Leche', dataType: 'SR Legacy' }],
+      profiles: { 173461: { fdcId: 173461, description: 'Dulce de Leche', per100g: { kcal: 315, proteinG: 6.84, carbsG: 55.35, fatG: 7.35, fiberG: 0, saltG: 0.32 }, raw: {} } },
+    })
+    const out = await suggestIngredient('copos de maíz sin gluten certificados', { client, skipFallbacks: true })
+    expect(out.candidates).toEqual([])
+    expect(pickNutritionCandidate(out.candidates)).toBeNull()
   })
 })

@@ -492,6 +492,47 @@ export function isIngredientCandidate(r: Pick<UsdaSearchResult, 'dataType' | 'fo
   return !r.foodCategory || !DISH_FOOD_CATEGORIES.includes(r.foodCategory)
 }
 
+// ─── Relevance ───────────────────────────────────────────────────
+// PRO-1047: a name the dictionary doesn't know goes to USDA in Spanish, and
+// USDA ranks anything with a shared word first: «pechuga de pollo», «zumo de
+// naranja» and 26 more got «Dulce de Leche» (by its «de»), and «copos de maíz
+// sin gluten…» a dry bean. The pechuga made the agridulce of Mimo 966 kcal.
+
+/** Words that say nothing about which food it is. */
+const NON_FOOD_WORDS = new Set([
+  'de', 'del', 'la', 'las', 'el', 'los', 'con', 'en', 'y', 'o', 'a', 'al', 'sin', 'para', 'por',
+  'raw', 'fresh', 'dried', 'dry', 'whole', 'ground', 'canned', 'cooked', 'frozen', 'plain', 'and', 'or', 'with', 'without',
+])
+
+function foodWords(s: string): string[] {
+  return normalize(s)
+    .split(/[^a-z0-9ñ]+/)
+    .filter((w) => w.length >= 2 && !NON_FOOD_WORDS.has(w))
+}
+
+/** «tomatoes» = «tomato», «olives» ≈ «olive», «eggs» = «egg». */
+function sameWord(a: string, b: string): boolean {
+  if (a === b) return true
+  const stem = (w: string) => w.replace(/(es|s)$/, '')
+  const sa = stem(a)
+  const sb = stem(b)
+  if (sa === sb) return true
+  const [short, long] = sa.length <= sb.length ? [sa, sb] : [sb, sa]
+  return short.length >= 4 && long.startsWith(short)
+}
+
+/**
+ * True when a USDA hit is about the food the query names: the query's first
+ * food word (the head: «chicken» in «chicken broiler breast raw», «copos» in
+ * «copos de maiz…») is one of the description's words. With no food word in
+ * the query, any hit goes.
+ */
+export function isRelevantUsdaHit(query: string, description: string): boolean {
+  const head = foodWords(query)[0]
+  if (!head) return true
+  return foodWords(description).some((w) => sameWord(head, w))
+}
+
 // ─── Public API ─────────────────────────────────────────────────
 
 let defaultClient: UsdaClient | null = null
@@ -544,9 +585,11 @@ export async function suggestIngredient(
     )
   }
 
-  // Stable sort: USDA's relevance order within each data type.
+  // Stable sort: USDA's relevance order within each data type. A hit about
+  // another food is out (PRO-1047), so BEDCA gets its turn.
   const filtered = search
     .filter(isIngredientCandidate)
+    .filter((r) => isRelevantUsdaHit(enQuery, r.description))
     .sort((a, b) => rankDataType(a.dataType) - rankDataType(b.dataType))
     .slice(0, limit)
 

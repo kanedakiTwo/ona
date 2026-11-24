@@ -46,7 +46,7 @@ A compound ingredient (leftovers, stocks, the dish «cocido», generic cured mea
 1. For each `RecipeIngredient`, convert `quantity` to grams using:
    - `g` → grams as-is
    - `ml` → grams using `ingredient.density` (g/ml); if density is missing, the ingredient is skipped and a warning is recorded
-   - `u` → grams using `ingredient.unitWeight` (g/unidad, e.g. 1 huevo ≈ 50 g)
+   - `u` → grams using `ingredient.unitWeight` (g/unidad, e.g. 1 huevo ≈ 50 g); with none, the weight the line's note gives («lomos de unos 150 g», «lata de 400 g», «de 150-200 g» → 175; `gramsPerUnitFromNote`, PRO-1047: the catalogue's «Salmón en papillote», 4 u of salmón, gave 1,4 g of protein)
    - `cda` → 15 g equivalent if `ingredient.density` is missing; else `15 ml × density`
    - `cdita` → 5 g equivalent
    - `pizca` and `al_gusto` are treated as 0 g (negligible)
@@ -78,7 +78,14 @@ No API (D-156): the household's «Añadir» stores the name only, and the values
 
 ## Recompute after a catalogue change
 
-`recomputeRecipesUsing` (`nutrition/recomputeRecipes.ts`) recomputes `nutritionPerServing` and the «incompleta» mark of every recipe (system and household) that uses some ingredients, with the same calculation as `persistRecipe` (each line's note, the recipe's servings); allergens are not touched. It runs after the admin remap and the Mimoia estimate (PRO-1125), after the fill command, and in the edible-fraction boot step
+`recomputeRecipesUsing` (`nutrition/recomputeRecipes.ts`) recomputes `nutritionPerServing` and the «incompleta» mark of every recipe (system and household) that uses some ingredients, with the same calculation as `persistRecipe` (each line's note, the recipe's servings); allergens are not touched. It runs after the admin remap and the Mimoia estimate (PRO-1125), after the fill command, and in the edible-fraction and ingredient-repair boot steps
+
+## Wrong USDA entries
+
+Before PRO-1125 a name the es→en dictionary didn't know went to USDA in Spanish, and USDA put first anything sharing a word: «pechuga de pollo», «zumo de naranja», «aceite de cacahuete» and 25 more got «Dulce de Leche» (by its «de»: 315 kcal, 55 g of carbs per 100 g); «copos de maíz sin gluten…», «grasa de pato» and 7 more a row with chicken values; «Panko sin gluten» the vital wheat gluten (75 g of protein). Mimo's recipes made it visible (PRO-1047, Dani y Sara: the gluten-free agridulce with 450 g of pechuga for 2 gave 20 g of protein and 966 kcal per serving; the «Pollo crujiente», 1.078 kcal).
+
+- Auto-create no longer takes a USDA hit about another food: the query's first food word must be one of the description's words (`isRelevantUsdaHit` in `ingredientAutoCreate.ts`); with no relevant hit, BEDCA, then a stub with no nutrition (the recipe says «incompleta» and the nightly fill gives it values)
+- On every boot, after `db:migrate`, `applyIngredientRepairs` (`nutrition/ingredientRepairs.ts`) fixes the rows that **still hold** one of the wrong entries' values (`WRONG_USDA_ENTRIES`: fdcId and its per-100 g values; a hand fix with the wrong fdcId, like «yema de huevo», is left alone): the values of a well-mapped catalogue row («pechuga de pollo» ← «pollo», «Panko sin gluten» ← «panko»), an estimate from the USDA tables («corazones de pollo», «solomillo de cerdo»…), or none for a name not in `REPAIRS` — then recomputes the recipes that use them. It also recomputes the recipes «incompletas» by a `u` line whose note gives the weight. Idempotent
 
 ## Edible weight
 

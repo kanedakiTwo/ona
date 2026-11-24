@@ -27,13 +27,18 @@ export interface RecomputedRecipe {
 }
 
 /** Recompute `nutrition_per_serving` + `nutrition_incomplete` of the recipes that use these ingredients. */
-export async function recomputeRecipesUsing(db: Db, ingredientIds: readonly string[]): Promise<RecomputedRecipe[]> {
+export async function recomputeRecipesUsing(
+  db: Db,
+  ingredientIds: readonly string[],
+  /** Only these recipes (PRO-1047's boot step), among the ones that use them. */
+  opts: { onlyRecipeIds?: ReadonlySet<string> } = {},
+): Promise<RecomputedRecipe[]> {
   if (ingredientIds.length === 0) return []
   const uses = await db
     .selectDistinct({ recipeId: recipeIngredients.recipeId })
     .from(recipeIngredients)
     .where(inArray(recipeIngredients.ingredientId, [...ingredientIds]))
-  const recipeIds = uses.map((u) => u.recipeId)
+  const recipeIds = uses.map((u) => u.recipeId).filter((id) => !opts.onlyRecipeIds || opts.onlyRecipeIds.has(id))
   if (recipeIds.length === 0) return []
 
   const lines = await db

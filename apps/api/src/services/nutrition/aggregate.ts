@@ -162,6 +162,7 @@ function toGrams(
   unit: RecipeIngredient['unit'],
   quantity: number,
   entry: IngredientCatalogEntry,
+  note?: string | null,
 ): { grams: number } | { skip: SkippedReason } {
   switch (unit) {
     case 'g':
@@ -171,8 +172,9 @@ function toGrams(
       return { grams: quantity * entry.density }
     }
     case 'u': {
-      if (entry.unitWeight == null) return { skip: 'no-unit-weight' }
-      return { grams: quantity * entry.unitWeight }
+      const unitWeight = entry.unitWeight ?? gramsPerUnitFromNote(note)
+      if (unitWeight == null) return { skip: 'no-unit-weight' }
+      return { grams: quantity * unitWeight }
     }
     case 'cda': {
       // If we have a density, convert ml → g. Otherwise default 1 g/ml.
@@ -195,6 +197,22 @@ function toGrams(
     default:
       return { skip: 'unsupported-unit' }
   }
+}
+
+/**
+ * PRO-1047: the weight of one piece when the line's note says it («lomos de
+ * unos 150 g», «lata de 400 g», «de 150-200 g» → 175). Used for a line in
+ * units whose ingredient has no `unitWeight`: the catalogue's «Salmón en
+ * papillote» (4 u, «lomos de unos 150 g») gave 1,4 g of protein.
+ */
+export function gramsPerUnitFromNote(note: string | null | undefined): number | null {
+  if (!note) return null
+  const m = /(\d+(?:[.,]\d+)?)(?:\s*(?:-|–|a)\s*(\d+(?:[.,]\d+)?))?\s*(kg|g|gr|gramos)\b/i.exec(note)
+  if (!m) return null
+  const num = (s: string) => Number(s.replace(',', '.'))
+  const value = m[2] ? (num(m[1]) + num(m[2])) / 2 : num(m[1])
+  const grams = m[3].toLowerCase() === 'kg' ? value * 1000 : value
+  return Number.isFinite(grams) && grams > 0 ? grams : null
 }
 
 /** Edible share (PRO-194): 1 when unset or out of range. */
@@ -236,6 +254,8 @@ function round1(n: number): number {
  *   the absorbed share (`cookingMedium.ts`).
  * - kcal is rounded to integer; macros to 1 decimal.
  * - Bone-in cuts count only their `edibleFraction` (PRO-194).
+ * - A line in units with no `unitWeight` takes the weight its note gives
+ *   («lomos de unos 150 g», PRO-1047).
  * - An ingredient with no nutrition yet (`missingNutrition`, PRO-1125) is
  *   skipped with reason `no-nutrition`.
  * - `incomplete` (PRO-176): some skipped line matters (not salt, water,
@@ -282,7 +302,7 @@ export function aggregateNutrition(input: AggregateInput): AggregateResult {
       continue
     }
 
-    const conv = toGrams(ing.unit, ing.quantity, entry)
+    const conv = toGrams(ing.unit, ing.quantity, entry, ing.note)
     if ('skip' in conv) {
       skipped.push({ ingredientId: ing.ingredientId, reason: conv.skip })
       if (!isNegligibleForNutrition(entry.name, ing.note)) incomplete = true

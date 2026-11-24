@@ -17,7 +17,7 @@ import { ServingsScaler } from "@/components/recipes/ServingsScaler"
 import { useStepTimers } from "@/hooks/useStepTimers"
 import { useWakeLock } from "@/hooks/useWakeLock"
 import { haptic } from "@/lib/pwa/haptics"
-import { subscribeCookingCommands } from "@/lib/cookingCommands"
+import { setCookStep, subscribeCookingCommands } from "@/lib/cookingCommands"
 import { useAuth } from "@/lib/auth"
 import { trackUsage } from "@/lib/usageEvents"
 import { useOptionalMimo } from "@/components/mimo/MimoProvider"
@@ -114,6 +114,12 @@ export function CookingShell({
   const safeIdx = Math.min(Math.max(0, stepIdx), Math.max(0, totalSteps - 1))
   const currentStep = recipe.steps[safeIdx]
   const nextStep = recipe.steps[safeIdx + 1]
+
+  // What Mimo is told about where the person is (MimoProvider → API page note).
+  useEffect(() => {
+    setCookStep(totalSteps > 0 ? { step: safeIdx + 1, total: totalSteps } : null)
+    return () => setCookStep(null)
+  }, [safeIdx, totalSteps])
 
   const refCounts = useMemo(
     () => buildIngredientRefCounts(recipe.steps),

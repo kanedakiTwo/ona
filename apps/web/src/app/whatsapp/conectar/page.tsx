@@ -22,6 +22,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { useAuth } from '@/lib/auth'
 import { useWhatsAppLinkCode, useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import { MimoiaLogo } from '@/components/brand/Mimoia'
+import { WhatsAppLink } from '@/components/whatsapp/WhatsAppLink'
 
 const TITLE = 'font-serif-text text-[30px] font-[650] leading-[1.1] text-ink lg:text-[44px] lg:leading-[1.05]'
 const ACCENT = 'font-medium italic text-terracotta-deep'
@@ -156,9 +157,9 @@ function LoggedIn({ username }: { username: string }) {
         </p>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
           {status.data.chatLink && (
-            <a href={status.data.chatLink} className={INK_PILL}>
+            <WhatsAppLink href={status.data.chatLink} className={INK_PILL}>
               Volver a WhatsApp
-            </a>
+            </WhatsAppLink>
           )}
           <a href="/profile" className={TEXT_LINK}>
             Ajustes de WhatsApp
@@ -201,9 +202,9 @@ function LoggedIn({ username }: { username: string }) {
               {linkCode.data.message}
             </p>
             {linkCode.data.waLink && (
-              <a href={linkCode.data.waLink} className={`${INK_PILL} self-start`}>
+              <WhatsAppLink href={linkCode.data.waLink} className={`${INK_PILL} self-start`}>
                 Enviar desde WhatsApp
-              </a>
+              </WhatsAppLink>
             )}
           </div>
         </li>

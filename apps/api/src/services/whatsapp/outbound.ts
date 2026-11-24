@@ -362,7 +362,7 @@ async function sawMenuThisMorning(userId: string, parts: MadridParts, now: Date)
  * turn checks it. Then the fixed text goes out instead of a guided one.
  */
 export async function guidedOverBudget(userId: string): Promise<boolean> {
-  if ((await getMonthlySpendMicros(userId, db)) >= budgetMicros()) return true
+  if ((await getMonthlySpendMicros(userId, db)) >= budgetMicros(userId)) return true
   const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
   if (row?.role === 'admin') return false
   return (await spendCapStatus(userId)).exceeded

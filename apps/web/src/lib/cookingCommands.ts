@@ -26,6 +26,22 @@ export function emitCookingCommand(cmd: CookingCommand): void {
   }
 }
 
+/**
+ * 23-nov: the step the cooking shell shows (1-based) and how many there are,
+ * so Mimo knows «el siguiente» from where the person is. Null outside cook mode.
+ */
+export interface CookStep {
+  step: number
+  total: number
+}
+let currentCookStep: CookStep | null = null
+export function setCookStep(s: CookStep | null): void {
+  currentCookStep = s
+}
+export function getCookStep(): CookStep | null {
+  return currentCookStep
+}
+
 export function subscribeCookingCommands(fn: Listener): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)

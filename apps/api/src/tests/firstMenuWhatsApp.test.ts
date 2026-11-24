@@ -32,9 +32,10 @@ vi.mock('../services/menuWeek.js', async (orig) => ({
 vi.mock('../services/scopeResolver.js', async (orig) => ({ ...(await orig<any>()), getPrimaryHouseholdId: vi.fn(async () => null) }))
 // 19-nov: the dishes said in the sign-up are looked up in the household's recipes and the catalogue.
 const POOL = [
-  { id: 'salmon', name: 'Salmón al horno con patatas', meals: ['dinner'] },
-  { id: 'pollo', name: 'Pollo a la plancha con brócoli', meals: ['lunch', 'dinner'] },
-  { id: 'bravas', name: 'Patatas bravas', meals: ['lunch'] },
+  { id: 'salmon', name: 'Salmón al horno con patatas', meals: ['dinner'], allergens: ['pescado'], ingredients: [] },
+  { id: 'pollo', name: 'Pollo a la plancha con brócoli', meals: ['lunch', 'dinner'], allergens: [], ingredients: [] },
+  { id: 'bravas', name: 'Patatas bravas', meals: ['lunch'], allergens: [], ingredients: [] },
+  { id: 'macarrones', name: 'Macarrones con tomate', meals: ['lunch', 'dinner'], allergens: ['gluten'], ingredients: [] },
 ]
 vi.mock('../services/matchableRecipes.js', async (orig) => ({ ...(await orig<any>()), loadMatchableRecipes: vi.fn(async () => POOL) }))
 vi.mock('../services/weekType.js', async (orig) => ({ ...(await orig<any>()), saveWeekTypeSlots: vi.fn(async () => []) }))
@@ -61,11 +62,11 @@ const { getPrimaryHouseholdId } = await import('../services/scopeResolver.js')
 const { shopperInviteForSignUp } = await import('../services/shopperInvite.js')
 const completeOnboarding = skills.find((s) => s.name === 'complete_onboarding')!
 
-function fakeDb() {
+function fakeDb(user: Record<string, unknown> = {}) {
   const saved: any[] = []
   return {
     saved,
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ onboardingDone: false }] }) }) }),
+    select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ onboardingDone: false, ...user }] }) }) }),
     insert: () => ({
       values: (row: any) => {
         const p: any = Promise.resolve(undefined)
@@ -184,6 +185,59 @@ describe('complete_onboarding — the four questions to the ficha and the first 
     expect(vi.mocked(setMemoryBatch)).toHaveBeenCalledWith('u1', [{ key: 'dislikes', value: ['casqueria', 'picante', 'legumbres'] }], 'inferred', { signal: 'whatsapp' })
     // Seven and seven: the week type stays as it is.
     expect(saveWeekTypeSlots).not.toHaveBeenCalled()
+  })
+})
+
+describe('complete_onboarding — their dishes never bring what the household can\'t eat (PRO-1041 + the sign-up\'s dishes of 19-nov)', () => {
+  beforeEach(() => {
+    generateCalls.length = 0
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-17T08:00:00Z')) // martes 17, 09:00 Madrid
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const dishesOf = (db: ReturnType<typeof fakeDb>) => db.saved[0].days.flatMap((d: any) => Object.values(d).flatMap((slot: any) => slot.dishes))
+  const answers = {
+    adults: 2, kidsCount: 0, dinners: 7, lunches: 7,
+    favoriteDishes: ['macarrones con tomate', 'pollo a la plancha con brócoli', 'tortilla de mi abuela'],
+  }
+
+  it('with no allergy said or saved, the catalogue\'s recipe goes in as before', async () => {
+    const db = fakeDb()
+    const r = await completeOnboarding.handler(answers, { userId: 'u1', db, channel: 'whatsapp' } as any)
+    expect(dishesOf(db)).toContainEqual(expect.objectContaining({ kind: 'recipe', recipeId: 'macarrones' }))
+    expect(r.summary).not.toMatch(/No he puesto/)
+    expect(r.summary).not.toMatch(/Aplicado solo a este menu/)
+    expect(r.summary).not.toMatch(/tienen que respetarlo tambien/)
+  })
+
+  it('«soy celíaca» said to Mimo: the dish whose recipe has gluten is left out (not even as a note to turn into a recipe) and Mimo is told; the rest go in', async () => {
+    const db = fakeDb()
+    const r = await completeOnboarding.handler({ ...answers, restrictions_said: ['celiaca'] }, { userId: 'u1', db, channel: 'whatsapp' } as any)
+    const dishes = dishesOf(db)
+    expect(dishes).not.toContainEqual(expect.objectContaining({ recipeId: 'macarrones' }))
+    expect(dishes).not.toContainEqual({ kind: 'note', text: 'macarrones con tomate' })
+    expect(r.summary).toMatch(/No he puesto «macarrones con tomate»: su receta lleva algo que en casa no pueden comer\. No lo pongas tu con swap_meal; diselo en una linea\./)
+    expect(r.summary).not.toMatch(/«macarrones con tomate» no esta en el catalogo/)
+    // What they can eat still comes in: the catalogue's recipe, and the note for the dish the catalogue doesn't have.
+    expect(dishes).toContainEqual(expect.objectContaining({ kind: 'recipe', recipeId: 'pollo' }))
+    expect(dishes).toContainEqual({ kind: 'note', text: 'tortilla de mi abuela' })
+    expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
+    expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
+    // The household's recipe Mimo writes for that note can't have it either.
+    expect(r.summary).toMatch(/Las recetas de la casa que crees en este turno tienen que respetarlo tambien \(sin gluten\)\./)
+    // The tool's result carries nothing of the placement's bookkeeping.
+    expect(r).not.toHaveProperty('left')
+  })
+
+  it('an allergy already saved in the household leaves the dish out the same way (nothing «said» to tell)', async () => {
+    const db = fakeDb({ restrictions: ['sin gluten'] })
+    const r = await completeOnboarding.handler(answers, { userId: 'u1', db, channel: 'whatsapp' } as any)
+    const dishes = dishesOf(db)
+    expect(dishes).not.toContainEqual(expect.objectContaining({ recipeId: 'macarrones' }))
+    expect(dishes).toContainEqual(expect.objectContaining({ kind: 'recipe', recipeId: 'pollo' }))
+    expect(r.summary).toMatch(/No he puesto «macarrones con tomate»/)
+    expect(r.summary).not.toMatch(/Aplicado solo a este menu/)
   })
 })
 

@@ -22,7 +22,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useVoice, type ServerVoice } from '@/hooks/useVoice'
 import { recorderSupported, useRecorder } from '@/hooks/useRecorder'
-import { emitCookingCommand } from '@/lib/cookingCommands'
+import { emitCookingCommand, getCookStep } from '@/lib/cookingCommands'
 import { handsFreeAfterSilence, leavesCookMode, turnSilenceMs } from '@/lib/mimoHandsFree'
 import { recipeRefsFrom, type RecipeRef } from '@/lib/mimoRecipeLinks'
 import { createPendingListen } from '@/lib/pendingListen'
@@ -224,7 +224,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
           message: question,
           history,
           mode: spoken ? 'voice' : 'text',
-          context: { path: pathRef.current },
+          context: { path: pathRef.current, ...(getCookStep() ? { cookStep: getCookStep() } : {}) },
         })
         reply = res.message || 'No he podido responder.'
         const recipes = recipeRefsFrom(res.uiHint, res.data)

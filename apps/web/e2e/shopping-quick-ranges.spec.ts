@@ -129,8 +129,9 @@ test('/shopping: «Hoy» shows only today, «Dos semanas» restores the default 
   await expect(semana).toBeInViewport({ ratio: 0.99 })
   await expect
     .poll(async () => {
+      // Same pixel of rounding as above (PRO-1299: CI saw it cut by a subpixel).
       const b = (await semana.boundingBox())!
-      return b.x >= 0 && b.x + b.width <= 390
+      return b.x >= -1 && b.x + b.width <= 391
     })
     .toBe(true)
   await expect(range).toHaveText(defaultLabel)

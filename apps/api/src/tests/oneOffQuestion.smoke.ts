@@ -28,7 +28,7 @@ const FILTER = { signedUpFrom: SIGNUP_DAY, signedUpTo: SIGNUP_DAY, inactiveDays:
 const TEXT = `¿Qué os cuesta más de planificar la semana? ${tag}`
 
 let i = 0
-async function home(opts: { email?: string; link?: 'on' | 'baja' | 'none'; activeDaysAgo?: number } = {}) {
+async function home(opts: { email?: string; link?: 'on' | 'baja' | 'none'; activeDaysAgo?: number; autoplanDaysAgo?: number } = {}) {
   i++
   const [u] = await db
     .insert(users)
@@ -44,12 +44,16 @@ async function home(opts: { email?: string; link?: 'on' | 'baja' | 'none'; activ
   if (opts.activeDaysAgo !== undefined) {
     await db.insert(usageEvents).values({ userId: u.id, householdId: h.id, name: 'menu_generated', createdAt: new Date(NOW.getTime() - opts.activeDaysAgo * DAY) })
   }
+  if (opts.autoplanDaysAgo !== undefined) {
+    await db.insert(usageEvents).values({ userId: u.id, householdId: h.id, name: 'autoplan_generated', createdAt: new Date(NOW.getTime() - opts.autoplanDaysAgo * DAY) })
+  }
   return { userId: u.id, householdId: h.id, phone }
 }
 
 describe.skipIf(!reachable)('pregunta única por WhatsApp (PRO-1091)', () => {
   it('counts the group, sends once per household, keeps BAJA out and files the answer in Opiniones', async () => {
-    const a = await home({ activeDaysAgo: 20 })
+    // 24-nov: the week Mimo made by itself yesterday is not the household's activity; `a` is still asleep.
+    const a = await home({ activeDaysAgo: 20, autoplanDaysAgo: 1 })
     const b = await home()
     await home({ link: 'baja' })
     await home({ email: `${tag}@example.com` })

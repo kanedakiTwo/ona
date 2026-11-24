@@ -8,13 +8,19 @@
  * sign-up analysis, the fridge question, the «cuánto ha acertado» line
  * (PRO-155) and the response.
  */
-import { pastMealsOn, type DayTemplate, type WeekPlan } from '@ona/shared'
+import { pastMealsOn, type DayMenu, type DayTemplate, type WeekPlan } from '@ona/shared'
+import { and, asc, desc, eq, lt, or } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { menuLogs, menus } from '../db/schema.js'
+import { menuLogs, menus, recipeVerdicts, users } from '../db/schema.js'
 import { calculateMenuCaloriesFromDB } from './calorieCalculator.js'
 import { generateMenu } from './menuGenerator.js'
 import { startShadowPlan } from './menuPlannerShadow.js'
-import { generationSkips, loadPreviousWeek, withoutPastMeals, type PreviousWeek } from './menuWeek.js'
+import { compileRestrictions, mergeRestrictions, normalizeText, violatesRestrictions } from './dietaryRestrictions.js'
+import { withHouseholdRestrictions } from './householdAllergies.js'
+import { loadMatchableRecipes } from './matchableRecipes.js'
+import { generationSkips, loadPreviousWeek, menuHasDishes, withoutPastMeals, type PreviousWeek } from './menuWeek.js'
+import { placeSignupDishes, recipeForDish, type SignupDish } from './signupFirstMenu.js'
+import { getMemoryForUser } from './userMemoryStore.js'
 import { enqueuePrepAlertsForMenu } from './notificationScheduler.js'
 import { calculateMenuNutrientsFromDB } from './nutrientCalculator.js'
 import { updateBalance } from './nutrientBalance.js'
@@ -55,7 +61,12 @@ export async function generateAndSaveMenu(input: GenerateWeekInput) {
   )
   const { warnings, favoritesShort } = generated
   // 19-nov: on the first menu's day, the meals already gone stay empty too.
-  const days = withoutPastMeals(generated.days, weekStart, input.fromDate, pastMealsOn(input.fromDate))
+  let days = withoutPastMeals(generated.days, weekStart, input.fromDate, pastMealsOn(input.fromDate))
+  // PRO-1296: the web sign-up's first menu takes the dishes they make often, as on WhatsApp.
+  if (input.fromDate) {
+    const dishes = await signupDishesForWeek(userId, householdId, weekStart, input.fromDate).catch(() => [])
+    if (dishes.length) days = placeSignupDishes(days, dishes, previous.locked).days
+  }
 
   // Save to menus table — carry the lists forward so the matcher honours
   // them next regeneration too.
@@ -99,4 +110,90 @@ export async function generateAndSaveMenu(input: GenerateWeekInput) {
   })
 
   return { menu, days, warnings, favoritesShort }
+}
+
+/** The Monday (ISO) of the week `isoDate` falls in. */
+function mondayOfDate(isoDate: string): string {
+  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
+  return d.toISOString().slice(0, 10)
+}
+
+/** The sign-up's first menu takes three of their dishes, as the WhatsApp sign-up asks three. */
+const SIGNUP_DISHES = 3
+
+/**
+ * PRO-1296 · The web sign-up (`fromDate`: the first menu starts on the sign-up
+ * day) puts the dishes they said in the first menu, as the WhatsApp sign-up
+ * does (`signupFirstMenu.ts`, 19-nov). The web doesn't ask for dishes since
+ * PRO-146: what they said are the «Me encanta» of «Afina tu menú» (oldest
+ * first, up to three) and, from the API or an old client, `favoriteDishes`
+ * (the catalogue's recipe, or their own, else a note with the dish's name).
+ * Never a recipe with what someone in the house can't eat. Only while these
+ * are the household's first weeks (no menu with dishes before the sign-up's
+ * week), and a dish already in an earlier first week (Friday to Sunday the
+ * sign-up makes two) doesn't go again. Before, they only weighed like
+ * favourites and the first menu often didn't bring them.
+ */
+export async function signupDishesForWeek(userId: string, householdId: string | null, weekStart: string, fromDate: string): Promise<SignupDish[]> {
+  const [user] = await db.select({ favoriteDishes: users.favoriteDishes, restrictions: users.restrictions }).from(users).where(eq(users.id, userId)).limit(1)
+  const said = (user?.favoriteDishes ?? []).map((d) => d.trim()).filter(Boolean)
+  const loved = await db
+    .select({ recipeId: recipeVerdicts.recipeId })
+    .from(recipeVerdicts)
+    .where(and(eq(recipeVerdicts.userId, userId), eq(recipeVerdicts.verdict, 'love')))
+    .orderBy(asc(recipeVerdicts.createdAt))
+  if (said.length === 0 && loved.length === 0) return []
+  const firstWeek = mondayOfDate(fromDate)
+  const rows = await db
+    .select({ weekStart: menus.weekStart, days: menus.days })
+    .from(menus)
+    .where(and(householdId ? or(eq(menus.householdId, householdId), eq(menus.userId, userId)) : eq(menus.userId, userId), lt(menus.weekStart, weekStart)))
+    .orderBy(desc(menus.createdAt))
+  if (rows.some((r) => String(r.weekStart) < firstWeek && menuHasDishes(r.days as DayMenu[]))) return []
+  // The dishes already in the first weeks before this one (each week as it is now: its newest row).
+  const seen = new Set<string>()
+  const placedIds = new Set<string>()
+  const placedNotes = new Set<string>()
+  for (const r of rows) {
+    const week = String(r.weekStart)
+    if (seen.has(week)) continue
+    seen.add(week)
+    for (const day of (r.days as DayMenu[]) ?? []) {
+      for (const slot of Object.values(day ?? {})) {
+        for (const d of slot?.dishes ?? []) {
+          if (d.kind === 'recipe') placedIds.add(d.recipeId)
+          else placedNotes.add(normalizeText(d.text))
+        }
+      }
+    }
+  }
+  const pool = await loadMatchableRecipes(userId)
+  const memory = await getMemoryForUser(userId).catch(() => null)
+  const rules = compileRestrictions(await withHouseholdRestrictions(mergeRestrictions(user?.restrictions, memory), userId))
+  const allowed = pool.filter((r) => !violatesRestrictions(r, rules))
+  const dishes: SignupDish[] = []
+  const chosen = new Set<string>()
+  const add = (dish: SignupDish) => {
+    if (dish.recipe) {
+      if (chosen.has(dish.recipe.id)) return
+      chosen.add(dish.recipe.id)
+    }
+    dishes.push(dish)
+  }
+  for (const dish of said) {
+    const recipe = recipeForDish(dish, allowed, userId)
+    // Its recipe has what someone can't eat: left out, never as a note either.
+    if (!recipe && recipeForDish(dish, pool, userId)) continue
+    add({ dish, recipe })
+  }
+  const allowedById = new Map(allowed.map((r) => [r.id, r]))
+  for (const { recipeId } of loved) {
+    if (dishes.length >= SIGNUP_DISHES) break
+    const recipe = allowedById.get(recipeId)
+    // A lunch or dinner dish (not a breakfast, nor a dessert).
+    const main = recipe && recipe.course !== 'dessert' && (!recipe.meals?.length || recipe.meals.some((m) => m === 'lunch' || m === 'dinner'))
+    if (main) add({ dish: recipe.name, recipe })
+  }
+  return dishes.filter((d) => (d.recipe ? !placedIds.has(d.recipe.id) : !placedNotes.has(normalizeText(d.dish))))
 }

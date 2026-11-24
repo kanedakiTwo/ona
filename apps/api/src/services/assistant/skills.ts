@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { refreshRecipeDishTypes } from '../dishTypes.js'
-import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt } from '../weekType.js'
+import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt, weekTypeHasMeal } from '../weekType.js'
+import { unmetRulesLine } from '../weekTypePlan.js'
 import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
@@ -30,6 +31,7 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { estimateRecipeTimes } from '../catalogRecipeTimes.js'
+import { TIMES_ESTIMATED_TAG } from '../householdRecipeTimes.js'
 import { mealLinesForDay } from '../menuText.js'
 import { fillRecipeNames } from '../menuNames.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
@@ -37,7 +39,7 @@ import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
-import { appSkills, bestMatch, dishNoteText, markEatenAsNote, searchWords, toBuyable } from './appSkills.js'
+import { appSkills, bestMatch, dishNoteText, markEatenAsNote, PANTRY_BATCH_MAX, pantryBatchSummary, pantryNameOk, searchWords, toBuyable } from './appSkills.js'
 import { setHaveAtHome } from '../shoppingItemState.js'
 import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
@@ -311,9 +313,33 @@ const getTodaysMenu: SkillDefinition = {
  * A week with nothing planned answers in text (no menu data) so WhatsApp
  * keeps the model's words.
  */
+/**
+ * A week's lines for get_weekly_menu: day by day, every dish of each meal with
+ * its servings and minutes; «sin cocinar» for a skipped day. Empty when
+ * nothing is planned.
+ */
+async function weekMenuLines(ctx: SkillContext, weekStart: string, menu: { days?: unknown; skippedDays?: number[] | null }): Promise<string[]> {
+  const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
+  const skipped = new Set<number>(menu.skippedDays ?? [])
+  const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
+  if (!planned) return []
+  const facts = await menuFactsFor(ctx, days)
+  const lines: string[] = []
+  for (let i = 0; i < 7; i++) {
+    const label = menuDayOf(weekStart, i).label
+    if (skipped.has(i)) {
+      lines.push(`${label}: sin cocinar`)
+      continue
+    }
+    const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
+    if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
+  }
+  return lines
+}
+
 const getWeeklyMenu: SkillDefinition = {
   name: 'get_weekly_menu',
-  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con las raciones de cada comida y los minutos de cada plato. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
+  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con todos los platos de cada comida, sus raciones y los minutos de cada plato; con la de esta semana, tambien la que viene si ya tiene menu. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
   parameters: {
     type: 'object',
     properties: {
@@ -322,31 +348,28 @@ const getWeeklyMenu: SkillDefinition = {
     required: [],
   },
   async handler(params: { nextWeek?: boolean }, ctx: SkillContext): Promise<SkillResult> {
-    const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
+    const nextWeek = params?.nextWeek === true
+    const weekStart = getWeekStart(nextWeek ? 1 : 0)
     const menu = await menuOfWeek(ctx, weekStart)
     if (!menu) {
       return { data: null, summary: `No hay menu para la semana del ${dateLabel(weekStart)}. Puedes generarlo con generate_weekly_menu.`, uiHint: 'text' }
     }
-    const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
-    const skipped = new Set<number>(menu.skippedDays ?? [])
-    const lines: string[] = []
-    const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
-    const facts = planned ? await menuFactsFor(ctx, days) : null
-    for (let i = 0; i < 7; i++) {
-      const label = menuDayOf(weekStart, i).label
-      if (skipped.has(i)) {
-        lines.push(`${label}: sin cocinar`)
-        continue
-      }
-      const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
-      if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
-    }
+    const lines = await weekMenuLines(ctx, weekStart, menu)
     if (lines.length === 0) {
       return { data: null, summary: `La semana del ${dateLabel(weekStart)} no tiene nada planificado todavia.`, uiHint: 'text' }
     }
+    // PRO-1039: «la que viene todavía no tiene menú» (Laura) with it planned:
+    // this week's read says the next one too, when it has one.
+    let next = ''
+    if (!nextWeek) {
+      const nextStart = getWeekStart(1)
+      const nextMenu = await menuOfWeek(ctx, nextStart).catch(() => null)
+      const nextLines = nextMenu ? await weekMenuLines(ctx, nextStart, nextMenu) : []
+      if (nextLines.length > 0) next = `\n\nLa semana que viene (del ${dateLabel(nextStart)}) ya tiene menu:\n${nextLines.join('\n')}`
+    }
     return {
-      data: { menuId: menu.id, weekStart, days, skippedDays: [...skipped] },
-      summary: `Menu de la semana del ${dateLabel(weekStart)}:\n${lines.join('\n')}`,
+      data: { menuId: menu.id, weekStart, days: menu.days, skippedDays: menu.skippedDays ?? [] },
+      summary: `Menu de la semana del ${dateLabel(weekStart)}:\n${lines.join('\n')}${next}`,
       uiHint: 'menu',
     }
   },
@@ -370,8 +393,11 @@ export function recipeDetailsSummary(r: {
   steps: string[]
   tips?: string | null
   sourceUrl?: string | null
+  /** PRO-1037: the minutes were estimated from the steps, not given. */
+  timesEstimated?: boolean
 }): string {
-  const minutes = timesLabel(r) ?? '? min'
+  const label = timesLabel(r)
+  const minutes = label ? `${label}${r.timesEstimated ? ', estimado' : ''}` : '? min'
   const scaled = r.scaledTo != null && r.scaledTo > 0 && r.scaledTo !== (r.servings ?? 2)
   const head = scaled
     ? `${untrustedText(r.name)} (${minutes}; cantidades para ${r.scaledTo} raciones, la receta base es para ${r.servings ?? 2})`
@@ -594,6 +620,7 @@ const getRecipeDetails: SkillDefinition = {
       steps,
       tips: recipe.tips,
       sourceUrl: recipe.sourceUrl,
+      timesEstimated: (recipe.internalTags ?? []).includes(TIMES_ESTIMATED_TAG),
     })
     const withNotices = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
     // PRO-349: which recipe this is, so «la receta de hoy» is never answered from another one.
@@ -1094,6 +1121,8 @@ async function generateAndSaveWeek(
       { onlyFavorites },
     )
     const { favoritesShort } = generated
+    // PRO-1296: what the week couldn't keep, said with a way out.
+    const unmetLine = unmetRulesLine(generated.warnings ?? [])
     let days = generated.days
     let placedDishes: PlacedDish[] = []
     let left: SignupDish[] | undefined
@@ -1188,7 +1217,7 @@ async function generateAndSaveWeek(
         : '\nTodos los platos salen de sus favoritas.'
     return {
       data: { ...menu, fit, ...(onlyFavorites ? { favoritesShort: favoritesShort ?? 0 } : {}) },
-      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
+      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${unmetLine ? `\n${unmetLine}` : ''}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
       uiHint: 'menu',
       ...(left ? { left } : {}),
     }
@@ -1587,6 +1616,17 @@ const swapMeal: SkillDefinition = {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
         summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
+      }
+    }
+
+    // PRO-1296: «cámbiame la comida del martes» without a dish never creates a
+    // meal the household doesn't cook (its semana tipo says «no hay» there):
+    // before, it drew a recipe and created that meal («solo cenas» got a lunch).
+    if (!days[dayIndex]?.[meal]?.dishes?.length && !(await weekTypeHasMeal(userId, dayIndex, meal as Meal, db))) {
+      return {
+        data: null,
+        summary: `No he cambiado nada: la ${slotLabel} no esta en el menu (en su semana tipo ese dia no hay ${MEAL_LABEL[meal]}). Si queria cambiar otra comida de ese dia, vuelve a llamar con esa; si quiere ponerla solo esta vez, usa add_dish; si es para siempre, set_week_type_slot.`,
+        uiHint: 'text',
       }
     }
 
@@ -2024,6 +2064,7 @@ async function storePantryAmount(
   name: string,
   amount: { quantity?: number; unit?: string },
   location: AddPantryInput['location'],
+  pantry?: { id: string; name: string }[],
 ): Promise<string | null> {
   const b = toBuyable(amount.quantity, amount.unit)
   if (b.quantity == null || !b.unit) return null
@@ -2033,7 +2074,9 @@ async function storePantryAmount(
     row = await patchPantryForUser(ctx.userId, pantryHit.id, { quantity: b.quantity, unit, ...(location ? { location } : {}) }, ctx.db)
   } else {
     try {
-      row = await addPantryForUser(ctx.userId, { name: String(b.suffix ? `${name} (${b.suffix})` : name).trim().slice(0, 80), quantity: b.quantity, unit, location }, ctx.db)
+      const added = await addPantryForUser(ctx.userId, { name: String(b.suffix ? `${name} (${b.suffix})` : name).trim().slice(0, 80), quantity: b.quantity, unit, location }, ctx.db)
+      if (pantry && !pantry.includes(added)) pantry.push(added)
+      row = added
     } catch (err) {
       if (!(err instanceof NoHouseholdError)) throw err
     }
@@ -2041,110 +2084,182 @@ async function storePantryAmount(
   return row ? `${row.name}: ${Math.round(row.quantity * 100) / 100} ${row.unit}` : null
 }
 
+type StockParams = { ingredient: string; inStock?: boolean; location?: string; quantity?: number; unit?: string }
+
+/** What mark_in_stock reads once per call: the pantry and the latest list (PRO-1294: one read for a whole dictation). */
+interface StockState {
+  pantry: Awaited<ReturnType<typeof listPantryForUser>>
+  list: Awaited<ReturnType<typeof latestShoppingList>>
+  items: any[]
+  /** One product writes the list at once; a batch, once at the end. */
+  saveList: () => Promise<void>
+}
+
+/** One product of mark_in_stock. A result with `data: null` changed nothing (a doubt, in a batch). */
+async function markOneInStock(params: StockParams, ctx: SkillContext, state: StockState): Promise<SkillResult> {
+  const { userId, db } = ctx
+  const { list, items, pantry } = state
+  const item = list ? findShoppingItem(items, params.ingredient) : null
+  const pantryHit = findPantryRow(pantry, params.ingredient)
+  const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
+  const next = params.inStock != null ? !!params.inStock : !current
+
+  // «Nos queda una cebolla» (PRO-182): the list buys only the rest of a menu line.
+  if (item && item.ingredientId && item.kind !== 'manual' && item.kind !== 'staple' && params.quantity != null && params.quantity >= 0 && params.inStock !== false) {
+    const b = toBuyable(params.quantity, params.unit)
+    let have: number | null = b.quantity ?? (params.quantity === 0 ? 0 : null)
+    if (have != null && have > 0 && b.unit && b.unit !== item.unit) {
+      const [ing] = await db
+        .select({ density: ingredients.density, unitWeight: ingredients.unitWeight })
+        .from(ingredients)
+        .where(eq(ingredients.id, item.ingredientId))
+        .limit(1)
+      have = convertUnits(have, b.unit as any, item.unit, ing?.density, ing?.unitWeight)
+    }
+    if (have == null) {
+      return {
+        data: null,
+        summary: `No he podido pasar esa cantidad a la unidad de la lista (${item.unit}). ¿Cuánto ${item.name} os queda en ${item.unit}?`,
+        uiHint: 'text',
+      }
+    }
+    setHaveAtHome(item, have)
+    await state.saveList()
+    const left = item.inStock ? 0 : Math.max(0, item.quantity - (item.haveQuantity ?? 0))
+    const fmt = (n: number) => `${Math.round(n * 10) / 10} ${item.unit}`
+    const where = isPantryLocation(params.location) ? params.location : undefined
+    const stored = params.quantity > 0 ? await storePantryAmount(ctx, pantryHit, String(item.name), params, where, pantry) : null
+    const pantryLine = stored ? ` En la despensa queda apuntado: ${stored}.` : ''
+    return {
+      data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left, pantry: stored },
+      summary: item.inStock
+        ? `${item.name}: con lo que tenéis llega; marcado como en casa.${pantryLine}`
+        : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).${pantryLine}`,
+      uiHint: 'confirmation',
+    }
+  }
+
+  let touched = false
+  if (item) {
+    item.inStock = next
+    await state.saveList()
+    touched = true
+  }
+  const location = isPantryLocation(params.location) ? params.location : undefined
+  // With an amount («tengo 4 huevos»), the pantry keeps that amount (PRO-349).
+  const stored = next && params.quantity != null && params.quantity > 0
+    ? await storePantryAmount(ctx, pantryHit, String(item?.name ?? params.ingredient), params, location, pantry)
+    : null
+  if (stored) touched = true
+  if (!stored && next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
+    await patchPantryForUser(userId, pantryHit.id, { location }, db)
+    touched = true
+  }
+  if (!stored && next && !pantryHit) {
+    try {
+      const added = await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80), location }, db)
+      if (!pantry.includes(added)) pantry.push(added)
+      touched = true
+    } catch (err) {
+      if (!(err instanceof NoHouseholdError)) throw err
+    }
+  }
+  if (!next && pantryHit) {
+    await deletePantryForUser(userId, pantryHit.id, db)
+    if (pantry.includes(pantryHit)) pantry.splice(pantry.indexOf(pantryHit), 1)
+    touched = true
+  }
+  if (!touched) {
+    return {
+      data: null,
+      summary: list
+        ? `No he encontrado "${params.ingredient}" en tu lista ni en la despensa.`
+        : 'Necesitas tener una lista de la compra activa para gestionar la despensa.',
+      uiHint: 'text',
+    }
+  }
+  const name = item?.name ?? pantryHit?.name ?? params.ingredient
+  return {
+    data: { name, inStock: next, ...(stored ? { pantry: stored } : {}) },
+    summary: next
+      ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.${stored ? ` En la despensa queda apuntado: ${stored}.` : ''}`
+      : `${name} eliminado de la despensa.`,
+    uiHint: 'confirmation',
+  }
+}
+
 const markInStock: SkillDefinition = {
   name: 'mark_in_stock',
   description:
-    'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna. Si dice CUANTO le queda ("nos queda una cebolla y medio pimiento", "tengo 200 g de arroz"), pasa quantity (y unit si la dice): la lista compra solo lo que falta en vez de marcar toda la linea; una llamada por ingrediente.',
+    'El usuario dice que tiene o que se le ha acabado un ingrediente. "tengo X" → inStock:true (lo apunta en la despensa y lo marca "ya lo tengo" en la lista); "se acabo X" / "ya no tengo X" → false (lo quita de ambas). Sin inStock alterna. Si dice CUANTO le queda ("nos queda una cebolla y medio pimiento", "tengo 200 g de arroz"), pasa quantity (y unit si la dice): la lista compra solo lo que falta en vez de marcar toda la linea. Varios ingredientes ("tengo cebolla, ajo y pimiento", "se me han acabado la leche y los huevos") van en UNA sola llamada con items (hasta 100), nunca una llamada por ingrediente; cada item hereda inStock y location si no los lleva. Devuelve cuantos ha apuntado y las dudas: lo que no ha reconocido se lo preguntas al usuario.',
   parameters: {
     type: 'object',
     properties: {
-      ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial)' },
+      ingredient: { type: 'string', description: 'Nombre del ingrediente (acepta coincidencia parcial). Para varios, items' },
       inStock: { type: 'boolean', description: 'true si tiene, false si no. Si se omite, alterna el estado.' },
       location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'], description: 'Donde lo tiene, si lo dice ("tengo pollo en el congelador"). Si ya estaba apuntado en otro sitio, lo cambia de sitio.' },
       quantity: { type: 'number', description: 'Cuanto le queda en casa (0.5 = medio). Solo si lo dice.' },
       unit: { type: 'string', description: 'Unidad de quantity: unidades, g, kg, ml, l… Sin unidad = unidades.' },
+      items: {
+        type: 'array',
+        maxItems: PANTRY_BATCH_MAX,
+        description: 'Varios ingredientes en una llamada',
+        items: {
+          type: 'object',
+          properties: {
+            ingredient: { type: 'string' },
+            inStock: { type: 'boolean' },
+            location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+            quantity: { type: 'number' },
+            unit: { type: 'string' },
+          },
+          required: ['ingredient'],
+        },
+      },
     },
-    required: ['ingredient'],
+    required: [],
   },
-  async handler(params: { ingredient: string; inStock?: boolean; location?: string; quantity?: number; unit?: string }, ctx) {
-    const { userId, db } = ctx
-    const pantry = await listPantryForUser(userId, db).catch(() => [])
+  async handler(params: StockParams & { items?: StockParams[] }, ctx) {
+    const pantry = await listPantryForUser(ctx.userId, ctx.db).catch(() => [])
     const list = await latestShoppingList(ctx)
     const items = ((list?.items as any[]) ?? []).slice()
-    const item = list ? findShoppingItem(items, params.ingredient) : null
-    const pantryHit = findPantryRow(pantry, params.ingredient)
-    const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
-    const next = params.inStock != null ? !!params.inStock : !current
-
-    // «Nos queda una cebolla» (PRO-182): the list buys only the rest of a menu line.
-    if (item && item.ingredientId && item.kind !== 'manual' && item.kind !== 'staple' && params.quantity != null && params.quantity >= 0 && params.inStock !== false) {
-      const b = toBuyable(params.quantity, params.unit)
-      let have: number | null = b.quantity ?? (params.quantity === 0 ? 0 : null)
-      if (have != null && have > 0 && b.unit && b.unit !== item.unit) {
-        const [ing] = await db
-          .select({ density: ingredients.density, unitWeight: ingredients.unitWeight })
-          .from(ingredients)
-          .where(eq(ingredients.id, item.ingredientId))
-          .limit(1)
-        have = convertUnits(have, b.unit as any, item.unit, ing?.density, ing?.unitWeight)
-      }
-      if (have == null) {
-        return {
-          data: null,
-          summary: `No he podido pasar esa cantidad a la unidad de la lista (${item.unit}). ¿Cuánto ${item.name} os queda en ${item.unit}?`,
-          uiHint: 'text',
-        }
-      }
-      setHaveAtHome(item, have)
-      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
-      const left = item.inStock ? 0 : Math.max(0, item.quantity - (item.haveQuantity ?? 0))
-      const fmt = (n: number) => `${Math.round(n * 10) / 10} ${item.unit}`
-      const where = isPantryLocation(params.location) ? params.location : undefined
-      const stored = params.quantity > 0 ? await storePantryAmount(ctx, pantryHit, String(item.name), params, where) : null
-      const pantryLine = stored ? ` En la despensa queda apuntado: ${stored}.` : ''
-      return {
-        data: { name: item.name, inStock: item.inStock, haveQuantity: item.haveQuantity ?? null, toBuy: left, pantry: stored },
-        summary: item.inStock
-          ? `${item.name}: con lo que tenéis llega; marcado como en casa.${pantryLine}`
-          : `${item.name}: apuntado lo que os queda; en la lista quedan ${fmt(left)} por comprar (el menú pide ${fmt(item.quantity)}).${pantryLine}`,
-        uiHint: 'confirmation',
-      }
+    const batch = Array.isArray(params.items) && params.items.length > 0
+    let listDirty = false
+    const saveList = async () => {
+      if (batch) listDirty = true
+      else if (list) await ctx.db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
     }
-
-    let touched = false
-    if (item) {
-      item.inStock = next
-      await db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
-      touched = true
+    const state: StockState = { pantry, list, items, saveList }
+    if (!batch) {
+      if (!pantryNameOk(params.ingredient)) return { data: null, summary: 'Falta el ingrediente; no he cambiado nada.', uiHint: 'text' }
+      return markOneInStock(params, ctx, state)
     }
-    const location = isPantryLocation(params.location) ? params.location : undefined
-    // With an amount («tengo 4 huevos»), the pantry keeps that amount (PRO-349).
-    const stored = next && params.quantity != null && params.quantity > 0
-      ? await storePantryAmount(ctx, pantryHit, String(item?.name ?? params.ingredient), params, location)
-      : null
-    if (stored) touched = true
-    if (!stored && next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
-      await patchPantryForUser(userId, pantryHit.id, { location }, db)
-      touched = true
-    }
-    if (!stored && next && !pantryHit) {
+    // PRO-1294: the whole dictation in one call; what it can't place is a doubt, never an error.
+    const done: { location?: string; removed?: boolean }[] = []
+    const doubts: string[] = []
+    for (const raw of params.items!.slice(0, PANTRY_BATCH_MAX)) {
+      const one: StockParams = { inStock: params.inStock, location: params.location, ...raw, ingredient: String(raw?.ingredient ?? '').trim() }
+      if (!pantryNameOk(one.ingredient)) {
+        if (one.ingredient) doubts.push(one.ingredient.slice(0, 40))
+        continue
+      }
       try {
-        await addPantryForUser(userId, { name: String(item?.name ?? params.ingredient).trim().slice(0, 80), location }, db)
-        touched = true
+        const r = await markOneInStock(one, ctx, state)
+        const d = r.data as { inStock?: boolean } | null
+        if (d) done.push({ location: isPantryLocation(one.location) ? one.location : undefined, removed: d.inStock === false })
+        else doubts.push(one.ingredient.slice(0, 40))
       } catch (err) {
-        if (!(err instanceof NoHouseholdError)) throw err
+        console.warn('[mark_in_stock] item failed:', one.ingredient, (err as Error)?.message ?? err)
+        doubts.push(one.ingredient.slice(0, 40))
       }
     }
-    if (!next && pantryHit) {
-      await deletePantryForUser(userId, pantryHit.id, db)
-      touched = true
-    }
-    if (!touched) {
-      return {
-        data: null,
-        summary: list
-          ? `No he encontrado "${params.ingredient}" en tu lista ni en la despensa.`
-          : 'Necesitas tener una lista de la compra activa para gestionar la despensa.',
-        uiHint: 'text',
-      }
-    }
-    const name = item?.name ?? pantryHit?.name ?? params.ingredient
+    if (listDirty && list) await ctx.db.update(shoppingLists).set({ items }).where(eq(shoppingLists.id, list.id))
+    const added = done.filter((d) => !d.removed).length
     return {
-      data: { name, inStock: next, ...(stored ? { pantry: stored } : {}) },
-      summary: next
-        ? `${name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.${stored ? ` En la despensa queda apuntado: ${stored}.` : ''}`
-        : `${name} eliminado de la despensa.`,
-      uiHint: 'confirmation',
+      // data.name/inStock stay out: activityEvents logs one product, not a batch.
+      data: done.length ? { added, removed: done.length - added, doubts } : null,
+      summary: pantryBatchSummary(done, doubts),
+      uiHint: done.length ? 'confirmation' : 'text',
     }
   },
 }

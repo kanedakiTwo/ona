@@ -5,8 +5,9 @@ import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
 import { BUDGET_WARNING_LINE, checkAdvisorBudget, crossesBudgetWarning, recordAdvisorUsage } from '../services/advisorBudget.js'
-import { requireSpendCapacity } from '../middleware/spendCap.js'
-import { recordCapHit } from '../services/capHits.js'
+import { spendCapStatus } from '../services/spendCap.js'
+import { capHitThisMonth, recordCapHit, type CapKind } from '../services/capHits.js'
+import { asksSomething, capNoticeApp, capNoticeAppShort, reachesCap } from '../services/capNotice.js'
 import { API_SALDO_REPLY, API_SALDO_TYPE, noteApiBalanceError } from '../services/apiSaldo.js'
 import { requirePaidPlan } from '../services/accountAccess.js'
 import { asc, eq } from 'drizzle-orm'
@@ -17,7 +18,7 @@ import type { AssistantMode } from '../services/assistant/systemPrompt.js'
 import { recordWebChatTurn } from '../services/chatMessages.js'
 import { generatedMenuThisTurn, withSnowballLine } from '../services/menuText.js'
 import { generatedWeeksOf } from '../services/menuWeek.js'
-import { menuCodeReply, recognizeCodeIntent, stepCodeReply } from '../services/assistant/codeReply.js'
+import { listCodeReply, menuCodeReply, recognizeCodeIntent, stepCodeReply, type CodeReplyKind } from '../services/assistant/codeReply.js'
 import { channelOfMode, trackEvent } from '../services/usageEvents.js'
 import type { AssistantResponse } from '../services/assistant/types.js'
 
@@ -30,7 +31,7 @@ const router = Router()
 router.use(authMiddleware)
 
 // POST /assistant/:userId/chat
-router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity(), async (req: AuthRequest, res) => {
+router.post('/assistant/:userId/chat', requirePaidPlan(), async (req: AuthRequest, res) => {
   try {
     const userId = String(req.params.userId)
 
@@ -51,9 +52,10 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
       return
     }
 
-    // PRO-1292: «¿qué hay hoy?», «mándame el menú» and, in cook mode,
-    // «siguiente» / «anterior» / «repite» are answered by the code — no model,
-    // no cost, also with the monthly cap used up. Anything more goes on below.
+    // PRO-1292: «¿qué hay hoy?», «mándame el menú», «la lista» (PRO-1302) and,
+    // in cook mode, «siguiente» / «anterior» / «repite» are answered by the
+    // code — no model, no cost, also with the monthly cap used up (PRO-1302:
+    // the caps are checked after this). Anything more goes on below.
     if (mode !== 'onboarding') {
       try {
         const coded = await answerByCode(userId, message, mode, describePage(path), cookStep)
@@ -72,21 +74,31 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
       }
     }
 
-    // Monthly spend cap: reject before spending any tokens once the user has
-    // burned through their euro budget for the month. Resets next month.
-    const budget = await checkAdvisorBudget(userId, db)
-    if (budget.exceeded) {
-      // PRO-1090: the first time this month, a cap_hits row (admins excluded).
-      await recordCapHit({ userId, cap: 'asistente', spentEur: budget.spentMicros / 1_000_000, capEur: budget.budgetMicros / 1_000_000, channel: 'app' })
-      const euros = (budget.budgetMicros / 1_000_000).toFixed(0)
-      res.status(429).json({
-        error: `Has alcanzado tu límite mensual del asistente (€${euros}). Se renueva el mes que viene.`,
-        code: 'ADVISOR_BUDGET_EXCEEDED',
-      })
-      return
-    }
-
     const chatHistory: ChatMessage[] = Array.isArray(history) ? history : []
+
+    // Monthly caps, before spending any tokens: the one on all paid AI
+    // (spendCap.ts, admins exempt) and Mimo's own € budget. Reset next month.
+    const budget = await checkAdvisorBudget(userId, db)
+    const capped = await capReached(userId, req.user?.role === 'admin', budget)
+    // PRO-1302: the turn that reached the cap ended asking something (and
+    // nobody has been told yet): this answer finishes it, once.
+    let grace = false
+    if (capped) {
+      const lastWords = [...chatHistory].reverse().find((m) => m?.role === 'assistant')?.content
+      grace = mode !== 'onboarding' && asksSomething(lastWords) && !(await capHitThisMonth(userId, new Date(), db))
+      if (!grace) {
+        // PRO-1090: the first time this month, a cap_hits row (admins
+        // excluded) — PRO-1302: and the whole notice; after that, one line.
+        const first = await recordCapHit({ userId, cap: capped.cap, spentEur: capped.spentEur, capEur: capped.capEur, channel: 'app' })
+        res.status(429).json({
+          error: first ? capNoticeApp(capped.capEur) : capNoticeAppShort(capped.capEur),
+          code: capped.code,
+          spentEur: Math.round(capped.spentEur * 100) / 100,
+          capEur: capped.capEur,
+        })
+        return
+      }
+    }
 
     // Floating companion (D-023): what the user is looking at travels with the message.
     const page = describePage(path)
@@ -129,8 +141,16 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     // fail the chat the user already paid for — swallow and log.
     try {
       const added = await recordAdvisorUsage(userId, usage, db)
-      // 18-nov: the turn that takes the month past 80 % of the cap says so, once.
-      if (crossesBudgetWarning(budget.spentMicros, added, budget.budgetMicros)) {
+      // PRO-1302: the turn that reaches the cap ends whole, with the notice
+      // (once a month) — unless it asks something: the answer finishes it.
+      if (grace || (reachesCap(budget.spentMicros, added, budget.budgetMicros) && !asksSomething(response.message))) {
+        const capEur = capped?.capEur ?? budget.budgetMicros / 1_000_000
+        const spentEur = capped?.spentEur ?? (budget.spentMicros + added) / 1_000_000
+        if (await recordCapHit({ userId, cap: capped?.cap ?? 'asistente', spentEur, capEur, channel: 'app' }, db)) {
+          response.message = `${response.message}\n\n${capNoticeApp(capEur)}`
+        }
+      } else if (crossesBudgetWarning(budget.spentMicros, added, budget.budgetMicros)) {
+        // 18-nov: the turn that takes the month past 80 % of the cap says so, once.
         response.message = `${response.message}\n\n${BUDGET_WARNING_LINE}`
       }
     } catch (e) {
@@ -159,6 +179,23 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
 })
 
 /**
+ * The cap this user has used up this month, or null: first the one on all paid
+ * AI (spendCap.ts; admins exempt), then Mimo's own € budget.
+ */
+async function capReached(
+  userId: string,
+  isAdmin: boolean,
+  budget: { exceeded: boolean; spentMicros: number; budgetMicros: number },
+): Promise<{ cap: CapKind; code: 'SPEND_CAP_EXCEEDED' | 'ADVISOR_BUDGET_EXCEEDED'; spentEur: number; capEur: number } | null> {
+  if (!isAdmin) {
+    const all = await spendCapStatus(userId)
+    if (all.exceeded) return { cap: 'ia', code: 'SPEND_CAP_EXCEEDED', spentEur: all.spentEur, capEur: all.capEur }
+  }
+  if (budget.exceeded) return { cap: 'asistente', code: 'ADVISOR_BUDGET_EXCEEDED', spentEur: budget.spentMicros / 1_000_000, capEur: budget.budgetMicros / 1_000_000 }
+  return null
+}
+
+/**
  * PRO-1292: the reply the code gives (and its kind for `mimo_code_reply`), or
  * null when the model has to answer. The step is read from the recipe on
  * screen, only if this user may see it and the step the web sent fits it.
@@ -169,13 +206,17 @@ async function answerByCode(
   mode: AssistantMode,
   page: ReturnType<typeof describePage>,
   cookStep: ReturnType<typeof cookStepOf>,
-): Promise<{ kind: 'ver_menu' | 'paso_cocina'; response: AssistantResponse } | null> {
+): Promise<{ kind: CodeReplyKind; response: AssistantResponse } | null> {
   const cooking = page.kind === 'cooking' && !!page.recipeId && !!cookStep
   const intent = recognizeCodeIntent(message, { cooking })
   if (!intent) return null
   if (intent.kind === 'ver_menu') {
     const response = await menuCodeReply(intent, { userId, db, channel: mode })
     return response ? { kind: 'ver_menu', response } : null
+  }
+  if (intent.kind === 'ver_lista') {
+    const response = await listCodeReply({ userId, db, channel: mode })
+    return response ? { kind: 'ver_lista', response } : null
   }
   const [r] = await db.select({ authorId: recipes.authorId }).from(recipes).where(eq(recipes.id, page.recipeId!)).limit(1)
   if (!r || !(await canViewRecipe(userId, r.authorId))) return null

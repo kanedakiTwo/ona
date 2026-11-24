@@ -311,9 +311,33 @@ const getTodaysMenu: SkillDefinition = {
  * A week with nothing planned answers in text (no menu data) so WhatsApp
  * keeps the model's words.
  */
+/**
+ * A week's lines for get_weekly_menu: day by day, every dish of each meal with
+ * its servings and minutes; «sin cocinar» for a skipped day. Empty when
+ * nothing is planned.
+ */
+async function weekMenuLines(ctx: SkillContext, weekStart: string, menu: { days?: unknown; skippedDays?: number[] | null }): Promise<string[]> {
+  const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
+  const skipped = new Set<number>(menu.skippedDays ?? [])
+  const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
+  if (!planned) return []
+  const facts = await menuFactsFor(ctx, days)
+  const lines: string[] = []
+  for (let i = 0; i < 7; i++) {
+    const label = menuDayOf(weekStart, i).label
+    if (skipped.has(i)) {
+      lines.push(`${label}: sin cocinar`)
+      continue
+    }
+    const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
+    if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
+  }
+  return lines
+}
+
 const getWeeklyMenu: SkillDefinition = {
   name: 'get_weekly_menu',
-  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con las raciones de cada comida y los minutos de cada plato. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
+  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con todos los platos de cada comida, sus raciones y los minutos de cada plato; con la de esta semana, tambien la que viene si ya tiene menu. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
   parameters: {
     type: 'object',
     properties: {
@@ -322,31 +346,28 @@ const getWeeklyMenu: SkillDefinition = {
     required: [],
   },
   async handler(params: { nextWeek?: boolean }, ctx: SkillContext): Promise<SkillResult> {
-    const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
+    const nextWeek = params?.nextWeek === true
+    const weekStart = getWeekStart(nextWeek ? 1 : 0)
     const menu = await menuOfWeek(ctx, weekStart)
     if (!menu) {
       return { data: null, summary: `No hay menu para la semana del ${dateLabel(weekStart)}. Puedes generarlo con generate_weekly_menu.`, uiHint: 'text' }
     }
-    const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
-    const skipped = new Set<number>(menu.skippedDays ?? [])
-    const lines: string[] = []
-    const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
-    const facts = planned ? await menuFactsFor(ctx, days) : null
-    for (let i = 0; i < 7; i++) {
-      const label = menuDayOf(weekStart, i).label
-      if (skipped.has(i)) {
-        lines.push(`${label}: sin cocinar`)
-        continue
-      }
-      const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
-      if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
-    }
+    const lines = await weekMenuLines(ctx, weekStart, menu)
     if (lines.length === 0) {
       return { data: null, summary: `La semana del ${dateLabel(weekStart)} no tiene nada planificado todavia.`, uiHint: 'text' }
     }
+    // PRO-1039: «la que viene todavía no tiene menú» (Laura) with it planned:
+    // this week's read says the next one too, when it has one.
+    let next = ''
+    if (!nextWeek) {
+      const nextStart = getWeekStart(1)
+      const nextMenu = await menuOfWeek(ctx, nextStart).catch(() => null)
+      const nextLines = nextMenu ? await weekMenuLines(ctx, nextStart, nextMenu) : []
+      if (nextLines.length > 0) next = `\n\nLa semana que viene (del ${dateLabel(nextStart)}) ya tiene menu:\n${nextLines.join('\n')}`
+    }
     return {
-      data: { menuId: menu.id, weekStart, days, skippedDays: [...skipped] },
-      summary: `Menu de la semana del ${dateLabel(weekStart)}:\n${lines.join('\n')}`,
+      data: { menuId: menu.id, weekStart, days: menu.days, skippedDays: menu.skippedDays ?? [] },
+      summary: `Menu de la semana del ${dateLabel(weekStart)}:\n${lines.join('\n')}${next}`,
       uiHint: 'menu',
     }
   },

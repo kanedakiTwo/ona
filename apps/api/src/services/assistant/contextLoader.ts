@@ -41,11 +41,12 @@ export function clockNote(now: Date): string {
  * Includes: profile, current menu summary, and macro balance.
  */
 /**
- * The «Menu de esta semana» block of Mimo's context, or null when no day has
- * anything. PRO-296: a táper or an added dish saved without its name (before
+ * The «Menu de esta semana» block of Mimo's context (or, with `title`, «Menu
+ * de la semana que viene»), or null when no day has anything. Every dish of
+ * each meal. PRO-296: a táper or an added dish saved without its name (before
  * PRO-240) takes its recipe's, as on the web, instead of «receta sin nombre».
  */
-export async function weekMenuContext(weekStart: string, rawDays: unknown, db: any): Promise<string | null> {
+export async function weekMenuContext(weekStart: string, rawDays: unknown, db: any, title = 'Menu de esta semana'): Promise<string | null> {
   const days = (await fillRecipeNames(rawDays, db)) as any[]
   if (!Array.isArray(days)) return null
   const dayNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -54,7 +55,7 @@ export async function weekMenuContext(weekStart: string, rawDays: unknown, db: a
     const lines = mealLinesForDay(days[i])
     if (lines.length > 0) menuLines.push(`  ${dayNames[i] ?? `D${i + 1}`} (dayIndex ${i}): ${lines.join('; ')}`)
   }
-  return menuLines.length > 0 ? `Menu de esta semana (${weekStart}):\n${menuLines.join('\n')}` : null
+  return menuLines.length > 0 ? `${title} (${weekStart}):\n${menuLines.join('\n')}` : null
 }
 
 const COOKING_FREQ_LABELS: Record<string, string> = {
@@ -178,6 +179,22 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     if (block) parts.push(block)
   } else {
     parts.push(`No hay menu para esta semana (${weekStart}).`)
+  }
+  // PRO-1039: next week's, when it has one («la que viene todavía no tiene
+  // menú», Laura, with the week of the 26th already planned). Nothing said
+  // when it hasn't: that is the usual case before the weekend.
+  try {
+    const nextWeekStart = mondayOf(now.isoDate, now.weekday, 1)
+    const [nextMenu] = await db
+      .select()
+      .from(menus)
+      .where(and(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)), eq(menus.weekStart, nextWeekStart)))
+      .orderBy(desc(menus.createdAt))
+      .limit(1)
+    const block = nextMenu?.days ? await weekMenuContext(nextWeekStart, nextMenu.days, db, 'Menu de la semana que viene') : null
+    if (block) parts.push(block)
+  } catch {
+    // The context never fails for this block.
   }
 
   // ── Nutrient balance ──────────────────────────────────────

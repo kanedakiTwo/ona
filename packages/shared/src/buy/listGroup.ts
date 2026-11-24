@@ -22,9 +22,27 @@ export interface ShoppingGroup {
   rule: BuyRule | null
   /** Aisle the rule gives the line, beating the catalogue's. */
   aisle: Aisle | null
+  /**
+   * Aisle of the shop the name is bought at (fish and meat → «Carnes y
+   * pescados», PRO-1092), only for a catalogue line filed under «Otros» or
+   * with no aisle: Carmen's pescadilla and pescado blanco were in «Otros».
+   */
+  shopAisle: Aisle | null
 }
 
 const baseName = (name: string) => normalizeBuyName(name.split(' · ')[0] ?? name)
+
+/**
+ * Names that are the same product on the list though no rule joins them
+ * (PRO-1092, Familia Ruiz: «Levadura» and «Levadura quimica» in two lines
+ * for one bizcocho). A bare «levadura» in a recipe is the chemical one; bread
+ * says «levadura de panadería» or «fresca».
+ */
+const SAME_NAME: Record<string, string> = { levadura: 'levadura quimica' }
+const nameKey = (name: string) => {
+  const n = baseName(name)
+  return SAME_NAME[n] ?? n
+}
 
 /** Exact rule names (first rule wins, like `resolveBuyRule`). */
 const EXACT = new Map<string, { rule: BuyRule; preset: string | null }>()
@@ -63,10 +81,40 @@ export function shoppingGroupOf(name: string): ShoppingGroup {
   const exact = exactRule(name)
   const aisle = (exact?.rule ?? resolveBuyRule(name)?.rule)?.aisle ?? null
   const rule = exact?.rule ?? null
+  const shopAisle = rule && (rule.shop === 'pescaderia' || rule.shop === 'carniceria') ? 'proteinas' : null
   if (!rule || LIST_SPLIT_RULES.has(rule.key) || rule.noun.some((n) => n.includes('{name}'))) {
-    return { key: `name:${baseName(name)}`, rule: null, aisle }
+    return { key: `name:${nameKey(name)}`, rule: null, aisle, shopAisle }
   }
-  return { key: `rule:${rule.key}:${exact?.preset ?? ''}`, rule, aisle }
+  return { key: `rule:${rule.key}:${exact?.preset ?? ''}`, rule, aisle, shopAisle }
+}
+
+/** «Huevo» = «huevos», «limón» = «limones», «hueso» = «huesos». */
+function sameWord(a: string, b: string): boolean {
+  return a === b || `${a}s` === b || `${b}s` === a || `${a}es` === b || `${b}es` === a
+}
+
+/** Words of a name as the list compares them: no accents, no «(1 sobre)», no « · MANUAL». */
+const words = (name: string) => baseName(name).replace(/\s*\(.*?\)\s*/g, ' ').trim().split(' ').filter(Boolean)
+
+/**
+ * Whether a line typed by hand (or by Mimo) is the same product as a line of
+ * the menu (PRO-1092): «Jamón cocido» and «Jamón de york», «Hueso de pollo»
+ * and «Huesos de pollo», «Levadura química (1 sobre)» and «Levadura», or a
+ * shorter name of the same rule: «Leche» and «Leche entera». Never two
+ * different products of a rule: «Leche desnatada» is not «Leche entera», and
+ * «Pan» is not «Pan rallado».
+ */
+export function sameListProduct(a: string, b: string): boolean {
+  const wa = words(a)
+  const wb = words(b)
+  if (wa.length === 0 || wb.length === 0) return false
+  if (shoppingGroupOf(wa.join(' ')).key === shoppingGroupOf(wb.join(' ')).key) return true
+  const [short, long] = wa.length <= wb.length ? [wa, wb] : [wb, wa]
+  if (!short.every((w, i) => sameWord(w, long[i]!))) return false
+  if (short.length === long.length) return true
+  const rs = exactRule(short.join(' '))?.rule
+  const rl = exactRule(long.join(' '))?.rule
+  return !!rs && rs === rl
 }
 
 /** Exact names that never go on the list (tap water, salt). */

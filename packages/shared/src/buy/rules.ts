@@ -297,6 +297,8 @@ const PESCADERIA: BuyRule[] = [
     variants: [[/\brodaja/, 'merluza en rodajas']],
   }),
   weight('merluza en rodajas', 'pescaderia', ['merluza en rodajas'], 'merluza en rodajas', { volatile: true }),
+  // PRO-1092: Mimo's home recipes ask for «pescado blanco» (Carmen y Antonio), which went to «Otros».
+  weight('pescado blanco', 'pescaderia', ['pescado blanco', 'pescado blanco limpio'], 'pescado blanco', { volatile: true }),
   weight('bacalao', 'pescaderia', ['bacalao', 'bacalao fresco'], 'bacalao fresco', { prep: ['en lomos', 'en lomos'], variants: [[/\bdesmig/, 'bacalao desmigado']] }),
   weight('bacalao desmigado', 'pescaderia', ['bacalao desmigado', 'bacalao desalado desmigado'], 'bacalao desalado desmigado'),
   weight('bacalao desalado', 'pescaderia', ['bacalao desalado'], 'bacalao desalado', { prep: ['en lomos', 'en lomos'] }),

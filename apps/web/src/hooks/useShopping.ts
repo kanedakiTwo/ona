@@ -32,6 +32,12 @@ export interface ShoppingItem {
   habitual?: boolean
   /** Manual line typed with no amount (stored as 1 u). */
   quantitySource?: 'user' | 'default'
+  /** Menu line: hand lines of the same product joined into it (PRO-1092). */
+  manualParts?: ShoppingItem[]
+  /** Menu line: what those hand lines added to the amount («2 l»). */
+  manualAmount?: string
+  /** Menu line: what those hand lines ask on top, in their own words («1 sobre»). */
+  manualExtra?: string
 }
 
 export interface ShoppingList {

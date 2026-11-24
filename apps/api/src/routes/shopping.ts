@@ -17,6 +17,7 @@ import { listActiveStaplesForHousehold, NoHouseholdError } from '../services/sta
 import { applyHabitualToRows, setStapleForLine, withHabitual } from '../services/shoppingHabitual.js'
 import { carryItemState, editMenuLine, setHaveAtHome, toggleChecked, UnitChangeError, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { withWeekShares } from '../services/shoppingWeeks.js'
+import { foldManualIntoMenu, manualLinesOf } from '../services/shoppingManualFold.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
@@ -349,7 +350,6 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     // What was marked follows the ingredient even when its line changes unit
     // («Ajo · 8 u» → «Ajo · 25 g», PRO-199): amounts are compared with the
     // ingredient's density / unit weight.
-    const manualSurviving: ShoppingItem[] = prevItems.filter((it) => it.kind === 'manual')
     const { items: mergedMenuItems, state: itemState } = carryItemState(
       menuItems,
       prevItems,
@@ -359,18 +359,23 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
       { today: todayMadrid, rangeTo: to },
     )
 
+    // PRO-1092: a line typed by hand (or by Mimo) that is the same product
+    // as a menu line joins it; the rest stay as they were.
+    const convertLine = await lineConverter(menuItems)
+    const folded = foldManualIntoMenu(mergedMenuItems, manualLinesOf(prevItems), convertLine)
+
     // Re-merge staples (PR 10B) on top of the menu-derived items so they
     // keep their `inStock` / pricing.
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
     // PRO-293: menu lines that are also a staple read «Habitual».
-    const stapleMerged = withHabitual(mergeStaplesIntoItems(mergedMenuItems, staples), staples.map((s) => s.name))
+    const stapleMerged = withHabitual(mergeStaplesIntoItems(folded.items, staples), staples.map((s) => s.name))
     // PRO-196: a coeliac household asks for «<embutido> sin gluten».
     const coeliac = isCoeliacHousehold((await loadUserRestrictions(userId, db)).restrictions)
     // Manual items always at the end, preserving order.
     // PRO-292: which units each menu line can switch to.
     const finalItems = [
-      ...withUnitOptions(withGlutenFreeCharcuterieNames(stapleMerged, coeliac), await lineConverter(menuItems)),
-      ...withHabitual(manualSurviving, staples.map((s) => s.name)),
+      ...withUnitOptions(withGlutenFreeCharcuterieNames(stapleMerged, coeliac), convertLine),
+      ...withHabitual(folded.manual, staples.map((s) => s.name)),
     ]
 
     // Overwrite the persisted row — one shopping list per user. Delete
@@ -788,7 +793,8 @@ router.post('/shopping-list/:listId/regenerate', async (req: AuthRequest, res) =
     // user-authored extras — manual rows and the price the user typed on
     // them — and re-applies staples. Order: menu → manual (kept) → staples.
     const previousItems = (list.items ?? []) as ShoppingItem[]
-    const manualKept = previousItems.filter((i) => i.kind === 'manual')
+    // Also those joined into a menu line (PRO-1092).
+    const manualKept = manualLinesOf(previousItems).map((m) => m.item)
     const householdId = list.householdId ?? menu.householdId ?? null
 
     const menuItems = await generateShoppingList(
@@ -874,7 +880,10 @@ async function loadListForCaller(listId: string, userId: string) {
 
 /** Aisle for a typed item from the buy rules ("calabacín" → produce) instead of always "otros". */
 function aisleForName(name: string): Aisle {
-  const shop = resolveBuyRule(name)?.rule.shop
+  const rule = resolveBuyRule(name)?.rule
+  // Eggs and tofu: «Lácteos y huevos», like the menu's line (PRO-1092: «Huevos · MANUAL» was in «Otros»).
+  if (rule?.aisle) return rule.aisle
+  const shop = rule?.shop
   if (shop === 'fruteria') return 'produce'
   if (shop === 'carniceria' || shop === 'charcuteria' || shop === 'pescaderia') return 'proteinas'
   if (shop === 'despensa') return 'despensa'

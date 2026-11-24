@@ -44,7 +44,8 @@ import { unlistedDietMentions } from './stepDietMentions.js'
 import { generateShoppingList, mergeStaplesIntoItems, withLeftoverBatches } from './shoppingList.js'
 import { listActiveStaplesForHousehold } from './staplesStore.js'
 import { clearPendingForMenu, enqueuePrepAlertsForMenu } from './notificationScheduler.js'
-import { householdMultiplier, householdSizeToCounts, type HouseholdSize } from '@ona/shared'
+import { householdMultiplier, householdSizeToCounts, type HouseholdSize, type ShoppingItem } from '@ona/shared'
+import { manualLinesOf } from './shoppingManualFold.js'
 
 /** The hour (Madrid) from which today's meal counts as past — the shopping list's cutoffs. */
 const MEAL_PAST_HOUR: Record<string, number> = { breakfast: 10, lunch: 16, snack: 19, dinner: 23 }
@@ -325,7 +326,8 @@ async function rebuildMenuShoppingLists(menu: MenuRow, days: DayMenu[]): Promise
   for (const list of lists) {
     const householdId = list.householdId ?? menu.householdId ?? null
     const menuItems = await generateShoppingList(withLeftoverBatches(days, multiplier), multiplier, db, householdId)
-    const manualKept = ((list.items ?? []) as any[]).filter((i) => i.kind === 'manual')
+    // Also the hand lines joined into a menu line (PRO-1092).
+    const manualKept = manualLinesOf((list.items ?? []) as ShoppingItem[]).map((m) => m.item)
     const staples = householdId ? await listActiveStaplesForHousehold(householdId) : []
     await db.update(shoppingLists).set({ items: mergeStaplesIntoItems([...menuItems, ...manualKept], staples) }).where(eq(shoppingLists.id, list.id))
   }

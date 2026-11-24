@@ -969,6 +969,16 @@ function ItemRow({
           )}
           {buy && isHabitual(item) && <HabitualTag />}
         </span>
+        {Array.isArray(item.manualParts) && item.manualParts.length > 0 && (
+          // PRO-1092: what was typed by hand (or by Mimo) for this product is in this line.
+          <span className="block text-[12px] text-ink-muted" data-testid="shopping-manual-joined">
+            {item.manualExtra
+              ? `Y además, apuntado a mano: ${item.manualExtra}`
+              : item.manualAmount
+                ? `Incluye ${item.manualAmount} apuntado a mano`
+                : 'Incluye lo apuntado a mano'}
+          </span>
+        )}
         {Array.isArray(item.bases) && item.bases.length > 0 && (
           // PRO-373: cooked once, for every dish of the week that uses it.
           <span className="block text-[12px] text-ink-muted" data-testid="shopping-bases">

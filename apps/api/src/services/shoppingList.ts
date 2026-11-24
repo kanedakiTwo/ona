@@ -185,6 +185,8 @@ interface IngredientBucket {
   label: string | null
   /** Aisle the buy rule gives the product (beats the catalogue's). */
   ruleAisle: Aisle | null
+  /** Aisle of the shop (fish, meat) when the catalogue says «Otros» (PRO-1092). */
+  shopAisle: Aisle | null
   /** Per-unit accumulators before canonicalisation. */
   byUnit: Map<BuyableUnit, IngredientLineUnit>
   /** Raw contributions, each converted with its own ingredient's density / unit weight. */
@@ -838,6 +840,7 @@ export function aggregateScaledRows(scaled: ScaledRow[], catalogById: Map<string
         members: new Map(),
         label: group.rule && !group.rule.noun[0].includes('{') && group.rule.noun[0] ? group.rule.noun[0] : null,
         ruleAisle: group.aisle,
+        shopAisle: group.shopAisle,
         byUnit: new Map(),
         parts: [],
         notes: new Set(),
@@ -898,7 +901,7 @@ export function aggregateScaledRows(scaled: ScaledRow[], catalogById: Map<string
         name: line.suffix ? `${baseName} · ${line.suffix}` : baseName,
         quantity: rounded,
         unit: line.unit,
-        aisle: bucket.ruleAisle ?? bucket.catalog.aisle ?? 'otros',
+        aisle: bucket.ruleAisle ?? (!bucket.catalog.aisle || bucket.catalog.aisle === 'otros' ? bucket.shopAisle : null) ?? bucket.catalog.aisle ?? 'otros',
         checked: false,
         inStock: false,
         ...(others.length ? { mergedIngredientIds: others } : {}),

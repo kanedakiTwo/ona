@@ -108,6 +108,23 @@ export interface ShoppingItem {
    * `quantity` + `unit`.
    */
   amountText?: string
+  /**
+   * Menu items: lines typed by hand (or by Mimo) that are the same product
+   * and were joined into this one (PRO-1092: «Espinacas» and «Espinacas ·
+   * MANUAL»). Kept whole so they come back on their own when the menu no
+   * longer asks for the product. Set by `GET /shopping-list`.
+   */
+  manualParts?: ShoppingItem[]
+  /**
+   * Menu items: what those hand lines added to `quantity` («2 l»); empty when
+   * they had no amount (nothing to add).
+   */
+  manualAmount?: string
+  /**
+   * Menu items: what those hand lines ask on top that couldn't be added up
+   * («1 sobre», or units that don't convert), as the household wrote it.
+   */
+  manualExtra?: string
 }
 
 /** Lines that are still part of the list (not «No lo compro», PRO-175). */

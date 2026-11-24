@@ -771,7 +771,7 @@ const addFreezerDish: SkillDefinition = {
 // ─── Shopping list ───────────────────────────────────────────────
 
 type ListItem = Pick<ShoppingItem, 'id' | 'name'> &
-  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText'>>
+  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'manualParts' | 'manualExtra'>>
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.
@@ -783,6 +783,11 @@ const fromMenu = (i: ListItem) => i.kind !== 'manual' && i.kind !== 'staple' && 
 
 /** "Tomate (1 kg)", "Huevos (12 unidades)", "Leche" (1 unidad says nothing). */
 export function itemLabel(i: ListItem): string {
+  // PRO-1092: a hand line joined into this one is said, so Mimo knows where it went.
+  if (i.manualParts?.length) {
+    const label = itemLabel({ ...i, manualParts: undefined, manualExtra: undefined })
+    return i.manualExtra ? `${label} + ${i.manualExtra} (apuntado a mano)` : `${label} (incluye lo apuntado a mano)`
+  }
   const name = prettyName(i.name)
   if (i.amountText) return `${name} (${i.amountText})`
   // Part of it already bought or at home for an earlier menu (PRO-199): say only the rest.

@@ -10,11 +10,11 @@ import { sql } from 'drizzle-orm'
 import { HOUSEHOLD_INVITE_SOURCES, MENU_SHEETS, isHouseholdInviteSource, isMenuSheetAction, type HouseholdInviteSource, type MenuSheetName } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridParts } from './madridTime.js'
-import { isoWeekLabel, weekOfDay } from './businessMetrics.js'
+import { isoWeekLabel, loadMenuWeeks, readyByMonday, weekOfDay, type MenuWeekReady } from './businessMetrics.js'
 import { knownRefSources, refSourceForAgents, utmSourceForAgents } from './agentView.js'
 import { buildReferralReport, loadInvitedSignups } from './referralRewards.js'
 import { loadProactiveReport } from './proactiveReport.js'
-import { GROWTH_DEFINITIONS, loadGrowthReport } from './growthReport.js'
+import { GROWTH_DEFINITIONS, firstWeekHit, loadGrowthReport } from './growthReport.js'
 import { optInDeclinedSql } from './whatsapp/optInOffer.js'
 import {
   ONBOARDING_STEPS,
@@ -205,6 +205,30 @@ export interface SignupSourceWeek {
   utmSource: string
   signups: number
   firstMenu: number
+  /** PRO-1310: first hit on days 0–6 (as growth[].firstHit). */
+  firstHit: number
+  /** PRO-1310: the menu ready by 00:00 of the Monday on days 7–13. */
+  week2MenuReady: number
+  /** PRO-1310: households of 2 people or more. */
+  twoPlusPeople: number
+  /** PRO-1310: some household's window is still open (day 14 not reached), so the row can still go up. */
+  partial: boolean
+}
+
+/** PRO-1310: what `signupSources[]` reads besides the events, per household. Ids stay in this process. */
+export interface SignupOutcomes {
+  /** First menu of each week (`loadMenuWeeks`), for the Monday of week 2. */
+  menus: readonly (MenuWeekReady & { householdId: string; week: string })[]
+  /** `people`: the largest adults + kids_2_to_10 among its counted members who answered the sign-up; `accounts`: its counted members. */
+  people: readonly { householdId: string; people: number; accounts: number }[]
+}
+
+/** PRO-1310: day 14 from signup, when `week2MenuReady` (and before it `firstHit`, day 7) can no longer change. */
+export const SIGNUP_SOURCES_OPEN_DAYS = 14
+
+/** Pure: the Monday that falls on days 7…13 from `day0` (the Monday of the week of day 13). */
+export function week2Monday(day0: string): string {
+  return weekOfDay(addDays(day0, 13))
 }
 
 /**
@@ -213,34 +237,54 @@ export interface SignupSourceWeek {
  * `utmSource` through the waitlist's closed list of channels (`utmSourceForAgents`), so no
  * free text leaves. Same cohort as `funnel[]` (a household's first signup_completed in the
  * window); `firstMenu` = a menu_generated within its first 7 days.
+ *
+ * PRO-1310, counts of households too: `firstHit` (`firstWeekHit`, the rule of
+ * growth[].firstHit), `week2MenuReady` (the menu ready by the Monday on days 7–13, the rule of
+ * menuReadyByMondayHouseholds) and `twoPlusPeople` (2 people or more, or 2 accounts or more);
+ * `partial` while some household of the row is before its day 14.
  */
 export function buildSignupSources(
   input: UsageInput,
   signups: readonly SignupAttributionRow[],
   known: ReadonlySet<string> = knownRefSources(),
+  outcomes: SignupOutcomes = { menus: [], people: [] },
 ): SignupSourceWeek[] {
   const first = new Map<string, SignupAttributionRow>()
   for (const s of signups) {
     const prev = first.get(s.householdId)
     if (!prev || s.day < prev.day) first.set(s.householdId, s)
   }
-  const menuDays = new Map<string, string[]>()
+  const events = new Map<string, UsageHouseholdDay[]>()
   for (const h of input.householdDays) {
-    if (h.name !== 'menu_generated') continue
-    if (!menuDays.has(h.householdId)) menuDays.set(h.householdId, [])
-    menuDays.get(h.householdId)!.push(h.day)
+    if (!events.has(h.householdId)) events.set(h.householdId, [])
+    events.get(h.householdId)!.push(h)
   }
+  const menus = new Map<string, SignupOutcomes['menus'][number][]>()
+  for (const m of outcomes.menus) {
+    if (!menus.has(m.householdId)) menus.set(m.householdId, [])
+    menus.get(m.householdId)!.push(m)
+  }
+  const people = new Map(outcomes.people.map((p) => [p.householdId, p]))
   const rows = new Map<string, SignupSourceWeek>()
   for (const s of first.values()) {
     const week = weekOfDay(s.day)
     const source = s.source == null || !s.source.trim() ? 'directo' : refSourceForAgents(s.source.trim().toLowerCase(), known)
     const utmSource = utmSourceForAgents(s.utmSource)
     const key = JSON.stringify([week, source, utmSource])
-    if (!rows.has(key)) rows.set(key, { week, isoWeek: isoWeekLabel(week), source, utmSource, signups: 0, firstMenu: 0 })
+    if (!rows.has(key)) {
+      rows.set(key, { week, isoWeek: isoWeekLabel(week), source, utmSource, signups: 0, firstMenu: 0, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 0, partial: false })
+    }
     const r = rows.get(key)!
+    const evs = events.get(s.householdId) ?? []
     r.signups += 1
-    const menu = (menuDays.get(s.householdId) ?? []).some((d) => dayDiff(s.day, d) >= 0 && dayDiff(s.day, d) < FUNNEL_FIRST_WEEK_DAYS)
+    const menu = evs.some((e) => e.name === 'menu_generated' && dayDiff(s.day, e.day) >= 0 && dayDiff(s.day, e.day) < FUNNEL_FIRST_WEEK_DAYS)
     if (menu) r.firstMenu += 1
+    if (firstWeekHit(s.day, evs).hit) r.firstHit += 1
+    const monday = week2Monday(s.day)
+    if ((menus.get(s.householdId) ?? []).some((m) => m.week === monday && readyByMonday(m))) r.week2MenuReady += 1
+    const p = people.get(s.householdId)
+    if (p && (p.people >= 2 || p.accounts >= 2)) r.twoPlusPeople += 1
+    if (dayDiff(s.day, input.today) < SIGNUP_SOURCES_OPEN_DAYS) r.partial = true
   }
   return [...rows.values()].sort(
     (a, b) => a.week.localeCompare(b.week) || b.signups - a.signups || a.source.localeCompare(b.source) || a.utmSource.localeCompare(b.utmSource),
@@ -573,7 +617,7 @@ export const BREAKDOWN_EVENTS = [
 
 export const USAGE_DEFINITIONS = {
   activeHouseholds: 'Distinct households with at least one usage event that day / ISO week (Europe/Madrid), not counting app_opened_installed (opening the installed app is not using it). Events without a household (deleted accounts) are counted in events but not here.',
-  signupSources: 'PRO-1288: the same cohorts as funnel, split by the `?ref` label (source) and utm_source the account signed up with (users.signup_attribution). source: the closed list of `?ref` labels (the code\'s and METRICS_EXTRA_REF_SOURCES), none → directo, any other → otro; utmSource: the waitlist\'s closed list of channels, none → ninguna, any other → otro. firstMenu as in funnel. Counts only.',
+  signupSources: 'PRO-1288: the same cohorts as funnel, split by the `?ref` label (source) and utm_source the account signed up with (users.signup_attribution). source: the closed list of `?ref` labels (the code\'s and METRICS_EXTRA_REF_SOURCES), none → directo, any other → otro; utmSource: the waitlist\'s closed list of channels, none → ninguna, any other → otro. firstMenu as in funnel. PRO-1310, also counts of households: firstHit = the rule of growth.firstHit (on days 0–6 from signup, cooked — meal_cooked or cook_mode_started — and used or sent the list — shopping_item_checked, shopping_list_shared, shop_order_prepared, carrefour_click or basket_extension_sent); week2MenuReady = the menu of the week whose Monday falls on days 7–13 from signup was ready before 00:00 of that Monday, Europe/Madrid (the rule of menuReadyByMondayHouseholds: made by the household, or the Thursday autopilot\'s seen or changed before it); twoPlusPeople = today, the largest adults + kids_2_to_10 among its counted members is 2 or more, or it has 2 counted accounts or more; adults is 2 by default until the sign-up asks it (web and WhatsApp always ask it), so only members who finished the sign-up count their people. partial = some household of the row has not reached its day 14 (day 7 closes firstHit, day 14 week2MenuReady): the row can still go up. Cells of 1 or 2 households come out as they are (Legal, E-101: A). Counts only.',
   funnel: 'Signup-week cohorts (signup_completed). firstMenu → shoppingListViewed → cooked are nested steps within the first 7 days (signup day … +6): menu_generated, then shopping_list_viewed, then cook_mode_started or meal_cooked. activeWeek2 is not nested: signups with any event on days 7–13, over week2Eligible (signups whose day 7 has arrived).',
   channels: 'web (app and web chat), voice (Mimo with the voice in the app), whatsapp; unknown = system.',
   excluded: 'Admin and suspended accounts are excluded unless includeInternal=1. Events of deleted accounts stay as anonymous counts.',
@@ -711,6 +755,20 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
       WHERE e.name = 'signup_completed' AND e.household_id IS NOT NULL AND e.created_at >= ${from} AND ${counted}
       ORDER BY e.household_id, e.created_at
   `)
+  // PRO-1310: for those households, the first menu of each week (week 2) and how many people they are. Ids stay here.
+  const windowSignups = sql`(
+    SELECT e.household_id FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+     WHERE e.name = 'signup_completed' AND e.household_id IS NOT NULL AND e.created_at >= ${from} AND ${counted}
+  )`
+  const signupMenusQ = loadMenuWeeks(sql`COALESCE(m.household_id, u.primary_household_id) IN ${windowSignups} AND m.week_start >= ${fromDay}::date AND ${counted}`, db)
+  // adults is 2 by default until the sign-up asks it: only members who finished it count their people.
+  const signupPeopleQ = db.execute(sql`
+    SELECT hm.household_id::text AS household_id, COUNT(DISTINCT mu.id)::int AS accounts,
+           COALESCE(MAX(mu.adults + mu.kids_2_to_10) FILTER (WHERE mu.onboarding_completed_at IS NOT NULL OR mu.onboarding_done), 0)::int AS people
+      FROM household_members hm JOIN users mu ON mu.id = hm.user_id
+      WHERE hm.household_id IN ${windowSignups} AND ${member}
+      GROUP BY 1
+  `)
   const days = dayRange(fromDay, today)
   const [onboardingStepRows, screenRows, breakdownRows, tasteCardRows, mimoSkillRows, menuSheetRows, growth] = await Promise.all([
     onboardingStepsQ,
@@ -722,7 +780,7 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     // PRO-379: the growth line, the trial today and time to the first menu. Counts only leave.
     loadGrowthReport({ includeInternal: inc, now }, db),
   ])
-  const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice, signupAttribution] = await Promise.all([
+  const [counts, householdDays, since, householdState, invited, inviteShared, proactive, familyInvites, lastDevice, signupAttribution, signupMenus, signupPeople] = await Promise.all([
     countsQ,
     householdDaysQ,
     sinceQ,
@@ -733,6 +791,8 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     familyInvitesQ,
     lastDeviceQ,
     signupAttributionQ,
+    signupMenusQ,
+    signupPeopleQ,
   ])
 
   const input: UsageInput = {
@@ -759,6 +819,11 @@ export async function loadUsageReport(opts: UsageLoadOptions, db: Db = defaultDb
     signupSources: buildSignupSources(
       input,
       (signupAttribution.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day, source: r.source ?? null, utmSource: r.utm_source ?? null })),
+      knownRefSources(),
+      {
+        menus: signupMenus,
+        people: (signupPeople.rows as any[]).map((r) => ({ householdId: r.household_id, people: Number(r.people), accounts: Number(r.accounts) })),
+      },
     ),
     totals: buildTotals(input),
     channelSplit: buildChannelSplit(input),

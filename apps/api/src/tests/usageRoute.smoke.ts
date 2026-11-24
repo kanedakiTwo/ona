@@ -79,7 +79,18 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     expect(after.body.funnel.at(-1).signups).toBeGreaterThanOrEqual(1)
     // PRO-1288: the signup's `?ref` label and utm_source (real SQL on users.signup_attribution), under the closed lists.
     const bySource = after.body.signupSources.find((r: any) => r.week === after.body.funnel.at(-1).week && r.source === 'receta' && r.utmSource === 'instagram')
-    expect(bySource).toEqual(expect.objectContaining({ isoWeek: expect.any(String), signups: expect.any(Number), firstMenu: expect.any(Number) }))
+    expect(bySource).toEqual(
+      expect.objectContaining({
+        isoWeek: expect.any(String),
+        signups: expect.any(Number),
+        firstMenu: expect.any(Number),
+        // PRO-1310: counts of households, and partial while day 14 hasn't come (today it has not).
+        firstHit: expect.any(Number),
+        week2MenuReady: expect.any(Number),
+        twoPlusPeople: expect.any(Number),
+        partial: true,
+      }),
+    )
     expect(bySource.firstMenu).toBeGreaterThanOrEqual(1)
     // PRO-106: households snapshot (the new household counts) and the weekly channel split.
     expect(after.body.households.households).toBeGreaterThanOrEqual(1)

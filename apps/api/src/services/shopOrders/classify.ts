@@ -47,10 +47,13 @@ export interface RoutableShop {
   id: string
   kind: ShopKind
   position: number
+  /** Red de tiendas: `red` = a copy Mimoia assigned; the household's own shops go first. */
+  origin?: string | null
 }
 
-/** First shop of that kind (by position); otherwise the household's súper; otherwise none. */
+/** First shop of that kind — the household's own before a Red copy, then by position; otherwise the household's súper; otherwise none. */
 export function pickShopForKind<T extends RoutableShop>(kind: ShopKind, shops: T[]): T | null {
-  const sorted = [...shops].sort((a, b) => a.position - b.position)
+  const own = (s: T) => (s.origin === 'red' ? 1 : 0)
+  const sorted = [...shops].sort((a, b) => own(a) - own(b) || a.position - b.position)
   return sorted.find((s) => s.kind === kind) ?? sorted.find((s) => s.kind === 'supermercado') ?? null
 }

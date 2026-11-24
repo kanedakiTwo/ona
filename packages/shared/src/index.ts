@@ -179,6 +179,19 @@ export type {
   BasketUndoResult,
   StoredBasketResult,
 } from './types/basketExtension.js'
+export {
+  RED_KINDS,
+  RED_ORDER_STATUSES,
+  RED_HOUSEHOLD_CANCELLABLE,
+  DEFAULT_RED_SETTINGS,
+  isRedKind,
+  isPostalCode,
+  postalCodeSchema,
+  redChoiceSchema,
+  placeRedOrderSchema,
+  redMaxBody,
+} from './types/red.js'
+export type { RedKind, RedOrderStatus, RedSettings, RedOrderView, RedPrepareInfo, RedShopRef, RedStatus } from './types/red.js'
 export type { Macros, Vitamins, Minerals, AminoAcids, FatAcids, CarbTypes, NutrientBalance } from './types/nutrition.js'
 export type {
   Meal,

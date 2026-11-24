@@ -77,3 +77,47 @@ test('profile → Avisos: the Thursday week is on, in the app, and its switch sa
   const body = await r.json()
   expect(body.kinds.find((k: { kind: string }) => k.kind === 'weekly_autoplan')).toMatchObject({ on: false, channel: 'off' })
 })
+
+// PRO-1301: the household's time for the morning menu and the dinner question.
+// Saved on «Guardar», survives a reload, the API (what Mimo's get_alerts and
+// set_alert_time read and change) says the same, a time out of its hours
+// isn't saved, and «Volver a la de siempre» undoes it.
+test('profile → Avisos: the time of the morning menu and of the dinner question', async ({ page }) => {
+  test.setTimeout(60_000)
+  await registerFreshUser(page)
+  if (page.url().includes('/onboarding')) await completeOnboarding(page)
+
+  await page.goto('/profile/avisos')
+  const brief = page.getByTestId('alert-time-daily_brief')
+  await expect(brief).toContainText('Menú del día')
+  await expect(page.getByTestId('alert-time-daily_brief-note')).toContainText('La de siempre.')
+  const briefInput = brief.locator('input[type="time"]')
+  await expect(briefInput).toHaveValue(/^\d\d:\d\d$/)
+  await expect(page.getByTestId('alert-time-dinner_checkin').locator('input[type="time"]')).toHaveValue(/^\d\d:\d\d$/)
+
+  await briefInput.fill('08:30')
+  await page.getByTestId('alert-time-daily_brief-save').click()
+  await expect(page.getByTestId('alert-time-daily_brief-note')).toContainText('La hora que elegisteis.')
+  await expect(page.getByTestId('alert-time-daily_brief-save')).toHaveCount(0)
+  // No horizontal scroll at phone width.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  await page.reload()
+  await expect(page.getByTestId('alert-time-daily_brief').locator('input[type="time"]')).toHaveValue('08:30')
+
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const r = await page.request.get(`${API_URL}/notifications/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+  expect((await r.json()).times.daily_brief).toEqual({ time: '08:30', custom: true })
+
+  // Out of its hours: not saved, and says why.
+  const checkin = page.getByTestId('alert-time-dinner_checkin')
+  await checkin.locator('input[type="time"]').fill('23:30')
+  await page.getByTestId('alert-time-dinner_checkin-save').click()
+  await expect(checkin.getByRole('alert')).toContainText('entre las 19:00 y las 22:00')
+
+  // Back to the default.
+  await page.getByTestId('alert-time-daily_brief').getByRole('button', { name: 'Volver a la de siempre' }).click()
+  await expect(page.getByTestId('alert-time-daily_brief-note')).toContainText('La de siempre.')
+  const r2 = await page.request.get(`${API_URL}/notifications/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+  expect((await r2.json()).times.daily_brief.custom).toBe(false)
+})

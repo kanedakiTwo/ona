@@ -63,3 +63,27 @@ describe('singularName', () => {
     expect(singularName('sal')).toBe('sal')
   })
 })
+
+// 24-nov: a handwritten «pimienta», read from a photo, came in as «pimienta
+// rosa» because the shortest name won (13 letters against 14).
+describe('the usual variant of a generic name goes first', () => {
+  const PEPPERS = [
+    { id: 'p1', name: 'pimienta rosa' },
+    { id: 'p2', name: 'pimienta negra' },
+    { id: 'p3', name: 'sal y pimienta' },
+    { id: 'p4', name: 'pimentón dulce' },
+  ]
+  it('«pimienta» asks which, with the black one first: it is what goes in unanswered', () => {
+    const r = matchIngredientName('pimienta', PEPPERS)
+    expect(r.status).toBe('doubt')
+    if (r.status !== 'doubt') return
+    expect(r.fallback).toBe('first')
+    expect(r.candidates[0]).toEqual(PEPPERS[1])
+    expect(r.candidates.map((c) => c.name)).toContain('pimienta rosa')
+  })
+  it('a name without a usual variant keeps the shortest first', () => {
+    const r = matchIngredientName('pimentón', [...PEPPERS, { id: 'p5', name: 'pimentón picante' }])
+    expect(r.status === 'doubt' && r.candidates[0].name).toBe('pimentón dulce')
+  })
+})
+

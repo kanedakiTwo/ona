@@ -226,7 +226,7 @@ const dayMealProps = {
 const setMealNote: SkillDefinition = {
   name: 'set_meal_note',
   description:
-    'Pone una nota libre en una comida del menu en lugar de (o junto a) los platos, cuando el usuario pide apuntar algo ("apunta que el jueves viene la abuela"). Por defecto sustituye los platos de esa comida por la nota. Si no comen en casa ("el viernes no comemos en casa", "cenamos fuera", "comemos en casa de Paqui") no la uses: clear_meal quita esa comida y set_day_skipped el dia entero.',
+    'Pone una nota libre en una comida del menu en lugar de (o junto a) los platos, cuando el usuario pide apuntar algo ("apunta que el jueves viene la abuela") o cuenta lo que improvisan para hoy en casa en vez de lo del menu ("esta noche pedimos pizza"; si ya lo han comido, mark_meal_eaten con dish): sin crear receta. Por defecto sustituye los platos de esa comida por la nota. Si no comen en casa ("el viernes no comemos en casa", "cenamos fuera", "comemos en casa de Paqui") no la uses: clear_meal quita esa comida y set_day_skipped el dia entero.',
   parameters: {
     type: 'object',
     properties: {
@@ -244,14 +244,50 @@ const setMealNote: SkillDefinition = {
     const menu = await loadMenu(ctx, t.weekStart)
     if (!menu) return NO_MENU(t.weekStart)
     const path = slotPath(menu.id, t.dayIndex, p.meal)
-    const had = (menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []).length > 0
+    const dishes = menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []
+    const had = dishes.length > 0
     if (!p.keepDishes && had) await api(ctx)('DELETE', path)
     await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: String(p.text).slice(0, 120) })
+    // PRO-1293: name what it took off, so Mimo can offer it on another day.
+    const names = dishes.map((d) => d.recipeName ?? d.text).filter(Boolean).map((n) => `"${n}"`).join(', ')
     return menuDone(
-      `Hecho: ${where(t, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ' (he quitado los platos que había)' : ''}.${reactivatedNote(menu, t)}`,
+      `Hecho: ${where(t, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ` (he quitado ${names || 'los platos que había'})` : ''}.${reactivatedNote(menu, t)}`,
       changed(t, p.meal, { menuId: menu.id, note: String(p.text).slice(0, 120) }),
     )
   },
+}
+
+/**
+ * PRO-1293: «al final cenamos tortilla» — the meal is marked eaten with what
+ * they said as a note (no recipe is created). The dishes it replaces were not
+ * made: the summary names them so Mimo can offer another day for them.
+ */
+export async function markEatenAsNote(
+  ctx: SkillContext,
+  p: { day?: unknown; dayIndex?: unknown; meal: string; dish: string },
+): Promise<SkillResult> {
+  const t = target(p.day, p.dayIndex, undefined)
+  if (isMenuDayError(t)) return text(t.error)
+  const bad = mealError(p.meal)
+  if (bad) return text(bad)
+  const menu = await loadMenu(ctx, t.weekStart)
+  if (!menu) return NO_MENU(t.weekStart)
+  const note = dishNoteText(p.dish)
+  const path = slotPath(menu.id, t.dayIndex, p.meal)
+  const dishes = menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []
+  const replaced = dishes
+    .map((d) => d.recipeName ?? d.text ?? '')
+    .filter((n) => n && normalize(n) !== normalize(note))
+  if (dishes.length > 0) await api(ctx)('DELETE', path)
+  await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
+  await api(ctx)('PATCH', path, { eaten: true })
+  const notMade = replaced.length
+    ? ` Lo que habia en el menu (${replaced.map((n) => `"${n}"`).join(', ')}) no se ha hecho: ofrece, en una sola pregunta, ponerlo otro dia.`
+    : ''
+  return menuDone(
+    `Hecho: ${where(t, p.meal)} queda como "${note}", marcada como comida.${notMade}${reactivatedNote(menu, t)}`,
+    changed(t, p.meal, { menuId: menu.id, note, eaten: true, replaced }),
+  )
 }
 
 const clearMeal: SkillDefinition = {
@@ -1595,7 +1631,11 @@ export function describeAlerts(o: AlertsOverview): string {
   })
   const wa = o.whatsapp.linked ? (o.whatsapp.notify ? 'WhatsApp conectado con avisos.' : 'WhatsApp conectado, avisos apagados.') : 'WhatsApp sin conectar.'
   const push = o.push.subscribed ? 'Notificaciones del móvil activadas.' : 'Notificaciones del móvil sin activar.'
-  return `${wa} ${push}\n${lines.join('\n')}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
+  // PRO-1301: the two times the household can change (set_alert_time).
+  const times = o.times
+    ? `\nHoras (se cambian con set_alert_time): menu del dia a las ${o.times.daily_brief.time}${o.times.daily_brief.custom ? '' : ' (la de siempre)'}; "¿hiciste la cena?" a las ${o.times.dinner_checkin.time}${o.times.dinner_checkin.custom ? '' : ' (la de siempre)'}.`
+    : ''
+  return `${wa} ${push}\n${lines.join('\n')}${times}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
 }
 
 const getAlerts: SkillDefinition = {

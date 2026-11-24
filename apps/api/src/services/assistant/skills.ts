@@ -37,7 +37,7 @@ import { repeatNote } from './weekRepeats.js'
 import { slotWithDishes } from '../menuDishes.js'
 import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
-import { appSkills, bestMatch, dishNoteText, searchWords, toBuyable } from './appSkills.js'
+import { appSkills, bestMatch, dishNoteText, markEatenAsNote, searchWords, toBuyable } from './appSkills.js'
 import { setHaveAtHome } from '../shoppingItemState.js'
 import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
@@ -68,7 +68,8 @@ import { enqueuePrepAlertsForMenu } from '../notificationScheduler.js'
 import { NotARecipeError } from '../recipeUrlExtractor.js'
 import { importFailureReason, importFailureReply, IMPORT_WORKS, unsupportedNetwork, unsupportedNetworkReply } from '../sources/importFailure.js'
 import type { SkillDefinition, SkillContext, SkillResult } from './types.js'
-import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, hasHealthConsent, saidAllergyReply } from '../healthConsent.js'
+import { divertDietFacts } from './dietFacts.js'
 import { saveOnboarding } from '../onboarding.js'
 import { ingredientMarksOf } from '../ingredientRoles.js'
 import { shopperInviteForSignUp } from '../shopperInvite.js'
@@ -1699,7 +1700,8 @@ const toggleFavorite: SkillDefinition = {
 
 const markMealEaten: SkillDefinition = {
   name: 'mark_meal_eaten',
-  description: 'Marca una comida como comida o no comida en el menu actual.',
+  description:
+    'Marca una comida como comida o no comida en el menu actual. Si comieron otra cosa que la del menu ("al final cenamos tortilla", "pedimos pizza"), pasa en dish lo que dicen: queda apuntado en esa comida como texto, sin crear receta.',
   parameters: {
     type: 'object',
     properties: {
@@ -1707,10 +1709,15 @@ const markMealEaten: SkillDefinition = {
       dayIndex: { type: 'number', description: 'Solo si no usas day: 0=lunes … 6=domingo de esta semana' },
       meal: { type: 'string', description: 'Tipo de comida: breakfast, lunch, snack o dinner' },
       eaten: { type: 'boolean', description: 'true si se ha comido, false si no' },
+      dish: { type: 'string', description: 'Solo si comieron otra cosa que la del menu: lo que comieron, con sus palabras ("tortilla", "pizza pedida"). Sustituye los platos de esa comida por ese texto.' },
     },
     required: ['meal', 'eaten'],
   },
-  async handler(params: { day?: string; dayIndex?: number; meal: string; eaten: boolean }, ctx: SkillContext): Promise<SkillResult> {
+  async handler(params: { day?: string; dayIndex?: number; meal: string; eaten: boolean; dish?: string }, ctx: SkillContext): Promise<SkillResult> {
+    // PRO-1293: what they ate instead goes in as text, never as a recipe.
+    if (params.eaten !== false && typeof params.dish === 'string' && params.dish.trim()) {
+      return markEatenAsNote(ctx, { day: params.day, dayIndex: params.dayIndex, meal: params.meal, dish: params.dish })
+    }
     const { db } = ctx
     const { meal, eaten } = params
     const t = menuDayParam({ day: params.day, dayIndex: params.dayIndex })
@@ -1756,7 +1763,7 @@ const markMealEaten: SkillDefinition = {
 const createRecipe: SkillDefinition = {
   name: 'create_recipe',
   description:
-    'Crea y guarda una receta nueva del usuario. Si el usuario pide una receta basica sin dar detalles ("crea tu un filete a la parrilla"), inventa tu una version sencilla y razonable (ingredientes con cantidades y pasos) y creala sin hacer mas preguntas.',
+    'Crea y guarda una receta nueva del usuario. Si el usuario pide una receta basica sin dar detalles ("crea tu un filete a la parrilla"), inventa tu una version sencilla y razonable (ingredientes con cantidades y pasos) y creala sin hacer mas preguntas. No la uses para lo que ya han comido o improvisan para hoy ("al final cenamos tortilla", "pedimos pizza"): eso es mark_meal_eaten con dish o set_meal_note. Si lo piden ("hice lentejas, guardamela") o te dictan como se hace, si.',
   parameters: {
     type: 'object',
     properties: {
@@ -3148,7 +3155,7 @@ const addRecipeToMine: SkillDefinition = {
 const updateMemory: SkillDefinition = {
   name: 'update_memory',
   description:
-    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). «Sin X», «no me sugieras X», «prescindir de X», «no comemos X» van SIEMPRE en dislikes (no en notes), también las familias enteras: «legumbres», «arroz», «patata», «casquería», «cerdo», «carne roja», «marisco», «pescado» (el menú las entiende con todo lo que llevan). Las notes no cambian el menú: lo que es una regla del menú va en dislikes, en note_ficha_fact (menu_rule) o en la semana tipo. Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
+    'Guarda en la memoria del usuario un dato persistente que mencione en la conversación (disgustos, equipo de cocina, presupuesto, preferencias de cocina, días con poco tiempo, hábitos de preparación, etc.). «Sin X», «no me sugieras X», «prescindir de X», «no comemos X» van SIEMPRE en dislikes (no en notes), también las familias enteras: «legumbres», «arroz», «patata», «casquería», «cerdo», «carne roja», «marisco», «pescado» (el menú las entiende con todo lo que llevan). Una dieta no es un gusto: «vegetariano», «vegano», «sin carne ni pescado», «sin alcohol», «sin cerdo» (por dieta, no porque no les guste), «halal», «sin gluten», «sin lactosa» y las alergias van en restrictions, con esas palabras. Las notes no cambian el menú: lo que es una regla del menú va en dislikes, en note_ficha_fact (menu_rule) o en la semana tipo. Llámalo SIEMPRE que el usuario diga "recuerda que…", "ya no me gusta…", "no me apetece nunca…", "tengo / no tengo (electrodoméstico)", "los lunes no cocino", "el presupuesto semanal es…", "preferimos cocina mediterránea", "siempre congelo el pescado", "pongo las legumbres en remojo la noche antes". Acepta un array de hechos para cubrir varios cambios en un único turno. Usa claves canónicas: dislikes (array), equipment (array), restrictions (array), weekly_budget_eur (number), cuisine_bias (object cuisine->0..100), time_available (object weekday->minutes), cooking_skill ("easy"|"medium"|"advanced"), meal_times (object meal->"HH:MM"), notes (array), nutrition_principles (array), prep_habits (array), physical.age, physical.weight_kg, physical.height_cm, physical.activity_level, household.adults, household.kids_2_to_10, region (comunidad autónoma del hogar, código: AN Andalucía, AR Aragón, AS Asturias, IB Illes Balears, CN Canarias, CB Cantabria, CM Castilla-La Mancha, CL Castilla y León, CT Cataluña, EX Extremadura, GA Galicia, MD Madrid, MC Murcia, NC Navarra, PV País Vasco, RI La Rioja, VC Comunitat Valenciana, CE Ceuta, ML Melilla; sus festivos van como fin de semana en el menú).',
   parameters: {
     type: 'object',
     properties: {
@@ -3200,6 +3207,14 @@ const updateMemory: SkillDefinition = {
         return { data: null, summary: saidAllergies.length ? saidAllergyReply(saidAllergies, 'whatsapp') : WHATSAPP_HEALTH_DATA_REPLY, uiHint: 'text' }
       }
     }
+    // PRO-201: what the household doesn't eat by diet («vegetariano», «sin
+    // alcohol», «sin cerdo») is a restriction, not a taste or a note — when it
+    // can be written (not WhatsApp, with the consent); otherwise the facts stay
+    // as they came and the menu still reads the dislikes.
+    if (ctx.channel !== 'whatsapp') {
+      const diet = divertDietFacts(params.facts)
+      if (diet.diverted.length > 0 && (await hasHealthConsent(userId))) params = { facts: diet.facts }
+    }
     const { setMemoryBatch, getMemoryForUser, UnknownMemoryKeyError, MemoryValueValidationError, HealthConsentRequiredError } = await import('../userMemoryStore.js')
     const current = await getMemoryForUser(userId).catch(() => ({}))
     const { facts: merged, keptManual } = mergeMemoryFacts(current as Record<string, { value: unknown; source?: string }>, params.facts)
@@ -3216,7 +3231,10 @@ const updateMemory: SkillDefinition = {
       // user set by hand unless they asked for the change (confidence 1).
       // PRO-316: the ficha gets it too, with where it was said.
       const signal = ctx.channel === 'whatsapp' ? 'whatsapp' : ctx.channel === 'voice' ? 'voice' : ctx.channel === 'onboarding' ? 'onboarding' : 'chat'
-      await setMemoryBatch(userId, merged, 'inferred', { signal })
+      // PRO-201: allergies and diet are never deduced: the person said them
+      // («Lo dijiste tú» in «Tu ficha»), out of the sign-up.
+      const facts = ctx.channel === 'onboarding' ? merged : merged.map((f) => (f.key === 'restrictions' ? { ...f, source: 'manual' as const } : f))
+      await setMemoryBatch(userId, facts, 'inferred', { signal })
     } catch (err) {
       if (err instanceof HealthConsentRequiredError) {
         return {

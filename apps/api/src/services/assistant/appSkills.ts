@@ -827,7 +827,6 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
   return prefixHit
 }
 
-<<<<<<< 8f90e7114e6c75c62c72e88d5fac49354035107f
 /** Words of a line name that tell products apart: «sin» and «con» count («caldo de pollo sin sal»). */
 const LINE_FILLER = new Set([...STOPWORDS].filter((w) => w !== 'sin' && w !== 'con'))
 function lineWords(name: string): string[] {
@@ -872,7 +871,6 @@ export function findListLine<T extends Pick<ListItem, 'name'>>(
 export const whichLine = (asked: string, lines: Array<Pick<ListItem, 'name'>>) =>
   `Hay varias líneas con "${asked}": ${lines.slice(0, 6).map((l) => capitalize(prettyName(l.name))).join(', ')}. ¿Cuál?`
 
-=======
 const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 /** Monday `YYYY-MM-DD` of the week of an ISO date. */
 const mondayOfDate = (iso: string) => mondayOf(iso, (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7)
@@ -939,7 +937,6 @@ export function shoppingListSummary(items: readonly ListItem[], today: string, w
   return `${body} ${extra}`.trim()
 }
 
->>>>>>> 9dfa386baf3f4c390f0da7d3437a731fb12f8724
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:

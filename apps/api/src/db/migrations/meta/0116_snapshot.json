@@ -1,9 +1,5 @@
 {
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-  "id": "8c180069-d27c-4a63-a862-c077cad6207b",
-=======
   "id": "7f196662-3858-4415-9441-53bcca8c9c2e",
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
   "prevId": "5782c3c6-0b11-43c3-b3bc-7c7e3b162af0",
   "version": "7",
   "dialect": "postgresql",
@@ -2996,8 +2992,6 @@
           "notNull": true,
           "default": 0
         },
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-=======
         "red_shop_id": {
           "name": "red_shop_id",
           "type": "uuid",
@@ -3011,7 +3005,6 @@
           "notNull": true,
           "default": "'propia'"
         },
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3042,8 +3035,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-=======
         },
         "idx_household_shops_red": {
           "name": "idx_household_shops_red",
@@ -3081,7 +3072,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "foreignKeys": {
@@ -3097,8 +3087,6 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-=======
         },
         "household_shops_red_shop_id_red_shops_id_fk": {
           "name": "household_shops_red_shop_id_red_shops_id_fk",
@@ -3112,22 +3100,17 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-      "checkConstraints": {},
-=======
       "checkConstraints": {
         "household_shops_origin_check": {
           "name": "household_shops_origin_check",
           "value": "origin IN ('propia','red')"
         }
       },
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
       "isRLSEnabled": false
     },
     "public.household_staples": {
@@ -3350,13 +3333,6 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-        "mimo_cap_eur": {
-          "name": "mimo_cap_eur",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-=======
         "postal_code": {
           "name": "postal_code",
           "type": "text",
@@ -3369,7 +3345,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "indexes": {
@@ -8159,8 +8134,6 @@
       },
       "isRLSEnabled": false
     },
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-=======
     "public.red_settings": {
       "name": "red_settings",
       "schema": "",
@@ -8405,7 +8378,6 @@
       },
       "isRLSEnabled": false
     },
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
     "public.referral_rewards": {
       "name": "referral_rewards",
       "schema": "",
@@ -8744,8 +8716,6 @@
           "primaryKey": false,
           "notNull": false
         },
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-=======
         "red_shop_id": {
           "name": "red_shop_id",
           "type": "uuid",
@@ -8776,7 +8746,6 @@
           "primaryKey": false,
           "notNull": false
         },
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -8852,8 +8821,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-=======
         },
         "idx_shop_orders_red_shop": {
           "name": "idx_shop_orders_red_shop",
@@ -8884,7 +8851,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "foreignKeys": {
@@ -8926,8 +8892,6 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
-<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
-=======
         },
         "shop_orders_red_shop_id_red_shops_id_fk": {
           "name": "shop_orders_red_shop_id_red_shops_id_fk",
@@ -8954,7 +8918,6 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
->>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "compositePrimaryKeys": {},

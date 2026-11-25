@@ -6,6 +6,7 @@ import { applyProfileFromMemories } from '../services/profileFromMemories.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
 import { applyHouseholdRecipeTimes } from '../services/householdRecipeTimes.js'
 import { applyCatalogTimeTrim } from '../services/recipeTimeTrim.js'
+import { applyRecipeWaitTimes } from '../services/recipeWaitTime.js'
 import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisles.js'
 import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
@@ -64,6 +65,13 @@ async function main() {
     await applyCatalogTimeTrim(db)
   } catch (err) {
     console.error('[catalog-time-trim] failed:', err)
+  }
+  // Idempotent (PRO-1078): every recipe's total counts its waits (resting,
+  // rising, the fridge…) and no longer a soak the night before.
+  try {
+    await applyRecipeWaitTimes(db)
+  } catch (err) {
+    console.error('[recipe-wait-time] failed:', err)
   }
   // Idempotent data fix (PRO-177): eggs and tofu leave «Carnes y pescados»
   // for «Lácteos y huevos» (only exact names still in `proteinas`).

@@ -713,6 +713,16 @@ export const households = pgTable('households', {
    */
   dailyBriefTime: text('daily_brief_time'),
   dinnerCheckinTime: text('dinner_checkin_time'),
+  /** Red de tiendas: the household's postal code (one per household), asked on /compra only when needed. */
+  postalCode: text('postal_code'),
+  /** Red de tiendas: kinds the household keeps at its súper ({ fruteria: 'super' }), so it is asked once. */
+  redChoices: jsonb('red_choices').notNull().default({}),
+  /**
+   * PRO-1290: this household's own monthly Mimo cap in euros, set by an admin
+   * (`PUT /admin/households/:id/mimo-cap`, up to 3× its plan's). Null = the
+   * plan's. Applies to every member (services/householdMimoCap.ts).
+   */
+  mimoCapEur: real('mimo_cap_eur'),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])
@@ -1406,6 +1416,59 @@ export const mimoTurnosRemotos = pgTable('mimo_turnos_remotos', {
   check('mimo_turnos_remotos_estado_check', sql.raw("estado IN ('pendiente','cogido','respondido','caducado')")),
 ])
 
+// ─── Red de tiendas v2 (D-165) ───────────────────────────────────────
+
+/**
+ * Red de tiendas v2 (D-165; specs/red-tiendas.md):
+ * Mimoia's shops. A household gets a copy in `household_shops` (origin `red`)
+ * when Mimoia assigns one, and its own shop is linked (`red_shop_id`) when it
+ * joins the Red. No column ranks shops by what they leave: assigning never
+ * depends on it (constitución §7).
+ */
+export const redShops = pgTable('red_shops', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  /** fruteria | carniceria | pescaderia */
+  kind: text('kind').notNull(),
+  /** The shop's own postal code (5 digits). */
+  postalCode: text('postal_code').notNull(),
+  address: text('address'),
+  /** Digits with country code (34…). Orders go here; a household's own shop with this number is linked. */
+  whatsapp: text('whatsapp').notNull(),
+  /** Postal codes it delivers to; empty = pickup only. */
+  deliveryPostalCodes: text('delivery_postal_codes').array().notNull().default([]),
+  deliveryMinEur: real('delivery_min_eur'),
+  deliveryFeeEur: real('delivery_fee_eur'),
+  /** { [ingredientId]: { pricePerKg, at } }, common to all its households (written from tramo 1b). */
+  priceMemory: jsonb('price_memory').notNull().default({}),
+  notes: text('notes'),
+  /** activa | pausada | baja */
+  status: text('status').notNull().default('activa'),
+  /** Made by scripts/redTestShops.ts: never a real shop. */
+  isTest: boolean('is_test').notNull().default(false),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_red_shops_kind_status').on(t.kind, t.status),
+  uniqueIndex('uq_red_shops_whatsapp').on(t.whatsapp),
+  check('red_shops_kind_check', sql.raw("kind IN ('fruteria','carniceria','pescaderia')")),
+  check('red_shops_status_check', sql.raw("status IN ('activa','pausada','baja')")),
+])
+
+/** The Red's numbers, one row (id = 1). Starting values in the migration; editable in Admin from tramo 2. */
+export const redSettings = pgTable('red_settings', {
+  id: smallint('id').primaryKey().default(1),
+  discountPct: real('discount_pct').notNull().default(5),
+  commissionPct: real('commission_pct').notNull().default(5),
+  commissionVatIncluded: boolean('commission_vat_included').notNull().default(true),
+  marginKnownPct: real('margin_known_pct').notNull().default(15),
+  marginReferencePct: real('margin_reference_pct').notNull().default(30),
+  marginWildFishExtraPct: real('margin_wild_fish_extra_pct').notNull().default(10),
+  termsVersion: text('terms_version').notNull().default('v2-prueba'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [check('red_settings_single_row', sql.raw('id = 1'))])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and
@@ -1438,10 +1501,18 @@ export const householdShops = pgTable('household_shops', {
   deliveryMinEur: real('delivery_min_eur'),
   deliveryFeeEur: real('delivery_fee_eur'),
   position: integer('position').notNull().default(0),
+  /** Red de tiendas: the Red shop this row is (a copy) or joined (the household's own shop). */
+  redShopId: uuid('red_shop_id').references(() => redShops.id, { onDelete: 'set null' }),
+  /** propia | red — `red` = Mimoia assigned it from the Red. */
+  origin: text('origin').notNull().default('propia'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_household_shops_household').on(t.householdId),
+  index('idx_household_shops_red').on(t.redShopId),
+  // At most one Red copy per household and kind: two concurrent «Preparar» can't make two.
+  uniqueIndex('uq_household_shops_red_copy').on(t.householdId, t.kind).where(sql`origin = 'red'`),
+  check('household_shops_origin_check', sql.raw("origin IN ('propia','red')")),
 ])
 
 export const shopOrders = pgTable('shop_orders', {
@@ -1451,7 +1522,11 @@ export const shopOrders = pgTable('shop_orders', {
   shopId: uuid('shop_id').references(() => householdShops.id, { onDelete: 'set null' }),
   /** The shop as it was when the order was drafted (name, kind, channel, contact). */
   shopSnapshot: jsonb('shop_snapshot').notNull(),
-  /** draft | sent | quoted | approved | closed | cancelled */
+  /**
+   * draft | sent | quoted | approved | closed | cancelled; Red orders (red_shop_id set) also
+   * ordered | accepted | preparing | ready | payment_pending | charged | delivered | rejected | incident
+   * (SHOP_ORDER_STATUSES in @ona/shared).
+   */
   status: text('status').notNull().default('draft'),
   /** Unguessable id for the public short link /c/:token → wa.me. */
   token: text('token').notNull(),
@@ -1470,6 +1545,14 @@ export const shopOrders = pgTable('shop_orders', {
   finalTotalEur: real('final_total_eur'),
   /** Último envío a la extensión del navegador (StoredBasketResult); null si nunca. */
   extensionResult: jsonb('extension_result'),
+  /** Red de tiendas: the Red shop this order goes to; null = the household's own channel (wa.me…). */
+  redShopId: uuid('red_shop_id').references(() => redShops.id, { onDelete: 'set null' }),
+  /** RedSettings the order was drafted with (checked again at «Pedir»). */
+  redTerms: jsonb('red_terms'),
+  /** «Como mucho» the household raised (null = computed) and, once ordered, the one it accepted. */
+  maxEur: real('max_eur'),
+  orderedAt: timestamp('ordered_at', { withTimezone: true }),
+  orderedByUserId: uuid('ordered_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),
@@ -1479,6 +1562,8 @@ export const shopOrders = pgTable('shop_orders', {
 }, (t) => [
   uniqueIndex('uq_shop_orders_token').on(t.token),
   index('idx_shop_orders_household_status').on(t.householdId, t.status),
+  index('idx_shop_orders_red_shop').on(t.redShopId),
+  index('idx_shop_orders_ordered_by').on(t.orderedByUserId),
 ])
 
 // «Enviar a <cadena>» (specs/shop-orders.md, D-154): el aviso que aceptó cada

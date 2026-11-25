@@ -103,7 +103,8 @@ describe.skipIf(!reachable)('«¿Congeláis la carne o el pescado?» → aviso d
     users.push(userId)
     const rows = await alertsFor(userId)
     expect(rows).toHaveLength(1)
-    expect((rows[0].payload as { body: string }).body).toBe(THAW_CONDITIONAL_TEXT)
+    // PRO-1303: then the meal, the weekday and the dish.
+    expect((rows[0].payload as { body: string }).body).toMatch(new RegExp(`^${THAW_CONDITIONAL_TEXT} Para la cena del miércoles`))
   })
 
   it('Perfil («Lo que recuerdo de ti») changes it with the same sentences', async () => {

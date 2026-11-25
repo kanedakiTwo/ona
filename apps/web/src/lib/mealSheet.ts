@@ -14,13 +14,14 @@
  *   rehago la semana» y, cuando la conecte la fase 5 de la semana tipo
  *   (PRO-1186), «Guardar en mi semana tipo».
  * - Ya está hecho / táper: «Lo tengo hecho (nevera, congelador…)» o su
- *   contrario, y «Sobras de la cena de ayer» o «Quitar táper».
+ *   contrario, «Sobras de la cena de ayer» o «Quitar táper», y «Lo cocino en
+ *   el lote del domingo» o «Lo cocino su día» (PRO-1046).
  *
  * Ya no salen «Cambiar al azar» (pasa a «Que elija Mimoia», dentro del
  * buscador) ni «Tipo de comida» (los chips de tipo del buscador). Fijar ya no
  * deja gris nada: solo dice qué se queda al rehacer la semana.
  */
-import { dishTypeInfo, isTaperDish, type Dish, type MealSlot, type RecipeDish, type WeekTypeOption } from "@ona/shared"
+import { dishTypeInfo, isBatchCooked, isTaperDish, type Dish, type MealSlot, type RecipeDish, type WeekTypeOption } from "@ona/shared"
 
 /** Cuándo cae la comida respecto a hoy. */
 export type MealWhen = "past" | "today" | "future"
@@ -37,7 +38,7 @@ export type MealSheetFirst =
 
 export type MealSheetMore = "comensales" | "ya_hecho" | "fijar" | "semana_tipo"
 
-export type MealSheetDone = "sobras_si" | "sobras_no" | "taper_si" | "taper_no"
+export type MealSheetDone = "sobras_si" | "sobras_no" | "taper_si" | "taper_no" | "lote_si" | "lote_no"
 
 export interface MealSheetInput {
   slot: MealSlot
@@ -48,6 +49,8 @@ export interface MealSheetInput {
   feedsLeftovers?: boolean
   /** «Guardar en mi semana tipo» está conectado (fase 5, PRO-1186). */
   canSaveToWeekType?: boolean
+  /** PRO-1046: la comida puede cocinarse en el lote del domingo de antes (lunes a sábado). */
+  canBatch?: boolean
 }
 
 export interface MealSheetOptions {
@@ -56,7 +59,7 @@ export interface MealSheetOptions {
   done: MealSheetDone[]
 }
 
-export function mealSheetOptions({ slot, when, canTaper, feedsLeftovers = false, canSaveToWeekType = false }: MealSheetInput): MealSheetOptions {
+export function mealSheetOptions({ slot, when, canTaper, feedsLeftovers = false, canSaveToWeekType = false, canBatch = false }: MealSheetInput): MealSheetOptions {
   const dishes = slot.dishes ?? []
   const first = dishes.find((d): d is RecipeDish => d.kind === "recipe") ?? null
   const isSingleRecipe = dishes.length === 1 && dishes[0].kind === "recipe"
@@ -71,6 +74,9 @@ export function mealSheetOptions({ slot, when, canTaper, feedsLeftovers = false,
   if (canMarkCooked) done.push(taperDish ? "sobras_no" : "sobras_si")
   if (slot.taper) done.push("taper_no")
   else if (canTaper) done.push("taper_si")
+  // PRO-1046: el plato que se cocina en el lote del domingo (sus sobras van con él).
+  if (isSingleRecipe && isBatchCooked(first)) done.push("lote_no")
+  else if (isSingleRecipe && canBatch && !isLeftover && !taperDish && !slot.eaten) done.push("lote_si")
 
   const top: MealSheetFirst[] = []
   // Con varios platos, «Ver receta» va en la fila de cada plato (PRO-1176).

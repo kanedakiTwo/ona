@@ -11,7 +11,7 @@ import { db } from '../db/connection.js'
 import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema, pastDayIndexes } from '@ona/shared'
+import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema, pastDayIndexes, isTaperVariant, isValidBatchDate, addDaysIso, BATCH_MAX_DAYS_BEFORE } from '@ona/shared'
 import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, MenuFit, RecipeDish, WeekTypeOption } from '@ona/shared'
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
@@ -1355,8 +1355,9 @@ router.post('/menu/:menuId/day/:day/leftover', async (req: AuthRequest, res) => 
     const clonedDishes: RecipeDish[] = []
     sourceSlot.dishes.forEach((d, sourcePos) => {
       if (d.kind !== 'recipe' || isTaperDish(d)) return  // notes and tápers (freezer/fridge) don't propagate as leftovers
+      const { batchDate: _batch, ...dish } = d // the source is the one in the batch (PRO-1046)
       clonedDishes.push({
-        ...d,
+        ...dish,
         variant: 'leftover',
         leftoverOf: { day: sourceDay, meal: sourceMeal, dishPosition: sourcePos },
       })
@@ -1660,6 +1661,8 @@ const patchDishSchema = z.object({
   course: courseSchema.optional(),
   // `cooked` = «Son sobras de otro día»; `freezer` kept for the sheet shipped before it.
   variant: z.enum(['planned', 'freezer', 'cooked']).optional(),
+  /** PRO-1046: «se cocina en el lote del domingo» (YYYY-MM-DD, 1 to 6 days before the meal); null = on its own day. */
+  batchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   /** What the dish at `position` should be (`dishKey`); 409 MENU_CHANGED otherwise. */
   expect: z.string().optional(),
 })
@@ -1706,7 +1709,18 @@ router.patch('/menu/:menuId/day/:day/meal/:meal/dish/:position', async (req: Aut
           res.status(409).json({ error: 'This dish feeds planned leftovers' }); return
         }
       }
-      next = patchDish(slot.dishes, position, { text: body.text, course: body.course, variant: body.variant })
+      if (body.batchDate) {
+        // PRO-1046: a recipe cooked here (not a leftover nor a táper), batched 1 to 6 days before.
+        const target = slot.dishes[position]
+        const variant = body.variant ?? (target.kind === 'recipe' ? target.variant : undefined)
+        if (target.kind !== 'recipe' || target.variant === 'leftover' || isTaperVariant(variant)) {
+          res.status(400).json({ error: 'Only a recipe cooked for this meal can go in a batch' }); return
+        }
+        if (!isValidBatchDate(body.batchDate, addDaysIso(menu.weekStart, day))) {
+          res.status(400).json({ error: `The batch day must be 1 to ${BATCH_MAX_DAYS_BEFORE} days before the meal` }); return
+        }
+      }
+      next = patchDish(slot.dishes, position, { text: body.text, course: body.course, variant: body.variant, batchDate: body.batchDate })
     }
     days[day][meal] = { ...slot, dishes: next }
     await db.update(menus).set({ days: days as any }).where(eq(menus.id, menuId))

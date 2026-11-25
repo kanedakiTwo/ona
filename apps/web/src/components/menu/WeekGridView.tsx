@@ -39,6 +39,7 @@ import { CalendarX, ChevronRight, Lock, Moon, RotateCcw, Sun, Sunrise, Sunset, U
 import { weekTypeChipOf, type DayMenu, type Dish, type MealSlot, type RecipeDish } from "@ona/shared"
 import { trackSheetAction } from "@/lib/usageEvents"
 import { shortRecipeName } from "@/lib/recipeView"
+import { slotMinutes } from "@/lib/menuDay"
 import { NoteEditor } from "@/components/menu/NoteEditor"
 import { RecipeCover } from "@/components/menu/RecipeCover"
 import type { NoDishSheet } from "@/components/menu/NoDishSheets"
@@ -397,7 +398,7 @@ function SlotRow({
         recipeName: firstRecipe.recipeName ?? "Receta",
         imageUrl: firstRecipe.imageUrl ?? null,
         isLeftover: firstRecipe.variant === "leftover",
-        totalMinutes: firstRecipe.totalTime ?? firstRecipe.prepTime ?? null,
+        totalMinutes: slotMinutes(slot),
       }
     : null
 

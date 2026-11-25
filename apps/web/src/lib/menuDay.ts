@@ -202,11 +202,19 @@ export function feedsLeftovers(days: (DayMenu | undefined | null)[], day: number
   )
 }
 
-/** Minutes shown for a slot: the first recipe's total time, else its prep time. */
+/**
+ * Minutes shown for a slot: the longest of its recipes (each one's total
+ * time, else its prep time). PRO-1078: with two dishes it showed only the
+ * first one's («34 min» with a 43-min second dish).
+ */
 export function slotMinutes(slot: MealSlot | undefined | null): number | null {
-  const r = firstRecipeDish(slot)
-  const v = r?.totalTime ?? r?.prepTime ?? null
-  return v != null && v > 0 ? v : null
+  let max: number | null = null
+  for (const d of slot?.dishes ?? []) {
+    if (d.kind !== "recipe") continue
+    const v = d.totalTime ?? d.prepTime ?? null
+    if (v != null && v > 0) max = Math.max(max ?? 0, v)
+  }
+  return max
 }
 
 /** "Comida · 28 min · 3 raciones" (parts that are unknown are skipped). */

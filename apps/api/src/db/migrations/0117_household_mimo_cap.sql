@@ -1,0 +1,1 @@
+ALTER TABLE "households" ADD COLUMN "mimo_cap_eur" real;

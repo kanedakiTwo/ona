@@ -778,6 +778,20 @@
       "when": 1795486226765,
       "tag": "0115_alert_times",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1795536865041,
+      "tag": "0116_red_tiendas",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1795592841588,
+      "tag": "0117_household_mimo_cap",
+      "breakpoints": true
     }
   ]
 }

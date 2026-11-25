@@ -66,9 +66,9 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
     ),
   },
   sobras: {
-    label: 'platos que ya estan hechos, sobras, taper y congelador en el menu',
-    tools: ['add_freezer_dish', 'set_leftovers', 'set_taper', 'plan_freezer_items'],
-    words: /\b(sobr\w*|resto\w*|taper\w*|tupper\w*|tuper\w*|congel\w*|hech[oa]s?|aprovech\w*|metelo|metelos)\b/,
+    label: 'platos que ya estan hechos, sobras, taper, congelador y dia de lote (batch) en el menu',
+    tools: ['add_freezer_dish', 'set_leftovers', 'set_taper', 'plan_freezer_items', 'set_batch_day'],
+    words: /\b(sobr\w*|resto\w*|taper\w*|tupper\w*|tuper\w*|congel\w*|hech[oa]s?|aprovech\w*|metelo|metelos|lotes?|batch\w*)\b/,
   },
   fijas: {
     label: 'comidas fijas (siempre lo mismo) y el menu del comedor escolar',

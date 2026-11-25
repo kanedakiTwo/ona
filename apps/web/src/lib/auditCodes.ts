@@ -34,6 +34,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'catalog_import.start': 'Importación de una tanda lanzada',
   'catalog_collection.import': 'Colección del catálogo subida',
   'catalog_recipe.source': 'Enlace o crédito de una receta cambiado',
+  'catalog_recipe.edit': 'Receta del catálogo arreglada',
+  'household.mimo_cap': 'Tope de Mimo de un hogar cambiado',
   'whatsapp_question.send': 'Pregunta única enviada por WhatsApp',
   'email_question.send': 'Pregunta por correo enviada a los hogares que lo dejaron',
 }

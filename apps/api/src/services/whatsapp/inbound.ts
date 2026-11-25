@@ -1157,6 +1157,18 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       ...(answer.withoutTools ? { withoutTools: answer.withoutTools } : {}),
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
       onboarding: link.onboardingDone === false,
+      // PRO-1298: when it was sent (a repeat queued behind the menu's turn
+      // doesn't make a second one) and, for a button, what it answered
+      // (PRO-1295: the question its ref points at, else Mimo's last message).
+      requestedAt: sentAt(msg, now),
+      ...(msg.kind === 'interactive' && (answer.text ?? msg.text)?.trim()
+        ? {
+            button: {
+              title: (answer.text ?? msg.text)!.trim(),
+              asked: answer.asked !== undefined ? answer.asked : ([...history].reverse().find((m) => m.role === 'assistant')?.content ?? null),
+            },
+          }
+        : {}),
       onToolStart: (names) => {
         const ack = ackTextForTools(names)
         if (ack) acker.now(ack)
@@ -1473,6 +1485,12 @@ async function handleImage(
     ),
   )
   return 'done'
+}
+
+/** PRO-1298: when the person sent the message (Meta's seconds); `now` when it's missing or in the future. */
+export function sentAt(msg: Pick<InboundMessage, 'timestamp'>, now: Date): Date {
+  const ms = Number(msg.timestamp) * 1000
+  return Number.isFinite(ms) && ms > 0 && ms <= now.getTime() ? new Date(ms) : now
 }
 
 // ─── Per-phone serial queue ──────────────────────────────────────

@@ -138,6 +138,19 @@ export function hasTwoWeeksInARow(day0: string, menus: readonly GrowthMenuWeek[]
   return [...ready].some((w) => ready.has(addDays(w, 7)))
 }
 
+/**
+ * Pure (PRO-379, PRO-1148): the first hit — on days 0…6 from signup, cooked
+ * (meal_cooked or cook_mode_started) and used or sent the list — and each half
+ * on its own. Also read by `signupSources[]` in /admin/usage (PRO-1310).
+ */
+export function firstWeekHit(day0: string, events: readonly Pick<GrowthEvent, 'name' | 'day'>[]): { cooked: boolean; list: boolean; hit: boolean } {
+  const inFirstWeek = (names: ReadonlySet<string>) =>
+    events.some((e) => names.has(e.name) && dayDiff(day0, e.day) >= 0 && dayDiff(day0, e.day) < GROWTH_FIRST_WEEK_DAYS)
+  const cooked = inFirstWeek(COOKED)
+  const list = inFirstWeek(LIST)
+  return { cooked, list, hit: cooked && list }
+}
+
 function groupBy<T extends { householdId: string }>(rows: readonly T[]): Map<string, T[]> {
   const out = new Map<string, T[]>()
   for (const r of rows) {
@@ -177,15 +190,13 @@ export function buildGrowth(input: GrowthInput): GrowthCohort[] {
     }
     const c = cohorts.get(week)!
     const evs = events.get(hh) ?? []
-    const inFirstWeek = (names: ReadonlySet<string>) =>
-      evs.some((e) => names.has(e.name) && dayDiff(day0, e.day) >= 0 && dayDiff(day0, e.day) < GROWTH_FIRST_WEEK_DAYS)
     const elapsed = dayDiff(day0, today)
     const firstWeekOver = elapsed >= GROWTH_FIRST_WEEK_DAYS
-    const cooked = inFirstWeek(COOKED)
-    const list = inFirstWeek(LIST)
+    const { cooked, list, hit } = firstWeekHit(day0, evs)
+    const menu = evs.some((e) => e.name === 'menu_generated' && dayDiff(day0, e.day) >= 0 && dayDiff(day0, e.day) < GROWTH_FIRST_WEEK_DAYS)
     c.signups += 1
-    tally(c.firstMenu, firstWeekOver, inFirstWeek(new Set(['menu_generated'])))
-    tally(c.firstHit, firstWeekOver, cooked && list)
+    tally(c.firstMenu, firstWeekOver, menu)
+    tally(c.firstHit, firstWeekOver, hit)
     tally(c.firstHitCooked, firstWeekOver, cooked)
     tally(c.firstHitList, firstWeekOver, list)
     tally(c.twoWeeks, elapsed >= GROWTH_TWO_WEEKS_DAYS, hasTwoWeeksInARow(day0, menus.get(hh) ?? []))

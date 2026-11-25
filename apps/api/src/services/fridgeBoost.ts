@@ -3,6 +3,7 @@ import { normalizeText } from './dietaryRestrictions.js'
 import { nameHasTerm } from './nutrition/allergens.js'
 import { isBasicIngredient, singularTerm } from './withWhatIHave.js'
 import { addPantryForUser, listPantryForUser, NoHouseholdError, patchPantryForUser } from './pantryStore.js'
+import { asksWeekType } from './weekTypePlan.js'
 
 /**
  * PRO-229 · «¿Qué te queda en la nevera?» before planning. What the household
@@ -42,8 +43,9 @@ export function recipesUsingFridge(
 /**
  * If no dish of the week uses the fridge, put one in: the first free lunch or
  * dinner (Monday first) for which `pick` finds a recipe. Locked slots,
- * skipped days, notes, leftovers and freezer dishes are never touched; the
- * slot keeps its `servings`. Returns the week (a copy when changed).
+ * skipped days, notes, leftovers, freezer dishes and what the week type asks
+ * for there (PRO-1296: its type or its recipe) are never touched; the slot
+ * keeps its `servings`. Returns the week (a copy when changed).
  */
 export function ensureFridgeRecipe(
   days: DayMenu[],
@@ -63,7 +65,7 @@ export function ensureFridgeRecipe(
       const slot = days[dayIndex]?.[meal]
       if (!slot || locked[String(dayIndex)]?.[meal]) continue
       const at = (slot.dishes ?? []).findIndex(
-        (d) => d.kind === 'recipe' && (d.variant ?? 'planned') === 'planned' && !d.leftoverOf && (d.course == null || d.course === 'main'),
+        (d) => d.kind === 'recipe' && (d.variant ?? 'planned') === 'planned' && !d.leftoverOf && !asksWeekType(d) && (d.course == null || d.course === 'main'),
       )
       if (at < 0) continue
       const recipe = pick(dayIndex, meal, used)

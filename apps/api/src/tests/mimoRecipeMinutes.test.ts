@@ -65,6 +65,10 @@ describe('a recipe created by Mimo without minutes is saved with total and hands
     expect(persisted[0]).toMatchObject({ prepTime: 5, cookTime: 27, activeTime: 5 })
     // persistRecipe stores totalTime = prepTime + cookTime when steps carry no minutes.
     expect(persisted[0].prepTime + persisted[0].cookTime).toBe(32)
+    // PRO-1037: minutes from the steps are marked as estimated; the ones Mimo gives are not.
+    expect(persisted[0].internalTags).toEqual(['assistant-created', 'times-estimated'])
+    await createRecipeFromParts({ ...MERLUZA, prepTime: 5, cookTime: 12 }, 'u-1')
+    expect(persisted[1].internalTags).toEqual(['assistant-created'])
   })
 
   it('a dish Mimo makes up for the menu (swap_meal / add_dish newRecipe), with or without its minutes', async () => {

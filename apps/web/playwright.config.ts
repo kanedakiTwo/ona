@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import { defineConfig, devices, webkit } from '@playwright/test'
+import type { DisplayMode } from './e2e/_realCatalog'
 
 /**
  * Playwright config for the Mimoia web E2E suite.
@@ -14,6 +15,12 @@ import { defineConfig, devices, webkit } from '@playwright/test'
  * pins to WebKit and the CI workflow only installs Chromium to keep the
  * cache small. The iPhone sign-up (register-iphone.spec.ts) also runs in a
  * WebKit project wherever WebKit is installed (PRO-354).
+ *
+ * PRO-397: the week's paths with the real catalogue (real-catalog.spec.ts,
+ * a copy of staging's, `e2e/_realCatalog.ts`) also run on a laptop screen
+ * (`desktop-chromium`, 1280×800) and as the installed app
+ * (`standalone-chromium`, `display-mode: standalone`). Both projects only run
+ * that spec; the rest of the suite stays on the phone.
  */
 
 const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3001'
@@ -31,7 +38,7 @@ function webkitInstalled(): boolean {
   }
 }
 
-export default defineConfig({
+export default defineConfig<{ displayMode: DisplayMode }>({
   testDir: './e2e',
   // Closed beta (PRO-27): creates the "e2e" campaign link the specs sign up with.
   globalSetup: './e2e/global-setup.ts',
@@ -45,13 +52,22 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   // CI: `github` turns each failure into an annotation (file, line and
   // message) that Mimoia HQ's estado_ci reads from the API without a token.
-  reporter: process.env.CI ? [['list'], ['github'], ['html', { open: 'never' }]] : 'list',
+  // flaky-reporter (PRO-398) lists the tests that only passed on the retry:
+  // a warning annotation each and playwright-report/flaky.{json,md}. It goes
+  // after `html`, which empties that folder when it finishes.
+  reporter: process.env.CI
+    ? [['list'], ['github'], ['html', { open: 'never' }], ['./e2e/flaky-reporter.ts']]
+    : [['list'], ['./e2e/flaky-reporter.ts']],
   use: {
     baseURL: WEB_URL,
     // The app's weeks are Madrid weeks (firstMenuWeeks, the API). A UTC
     // browser disagrees between 00:00 and 02:00 on Monday, Madrid time, and
     // /menu then generates a second week (PRO-243).
     timezoneId: 'Europe/Madrid',
+    // A production build (`next build`, the CI since PRO-398) registers the
+    // service worker, which caches API answers and reloads the page when it
+    // takes over. No spec tests it, so it stays off, as under `next dev`.
+    serviceWorkers: 'block',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -71,6 +87,16 @@ export default defineConfig({
           ],
         },
       },
+    },
+    {
+      name: 'desktop-chromium',
+      testMatch: /real-catalog\.spec\.ts$/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      name: 'standalone-chromium',
+      testMatch: /real-catalog\.spec\.ts$/,
+      use: { ...devices['Pixel 7'], displayMode: 'standalone' },
     },
     ...(webkitInstalled()
       ? [

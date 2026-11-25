@@ -234,6 +234,18 @@ export function applyPatch(saved: RecipeWriteInput, patch: CatalogRecipePatch): 
   return out
 }
 
+/**
+ * PRO-1312: once the office sends the recipe's ingredients, the batch lines
+ * that matched nothing are settled: the «ingrediente sin emparejar» hold goes.
+ */
+async function clearUnmatchedIngredients(id: string, tx: Pick<Db, 'select' | 'update'>): Promise<void> {
+  const [row] = await tx.select({ catalogSource: recipes.catalogSource }).from(recipes).where(eq(recipes.id, id))
+  const s = row?.catalogSource
+  if (!s || !(s.auditIssues ?? []).includes('ingrediente_sin_emparejar')) return
+  const { unmatchedIngredients: _gone, ...rest } = s
+  await tx.update(recipes).set({ catalogSource: { ...rest, auditIssues: s.auditIssues.filter((i) => i !== 'ingrediente_sin_emparejar') } }).where(eq(recipes.id, id))
+}
+
 export async function editCatalogRecipe(id: string, patch: CatalogRecipePatch, adminId: string, db: Db = defaultDb): Promise<CatalogRecipeEditResult> {
   const saved = await loadCatalogRecipe(id, db)
   if (!saved) return { ok: false, code: 'NOT_FOUND' }
@@ -278,6 +290,8 @@ export async function editCatalogRecipe(id: string, patch: CatalogRecipePatch, a
           ...change,
         },
       }, tx)
+      // PRO-1312: the ingredients sent are the fix of a batch's unmatched lines.
+      if (patch.ingredients) await clearUnmatchedIngredients(id, tx)
     },
   })
   if (!result.ok) return { ok: false, code: 'LINT', errors: result.errors, warnings: result.warnings }

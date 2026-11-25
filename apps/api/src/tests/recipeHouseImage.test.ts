@@ -66,6 +66,14 @@ describe('makeHouseImage', () => {
     expect(prompt).toMatch(/^Tzatziki\. Cuenco de yogur blanco espeso/)
     expect(prompt).toContain('Nada de perfección de estudio')
   })
+
+  it('PRO-1312: a description already written (a catalogue batch\'s) is used as is, without asking the describer', async () => {
+    const d = deps([v(true, true)])
+    const out = await makeHouseImage({ ...dish, description: 'Cuenco de barro con yogur, pepino y menta fresca por encima.' }, d)
+    expect(d.describe).not.toHaveBeenCalled()
+    expect(out.description).toBe('Cuenco de barro con yogur, pepino y menta fresca por encima.')
+    expect((d.generate as any).mock.calls[0][0]).toMatch(/^Tzatziki\. Cuenco de barro con yogur/)
+  })
 })
 
 describe('buildRecipePrompt', () => {

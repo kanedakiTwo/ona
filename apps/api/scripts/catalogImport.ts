@@ -3,16 +3,15 @@
  * PRO-154 — catalogue import by batches (specs/catalog-import.md).
  *
  * Import (everything lands as `draft`: nobody sees it, the menu never uses it):
- *   DATABASE_URL=… ANTHROPIC_API_KEY=… pnpm --filter @ona/api exec tsx scripts/catalogImport.ts import \
- *     --dir=~/libros/cocina-de-mama --origin=miguel --book="Recetario de mamá" --batch=mama-01
- *   … import --json=tanda-cocina-03.json --origin=cocina --batch=cocina-03
+ *   DATABASE_URL=… pnpm --filter @ona/api exec tsx scripts/catalogImport.ts import \
+ *     --json=tanda-cocina-03.json --origin=cocina --batch=cocina-03
  *
- *   --dir=…     folder of page photos (.jpg/.jpeg/.png/.webp) or PDFs (one page
- *               per recipe; PDFs are split with `pdftoppm`). The page number is
- *               taken from the file name («p123.jpg», «page-45.png») or the PDF page.
- *   --json=…    Cocina's batch file (hand-authored shape, see draftsFromCocinaJson);
- *               with `"reescrita": true` its steps and labels are saved as they come,
- *               without the AI rewrite (PRO-1097)
+ *   --json=…    Cocina's batch file (hand-authored shape, see draftsFromCocinaJson),
+ *               rewritten: `"reescrita": true`, its steps and labels saved as they
+ *               come (PRO-1097). Since PRO-1312 (D-164) the import makes no call to
+ *               the model: a batch without `reescrita` is refused, and so is
+ *               `--dir=` (a folder of page photos: Cocina reads them and writes the
+ *               rewritten batch). Ingredients match by `catalogo` or name, without AI.
  *   --origin=…  miguel (Miguel's books, his mother's recipe book) | cocina (found or written by Cocina)
  *   --book=…    source title, saved with the recipe (never its text)
  *   --credit=…  the line the recipe page shows under the title, as it must read
@@ -20,7 +19,7 @@
  *               Without it, Miguel's sources read «Inspirada en <book>»; Cocina's, nothing.
  *               In a --json file, `source.credit` (file or recipe; the recipe's wins) beats it.
  *   --batch=…   batch id (default: today's date + origin)
- *   --dry-run   read and rewrite, but save nothing
+ *   --dry-run   check and match, but save nothing
  *
  * The same, from the web: Admin → «Recetas pendientes» (/admin/recetas) lists
  * the drafts by batch, publishes or discards each one and imports a --json
@@ -32,9 +31,7 @@
  *   … review  --ok=id,id --no=id     Miguel's verdict, recipe by recipe
  *   … publish --batch=… [--dry-run]  publish what the rule allows (Miguel's: audit OK; Cocina's: only those Miguel said OK to)
  */
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 const argv = process.argv.slice(2)
@@ -44,43 +41,9 @@ const has = (name: string) => argv.includes(`--${name}`)
 const ids = (name: string) => (flag(name) ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 const WEB = process.env.WEB_URL ?? 'https://mimoia.com'
 
-const IMAGE_MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' }
-
-function pageFromName(file: string): string | null {
-  const m = /(?:^|[^a-z])(?:p|pag|page|pagina)?[-_ ]?(\d{1,4})(?=\D*$)/i.exec(path.basename(file, path.extname(file)))
-  return m ? m[1] : null
-}
-
-async function readPages(dir: string): Promise<Array<{ file: string; page: string | null; buffer: Buffer; mime: string }>> {
-  const out: Array<{ file: string; page: string | null; buffer: Buffer; mime: string }> = []
-  const files = readdirSync(dir).filter((f) => !f.startsWith('.')).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))
-  for (const f of files) {
-    const full = path.join(dir, f)
-    const ext = path.extname(f).toLowerCase()
-    if (IMAGE_MIME[ext]) {
-      out.push({ file: f, page: pageFromName(f), buffer: readFileSync(full), mime: IMAGE_MIME[ext] })
-    } else if (ext === '.pdf') {
-      const tmp = mkdtempSync(path.join(tmpdir(), 'catalogo-'))
-      try {
-        execFileSync('pdftoppm', ['-r', '150', '-jpeg', full, path.join(tmp, 'p')])
-        for (const img of readdirSync(tmp).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))) {
-          const n = /(\d+)\.jpg$/.exec(img)?.[1]
-          out.push({ file: `${f}#${n ?? '?'}`, page: n ? String(Number(n)) : null, buffer: readFileSync(path.join(tmp, img)), mime: 'image/jpeg' })
-        }
-      } catch (err) {
-        throw new Error(`No he podido partir ${f} en páginas (¿está instalado pdftoppm, de poppler?): ${(err as Error).message}`)
-      } finally {
-        rmSync(tmp, { recursive: true, force: true })
-      }
-    }
-  }
-  return out
-}
-
 async function runImport() {
-  const { importCatalogBatch, draftsFromCocinaJson } = await import('../src/services/catalogImport.js')
+  const { importCatalogBatch, draftsFromCocinaJson, noHouseRewrite } = await import('../src/services/catalogImport.js')
   const { createDbCatalogImportDeps } = await import('../src/services/catalogImportDb.js')
-  const { createAnthropicRewriter } = await import('../src/services/catalogRewriter.js')
   const origin = flag('origin') === 'miguel' ? 'miguel' : flag('origin') === 'cocina' ? 'cocina' : null
   if (!origin) throw new Error('Falta --origin=miguel|cocina')
   const book = flag('book') ?? null
@@ -88,46 +51,19 @@ async function runImport() {
   const batch = flag('batch') ?? `${new Date().toISOString().slice(0, 10)}-${origin}`
   const dryRun = has('dry-run')
 
-  type Draft = Parameters<typeof importCatalogBatch>[0][number]
-  const drafts: Draft[] = []
-  if (flag('json')) {
-    const json = JSON.parse(readFileSync(flag('json')!, 'utf8'))
-    // PRO-1097: a rewritten batch is saved as it comes, so it is checked like the web page checks it.
-    if ((json as { reescrita?: unknown })?.reescrita === true) {
-      const { checkCocinaBatch } = await import('@ona/shared')
-      const check = checkCocinaBatch(json)
-      if (!check.ok) throw new Error(`La tanda reescrita no vale:\n${check.problems.map((p) => `- ${p}`).join('\n')}`)
-    }
-    drafts.push(...draftsFromCocinaJson(json, { origin, book, credit, file: path.basename(flag('json')!) }))
-  } else if (flag('dir')) {
-    const { AnthropicProvider } = await import('../src/services/providers/anthropic.js')
-    const vision = new AnthropicProvider()
-    for (const p of await readPages(flag('dir')!)) {
-      try {
-        const raw = await vision.extractRecipe(p.buffer.toString('base64'), p.mime)
-        drafts.push({
-          name: raw.name,
-          servings: raw.servings ?? 4,
-          prepTime: raw.prepTime,
-          cookTime: raw.cookTime ?? null,
-          difficulty: raw.difficulty ?? null,
-          meals: raw.suggestedMeals,
-          seasons: raw.suggestedSeasons,
-          tags: [],
-          ingredients: raw.ingredients.map((i) => (i.quantity > 0 ? { name: i.name, quantity: i.quantity, unit: i.unit } : { name: i.name, quantity: 1, unit: 'al_gusto' })),
-          sourceSteps: raw.steps,
-          source: { origin, book, credit, page: p.page, file: p.file },
-        })
-        console.log(`· leída ${p.file}: ${raw.name}`)
-      } catch (err) {
-        console.log(`✗ ${p.file}: no he podido leer la receta (${(err as Error).message})`)
-      }
-    }
-  } else {
-    throw new Error('Falta --dir=<carpeta> o --json=<fichero>')
+  if (flag('dir')) {
+    // PRO-1312 (D-164): reading the pages and rewriting them spent Mimoia's API.
+    throw new Error('La carpeta de fotos ya no se importa: Cocina lee las páginas y escribe la tanda reescrita (JSON con «reescrita»: true); impórtala con --json=<fichero>.')
   }
+  if (!flag('json')) throw new Error('Falta --json=<fichero> (la tanda reescrita de Cocina)')
+  const json = JSON.parse(readFileSync(flag('json')!, 'utf8'))
+  // Checked like the web page checks it: a batch without `reescrita: true` is refused (PRO-1312).
+  const { checkCocinaBatch } = await import('@ona/shared')
+  const check = checkCocinaBatch(json)
+  if (!check.ok) throw new Error(`La tanda no vale:\n${check.problems.map((p) => `- ${p}`).join('\n')}`)
+  const drafts = draftsFromCocinaJson(json, { origin, book, credit, file: path.basename(flag('json')!) })
 
-  const deps = createDbCatalogImportDeps(createAnthropicRewriter(), (l) => console.log(l))
+  const deps = createDbCatalogImportDeps(noHouseRewrite, (l) => console.log(l))
   if (dryRun) deps.persistDraft = async () => ({ ok: true, recipeId: '(sin guardar)' })
   const out = await importCatalogBatch(drafts, batch, deps)
   const count = (s: string) => out.filter((o) => o.status === s).length

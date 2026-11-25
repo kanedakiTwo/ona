@@ -551,8 +551,9 @@ describe('storage seals: «Se puede congelar» and days in the fridge (PRO-372)'
   }
 
   it('the batch file accepts freezable and fridgeDays, and the importer reads them', () => {
-    expect(cocinaBatchFileSchema.safeParse(cocinaJson).success).toBe(true)
-    expect(cocinaBatchFileSchema.safeParse({ recipes: [{ ...cocinaJson.recipes[0], fridgeDays: 0 }] }).success).toBe(false)
+    // PRO-1312: only a rewritten batch goes in.
+    expect(cocinaBatchFileSchema.safeParse({ ...cocinaJson, reescrita: true }).success).toBe(true)
+    expect(cocinaBatchFileSchema.safeParse({ reescrita: true, recipes: [{ ...cocinaJson.recipes[0], fridgeDays: 0 }] }).success).toBe(false)
     const drafts = draftsFromCocinaJson(cocinaJson, { origin: 'cocina' })
     expect(drafts[0]).toMatchObject({ freezable: true, fridgeDays: 4 })
     expect(drafts[1]).toMatchObject({ freezable: null, fridgeDays: null })
@@ -574,13 +575,13 @@ describe('storage seals: «Se puede congelar» and days in the fridge (PRO-372)'
 
   it('PRO-1099: the batch file takes featuredOn (a real day), one per day, and the importer saves it', async () => {
     const featured = { ...cocinaJson, recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, cocinaJson.recipes[1]] }
-    expect(cocinaBatchFileSchema.safeParse(featured).success).toBe(true)
+    expect(cocinaBatchFileSchema.safeParse({ ...featured, reescrita: true }).success).toBe(true)
     // Not a day: refused, in Spanish, with where it is.
-    const bad = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-02-30' }] })
+    const bad = checkCocinaBatch({ reescrita: true, recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-02-30' }] })
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.problems[0]).toMatch(/^Receta 1 \(«.+»\): la fecha de la receta del día \(featuredOn\) tiene que ser un día AAAA-MM-DD/)
     // Two recipes on the same day inside the file: the second is a problem.
-    const twice = checkCocinaBatch({ recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, { ...cocinaJson.recipes[1], featuredOn: '2026-11-05' }] })
+    const twice = checkCocinaBatch({ reescrita: true, recipes: [{ ...cocinaJson.recipes[0], featuredOn: '2026-11-05' }, { ...cocinaJson.recipes[1], featuredOn: '2026-11-05' }] })
     expect(twice.ok).toBe(false)
     if (!twice.ok) expect(twice.problems).toEqual([expect.stringMatching(/^Receta 2 .*2026-11-05 ya es la de la receta 1; solo hay una receta del día por día\.$/)])
 

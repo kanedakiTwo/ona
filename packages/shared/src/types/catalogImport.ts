@@ -29,6 +29,10 @@ const MAX_PROBLEMS = 25
 
 const UNIT_LIST = 'g, ml, u, cda, cdita, pizca o al_gusto'
 
+/** PRO-1312: why a batch without `reescrita: true` doesn't go in. */
+export const NOT_REWRITTEN =
+  'La tanda no viene reescrita: el fichero tiene que ser { "reescrita": true, "recipes": [...] }, con los pasos en palabras de la casa y las etiquetas de cada receta. Sin reescribir ya no se importa (gastaba la API de Mimoia).'
+
 const toStepObject = (v: unknown) => (typeof v === 'string' ? { text: v } : v)
 const toFileObject = (v: unknown) => (Array.isArray(v) ? { recipes: v } : v)
 
@@ -54,6 +58,12 @@ const ingredientSchema = z
     imprescindible: z.boolean().optional(),
     /** «Cocinar ahora»: catalogue ingredient names that can stand in for this one (nata → leche). */
     sustitutos: z.array(z.string().trim().min(1).max(120)).max(5).optional(),
+    /**
+     * PRO-1312: the catalogue ingredient this line is — its id or its exact
+     * name (accents, case and spacing aside). The import matches it without
+     * the AI; a line that doesn't match stays in the audit.
+     */
+    catalogo: z.string().trim().min(1).max(120).optional(),
   })
   .superRefine((i, ctx) => {
     const key = i.qty == null && i.quantity != null ? 'quantity' : 'qty'
@@ -92,8 +102,8 @@ const baseSchema = z.object({
  * by Cocina (Claude Code, on the subscription) in a batch with
  * `reescrita: true`, so the import saves it without calling the model.
  * `difficulty`, `meals`, `seasons`, `freezable` and `fridgeDays` are the
- * recipe's own fields above. Without `reescrita` they are ignored and the
- * rewriter labels the recipe as always.
+ * recipe's own fields above. Since PRO-1312 (D-164) a batch without
+ * `reescrita: true` is refused (`NOT_REWRITTEN`).
  */
 export const catalogRewriteLabelsSchema = z.object({
   course: z.enum(COURSES).nullish(),
@@ -131,6 +141,11 @@ export const cocinaRecipeSchema = catalogRewriteLabelsSchema.extend({
     .refine((v) => v == null || isIsoDay(v), { message: 'la fecha de la receta del día (featuredOn) tiene que ser un día AAAA-MM-DD (por ejemplo, 2026-11-05)' }),
   source: sourceSchema.optional(),
   bases: z.array(baseSchema).max(10).optional(),
+  /**
+   * PRO-1312: what the plated dish looks like, for its house photo (what
+   * `describeDish` would answer). With it, the photo doesn't ask the model.
+   */
+  photoDescription: z.string().trim().min(1).max(500).nullish(),
 })
 
 export const cocinaBatchFileSchema = z.preprocess(
@@ -145,6 +160,8 @@ export const cocinaBatchFileSchema = z.preprocess(
     reescrita: z.boolean().optional(),
     recipes: z.array(cocinaRecipeSchema).min(1).max(CATALOG_IMPORT_MAX_RECIPES),
   }).superRefine((file, ctx) => {
+    // PRO-1312 (D-164): the import no longer rewrites with the API; Cocina does.
+    if (file.reescrita !== true && file.recipes.length > 0) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reescrita'], message: NOT_REWRITTEN })
     // PRO-1099: one recipe of the day per day, inside the file too.
     const firstOn = new Map<string, number>()
     file.recipes.forEach((r, i) => {
@@ -218,6 +235,8 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   allergenNote: { label: 'la nota de alérgenos (allergenNote)' },
   tips: { label: 'el consejo (tips)' },
   bases: { label: 'las bases (bases)', plural: true },
+  catalogo: { label: 'el ingrediente del catálogo (catalogo)' },
+  photoDescription: { label: 'la descripción para la foto (photoDescription)' },
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -383,9 +402,6 @@ export function checkCocinaBatch(json: unknown): CocinaBatchCheck {
   const fromMiguel = origin === 'miguel' || file.recipes.some((r) => r.source?.origin === 'miguel')
   if (fromMiguel) {
     warnings.push('El fichero dice que hay recetas de tus fuentes (origin «miguel»): esas se pueden publicar sin pasar por tu revisión, en cuanto pasen la auditoría.')
-  }
-  if (file.reescrita) {
-    warnings.push('La tanda viene reescrita («reescrita»: true): se guardan sus pasos y etiquetas tal cual, sin reescribirlos con la IA.')
   }
   return { ok: true, file, origin, book: textOf(file.source?.book), names, warnings }
 }

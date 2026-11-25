@@ -51,8 +51,12 @@ function auditOf(s: Partial<CatalogSourceInfo> | null | undefined): string[] {
   return Array.isArray(s?.auditIssues) ? s!.auditIssues.map(String) : []
 }
 
-export function auditLabels(issues: readonly string[]): Array<{ code: string; label: string }> {
-  return issues.map((code) => ({ code, label: AUDIT_ISSUE_LABEL[code as CatalogAuditIssue] ?? code }))
+export function auditLabels(issues: readonly string[], unmatched: readonly string[] = []): Array<{ code: string; label: string }> {
+  return issues.map((code) => {
+    const label = AUDIT_ISSUE_LABEL[code as CatalogAuditIssue] ?? code
+    // PRO-1312: which lines of the batch matched nothing.
+    return { code, label: code === 'ingrediente_sin_emparejar' && unmatched.length ? `${label}: ${unmatched.join(', ')}` : label }
+  })
 }
 
 /** Pure: one draft as the page shows it. */
@@ -79,7 +83,7 @@ export function draftView(r: DraftRow): CatalogDraftView {
     tips: r.tips,
     tags: r.tags ?? [],
     allergenDoubt: !!s.allergenDoubt,
-    auditIssues: auditLabels(auditIssues),
+    auditIssues: auditLabels(auditIssues, Array.isArray(s.unmatchedIngredients) ? s.unmatchedIngredients.map(String) : []),
     verdict: reviewOk === true ? 'ok' : reviewOk === false ? 'no' : null,
     reviewedAt: text(s.reviewedAt),
     decision: reviewDecision({ origin, auditIssues, reviewOk, hasPhoto: !!r.imageUrl }),

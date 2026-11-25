@@ -166,7 +166,7 @@ export function CatalogImportPanel() {
                 }}
                 rows={7}
                 spellCheck={false}
-                placeholder='{ "source": { "origin": "cocina" }, "recipes": [ … ] }'
+                placeholder='{ "reescrita": true, "source": { "origin": "cocina" }, "recipes": [ … ] }'
                 className="mt-1.5 block w-full rounded-[14px] border border-border bg-paper px-3 py-2 font-mono text-[12px] leading-snug text-ink focus:border-ink focus:outline-none"
               />
             </label>

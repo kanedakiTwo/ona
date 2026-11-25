@@ -28,7 +28,7 @@ import { CATALOG_BATCH_ID_RE, UNITS, catalogImportRequestSchema, checkCocinaBatc
 import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
 import { record } from '../services/auditLog.js'
-import { draftsFromCocinaJson, importCatalogBatch } from '../services/catalogImport.js'
+import { draftsFromCocinaJson, importCatalogBatch, noHouseRewrite } from '../services/catalogImport.js'
 import { editCatalogRecipe, type CatalogRecipeEditResult, type CatalogRecipePatch } from '../services/catalogRecipeEdit.js'
 import { ALLERGEN_TAGS } from '../services/nutrition/allergens.js'
 import { createDbCatalogImportDeps } from '../services/catalogImportDb.js'
@@ -53,7 +53,6 @@ import {
   type CatalogSourceResult,
   type DraftActionResult,
 } from '../services/catalogReview.js'
-import { createAnthropicRewriter } from '../services/catalogRewriter.js'
 import { wakeCatalogPhotos } from '../services/catalogPhotos.js'
 
 export interface CatalogReviewDeps {
@@ -83,7 +82,8 @@ function defaultRunner(): CatalogImportRunner {
     store: jobStore,
     runImport: async (drafts, batch, onOutcome) => {
       const log = (line: string) => console.log(`[catalog-import ${batch}] ${line}`)
-      const deps = createDbCatalogImportDeps(createAnthropicRewriter(), log)
+      // PRO-1312: only rewritten batches get here (the schema refuses the rest); nothing asks the model.
+      const deps = createDbCatalogImportDeps(noHouseRewrite, log)
       return importCatalogBatch(drafts, batch, {
         ...deps,
         onOutcome: async (outcome, done, total) => {

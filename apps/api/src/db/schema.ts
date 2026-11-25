@@ -435,6 +435,14 @@ export interface CatalogSourceInfo {
    * publishes it as soon as the photo is saved (if the rule still allows it).
    */
   publishWhenPhoto?: boolean
+  /**
+   * PRO-1312: the batch's ingredient lines that matched no catalogue
+   * ingredient (left out of the recipe; the audit holds it as
+   * «ingrediente sin emparejar» until the recipe's ingredients are fixed).
+   */
+  unmatchedIngredients?: string[]
+  /** PRO-1312: what the plated dish looks like, from the batch: the house photo uses it instead of asking the model. */
+  photoDescription?: string | null
 }
 
 // ─── 5. recipe_ingredients (M:N join) ───────────────────────

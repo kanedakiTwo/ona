@@ -2,8 +2,9 @@
  * PRO-1097 (D-150, option C) — a Cocina batch with `reescrita: true` brings
  * the house steps and labels already written (Claude Code in the office, on
  * the subscription), so the import saves it without calling the model: no
- * `catalog_import_rewrite` row in `cost_events`. Without the field, the
- * import calls the rewriter as always. The model is the real
+ * `catalog_import_rewrite` row in `cost_events`. Since PRO-1312 (D-164) a
+ * batch without the field is refused, ingredients match without the AI and
+ * nothing in the import asks the model. The model is the real
  * `createAnthropicRewriter` over a fake SDK, and the cost rows are the ones
  * `recordCost` would insert (`setCostSinkForTests`). Invented recipes only.
  */
@@ -24,8 +25,9 @@ vi.mock('../config/env.js', async (importOriginal) => {
 })
 vi.mock('../db/connection.js', () => ({ db: {} }))
 
-import { catalogImportRequestSchema, checkCocinaBatch } from '@ona/shared'
-import { draftsFromCocinaJson, importCatalogBatch, type CatalogImportDeps, type PersistDraftInput } from '../services/catalogImport.js'
+import { NOT_REWRITTEN, catalogImportRequestSchema, checkCocinaBatch } from '@ona/shared'
+import { draftsFromCocinaJson, importCatalogBatch, noHouseRewrite, type CatalogImportDeps, type PersistDraftInput } from '../services/catalogImport.js'
+import { matchDraftIngredientsFromCatalog } from '../services/catalogImportDb.js'
 import { createAnthropicRewriter } from '../services/catalogRewriter.js'
 import { setCostSinkForTests, type CostRow } from '../services/costLedger.js'
 
@@ -174,24 +176,77 @@ describe('a batch with reescrita: true (PRO-1097)', () => {
     expect(problems.some((p) => p.startsWith('Receta 2 («Bizcocho de prueba de los lunes»), paso 1, ingredientRefs'))).toBe(true)
   })
 
-  it('the check says the batch comes rewritten', () => {
-    const r = checkCocinaBatch(rewrittenBatch())
-    expect(r.ok && r.warnings.some((w) => w.includes('«reescrita»: true'))).toBe(true)
-  })
 })
 
-describe('a batch without reescrita', () => {
-  it('calls the rewriter for every recipe, as always (catalog_import_rewrite on Mimoia)', async () => {
+describe('PRO-1312 (D-164): the import makes no call to the model', () => {
+  it('ingredients match from the catalogue (`catalogo` or name), never with the AI; an unmatched line is left out and held by the audit', async () => {
     const { deps: d, saved } = deps()
+    d.matchIngredients = async () => {
+      throw new Error('the AI matcher must not be asked')
+    }
+    const asked: string[][] = []
+    d.matchFromCatalog = async (ings) => {
+      asked.push(ings.map((i) => i.catalogRef ?? i.name))
+      return ings.map((i, k) => ({ ingredientId: i.name === 'pimentón dulce' ? null : `ing-${k}`, name: i.name, quantity: i.quantity, unit: i.unit as any }))
+    }
+    const json = rewrittenBatch()
+    json.recipes[0].ingredients[0].catalogo = 'Garbanzo cocido'
+    json.recipes[0].photoDescription = 'Cazuela de barro con garbanzos en salsa roja de pimentón.'
+    const out = await importCatalogBatch(throughRoute(json), 'cocina-21', d)
+    expect(out.map((o) => o.status)).toEqual(['draft', 'draft'])
+    expect(create).not.toHaveBeenCalled()
+    expect(costs).toEqual([])
+    expect(asked[0]).toEqual(['Garbanzo cocido', 'cebolla', 'pimentón dulce', 'sal'])
+
+    const [guiso, bizcocho] = saved
+    // «pimentón dulce» (line 3) is left out; the steps' links follow the lines that stay.
+    expect(guiso.ingredients.map((i) => i.ingredientId)).toEqual(['ing-0', 'ing-1', 'ing-3'])
+    expect(guiso.steps[1].ingredientRefs).toEqual(['ing_0', 'ing_2'])
+    expect(guiso.catalogSource).toMatchObject({ unmatchedIngredients: ['pimentón dulce'], photoDescription: 'Cazuela de barro con garbanzos en salsa roja de pimentón.' })
+    expect(guiso.catalogSource.auditIssues).toContain('ingrediente_sin_emparejar')
+    expect(out[0]).toMatchObject({ status: 'draft', auditIssues: expect.arrayContaining(['ingrediente_sin_emparejar']) })
+    expect(bizcocho.catalogSource.auditIssues).not.toContain('ingrediente_sin_emparejar')
+    expect(bizcocho.catalogSource.unmatchedIngredients).toBeUndefined()
+  })
+
+  it('the catalogue match: `catalogo` by id or exact name (accents and case aside), else the line\'s name, else the token match; nothing is created', async () => {
+    const catalog = [
+      { id: 'g1', name: 'Garbanzo cocido', unitWeight: null, density: null, edibleFraction: null },
+      { id: 'c1', name: 'Cebolla', unitWeight: 150, density: null, edibleFraction: 0.9 },
+      { id: 'p1', name: 'Pimentón', unitWeight: null, density: null, edibleFraction: null },
+    ]
+    const fakeDb = { select: () => ({ from: async () => catalog }) } as any
+    const line = (name: string, catalogRef?: string) => ({ name, quantity: 1, unit: 'u', ...(catalogRef ? { catalogRef } : {}) })
+    const out = await matchDraftIngredientsFromCatalog(
+      [line('garbanzos', 'garbanzo  COCIDO'), line('cebolla tierna', 'c1'), line('CEBOLLA'), line('pimentón'), line('trufa negra'), line('pimentón', 'Pimentón de la Vera')],
+      fakeDb,
+    )
+    expect(out.map((m) => m.ingredientId)).toEqual(['g1', 'c1', 'c1', 'p1', null, null])
+    expect(out[1]).toMatchObject({ name: 'Cebolla', unitWeight: 150, edibleFraction: 0.9, unit: 'u' })
+    expect(out[4].name).toBe('trufa negra')
+  })
+
+  it('a batch without «reescrita»: true is refused before anything is imported, in words', () => {
     const json = rewrittenBatch()
     delete json.reescrita
-    const out = await importCatalogBatch(throughRoute(json), 'cocina-20', d)
-    expect(out.map((o) => o.status)).toEqual(['draft', 'draft'])
-    expect(create).toHaveBeenCalledTimes(2)
-    expect(rewriteCosts()).toHaveLength(2)
-    expect(rewriteCosts().every((c) => c.userId === null)).toBe(true)
-    // What is saved is the model's, not the labels in the file.
-    expect(saved[0].steps.map((s) => s.text)).toEqual(['Cocinar con calma todos los ingredientes de la lista.'])
-    expect(saved[1].course).toBe('main')
+    const r = checkCocinaBatch(json)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.problems).toEqual([NOT_REWRITTEN])
+    expect(catalogImportRequestSchema.safeParse({ batch: 'cocina-20', fileName: 'tanda.json', file: json }).success).toBe(false)
+  })
+
+  it('a draft that still asks for the rewrite fails in words and pays nothing (noHouseRewrite, what the command and the page pass)', async () => {
+    const { deps: d, saved } = deps()
+    d.rewrite = noHouseRewrite
+    const json = rewrittenBatch()
+    delete json.reescrita
+    const out = await importCatalogBatch(draftsFromCocinaJson(json, { origin: 'cocina' }), 'cocina-20', d)
+    expect(out).toEqual([
+      expect.objectContaining({ status: 'rejected', reason: 'error', detail: NOT_REWRITTEN }),
+      expect.objectContaining({ status: 'rejected', reason: 'error', detail: NOT_REWRITTEN }),
+    ])
+    expect(saved).toEqual([])
+    expect(create).not.toHaveBeenCalled()
+    expect(costs).toEqual([])
   })
 })

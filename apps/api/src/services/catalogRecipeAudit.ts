@@ -37,7 +37,7 @@ import { lineEdibleShare } from './nutrition/aggregate.js'
 export const MAIN_PROTEIN_RANGE_G = { min: 80, max: 300 } as const
 export const STARCH_RANGE_G = { min: 50, max: 150 } as const
 
-export type CatalogAuditIssue = 'sin_pasos' | 'pocos_ingredientes' | 'proteina_fuera_de_rango' | 'base_fuera_de_rango'
+export type CatalogAuditIssue = 'sin_pasos' | 'pocos_ingredientes' | 'proteina_fuera_de_rango' | 'base_fuera_de_rango' | 'ingrediente_sin_emparejar'
 
 export interface AuditIngredient {
   name: string
@@ -255,4 +255,5 @@ export const AUDIT_ISSUE_LABEL: Record<CatalogAuditIssue, string> = {
   pocos_ingredientes: '2 ingredientes o menos',
   proteina_fuera_de_rango: `proteína principal por ración fuera de ${MAIN_PROTEIN_RANGE_G.min}–${MAIN_PROTEIN_RANGE_G.max} g`,
   base_fuera_de_rango: `pasta, arroz o legumbre por ración fuera de ${STARCH_RANGE_G.min}–${STARCH_RANGE_G.max} g`,
+  ingrediente_sin_emparejar: 'ingrediente sin emparejar',
 }

@@ -15,7 +15,10 @@
  *       no call (PRO-1097, D-150)
  *     → phrase check: a step that keeps 7 words in a row of the source is
  *       rewritten once more, then the recipe is rejected (never saved)
- *     → ingredients matched to the catalogue, new ones created automatically
+ *     → ingredients matched to the catalogue, new ones created automatically;
+ *       a rewritten batch matches without the AI (the line's `catalogo`, its
+ *       exact name, the token match) and what doesn't match stays in the
+ *       audit (PRO-1312, D-164)
  *     → audit (catalogRecipeAudit) and reviewer (recipeLint, inside
  *       persistRecipe), nutrition and allergens (persistRecipe)
  *     → saved as a `draft` with its source (book + page, no text).
@@ -28,7 +31,7 @@
  * so the orchestration is tested without either.
  */
 import type { Difficulty, IngredientRole, Meal, Season, Unit } from '@ona/shared'
-import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS, isIsoDay } from '@ona/shared'
+import { COURSES, DIFFICULTIES, MEALS, SEASONS, UNITS, NOT_REWRITTEN, isIsoDay } from '@ona/shared'
 import { auditCatalogRecipe, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { dishKey } from './catalogWishes.js'
 import { levenshtein, normalize } from './recipeLint.js'
@@ -71,6 +74,8 @@ export interface DraftIngredient {
   role?: IngredientRole
   /** Cocina's `sustitutos`: catalogue ingredient names that can stand in for this one. */
   substitutes?: string[]
+  /** PRO-1312: Cocina's `catalogo` — the catalogue ingredient's id or exact name. */
+  catalogRef?: string
 }
 
 /** PRO-373: a base the recipe uses, by name, and how many of its servings (for the recipe's `servings`). */
@@ -107,6 +112,8 @@ export interface CatalogDraftInput {
   rewritten?: CatalogRewrite | null
   /** PRO-373: bases it uses, resolved by name against the catalogue or the same batch. */
   bases?: DraftBase[]
+  /** PRO-1312: what the plated dish looks like, for its photo (no «describir» call). */
+  photoDescription?: string | null
 }
 
 export interface RewrittenStep {
@@ -191,7 +198,14 @@ export interface PersistDraftInput {
     substituteIngredientIds: string[]
   }>
   steps: Array<{ index: number; text: string; durationMin: number | null; temperature: number | null; technique: string | null; ingredientRefs: string[] }>
-  catalogSource: CatalogSourceRef & { batch: string; auditIssues: CatalogAuditIssue[]; allergenDoubt: boolean }
+  catalogSource: CatalogSourceRef & {
+    batch: string
+    auditIssues: CatalogAuditIssue[]
+    allergenDoubt: boolean
+    /** PRO-1312: the batch's lines that matched no catalogue ingredient (left out). */
+    unmatchedIngredients?: string[]
+    photoDescription?: string | null
+  }
   /** PRO-373: rows of `recipe_bases` (servings for the house's 4). */
   bases?: Array<{ baseRecipeId: string; servingsUsed: number }>
 }
@@ -202,6 +216,12 @@ export interface CatalogImportDeps {
   rewrite: (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite>
   /** Same order as the input; ingredientId null = couldn't match nor create. */
   matchIngredients: (recipeName: string, ings: DraftIngredient[]) => Promise<MatchedIngredient[]>
+  /**
+   * PRO-1312: the same, without the AI and without creating anything — the
+   * line's `catalogRef` (id or exact name), else its own name; ingredientId
+   * null = no match. Used for a rewritten batch; without it, `matchIngredients`.
+   */
+  matchFromCatalog?: (ings: DraftIngredient[]) => Promise<MatchedIngredient[]>
   /** Substitute names → catalogue ingredient ids, same order (null = no match). Never creates ingredients. */
   findIngredientIds: (names: string[]) => Promise<Array<string | null>>
   persistDraft: (input: PersistDraftInput) => Promise<{ ok: true; recipeId: string } | { ok: false; errors: string[] }>
@@ -473,6 +493,8 @@ export function catalogSourceRecord(src: PersistDraftInput['catalogSource']): Ca
     batch: src.batch,
     auditIssues: src.auditIssues,
     allergenDoubt: src.allergenDoubt,
+    ...(src.unmatchedIngredients?.length ? { unmatchedIngredients: [...src.unmatchedIngredients] } : {}),
+    ...(src.photoDescription ? { photoDescription: src.photoDescription } : {}),
   }
 }
 
@@ -550,6 +572,16 @@ async function houseRewrite(draft: CatalogDraftInput, forFour: CatalogDraftInput
   return rewrite
 }
 
+/**
+ * PRO-1312 (D-164): the import no longer rewrites with the model — the
+ * command and the admin page only take batches Cocina already rewrote
+ * (`reescrita: true`, checked before). Their `rewrite` is this, so a draft
+ * that still asked for it fails in words instead of paying.
+ */
+export async function noHouseRewrite(): Promise<CatalogRewrite> {
+  throw new Error(NOT_REWRITTEN)
+}
+
 export async function importCatalogRecipe(
   draft: CatalogDraftInput,
   batch: string,
@@ -571,8 +603,8 @@ export async function importCatalogRecipe(
 
   // Frying/confit oil marked (and mixed lines split) before scaling, while
   // the amounts in a note still match the line's (PRO-195).
-  const ingredients = scaleToHouseServings(markCookingMediumLines(draft.ingredients), draft.servings)
-  const forFour: CatalogDraftInput = { ...draft, servings: HOUSE_SERVINGS, ingredients }
+  const scaled = scaleToHouseServings(markCookingMediumLines(draft.ingredients), draft.servings)
+  const forFour: CatalogDraftInput = { ...draft, servings: HOUSE_SERVINGS, ingredients: scaled }
 
   // PRO-1097: a batch Cocina already rewrote goes straight on (the reviewer
   // still reads its steps); the rest gets the house rewrite.
@@ -580,12 +612,21 @@ export async function importCatalogRecipe(
   if ('rejected' in rewrite) return { ...base, status: 'rejected', reason: 'copia_del_libro', detail: rewrite.rejected }
   if (rewrite.steps.length === 0) return { ...base, status: 'rejected', reason: 'no_es_receta', detail: 'sin pasos' }
 
-  const matched = await deps.matchIngredients(draft.name, ingredients)
-  const missing = matched.filter((m) => !m.ingredientId).map((m) => m.name)
-  if (missing.length > 0) return { ...base, status: 'rejected', reason: 'ingredientes', detail: `sin ingrediente en el catálogo: ${missing.join(', ')}` }
+  // PRO-1312: a rewritten batch never asks the AI to match; a line that
+  // doesn't match is left out and the audit holds the recipe.
+  const noAi = !!draft.rewritten && !!deps.matchFromCatalog
+  const allMatched = noAi ? await deps.matchFromCatalog!(scaled) : await deps.matchIngredients(draft.name, scaled)
+  const unmatched = allMatched.flatMap((m, k) => (m.ingredientId ? [] : [scaled[k].name]))
+  if (!noAi && unmatched.length > 0) return { ...base, status: 'rejected', reason: 'ingredientes', detail: `sin ingrediente en el catálogo: ${unmatched.join(', ')}` }
+  if (unmatched.length > 0) deps.log?.(`  ingrediente sin emparejar: ${unmatched.join(', ')} (${draft.name})`)
+  const kept = allMatched.flatMap((m, k) => (m.ingredientId ? [k] : []))
+  const ingredients = kept.map((k) => scaled[k])
+  const matched = kept.map((k) => allMatched[k])
+  /** Old line index → its index once the unmatched lines are left out. */
+  const newIndex = new Map(kept.map((k, i) => [k, i]))
 
   const course = rewrite.course && (COURSES as readonly string[]).includes(rewrite.course) ? rewrite.course : null
-  const audit = auditCatalogRecipe({
+  const audited = auditCatalogRecipe({
     name: draft.name,
     course,
     meals: rewrite.meals?.length ? rewrite.meals : draft.meals ?? [],
@@ -593,10 +634,10 @@ export async function importCatalogRecipe(
     stepCount: rewrite.steps.length,
     ingredients: matched.map((m) => ({ name: m.name, quantity: m.quantity, unit: m.unit, unitWeight: m.unitWeight ?? null, density: m.density ?? null, edibleFraction: m.edibleFraction ?? null })),
   })
+  const audit = { issues: unmatched.length > 0 ? [...audited.issues, 'ingrediente_sin_emparejar' as const] : audited.issues }
   const substituteIds = await substituteIdsFor(draft.name, ingredients, deps)
   const { tags, internalTags } = catalogTags(rewrite, draft.tags ?? [])
   const { prepTime, cookTime } = timesFrom(rewrite, draft)
-  const n = ingredients.length
   const difficulty = ((DIFFICULTIES as readonly string[]).includes(rewrite.difficulty ?? '') ? rewrite.difficulty : (DIFFICULTIES as readonly string[]).includes(draft.difficulty ?? '') ? draft.difficulty : 'medium') as Difficulty
 
   const saved = await deps.persistDraft({
@@ -631,9 +672,16 @@ export async function importCatalogRecipe(
       durationMin: s.durationMin ?? null,
       temperature: s.temperature ?? null,
       technique: s.technique ?? null,
-      ingredientRefs: [...new Set((s.ingredientRefs ?? []).filter((k) => Number.isInteger(k) && k >= 0 && k < n))].map((k) => `ing_${k}`),
+      ingredientRefs: [...new Set((s.ingredientRefs ?? []).map((k) => newIndex.get(k)).filter((k): k is number => k != null))].map((k) => `ing_${k}`),
     })),
-    catalogSource: { ...draft.source, batch, auditIssues: audit.issues, allergenDoubt: !!rewrite.allergenDoubt },
+    catalogSource: {
+      ...draft.source,
+      batch,
+      auditIssues: audit.issues,
+      allergenDoubt: !!rewrite.allergenDoubt,
+      ...(unmatched.length > 0 ? { unmatchedIngredients: unmatched } : {}),
+      ...(draft.photoDescription ? { photoDescription: draft.photoDescription } : {}),
+    },
     ...(bases.links.length > 0 ? { bases: bases.links } : {}),
   })
   if (!saved.ok) return { ...base, status: 'rejected', reason: 'revisor', detail: saved.errors.join(' · ') }
@@ -744,7 +792,9 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
         section: i.section ?? null,
         role: i.imprescindible === true ? 'essential' : i.imprescindible === false ? 'secondary' : undefined,
         substitutes: Array.isArray(i.sustitutos) ? i.sustitutos.map(String).map((s: string) => s.trim()).filter(Boolean) : undefined,
+        ...(cleanText(i.catalogo) ? { catalogRef: cleanText(i.catalogo)! } : {}),
       })),
+      ...(cleanText(r.photoDescription) ? { photoDescription: cleanText(r.photoDescription)!.slice(0, 500) } : {}),
       // A rewritten batch's steps are already the house's: nothing of a source to read.
       sourceSteps: rewritten ? [] : steps,
       rewritten: rewritten ? rewriteFromBatch(r) : null,

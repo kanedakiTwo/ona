@@ -757,6 +757,7 @@ export {
   CATALOG_DRAFT_DECISION_LABELS,
   CATALOG_IMPORT_JOB_STATUS_LABELS,
   CATALOG_IMPORT_REJECT_LABELS,
+  NOT_REWRITTEN,
   cocinaRecipeSchema,
   cocinaBatchFileSchema,
   catalogImportRequestSchema,

@@ -4,7 +4,7 @@
  * publish). The orchestration and the rules live in catalogImport.ts.
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm'
-import type { Unit } from '@ona/shared'
+import { UNITS, type Unit } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { ingredients, recipeBases, recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { matchIngredients } from './recipeExtractor.js'
@@ -63,6 +63,42 @@ export async function matchDraftIngredients(recipeName: string, ings: DraftIngre
       unitWeight: row?.unitWeight ?? null,
       edibleFraction: row?.edibleFraction ?? null,
       density: row?.density ?? null,
+    }
+  })
+}
+
+/**
+ * PRO-1312 (D-164): a rewritten batch's lines matched without the AI and
+ * without creating anything. A line with `catalogo` (`catalogRef`) is that
+ * ingredient — its id, or its exact name, accents, case and spacing aside —
+ * and nothing else; without it, its own name the same way, then the token
+ * match (`tokenSetMatch`, the first stage of every import). No match →
+ * `ingredientId: null` (the import leaves it out and the audit holds the recipe).
+ */
+export async function matchDraftIngredientsFromCatalog(ings: readonly DraftIngredient[], db: Pick<Db, 'select'> = defaultDb): Promise<MatchedIngredient[]> {
+  if (ings.length === 0) return []
+  const catalog = await db
+    .select({ id: ingredients.id, name: ingredients.name, unitWeight: ingredients.unitWeight, density: ingredients.density, edibleFraction: ingredients.edibleFraction })
+    .from(ingredients)
+  const byId = new Map(catalog.map((c) => [c.id, c]))
+  const byName = new Map<string, (typeof catalog)[number]>()
+  for (const c of catalog) if (!byName.has(baseNameKey(c.name))) byName.set(baseNameKey(c.name), c)
+  return ings.map((i) => {
+    const ref = i.catalogRef?.trim()
+    const own = byName.get(baseNameKey(i.name))
+    const token = () => {
+      const v = tokenSetMatch(i.name, catalog)
+      return v.kind === 'no-match' ? undefined : byId.get(v.catalog.id)
+    }
+    const row = ref ? byId.get(ref) ?? byName.get(baseNameKey(ref)) : own ?? token()
+    return {
+      ingredientId: row?.id ?? null,
+      name: row?.name ?? i.name,
+      quantity: i.quantity,
+      unit: ((UNITS as readonly string[]).includes(i.unit) ? i.unit : 'g') as Unit,
+      unitWeight: row?.unitWeight ?? null,
+      density: row?.density ?? null,
+      edibleFraction: row?.edibleFraction ?? null,
     }
   })
 }
@@ -180,6 +216,7 @@ export function createDbCatalogImportDeps(
     catalogNames: () => allCatalogNames(),
     rewrite,
     matchIngredients: (name, ings) => matchDraftIngredients(name, ings),
+    matchFromCatalog: (ings) => matchDraftIngredientsFromCatalog(ings),
     findIngredientIds: (names) => findCatalogIngredientIds(names),
     persistDraft: (input) => persistCatalogDraft(input),
     findCatalogRecipe: (name) => findCatalogRecipeByName(name),

@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   CATALOG_IMPORT_MAX_RECIPES,
+  NOT_REWRITTEN,
   buildCatalogImportPayload,
   catalogImportRequestSchema,
   checkCocinaBatch,
@@ -46,10 +47,13 @@ describe('checkCocinaBatch: a good file', () => {
     expect(r.warnings).toEqual([])
   })
 
-  it('a bare list of recipes is a file too (origin Cocina by default)', () => {
-    const r = checkCocinaBatch(RAW.recipes)
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.origin).toBe('cocina')
+  it('PRO-1312: a batch without «reescrita»: true is refused, a bare list too (it can\'t say it)', () => {
+    for (const json of [RAW.recipes, { ...RAW, reescrita: false }, (({ reescrita: _r, ...rest }) => rest)(RAW)]) {
+      const r = checkCocinaBatch(json)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.problems).toEqual([NOT_REWRITTEN])
+    }
+    expect(catalogImportRequestSchema.safeParse({ batch: 'cocina-02', file: RAW.recipes }).success).toBe(false)
   })
 
   it('warns, without failing, when a dish is twice in the file or the file is from Miguel\'s sources', () => {
@@ -149,7 +153,9 @@ describe('contract: what the page sends is what the route and the importer read'
     const fromRaw = draftsFromCocinaJson(RAW, fallback)
     expect(fromPayload).toEqual(fromRaw)
     expect(fromPayload[1].source.credit).toBe('Receta del primo Ficticio')
-    expect(fromPayload[0].sourceSteps).toHaveLength(2)
+    // Rewritten: the steps are the house's, nothing of a source to read.
+    expect(fromPayload[0].sourceSteps).toEqual([])
+    expect(fromPayload[0].rewritten?.steps).toHaveLength(2)
   })
 
   it('the link to the original survives the route schema (PRO-1015: it was stripped, so no ficha linked its creator)', () => {

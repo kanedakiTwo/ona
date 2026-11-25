@@ -22,6 +22,11 @@ import { spendCapStatus } from './spendCap.js'
 
 export interface Dish extends DishInput {
   meals: string[]
+  /**
+   * PRO-1312: what the plated dish looks like, already written (a catalogue
+   * batch's `photoDescription`): used as is, without asking the describer.
+   */
+  description?: string | null
 }
 
 export interface HouseImageDeps {
@@ -53,7 +58,7 @@ export interface HouseImageResult {
  * retry model only when the first photo didn't pass it.
  */
 export async function makeHouseImage(dish: Dish, deps: HouseImageDeps = realDeps, maxAttempts = 2): Promise<HouseImageResult> {
-  const description = await deps.describe(dish)
+  const description = dish.description?.trim() || (await deps.describe(dish))
   const prompt = buildRecipePrompt({ name: dish.name, topIngredients: topIngredientNames(dish.ingredients), meals: dish.meals, description })
   let fallback: { png: Buffer; verdict: ImageVerdict } | null = null
   let last: ImageVerdict | null = null
@@ -87,7 +92,7 @@ export function isReplaceableImage(url: string | null | undefined, publicBase: s
 /** Recipe → what the describer / checker read. */
 export async function loadDish(recipeId: string): Promise<(Dish & { imageUrl: string | null; authorId: string | null }) | null> {
   const [row] = await db
-    .select({ name: recipes.name, meals: recipes.meals, imageUrl: recipes.imageUrl, authorId: recipes.authorId })
+    .select({ name: recipes.name, meals: recipes.meals, imageUrl: recipes.imageUrl, authorId: recipes.authorId, catalogSource: recipes.catalogSource })
     .from(recipes)
     .where(eq(recipes.id, recipeId))
     .limit(1)
@@ -106,6 +111,7 @@ export async function loadDish(recipeId: string): Promise<(Dish & { imageUrl: st
     meals: row.meals ?? [],
     imageUrl: row.imageUrl ?? null,
     authorId: row.authorId ?? null,
+    description: row.catalogSource?.photoDescription?.trim() || null,
     ingredients: ings.map((i) => dishLine(i)),
     steps: steps.map((s) => s.text),
   }

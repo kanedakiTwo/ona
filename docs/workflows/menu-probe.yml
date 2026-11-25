@@ -1,0 +1,95 @@
+# To install as .github/workflows/menu-probe.yml (PRO-396). The Taller can't
+# write under .github/ (publication filter): the office or a session of Miguel
+# copies this file there as is. See specs/menu-probe.md.
+name: Menu probe
+
+# PRO-396 · Sonda del menú (specs/menu-probe.md): entra con una cuenta de
+# prueba en staging y en producción, genera el menú de la semana que viene y
+# mide cuánto tarda. ROJO (el job falla) si falla o pasa de 30 s. Cada job
+# deja el resultado en un artefacto `menu-probe-<entorno>` (menu-probe.json:
+# entorno, segundos, ok, fecha, semana, tope, motivo; sin datos personales)
+# que la oficina lee.
+on:
+  schedule:
+    - cron: '0 6 * * *' # 07:00 / 08:00 en Madrid
+  # Tras cada publicación: el CI de master termina con el smoke de producción.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      max_seconds:
+        description: 'Tope en segundos (bájalo para probar el ROJO)'
+        type: string
+        default: '30'
+
+concurrency:
+  group: menu-probe
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.33.0'
+
+jobs:
+  probe:
+    name: Menu probe (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: staging
+            api_url: https://ona-api-staging.up.railway.app
+          - env: production
+            api_url: https://ona-api-production.up.railway.app
+    # menu-probe-production guarda PROBE_USERNAME y PROBE_PASSWORD de la cuenta
+    # de la sonda; menu-probe-staging va sin nada (da de alta una de usar y tirar).
+    environment: menu-probe-${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @ona/api...
+
+      - name: Probe
+        env:
+          PROBE_ENV: ${{ matrix.env }}
+          API_URL: ${{ matrix.api_url }}
+          PROBE_MAX_SECONDS: ${{ inputs.max_seconds || '30' }}
+          PROBE_USERNAME: ${{ secrets.PROBE_USERNAME }}
+          PROBE_PASSWORD: ${{ secrets.PROBE_PASSWORD }}
+        run: |
+          if [ "$PROBE_ENV" = production ] && [ -z "$PROBE_USERNAME" ]; then
+            echo "::warning title=Menu probe::Sin la cuenta de la sonda en el entorno menu-probe-production: producción no se ha medido."
+            exit 0
+          fi
+          set +e
+          pnpm --filter @ona/api exec tsx scripts/menuProbe.ts --out="$GITHUB_WORKSPACE/menu-probe.json"
+          code=$?
+          line=$(node -e 'const r=require(process.argv[1]);process.stdout.write(r.ok?`VERDE ${r.entorno}: ${r.segundos} s`:`ROJO ${r.entorno}: ${r.motivo}`)' "$GITHUB_WORKSPACE/menu-probe.json" 2>/dev/null)
+          [ "$code" -eq 0 ] || echo "::error title=Menu probe::${line:-la sonda no dejó resultado}"
+          echo "${line:-sin resultado}" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: menu-probe-${{ matrix.env }}
+          path: menu-probe.json
+          if-no-files-found: ignore
+          retention-days: 30

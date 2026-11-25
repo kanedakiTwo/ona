@@ -1,5 +1,9 @@
 {
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
   "id": "8c180069-d27c-4a63-a862-c077cad6207b",
+=======
+  "id": "7f196662-3858-4415-9441-53bcca8c9c2e",
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
   "prevId": "5782c3c6-0b11-43c3-b3bc-7c7e3b162af0",
   "version": "7",
   "dialect": "postgresql",
@@ -2992,6 +2996,22 @@
           "notNull": true,
           "default": 0
         },
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
+=======
+        "red_shop_id": {
+          "name": "red_shop_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'propia'"
+        },
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3022,6 +3042,46 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
+=======
+        },
+        "idx_household_shops_red": {
+          "name": "idx_household_shops_red",
+          "columns": [
+            {
+              "expression": "red_shop_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_household_shops_red_copy": {
+          "name": "uq_household_shops_red_copy",
+          "columns": [
+            {
+              "expression": "household_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "origin = 'red'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "foreignKeys": {
@@ -3037,12 +3097,37 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
+=======
+        },
+        "household_shops_red_shop_id_red_shops_id_fk": {
+          "name": "household_shops_red_shop_id_red_shops_id_fk",
+          "tableFrom": "household_shops",
+          "tableTo": "red_shops",
+          "columnsFrom": [
+            "red_shop_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
       "checkConstraints": {},
+=======
+      "checkConstraints": {
+        "household_shops_origin_check": {
+          "name": "household_shops_origin_check",
+          "value": "origin IN ('propia','red')"
+        }
+      },
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
       "isRLSEnabled": false
     },
     "public.household_staples": {
@@ -3265,11 +3350,26 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
         "mimo_cap_eur": {
           "name": "mimo_cap_eur",
           "type": "real",
           "primaryKey": false,
           "notNull": false
+=======
+        "postal_code": {
+          "name": "postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "red_choices": {
+          "name": "red_choices",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "indexes": {
@@ -8059,6 +8159,253 @@
       },
       "isRLSEnabled": false
     },
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
+=======
+    "public.red_settings": {
+      "name": "red_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "discount_pct": {
+          "name": "discount_pct",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "commission_pct": {
+          "name": "commission_pct",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "commission_vat_included": {
+          "name": "commission_vat_included",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "margin_known_pct": {
+          "name": "margin_known_pct",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 15
+        },
+        "margin_reference_pct": {
+          "name": "margin_reference_pct",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 30
+        },
+        "margin_wild_fish_extra_pct": {
+          "name": "margin_wild_fish_extra_pct",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "terms_version": {
+          "name": "terms_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'v2-prueba'"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "red_settings_single_row": {
+          "name": "red_settings_single_row",
+          "value": "id = 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.red_shops": {
+      "name": "red_shops",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "postal_code": {
+          "name": "postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "whatsapp": {
+          "name": "whatsapp",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delivery_postal_codes": {
+          "name": "delivery_postal_codes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "delivery_min_eur": {
+          "name": "delivery_min_eur",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delivery_fee_eur": {
+          "name": "delivery_fee_eur",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_memory": {
+          "name": "price_memory",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'activa'"
+        },
+        "is_test": {
+          "name": "is_test",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_red_shops_kind_status": {
+          "name": "idx_red_shops_kind_status",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_red_shops_whatsapp": {
+          "name": "uq_red_shops_whatsapp",
+          "columns": [
+            {
+              "expression": "whatsapp",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "red_shops_kind_check": {
+          "name": "red_shops_kind_check",
+          "value": "kind IN ('fruteria','carniceria','pescaderia')"
+        },
+        "red_shops_status_check": {
+          "name": "red_shops_status_check",
+          "value": "status IN ('activa','pausada','baja')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
     "public.referral_rewards": {
       "name": "referral_rewards",
       "schema": "",
@@ -8397,6 +8744,39 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
+=======
+        "red_shop_id": {
+          "name": "red_shop_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "red_terms": {
+          "name": "red_terms",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_eur": {
+          "name": "max_eur",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ordered_at": {
+          "name": "ordered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ordered_by_user_id": {
+          "name": "ordered_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -8472,6 +8852,39 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
+=======
+        },
+        "idx_shop_orders_red_shop": {
+          "name": "idx_shop_orders_red_shop",
+          "columns": [
+            {
+              "expression": "red_shop_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_shop_orders_ordered_by": {
+          "name": "idx_shop_orders_ordered_by",
+          "columns": [
+            {
+              "expression": "ordered_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "foreignKeys": {
@@ -8513,6 +8926,35 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
+=======
+        },
+        "shop_orders_red_shop_id_red_shops_id_fk": {
+          "name": "shop_orders_red_shop_id_red_shops_id_fk",
+          "tableFrom": "shop_orders",
+          "tableTo": "red_shops",
+          "columnsFrom": [
+            "red_shop_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "shop_orders_ordered_by_user_id_users_id_fk": {
+          "name": "shop_orders_ordered_by_user_id_users_id_fk",
+          "tableFrom": "shop_orders",
+          "tableTo": "users",
+          "columnsFrom": [
+            "ordered_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
         }
       },
       "compositePrimaryKeys": {},

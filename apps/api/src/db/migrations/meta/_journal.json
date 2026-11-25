@@ -782,8 +782,13 @@
     {
       "idx": 116,
       "version": "7",
+<<<<<<< 18580b5ffc70533e13363f86487bbddcce076cf1
       "when": 1795538836211,
       "tag": "0116_household_mimo_cap",
+=======
+      "when": 1795536865041,
+      "tag": "0116_red_tiendas",
+>>>>>>> e14f120fa2cd834f4b7ad211dc9b57b0d27c5d9e
       "breakpoints": true
     }
   ]

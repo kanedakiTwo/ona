@@ -16,6 +16,7 @@
  *   POST   /shop-orders/:id/approve     — the user's decisions → confirmation message
  *   POST   /shop-orders/:id/close       — collected / delivered (ticks the list)
  *   POST   /shop-orders/:id/cancel
+ *   POST   /shop-orders/:id/order       — «Pedir» a Red order (the max the household accepted)
  *   POST   /shop-orders/:id/carrefour-click — the user tapped «Hacer este pedido en Carrefour.es» on a súper card (counts the click, 204)
  *   GET    /shop-extension/status          — ¿ve este usuario «Enviar a <cadena>»? (BASKET_EXTENSION_EMAILS) y sus avisos aceptados
  *   POST   /shop-extension/consent         — acepta el aviso de una cadena antes del primer envío (D-154)
@@ -34,6 +35,7 @@ import {
   basketConsentSchema,
   basketSendResultSchema,
   patchShopOrderSchema,
+  placeRedOrderSchema,
   shopInputSchema,
 } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
@@ -56,6 +58,7 @@ import {
   moveShop,
   patchOrder,
   patchShop,
+  placeRedOrder,
   prepareOrders,
   resolveShortLink,
   saveBasketResult,
@@ -241,6 +244,12 @@ router.post('/shop-orders/:id/close', withOrder(async (req, res) => {
 router.post('/shop-orders/:id/cancel', withOrder(async (req, res) => {
   res.json(await cancelOrder(req.userId!, String(req.params.id)))
 }, 'POST /shop-orders/:id/cancel'))
+
+router.post('/shop-orders/:id/order', withOrder(async (req, res) => {
+  const parsed = placeRedOrderSchema.safeParse(req.body ?? {})
+  if (!parsed.success) return badRequest(res, parsed.error.issues)
+  res.json(await placeRedOrder(req.userId!, String(req.params.id), parsed.data))
+}, 'POST /shop-orders/:id/order'))
 
 // PRO-84: demand test for ordering the súper card on carrefour.es. Counts the
 // click only (`carrefour_click`, props.items = lines); no affiliation.

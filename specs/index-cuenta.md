@@ -88,9 +88,9 @@ Multi-user "shared household" foundation: every authed user has a `primary_house
 
 ## [Roles & Authorization](./roles.md)
 
-Two-role system: `user` (default) + `admin`. Admin role is bootstrapped via `ADMIN_EMAILS` env var — on every login the server reconciles role to env. `requireAdmin` middleware extends `requireAuth` and checks both `role === 'admin'` and `suspended_at IS NULL` per request. Suspended users get 403 with `code: 'SUSPENDED'`. JWT payload only carries `userId`; role is fetched from DB to avoid stale tokens. Frontend auth context exposes role for navbar gating; server still enforces. Read-only `x-metrics-token` exception on fifteen aggregate GETs (pinned by `tokenRoutes.test.ts`). Per-email feature switch (interruptor por email) `BASKET_EXTENSION_EMAILS` for «Enviar a <cadena>» (undo never checks it).
+Two-role system: `user` (default) + `admin`. Admin role is bootstrapped via `ADMIN_EMAILS` env var — on every login the server reconciles role to env. `requireAdmin` middleware extends `requireAuth` and checks both `role === 'admin'` and `suspended_at IS NULL` per request. Suspended users get 403 with `code: 'SUSPENDED'`. JWT payload only carries `userId`; role is fetched from DB to avoid stale tokens. Frontend auth context exposes role for navbar gating; server still enforces. Read-only `x-metrics-token` exception on fifteen aggregate GETs (pinned by `tokenRoutes.test.ts`). Per-email feature switches (interruptor por email): `BASKET_EXTENSION_EMAILS` for «Enviar a <cadena>» (undo never checks it), `RED_TIENDAS_EMAILS` for the Red de tiendas v2 (same rule, `services/emailAllowList.ts`).
 
-**Source**: `apps/api/src/db/schema.ts` (`users.role`, `users.suspended_at`), `apps/api/src/middleware/auth.ts` (`requireAuth`, `requireAdmin`), `apps/api/src/middleware/metricsAuth.ts`, `apps/api/src/config/env.ts` (`ADMIN_EMAILS`, `BASKET_EXTENSION_EMAILS`), `apps/api/src/services/basketExtension.ts`, `apps/web/src/lib/auth.tsx`
+**Source**: `apps/api/src/db/schema.ts` (`users.role`, `users.suspended_at`), `apps/api/src/middleware/auth.ts` (`requireAuth`, `requireAdmin`), `apps/api/src/middleware/metricsAuth.ts`, `apps/api/src/config/env.ts` (`ADMIN_EMAILS`, `BASKET_EXTENSION_EMAILS`, `RED_TIENDAS_EMAILS`), `apps/api/src/services/basketExtension.ts`, `apps/api/src/services/emailAllowList.ts`, `apps/web/src/lib/auth.tsx`
 
 ---
 

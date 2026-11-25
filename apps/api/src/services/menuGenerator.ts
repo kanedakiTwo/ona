@@ -5,7 +5,7 @@ import { loadMatchableRecipes, type RecipeWithCourse } from './matchableRecipes.
 import { mergeRestrictions } from './dietaryRestrictions.js'
 import { withHouseholdRestrictions } from './householdAllergies.js'
 import { recipesMatchingDishes, weekTimeBudgets } from './onboardingPreferences.js'
-import { holidayTimeBudgets, regionFromMemory } from './menuHolidays.js'
+import { holidayTimeBudgets, regionFromMemory, workCapForSlot } from './menuHolidays.js'
 import { menuMetabolicQuality, recipeMetabolicProfile, type MetabolicProfile } from './metabolicScore.js'
 import {
   users,
@@ -24,7 +24,7 @@ import {
 import type { DayMenu, DayTemplate, DayTimeBudget, Meal, Season, Sex, ActivityLevel, LockedSlots, WeekPlan } from '@ona/shared'
 import { applyWeekPlan } from './weekPlan.js'
 import { ensureFridgeRecipe, loadFridgeTerms, recipesUsingFridge, rememberFridge } from './fridgeBoost.js'
-import { normaliseEquipment, type RecipeWithIngredients } from './recipeMatcher.js'
+import { normaliseEquipment, withWorkCapFallback, type MatcherOptions, type RecipeWithIngredients } from './recipeMatcher.js'
 import { findForCourse } from './courseAwareMatcher.js'
 import { proteinKind } from './tasteDeck.js'
 import { dishCountFor, coursesFor } from './menuDishes.js'
@@ -98,6 +98,22 @@ export function mainProteinOf(recipe: Pick<RecipeWithIngredients, 'name' | 'ingr
 /**
  * Build a random menu for one iteration.
  */
+/**
+ * The first recipe found along `tries` (pools in order of preference). With
+ * a work cap (D-1028), every pool is tried within it before any is tried
+ * without it: a 25-minute dish of the whole catalogue wins over a 50-minute
+ * one of the preferred pool.
+ */
+function firstFound(tries: RecipeWithCourse[][], course: Course | null, opts: MatcherOptions): RecipeWithCourse | undefined {
+  return withWorkCapFallback(opts, (o) => {
+    for (const p of tries) {
+      const found = findForCourse(p, course, o) as RecipeWithCourse | undefined
+      if (found) return found
+    }
+    return undefined
+  })
+}
+
 /** Exported for tests (restrictions over the full catalogue, PRO-61). */
 export function buildRandomMenu(
   template: DayTemplate[],
@@ -145,6 +161,13 @@ export function buildRandomMenu(
    * while one fits, `isLightDish`).
    */
   menuRules?: MenuRuleOptions,
+  /**
+   * D-1028 · «30 minutos de tu tiempo como mucho»: per slot, the most
+   * hands-on minutes a drawn dish may ask for, or null on a special occasion
+   * (`workCapForSlot`). Searched first with it, then without it when nothing
+   * fits. Absent = no cap (as before).
+   */
+  workCapOf?: (dayIndex: number, meal: string) => number | null,
 ): { days: DayMenu[]; warnings: string[]; favoritesShort: number } {
   // PRO-373: a base (sofrito, verduras asadas…) is never a dish of the menu,
   // whatever pool the caller passes (`loadMatchableRecipes` already drops them).
@@ -221,9 +244,8 @@ export function buildRandomMenu(
       // Only recipes of that type, with every filter as usual (the school menu too) and the weekly limits.
       const typed = capped(slotPool.filter((r) => r.dishTypes?.includes(spec.type)))
       const tries = [...(onlyFavoriteIds ? [typed.filter((r) => onlyFavoriteIds.has(r.id))] : []), ...everydayTries([typed], everyday, discoveriesLeft)]
-      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null }
-      let picked: RecipeWithCourse | undefined
-      for (const p of tries) if ((picked = findForCourse(p, null, opts) as RecipeWithCourse | undefined)) break
+      const opts = { meal: meal as Meal, season, usedRecipeIds, restrictions, favoriteRecipeIds, likedRecipeIds, bannedRecipeIds, dayIndex, dislikes, availableEquipment, unavailableEquipment, tastes, timeBudget: timeBudgetByDay?.[dayIndex] ?? null, workCap: workCapOf?.(dayIndex, meal) ?? null, workCapExempt: onlyFavoriteIds }
+      const picked = firstFound(tries, null, opts)
       if (picked) {
         if (onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
         usedRecipeIds.add(picked.id)
@@ -331,6 +353,9 @@ export function buildRandomMenu(
           unavailableEquipment,
           tastes,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
+          // D-1028: 30 min of work at most, save a holiday or guests; the favourites of «mis favoritas» never drop.
+          workCap: workCapOf?.(dayIndex, meal) ?? null,
+          workCapExempt: onlyFavoriteIds,
         }
         // Favourites first (PRO-377), even over the protein rule, which only
         // asks for another protein when there is one. «De diario» (PRO-1200)
@@ -340,8 +365,7 @@ export function buildRandomMenu(
         const triesOf = (ps: RecipeWithCourse[][]) => [...(onlyFavoriteIds ? ps.map((p) => p.filter((r) => onlyFavoriteIds.has(r.id))) : []), ...everydayTries(ps, everyday, discoveriesLeft)]
         const light = course !== 'dessert' && !!menuRules?.lightMeals?.includes(meal)
         const tries = light ? [...triesOf(pools.map((p) => p.filter((r) => isLightDish(r)))), ...triesOf(pools)] : triesOf(pools)
-        let picked: RecipeWithCourse | undefined
-        for (const p of tries) if ((picked = findForCourse(p, course, opts) as RecipeWithCourse | undefined)) break
+        const picked = firstFound(tries, course, opts)
         if (picked && light && !isLightDish(picked)) warnings.push(`light_short_${meal}_d${dayIndex}`)
         if (picked && onlyFavoriteIds && !onlyFavoriteIds.has(picked.id)) favoritesShort++
         if (!picked) {
@@ -548,11 +572,16 @@ export async function generateMenu(
   // «Cocino poco» without an answer → ≤ 30 min in total Mon–Fri.
   // Festivos (PRO-226): a weekday holiday of the household's comunidad
   // autónoma takes Saturday's limit (usually none).
-  const timeBudgetByDay = holidayTimeBudgets(
+  const weekTime = holidayTimeBudgets(
     weekTimeBudgets(memory?.time_available?.value, user),
     weekStart,
     regionFromMemory(memory?.region?.value),
-  ).budgets
+  )
+  const timeBudgetByDay = weekTime.budgets
+  // D-1028 · «30 minutos de tu tiempo como mucho», every day; a holiday and
+  // a meal with guests are a special occasion (no cap).
+  const holidayDays = new Set(weekTime.holidays.map((h) => h.dayIndex))
+  const workCapOf = (dayIndex: number, meal: string) => workCapForSlot(dayIndex, meal, { holidayDays, guests: weekPlan?.guests })
 
   // 5b. Onboarding answers: dishes they love join the favourites weighting;
   // time limits come from weekTimeBudgets (onboardingPreferences.ts).
@@ -636,6 +665,7 @@ export async function generateMenu(
       tastes,
       everyday,
       menuRules,
+      workCapOf,
     )
 
     // Verify the menu has at least some recipes
@@ -681,6 +711,8 @@ export async function generateMenu(
           availableEquipment,
           tastes,
           timeBudget: timeBudgetByDay?.[dayIndex] ?? null,
+          // D-1028: the fridge dish only within the slot's work cap (it replaces a drawn one).
+          workCap: workCapOf(dayIndex, meal),
           // PRO-1200: while starting, a fridge recipe «de diario» if one fits.
           everyday: everyday?.discoveries === 0 ? everyday.ids : undefined,
         }),
@@ -735,6 +767,7 @@ export async function generateMenu(
     tastes,
     everyday,
     menuRules,
+    workCapOf,
   )
   wishes(fallback.warnings)
   return withShort({ days: finish(fallback.days), warnings: [...plan.warnings, ...fallback.warnings] })

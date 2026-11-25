@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { CookingPot } from "lucide-react"
-import { recipeMinutes, type CatalogRecipeLike } from "@ona/shared"
+import { workTimeLabel, type CatalogRecipeLike } from "@ona/shared"
 
 /**
  * Catalogue card for `/recipes` ("D · Luz y foto"): photo with ONLY a time
@@ -23,12 +23,14 @@ export type CatalogCardRecipe = CatalogRecipeLike & {
 /** Fraunces at UI sizes: semibold, automatic optical size (not the 144 hero cut of `.font-display`). */
 export const DISPLAY_UI = "[font-family:var(--font-display)] font-[650] tracking-[-0.01em]"
 
-function TimePill({ minutes, className = "" }: { minutes: number; className?: string }) {
+/** D-1028: «25 min de trabajo · 2 h» — the cook's time first, then the total when longer. */
+function TimePill({ label, className = "" }: { label: string; className?: string }) {
   return (
     <span
-      className={`rounded-full bg-paper px-2 py-[3px] text-[12px] font-semibold leading-none text-ink lg:px-[9px] ${className}`}
+      data-testid="recipe-card-time"
+      className={`max-w-[calc(100%-1rem)] truncate rounded-full bg-paper px-2 py-[3px] text-[12px] font-semibold leading-none text-ink lg:px-[9px] ${className}`}
     >
-      {minutes} min
+      {label}
     </span>
   )
 }
@@ -44,7 +46,7 @@ export function RecipeCard({
   recipe: CatalogCardRecipe
   shape?: "tall" | "short"
 }) {
-  const minutes = recipeMinutes(recipe)
+  const time = workTimeLabel(recipe, { short: true })
 
   return (
     <Link
@@ -70,7 +72,7 @@ export function RecipeCard({
             <CookingPot size={32} strokeWidth={1.4} aria-hidden="true" />
           </span>
         )}
-        {minutes != null && <TimePill minutes={minutes} className="absolute bottom-2 left-2 lg:bottom-2.5 lg:left-2.5" />}
+        {time && <TimePill label={time} className="absolute bottom-2 left-2 lg:bottom-2.5 lg:left-2.5" />}
       </span>
       <span className={`${DISPLAY_UI} line-clamp-2 text-[17px] leading-[1.2] lg:text-[19px]`}>
         {recipe.name}

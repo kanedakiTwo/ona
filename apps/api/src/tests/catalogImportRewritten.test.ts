@@ -195,3 +195,25 @@ describe('a batch without reescrita', () => {
     expect(saved[1].course).toBe('main')
   })
 })
+
+describe('D-1028 · «Y si tienes más tiempo…» (moreTime) in a batch', () => {
+  it('goes through the route and is saved with the draft, rewritten or not', async () => {
+    for (const reescrita of [true, false]) {
+      const { deps: d, saved } = deps()
+      const json = rewrittenBatch()
+      if (!reescrita) delete json.reescrita
+      json.recipes[0].moreTime = '  Con garbanzo seco en remojo la víspera y el sofrito a fuego lento, más meloso.  '
+      await importCatalogBatch(throughRoute(json), 'cocina-20', d)
+      expect(saved[0].moreTime).toBe('Con garbanzo seco en remojo la víspera y el sofrito a fuego lento, más meloso.')
+      expect(saved[1].moreTime ?? null).toBeNull()
+    }
+  })
+  it('too long is told in Spanish', () => {
+    const json = rewrittenBatch()
+    json.recipes[0].moreTime = 'a'.repeat(2001)
+    const r = checkCocinaBatch(json)
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.problems.some((p) => p.includes('«Y si tienes más tiempo…» (moreTime)'))).toBe(true)
+  })
+})
+

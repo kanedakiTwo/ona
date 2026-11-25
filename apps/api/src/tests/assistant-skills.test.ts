@@ -24,6 +24,8 @@ vi.mock('../services/menuGenerator.js', () => ({
 vi.mock('../services/recipeMatcher.js', () => ({
   findRecipeForSlot: vi.fn(() => ({ id: 'r-new', name: 'Receta nueva' })),
   normaliseEquipment: (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim(),
+  // D-1028: the real wrapper (with the cap first, then without it).
+  withWorkCapFallback: (o: { workCap?: number | null }, find: (o: unknown) => unknown) => find(o) ?? (o.workCap ? find({ ...o, workCap: null }) : undefined),
 }))
 vi.mock('../services/calorieCalculator.js', () => ({
   calculateMenuCaloriesFromDB: vi.fn(async () => 12345),

@@ -91,6 +91,8 @@ export interface RecipeDish {
   /** Hydrated alongside `imageUrl`. */
   prepTime?: number | null
   totalTime?: number | null
+  /** D-1028: hydrated too, for «Esta semana: … de cocina». */
+  activeTime?: number | null
 }
 
 export interface NoteDish {

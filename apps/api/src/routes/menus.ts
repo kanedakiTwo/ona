@@ -18,7 +18,7 @@ import { prepareFridgeForMenu } from '../services/fridgeReader.js'
 import { currentWeekStart, fromWeekTypeOf, isChildOfHousehold, loadWeekTypeForUser, poolOfChipType, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt, weekTypeMealChange, weekTypeSlotSaving } from '../services/weekType.js'
 import { planWeekType } from '../services/weekTypePlan.js'
 import { currentMenuFit, evaluateAndSaveMenuFit } from '../services/menuFit.js'
-import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
+import { findRecipeForSlot, normaliseEquipment, withWorkCapFallback, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
 import { addDish, removeDishAt, patchDish, reorderDish, coursesFor, moveSlotInWeek, isLeftoverSource } from '../services/menuDishes.js'
@@ -40,7 +40,7 @@ import {
 } from '../services/menuEdits.js'
 import { dayTimeBudget, detectSeason } from '@ona/shared'
 import { schoolDinnerPool } from '../services/schoolMenu.js'
-import { slotTimeBudget } from '../services/menuHolidays.js'
+import { slotTimeBudget, slotWorkCap } from '../services/menuHolidays.js'
 import { requestChannel } from '../services/usageEvents.js'
 import { madridParts } from '../services/madridTime.js'
 import { recipeIngredients, ingredients, recipes, userFavorites } from '../db/schema.js'
@@ -153,6 +153,8 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
       // the same `recipes` row that already gives us the image URL.
       prepTime: recipes.prepTime,
       totalTime: recipes.totalTime,
+      // D-1028: «Esta semana: 2 h 40 min de cocina» sums the work.
+      activeTime: recipes.activeTime,
       // Hydrate course so the UI shows the correct "Entrante / Principal /
       // Postre" eyebrow on multi-dish slots, including legacy rows persisted
       // before course tagging existed.
@@ -167,7 +169,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
   const recipeById = new Map(
     rows.map((r) => [
       r.id,
-      { name: r.name, imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime, course: r.course, dishTypes: r.dishTypes ?? null },
+      { name: r.name, imageUrl: r.imageUrl, prepTime: r.prepTime, totalTime: r.totalTime, activeTime: r.activeTime, course: r.course, dishTypes: r.dishTypes ?? null },
     ]),
   )
   const hydratedDays = days.map((day) => {
@@ -191,6 +193,7 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
             imageUrl: info?.imageUrl ?? null,
             prepTime: info?.prepTime ?? null,
             totalTime: info?.totalTime ?? null,
+            activeTime: info?.activeTime ?? null,
             dishTypes: info?.dishTypes ?? null,
             // Persisted course (set when the dish was added) wins; otherwise
             // hydrate from the joined recipes.course so the UI eyebrow shows
@@ -761,7 +764,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal/week-type', async (req: AuthReque
       const pickCtx = await loadSlotPickContext(menu, req.userId!)
       const current = slot.dishes[change.at]
       const { pool, options } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIdsBut(days, dayIndex, meal))
-      const picked = findForCourse(poolOfChipType(pool, change.type, current?.kind === 'recipe' ? current.recipeId : null), null, options)
+      const picked = withWorkCapFallback(options, (o) => findForCourse(poolOfChipType(pool, change.type, current?.kind === 'recipe' ? current.recipeId : null), null, o))
       if (picked) {
         const dish: RecipeDish = { kind: 'recipe', recipeId: picked.id, recipeName: picked.name, course: picked.course ?? null, fromWeekType: { type: change.type } }
         newDishes = change.at < slot.dishes.length ? slot.dishes.map((d, i) => (i === change.at ? dish : d)) : [...slot.dishes, dish]
@@ -852,7 +855,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       // that type, as PUT does; none that fits → 409, nothing written.
       const pickCtx = await loadSlotPickContext(menu, req.userId!)
       const { pool, options } = await slotPickOptions(pickCtx, menu, dayIndex, meal, usedRecipeIdsBut(days, dayIndex, meal))
-      const picked = findForCourse(poolOfChipType(pool, chipType), null, options)
+      const picked = withWorkCapFallback(options, (o) => findForCourse(poolOfChipType(pool, chipType), null, o))
       if (!picked) {
         const label = dishTypeInfo(chipType)?.label ?? chipType
         res.status(409).json({ error: `No hay ninguna receta de «${label}» que encaje con esta comida.`, code: 'NO_RECIPE_OF_TYPE' })
@@ -909,7 +912,7 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
       // Same loader as the weekly generator: visibility, fit maps, frequency, allergens.
       const recipesWithIngredients = await schoolDinnerPool(await loadMatchableRecipes(req.userId!), menu, dayIndex, meal)
 
-      const newRecipe = findRecipeForSlot(recipesWithIngredients, {
+      const newRecipe = withWorkCapFallback({
         meal: meal as Meal,
         season: detectSeason(),
         usedRecipeIds,
@@ -920,7 +923,9 @@ router.post('/menu/:menuId/day/:day/meal/:meal', async (req: AuthRequest, res) =
         unavailableEquipment: unavailEquip2,
         tastes: tastes2,
         timeBudget,
-      })
+        // D-1028: 30 min of work at most, save on a holiday.
+        workCap: slotWorkCap(memory2, menu.weekStart, dayIndex),
+      }, (o) => findRecipeForSlot(recipesWithIngredients, o))
       if (!newRecipe) {
         // Nothing fits (no breakfast in the catalogue, or all used this
         // week): the meal is still added, empty, and the user picks its
@@ -1902,6 +1907,8 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
       unavailableEquipment: unavailEquip4,
       tastes: tastesR,
       timeBudget: timeBudgetR,
+      // D-1028: 30 min of work at most, save on a holiday.
+      workCap: slotWorkCap(memR, menu.weekStart, day),
     }
 
     // Decide which course to look for, based on the week type's dishes for
@@ -1967,8 +1974,11 @@ router.post('/menu/:menuId/day/:day/meal/:meal/dish/random', async (req: AuthReq
         : (nextCourse === 'main' ? null : nextCourse)
     // First try with the diversity filter applied; if no candidates, fall back
     // to the full pool — the user gets *something* rather than nothing.
-    let picked = findForCourse(diversityFilteredPool, courseForMatcher, matcherOptionsR)
-    if (!picked) picked = findForCourse(recipesWithIngredientsR, courseForMatcher, matcherOptionsR)
+    // D-1028: both pools within the work cap first, then without it.
+    const picked = withWorkCapFallback(
+      matcherOptionsR,
+      (o) => findForCourse(diversityFilteredPool, courseForMatcher, o) ?? findForCourse(recipesWithIngredientsR, courseForMatcher, o),
+    )
     if (!picked) {
       res.status(409).json({ error: 'No hay recetas disponibles ahora mismo.' }); return
     }

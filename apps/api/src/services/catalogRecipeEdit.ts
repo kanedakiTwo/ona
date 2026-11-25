@@ -55,6 +55,8 @@ export interface CatalogRecipePatch {
   cookTime?: number | null
   activeTime?: number | null
   tags?: string[]
+  /** D-1028: «Y si tienes más tiempo…»; '' or null clears it. */
+  moreTime?: string | null
   /** Terms of the steps check the office has checked by hand («hueso»). */
   acceptMentions?: string[]
   /** Why: goes to the audit row. */
@@ -127,10 +129,11 @@ interface Snapshot extends Record<string, unknown> {
   cookTime: number | null
   activeTime: number | null
   tags: string[]
+  moreTime: string | null
 }
 
 function snapshot(
-  r: { ingredients: readonly RecipeIngredientWriteInput[]; steps: readonly RecipeStepWriteInput[]; prepTime?: number | null; cookTime?: number | null; activeTime?: number | null; tags?: string[] },
+  r: { ingredients: readonly RecipeIngredientWriteInput[]; steps: readonly RecipeStepWriteInput[]; prepTime?: number | null; cookTime?: number | null; activeTime?: number | null; tags?: string[]; moreTime?: string | null },
   allergens: readonly string[],
   names: ReadonlyMap<string, string>,
 ): Snapshot {
@@ -149,6 +152,7 @@ function snapshot(
     cookTime: r.cookTime ?? null,
     activeTime: r.activeTime ?? null,
     tags: [...(r.tags ?? [])],
+    moreTime: r.moreTime?.trim() || null,
   }
 }
 
@@ -187,6 +191,7 @@ async function loadCatalogRecipe(id: string, db: Db): Promise<{ input: RecipeWri
     tips: row.tips,
     substitutions: row.substitutions,
     storage: row.storage,
+    moreTime: row.moreTime,
     advancePrep: row.advancePrep,
     tags: row.tags ?? [],
     internalTags: row.internalTags ?? [],
@@ -231,6 +236,7 @@ export function applyPatch(saved: RecipeWriteInput, patch: CatalogRecipePatch): 
     if (patch[k] !== undefined) out[k] = patch[k]
   }
   if (patch.tags) out.tags = patch.tags
+  if (patch.moreTime !== undefined) out.moreTime = patch.moreTime?.trim() || null
   return out
 }
 

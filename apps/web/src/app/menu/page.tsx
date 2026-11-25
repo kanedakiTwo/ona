@@ -72,6 +72,7 @@ import { WeekGridView } from "@/components/menu/WeekGridView"
 import { WeekStrip } from "@/components/menu/WeekStrip"
 import { BannedRecipesPanel } from "@/components/menu/BannedRecipesPanel"
 import { MenuFitLine } from "@/components/menu/MenuFitLine"
+import { WeekCookingLine } from "@/components/menu/WeekCookingLine"
 import { WeekActionsSheet } from "@/components/menu/WeekActionsSheet"
 import { ConfirmSheet } from "@/components/menu/MenuSheet"
 import { MenuDesktop } from "@/components/menu/MenuDesktop"
@@ -794,6 +795,8 @@ export default function MenuPage() {
   const extras = (
     <>
       {menu && !isPastWeek && <MenuFitLine fit={menu.fit} className="mx-5 lg:mx-0" />}
+      {/* D-1028: the cook's minutes of the week on screen. */}
+      {menu && <WeekCookingLine menu={menu} className="mx-5 lg:mx-0" />}
       {banned.length > 0 && menu && (
         <BannedRecipesPanel
           className="mx-4 lg:mx-0"

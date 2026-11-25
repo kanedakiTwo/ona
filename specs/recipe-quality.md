@@ -48,6 +48,7 @@ The previous seed contained recipes that referenced ingredients in their steps t
 - Recipe has no `equipment` set → curator may want to add at least one tool
 - `NOTE_STARTS_WITH_NUMBER` (PRO-184) — an ingredient's note starts with a number («6 dientes, laminados», «200 g de…») → put that amount in quantity + unit (e.g. `6 u`) and keep only the how in the note («laminados»). The ficha still scales a countable amount at the start of a note (see [Recipes → Quantity Scaling](./recipes.md)), but new recipes (the catalogue import of PRO-154) shouldn't rely on it
 - `BUY_*` — the Shoppability checks below
+- `LONG_WORK_NO_MORE_TIME` (D-1028, catalogue recipes only — `persistRecipe` passes `catalog: true` when there is no author; never on a household's own recipe) — a lunch or dinner that isn't `weekends_only` asks for more than 30 min of work (`activeTime`, else `prepTime`) and has no `moreTime` → «Pide N min de trabajo y no tiene «Y si tienes más tiempo…». Si es de diario, haz su versión rápida (30 min de trabajo como mucho) y cuenta ahí la larga.» The office sees it in the answer of `PATCH /admin/catalog-recipes/:id`. See Identity below
 
 ### Shoppability (`BUY_*` warnings, 2026-10-08)
 
@@ -61,6 +62,17 @@ Reuses the shop-order buy rules ([shop-orders.md](./shop-orders.md) → Buy rule
 Fixing it in the editor (PRO-90): typing an amount on a row "al gusto" / "pizca" switches its unit to a buyable one — "ud" when the shop sells it by the piece (jengibre, cilantro), "g" otherwise (`unitAfterQuantity`) — so it isn't saved as "1 al gusto"; the selector shows `u` as "ud" and `al_gusto` as "al gusto". The editor also keeps each row's note and section through a save (it used to drop them, which brought `BUY_NEEDS_CHOICE` back), and after saving it waits for the recipe to be re-read before going back to the detail, so the card there reflects what was saved. Tests: `recipeShoppingUnits.test.ts`, e2e `recipe-shopping-fix.spec.ts` (import → fix → save; "Corregir en la receta" → fix → save).
 
 The 2026-10-08 audit of the 81 production recipes fixed every hit by hand (30 recipes: cuts in notes, quantities for herbs and al-gusto rows, a dorada instead of salmón in "Dorada a la marsellesa", jamón de york in "Sándwich mixto") and recomputed their nutrition; all 81 now pass.
+
+## Identity (D-1028)
+
+Cocina's reviewer scores every catalogue recipe against the kitchen manifesto (`ona-hq/departments/cocina/manifiesto.md`, Miguel 2026-11-25; diet safety always goes first) on **four notes**, and can veto it:
+
+- **Rica** — worth what it costs: a lot of result for little effort.
+- **Tiempo de trabajo** — the cook's time (`activeTime`), not the total: 30 minutes at most for an everyday dish; the oven or the pot may take longer.
+- **Sana sin dogma** — real produce, vegetables and pulses often, little ultra-processed; no «light», no health promises.
+- **Nuestra** — Spanish and Mediterranean home cooking, Portugal, Italy, Greece, and the world (Japan, Thailand, Vietnam, Malaysia, Peru, Mexico) with what a Spanish supermarket has; product dishes count as recipes.
+
+**An everyday recipe of more than 30 minutes of work needs its quick version** (the shortcut: tinned pulses, pressure cooker, a frozen base, double and freeze). The long way goes in **«Y si tienes más tiempo…»** (`recipes.more_time`, shown at the end of the ficha); without it the recipe doesn't go in as everyday. The reviewer applies it in Cocina's batches (`check_tanda.mts` in ona-hq); in the product, `LONG_WORK_NO_MORE_TIME` warns without blocking, and the menu keeps everyday dishes within 30 minutes of work ([Menus → Time to cook](./menus.md)).
 
 ## LLM Regeneration Pipeline
 
@@ -88,7 +100,7 @@ Minimums are a **base or dressing** amount, not a main's, for what goes into a s
 - Regeneration is never automatic. A curator reviews `regen-passed.jsonl` before applying
 - The regeneration script does not call USDA — nutrition is recomputed downstream once the ingredient mappings are in place (see [Nutrition](./nutrition.md))
 - Ingredient name matching is a deterministic local algorithm — no LLM call inside the validator. The orphan check (is the recipe's own ingredient mentioned?) is loose: stemming + Levenshtein ≤ 1 + head noun. The not-listed check is strict: whole words, singular/plural, homographs in context (rule 2)
-- Tests: `recipeLint.test.ts`; `recipeLintFalsePositives.test.ts` — one case per rejection of the `cocina-01` batch (invented steps) and what must keep failing; `stepDietMentions.test.ts` — rule 2b, «Lentejas guisadas» through the reviewer, and the catalogue pass
+- Tests: `recipeLint.test.ts` (also `LONG_WORK_NO_MORE_TIME`); `recipeLintFalsePositives.test.ts` — one case per rejection of the `cocina-01` batch (invented steps) and what must keep failing; `stepDietMentions.test.ts` — rule 2b, «Lentejas guisadas» through the reviewer, and the catalogue pass
 
 ## Related specs
 

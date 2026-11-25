@@ -121,6 +121,7 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
         tags: input.tags,
         internalTags: input.internalTags,
         tips: input.tips,
+        moreTime: input.moreTime ?? null,
         // PRO-1015: the original's address from the batch file, so the ficha links it.
         sourceUrl: input.catalogSource.url ?? null,
         sourceType: input.catalogSource.url ? detectSourceType(input.catalogSource.url) : null,

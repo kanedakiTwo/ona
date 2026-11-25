@@ -15,6 +15,15 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 - **Origen:** empezó como un proyecto personal de Miguel, su fundador, para no perder tiempo en lo que no es cocinar. Lo usó en casa durante cuatro años y pensó que podía servir a más gente.
 - **Cómo cocina:** de temporada, variado y casero, con verdura todos los días, menos ultraprocesados en la semana, aprovechando lo que hay en la despensa y tirando menos comida. Sin contar calorías.
 
+## Cómo cocinamos
+
+- **En una frase:** comida rica de verdad, de aquí y de todo el mundo, con 30 minutos de tu tiempo como mucho. El horno o la olla pueden tardar más: lo que cuenta es lo que estás tú delante.
+- **Atajos de casa:** legumbre de bote, olla rápida, bases hechas de antemano y congeladas por raciones, hacer el doble y congelar la mitad. Cuando un plato gana con más tiempo, al final de su ficha «Y si tienes más tiempo…» cuenta cómo mejorarlo.
+- **El producto manda:** un buen pescado a la plancha o un chuletón con patatas son recetas de pleno derecho, aunque tengan tres pasos.
+- **De aquí y del mundo:** cocina española y mediterránea, y también Japón, Tailandia, Vietnam, Perú o México, con lo que hay en un súper español. Con niños, los platos del mundo llevan su versión para ellos: sin picante y con la salsa aparte.
+- **Sin dogma:** producto de verdad, verdura y legumbre a menudo, poco ultraprocesado; la mantequilla y el aceite bueno, sí. Sin contar calorías y sin promesas de salud.
+- **En el menú:** de diario, nada que pida más de 30 minutos de trabajo; en un festivo, con invitados o si eliges tú el plato, lo que quieras.
+
 ## Qué puedes hacer con Mimoia
 
 - **Menú de la semana:** Mimoia te propone comidas y cenas para toda la semana según tu hogar, tus gustos y tus restricciones. Puedes cambiar un plato (buscándolo, filtrando por tipo, como «Legumbres» o «Cremas y sopas», o dejando que elija Mimoia), pedir que una receta no salga más esa semana, mover comidas de día, poner notas («comemos fuera»), saltar un día, aprovechar sobras para otro día y rehacer la semana. Al rehacer la semana se quedan los platos que elegiste tú; en «Más opciones» de cada comida puedes marcar o quitar «Que no cambie si rehago la semana». Si un día comes fuera, puedes marcar esa comida como «táper» (en el menú, en la plantilla para días fijos o diciéndole a Mimo «mañana me llevo táper»): la cena de la víspera se hace con una ración más y la lista ya lo cuenta. Si ya tienes un plato hecho (un táper de la nevera o del congelador, unas sobras, «tengo crema de puerros hecha»), Mimo lo pone en el día que digas y no suma nada a la lista de la compra.

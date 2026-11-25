@@ -74,6 +74,11 @@ export {
   recipeTotalMinutes,
   recipeActiveMinutes,
   fitsTimeBudget,
+  EVERYDAY_WORK_MINUTES,
+  fitsEverydayWork,
+  workTimeLabel,
+  weekWorkMinutes,
+  minutesText,
   advancePrepLabel,
 } from './types/cookingTime.js'
 export type { CookingStyle } from './types/cookingStyle.js'
@@ -370,7 +375,7 @@ export type { ShoppingGroup } from './buy/listGroup.js'
 export { basketBaseName, basketLineOrigin, basketMayBeInCart, basketSearch, basketSnapshot, extensionKey, isLiveBasketSend, orderMembers, buildExtensionBasket, sourceItemsForBasketKey } from './buy/extensionBasket.js'
 export type { OrderMember, OrderMemberInput } from './buy/extensionBasket.js'
 
-export { buildRecipePayload } from './recipeFormPayload.js'
+export { buildRecipePayload, moreTimePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'
 export { RATING_PROMPT_CHOICES, RATING_PROMPT_COOLDOWN_DAYS, shouldAskRating } from './ratingPrompt.js'
 export { FEATURED_RECIPES, RETIRED_RECIPE_TAG, BASE_RECIPE_TAG, isBaseRecipe, EVERYDAY_RECIPE_TAG, isEverydayRecipe } from './featuredRecipes.js'

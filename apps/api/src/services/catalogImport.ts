@@ -95,6 +95,8 @@ export interface CatalogDraftInput {
   fridgeDays?: number | null
   /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día», from the batch. */
   featuredOn?: string | null
+  /** D-1028: «Y si tienes más tiempo…», from the batch as Cocina wrote it. */
+  moreTime?: string | null
   ingredients: DraftIngredient[]
   /** The source's steps. Read to rewrite them; never saved. */
   sourceSteps: string[]
@@ -179,6 +181,8 @@ export interface PersistDraftInput {
   fridgeDays: number | null
   /** PRO-1099: «la receta del día» of that day (AAAA-MM-DD); null = none. */
   featuredOn?: string | null
+  /** D-1028: «Y si tienes más tiempo…»; null = none. */
+  moreTime?: string | null
   ingredients: Array<{
     ingredientId: string
     quantity: number
@@ -614,6 +618,7 @@ export async function importCatalogRecipe(
     tips: rewrite.tips?.trim() || null,
     ...storageFrom(rewrite, draft),
     featuredOn: isIsoDay(draft.featuredOn) ? draft.featuredOn : null,
+    moreTime: draft.moreTime?.trim() || null,
     ingredients: matched.map((m, i) => ({
       ingredientId: m.ingredientId as string,
       quantity: m.quantity,
@@ -735,6 +740,7 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
       freezable: typeof r.freezable === 'boolean' ? r.freezable : null,
       fridgeDays: cleanFridgeDays(r.fridgeDays),
       featuredOn: isIsoDay(r.featuredOn) ? r.featuredOn : null,
+      moreTime: typeof r.moreTime === 'string' && r.moreTime.trim() ? r.moreTime.trim() : null,
       ingredients: (r.ingredients ?? []).map((i: any) => ({
         name: String(i.name ?? ''),
         quantity: Number(i.qty ?? i.quantity ?? 0),

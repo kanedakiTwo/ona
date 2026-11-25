@@ -25,7 +25,7 @@ import {
 import { INGREDIENT_RANGES, globalCeiling, type QuantityRange } from './recipeLint.ranges.js'
 import { shoppabilityIssues } from './recipeShoppability.js'
 import { cookingMediumFactor } from './nutrition/cookingMedium.js'
-import { noteStartsWithNumber } from '@ona/shared'
+import { EVERYDAY_WORK_MINUTES, noteStartsWithNumber, recipeActiveMinutes } from '@ona/shared'
 import { DIET_CATEGORY_LABEL, nameHasTerm, unlistedDietMentions } from './stepDietMentions.js'
 import { isDayBeforeWait } from './recipeWaitTime.js'
 
@@ -63,6 +63,12 @@ export interface RecipeInput {
   servings?: number | null
   prepTime?: number | null
   cookTime?: number | null
+  /** D-1028: hands-on minutes (else `prepTime`) for LONG_WORK_NO_MORE_TIME. */
+  activeTime?: number | null
+  /** D-1028: «Y si tienes más tiempo…». */
+  moreTime?: string | null
+  /** `weekends_only` recipes are for a calm day: no LONG_WORK_NO_MORE_TIME. */
+  frequency?: string | null
   difficulty?: Difficulty
   meals?: Meal[]
   seasons?: Season[]
@@ -88,6 +94,8 @@ export interface LintOptions {
   ingredientCatalog: CatalogIngredient[]
   /** When true, suppresses QUANTITY_OUT_OF_RANGE errors. Other rules are unaffected. */
   force?: boolean
+  /** D-1028: a catalogue recipe (no author): Cocina's identity checks apply (warnings only). */
+  catalog?: boolean
 }
 
 export interface LintIssue {
@@ -845,6 +853,20 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     named.map(({ ing, cat }) => ({ name: cat.name, quantity: ing.quantity, unit: ing.unit, note: ing.note, optional: ing.optional })),
   )) {
     warnings.push({ code: issue.code, message: issue.message, path: `ingredients[${named[issue.index].i}]` })
+  }
+
+  // LONG_WORK_NO_MORE_TIME (D-1028, catalogue only, never blocks): an
+  // everyday lunch or dinner that asks for more than 30 min of work needs its
+  // quick version, with the long one told in «Y si tienes más tiempo…».
+  if (opts.catalog && recipe.frequency !== 'weekends_only' && (recipe.meals ?? []).some((m) => m === 'lunch' || m === 'dinner')) {
+    const work = recipeActiveMinutes({ activeTime: recipe.activeTime, prepTime: recipe.prepTime })
+    if (work != null && work > EVERYDAY_WORK_MINUTES && !recipe.moreTime?.trim()) {
+      warnings.push({
+        code: 'LONG_WORK_NO_MORE_TIME',
+        message: `Pide ${work} min de trabajo y no tiene «Y si tienes más tiempo…». Si es de diario, haz su versión rápida (${EVERYDAY_WORK_MINUTES} min de trabajo como mucho) y cuenta ahí la larga.`,
+        path: 'moreTime',
+      })
+    }
   }
 
   // NO_EQUIPMENT

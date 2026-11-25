@@ -36,6 +36,7 @@ import { db } from '../db/connection.js'
 import { ingredients, menuEdits, menus, recipeIngredients, recipeSteps, recipes, shoppingLists, users } from '../db/schema.js'
 import { compileRestrictions, violatesRestrictions, type RestrictableRecipe } from './dietaryRestrictions.js'
 import { findForCourse } from './courseAwareMatcher.js'
+import { withWorkCapFallback } from './recipeMatcher.js'
 import { madridParts, madridWeekStart } from './madridTime.js'
 import { recordMenuEdits, slotDiff, type MenuEditChange } from './menuEdits.js'
 import { loadMenuRestrictions, loadSlotPickContext, slotPickOptions, type SlotPickContext } from './menuSlotPick.js'
@@ -298,7 +299,7 @@ async function reviewMenu(
     handPicked: (day, meal, id) => handPicked.has(`${day}:${meal}:${id}`),
     pick: async (day, meal, course, used) => {
       const { pool, options } = await slotPickOptions(await getCtx(), pickMenu, day, meal, used)
-      const found = findForCourse(pool, course ?? null, options)
+      const found = withWorkCapFallback(options, (o) => findForCourse(pool, course ?? null, o))
       return found && !violatesRestrictions(found, rules) ? found : null
     },
     recipeName: (id) => checked.get(id)?.name,

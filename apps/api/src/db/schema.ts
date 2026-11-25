@@ -323,6 +323,12 @@ export const recipes = pgTable('recipes', {
   substitutions: text('substitutions'),
   storage: text('storage'),
   /**
+   * D-1028: «Y si tienes más tiempo…» — how the quick version gets better
+   * with more time (the slow sofrito, the dried pulse soaked overnight…).
+   * Public, shown at the end of the ficha. Null = no section.
+   */
+  moreTime: text('more_time'),
+  /**
    * PRO-372: «Se puede congelar» / «No se congela» and «Aguanta N días en
    * nevera» seals on the ficha. Null = no data yet (no seal). Filled by
    * Cocina in the batch, by the rewriter, or by the boot backfill

@@ -401,6 +401,8 @@ export function recipeDetailsSummary(r: {
   householdNote?: HouseholdRecipeNote | null
   /** PRO-1037: the minutes were estimated from the steps, not given. */
   timesEstimated?: boolean
+  /** D-1028: «Y si tienes más tiempo…» of the recipe. */
+  moreTime?: string | null
 }): string {
   const label = timesLabel(r)
   const minutes = label ? `${label}${r.timesEstimated ? ', estimado' : ''}` : '? min'
@@ -418,6 +420,8 @@ export function recipeDetailsSummary(r: {
   if (r.householdNote !== undefined) lines.push(...householdNoteLines(r.householdNote))
   // PRO-1071: «la nota de trucos» was read as the household's note (2026-11-01).
   if (r.tips) lines.push(`Trucos de la receta (vienen con la receta, no son la nota del hogar): ${untrustedText(r.tips, 400)}`)
+  // D-1028: the slower, better version, for when they have time.
+  if (r.moreTime?.trim()) lines.push(`Y si tiene más tiempo (lo dice la receta): ${untrustedText(r.moreTime, 600)}`)
   if (r.sourceUrl) lines.push(`Receta original (enlace): ${r.sourceUrl}`)
   const out = lines.join('\n')
   return out.length > 4000 ? `${out.slice(0, 3990)}…` : out
@@ -581,7 +585,7 @@ export function pickRecipeByName<T extends { name: string; authorId?: string | n
 
 const getRecipeDetails: SkillDefinition = {
   name: 'get_recipe_details',
-  description: 'Busca una receta (del catalogo o del usuario) y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, minutos en total y de trabajo, trucos, el enlace a la receta original (video o web) si lo tiene y la nota y sustituciones que el hogar apunto en ella (las que ve en la app). Usala para explicar como se hace, guiar paso a paso, dar el enlace o contestar que lleva. Si pregunta por un plato del menu ("la receta de hoy", "la cena del jueves", "¿lo de hoy lleva pan?"), pasa day y meal (no el nombre): lee la receta que esta en el menu ese dia, nunca otra que se llame parecido. Por nombre, mira primero las recetas del menu de esta semana. Si el plato esta en el menu, pasa servings con las raciones que da get_todays_menu o get_weekly_menu para esa comida: las cantidades vuelven ya calculadas para esas raciones.',
+  description: 'Busca una receta (del catalogo o del usuario) y devuelve sus detalles: ingredientes con cantidades, pasos numerados, raciones, minutos en total y de trabajo, trucos, «Y si tienes más tiempo…» (como mejorarla con más tiempo), el enlace a la receta original (video o web) si lo tiene y la nota y sustituciones que el hogar apunto en ella (las que ve en la app). Usala para explicar como se hace, guiar paso a paso, dar el enlace o contestar que lleva. Si pregunta por un plato del menu ("la receta de hoy", "la cena del jueves", "¿lo de hoy lleva pan?"), pasa day y meal (no el nombre): lee la receta que esta en el menu ese dia, nunca otra que se llame parecido. Por nombre, mira primero las recetas del menu de esta semana. Si el plato esta en el menu, pasa servings con las raciones que da get_todays_menu o get_weekly_menu para esa comida: las cantidades vuelven ya calculadas para esas raciones.',
   parameters: {
     type: 'object',
     properties: {
@@ -648,6 +652,7 @@ const getRecipeDetails: SkillDefinition = {
       sourceUrl: recipe.sourceUrl,
       householdNote,
       timesEstimated: (recipe.internalTags ?? []).includes(TIMES_ESTIMATED_TAG),
+      moreTime: recipe.moreTime ?? null,
     })
     const withNotices = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
     // PRO-1071: whose recipe it is (Mimo called Carmen's own puchero «del catálogo»).
@@ -668,6 +673,7 @@ const getRecipeDetails: SkillDefinition = {
         seasons: recipe.seasons,
         steps,
         sourceUrl: recipe.sourceUrl ?? null,
+        moreTime: recipe.moreTime ?? null,
         ingredients: scaledRows,
         dietNotices,
         householdNote,
@@ -3286,6 +3292,7 @@ const addRecipeToMine: SkillDefinition = {
           tips: full.tips,
           substitutions: full.substitutions,
           storage: full.storage,
+          moreTime: full.moreTime,
           nutritionPerServing: full.nutritionPerServing,
           tags: full.tags ?? [],
           dishTypes: full.dishTypes ?? null,

@@ -148,6 +148,8 @@ export interface RecipeWriteInput {
   tips?: string | null
   substitutions?: string | null
   storage?: string | null
+  /** D-1028: «Y si tienes más tiempo…». */
+  moreTime?: string | null
   /** PRO-220. Undefined on an update keeps what the recipe had (the edit form doesn't send it). */
   advancePrep?: Array<{ text: string; hoursBefore: number }>
   tags?: string[]
@@ -497,6 +499,9 @@ export async function persistRecipe(
     servings: input.servings,
     prepTime: input.prepTime ?? null,
     cookTime: input.cookTime ?? null,
+    activeTime: input.activeTime ?? null,
+    moreTime: input.moreTime ?? null,
+    frequency: input.frequency ?? null,
     difficulty: input.difficulty,
     meals: input.meals,
     seasons: input.seasons ?? [],
@@ -519,6 +524,8 @@ export async function persistRecipe(
   const lintResult: LintResult = lintRecipe(lintInput, {
     ingredientCatalog: catalog.lint,
     force: opts.force,
+    // D-1028: Cocina's identity checks, only on catalogue recipes (warnings).
+    catalog: opts.authorId === null,
   })
   if (!lintResult.ok) {
     if (!opts.softLint) {
@@ -582,6 +589,7 @@ export async function persistRecipe(
       tips: textOrNull(input.tips),
       substitutions: textOrNull(input.substitutions),
       storage: textOrNull(input.storage),
+      moreTime: textOrNull(input.moreTime),
       nutritionPerServing: aggregate.perServing,
       nutritionIncomplete: aggregate.incomplete,
       tags: input.tags ?? [],

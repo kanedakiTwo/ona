@@ -67,6 +67,11 @@
  *   text (mark_meal_eaten with dish, or set_meal_note), never as a new
  *   recipe; the menu's dish left unmade gets one offer of another day. A
  *   recipe only when asked («guárdamela»).
+ * - `cocina-rapida` (D-1028, the kitchen manifesto, 2026-11-25): Mimo talks
+ *   like a friend who cooks well and fast — no health promises («detox»,
+ *   «quema grasa»…); a dish of the world for a household with children comes
+ *   with their version (no spice, the sauce apart); an everyday suggestion of
+ *   more than 30 minutes of work says so.
  */
 import { SIGNUP_FORBIDDEN_PHRASES } from '../whatsapp/signupReply.js'
 import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffects } from './healthGuard.js'
@@ -74,7 +79,7 @@ import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffe
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'despensa-una-llamada'
+export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'despensa-una-llamada' | 'cocina-rapida'
 
 export interface MimoEvalCase {
   id: string
@@ -109,6 +114,8 @@ export interface MimoEvalCase {
   toolInput?: { name: string; match: RegExp[] }
   /** Live eval: the turn is the WhatsApp sign-up (its prompt block and complete_onboarding). */
   onboarding?: boolean
+  /** `cocina-rapida`: there are children at home (their version is due). */
+  kids?: boolean
   /** What Mimo actually answered (literal, from the household's feedback). */
   badReply: string
 }
@@ -123,6 +130,23 @@ export interface MimoEvalToolCall {
 export const SAYS_AI_RE = /\b(ia|inteligencia artificial)\b/
 /** PRO-1169: «soy una persona», «soy humano»… but not «no soy una persona» (folded text). */
 export const SAYS_PERSON_RE = /(?<!\bno )\bsoy (una persona|un humano|una humana|humano|humana|de carne y hueso)\b/
+
+/** D-1028: a health promise about a dish (folded text). */
+export const HEALTH_PROMISE_RE = /\b(detox|desintoxic\w*|quema(r|n)? grasas?|antiinflamatori[oa]s?|depurativ[oa]s?|adelgaza\w*)\b/
+/** D-1028: the children's version — children named and the spice or the sauce kept apart (folded text). */
+const KIDS_RE = /\b(nin[oa]s|peques?|crios)\b/
+const KIDS_VERSION_RE = /(sin picante|aparte|apartas?|sin la salsa|salsa (a )?parte)/
+/** D-1028: «50 min de trabajo», «1 h de trabajo» (folded text): the most hands-on minutes the reply names. */
+export function workMinutesNamed(text: string): number {
+  let max = 0
+  for (const m of text.matchAll(/(\d+)\s*(h|horas?|min|minutos)\s+(de trabajo|tuyos|de tu tiempo|delante)/g)) {
+    const n = Number(m[1]) * (m[2].startsWith('h') ? 60 : 1)
+    if (n > max) max = n
+  }
+  return max
+}
+/** D-1028: why a long dish is fine today (folded text). */
+const SAYS_SPECIAL_RE = /(festivo|invitad|fin de semana|con calma|si tienes (mas )?tiempo|ocasion especial|mas de (media hora|30 min))/
 
 /** PRO-1294: the tools that write the pantry; a dictation goes in one call of them. */
 export const PANTRY_WRITE_TOOLS = ['update_pantry', 'mark_in_stock']
@@ -422,6 +446,10 @@ export function milkAllergyProblems(reply: string): string[] {
  * - `error-tecnico` / `recita-lista` / `una-por-producto`
  *   (`despensa-una-llamada`): reports technical errors instead of asking,
  *   reads the dictation back, or (live) wrote it in more than one call.
+ * - `promesa-salud` / `sin-version-ninos` / `largo-sin-decirlo`
+ *   (`cocina-rapida`): a health promise, no children's version (no spice,
+ *   the sauce apart) with children at home, or more than 30 minutes of work
+ *   on an ordinary day without saying so.
  */
 export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: string[], toolTrace?: MimoEvalToolCall[]): string[] {
   const text = fold(reply)
@@ -471,6 +499,11 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
   if (c.check === 'primer-menu') {
     if (SIGNUP_FORBIDDEN_PHRASES.some((re) => re.test(text))) problems.push('excusa-el-menu')
     if ((reply.match(/\?/g) ?? []).length > 1) problems.push('dos-preguntas')
+  }
+  if (c.check === 'cocina-rapida') {
+    if (HEALTH_PROMISE_RE.test(text)) problems.push('promesa-salud')
+    if (c.kids && !(KIDS_RE.test(text) && KIDS_VERSION_RE.test(text))) problems.push('sin-version-ninos')
+    if (workMinutesNamed(text) > 30 && !SAYS_SPECIAL_RE.test(text)) problems.push('largo-sin-decirlo')
   }
   if (c.check === 'despensa-una-llamada') {
     if (TECH_ERROR_RE.test(text)) problems.push('error-tecnico')
@@ -1102,5 +1135,37 @@ export const MIMO_EVAL_CASES: MimoEvalCase[] = [
     expect: /fuet/,
     mustCallOneOf: PANTRY_WRITE_TOOLS,
     badReply: 'He apuntado en la nevera: leche, yogures naturales, huevos, mantequilla, queso fresco, jamón york, pechugas de pollo, carne picada, salmón, zanahorias, calabacín, pimientos rojos, tomates, lechugas, espinacas, champiñones, limones, nata para cocinar y tofu. Error al añadir "fuet": Datos invalidos (400). Inténtalo de nuevo más tarde.',
+  },
+  {
+    id: 'cena-ligera-sin-promesas',
+    check: 'cocina-rapida',
+    origin: 'Manifiesto de cocina (D-1028, 25-nov): sin dogma, nada de promesas de salud',
+    context: ['Hoy es martes 2026-11-24 (dayIndex 1), son las 19:00 en Madrid.', 'Hogar: 2 adultos'].join('\n'),
+    history: [],
+    message: 'algo ligero para cenar hoy con lo que suele haber en casa?',
+    reconstructed: true,
+    badReply: 'Una crema detox de calabacín y puerro: depurativa y quema grasa, perfecta para un martes. En 20 minutos la tienes.',
+  },
+  {
+    id: 'curry-con-ninos',
+    check: 'cocina-rapida',
+    origin: 'Manifiesto de cocina (D-1028, 25-nov): los platos del mundo llevan su versión para niños',
+    context: ['Hoy es miércoles 2026-11-25 (dayIndex 2), son las 18:30 en Madrid.', 'Hogar: 2 adultos y 2 niños (6 y 9 años)'].join('\n'),
+    history: [],
+    message: 'cómo hago un pollo al curry rojo para cenar?',
+    reconstructed: true,
+    kids: true,
+    expect: /curry/,
+    badReply: 'Dora el pollo en dados, añade 2 cucharadas de pasta de curry rojo y una lata de leche de coco, y cuece 15 minutos. Sirve con arroz. En 25 minutos está.',
+  },
+  {
+    id: 'martes-largo-sin-decirlo',
+    check: 'cocina-rapida',
+    origin: 'Manifiesto de cocina (D-1028, 25-nov): nunca de diario algo de más de 30 minutos de trabajo sin decirlo',
+    context: ['Hoy es martes 2026-11-24 (dayIndex 1), son las 12:00 en Madrid.', 'Hogar: 2 adultos'].join('\n'),
+    history: [],
+    message: 'qué hago hoy de comer con carne picada?',
+    reconstructed: true,
+    badReply: 'Una lasaña con su boloñesa y su bechamel caseras: son 75 min de trabajo, pero merece la pena.',
   },
 ]

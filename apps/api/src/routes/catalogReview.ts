@@ -12,7 +12,7 @@
  *   PATCH /admin/catalog-recipes/:id/source     { sourceUrl?, credit? } → the link to the original and the
  *                                               credit line of a catalogue recipe (draft or published)
  *   PATCH /admin/catalog-recipes/:id            { ingredients?, steps?, allergens?, prepTime?, cookTime?,
- *                                               activeTime?, tags?, acceptMentions?, reason? } → a catalogue recipe
+ *                                               activeTime?, tags?, moreTime?, acceptMentions?, reason? } → a catalogue recipe
  *                                               fixed (PRO-1290); 409 when the allergen audit holds it
  *   POST /admin/catalog-import/check            { batch, fileName?, file } → the file checked + what it would skip
  *   POST /admin/catalog-import/jobs             same body → 202: import as drafts in the background
@@ -160,13 +160,15 @@ const recipePatchSchema = z
     cookTime: minutes,
     activeTime: minutes,
     tags: z.array(z.string().trim().min(1).max(60)).max(30).optional(),
+    // D-1028: «Y si tienes más tiempo…»; '' or null clears it.
+    moreTime: z.string().trim().max(2000).nullable().optional(),
     acceptMentions: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
     reason: z.string().trim().max(500).optional(),
   })
   .strict()
   .refine(
-    (b) => (['ingredients', 'steps', 'prepTime', 'cookTime', 'activeTime', 'tags'] as const).some((k) => b[k] !== undefined),
-    'Manda algo que cambiar: ingredients, steps, prepTime, cookTime, activeTime o tags.',
+    (b) => (['ingredients', 'steps', 'prepTime', 'cookTime', 'activeTime', 'tags', 'moreTime'] as const).some((k) => b[k] !== undefined),
+    'Manda algo que cambiar: ingredients, steps, prepTime, cookTime, activeTime, tags o moreTime.',
   )
 
 /** The body checked with the shared schema; the problems in Spanish when it fails. */

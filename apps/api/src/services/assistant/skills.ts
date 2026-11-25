@@ -58,6 +58,7 @@ import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { loadMatchableRecipes } from '../matchableRecipes.js'
 import { unlistedDietMentions } from '../stepDietMentions.js'
 import { generationSkips, loadPreviousWeek, unskipDay, withoutPastMeals } from '../menuWeek.js'
+import { askedBeforeMenu, buttonAsksForWeek, claimMenuGeneration } from '../menuRequestGuard.js'
 import { cookingFreqForMealCounts, placeSignupDishes, recipeForDish, weekTypeForMealCounts, type PlacedDish, type SignupDish } from '../signupFirstMenu.js'
 import { loadUserRestrictions, findRecipesWithWhatIHave } from '../withWhatIHave.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
@@ -210,7 +211,7 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
   const { restrictions } = await restrictionsFor(ctx)
   if (restrictions.length === 0) return []
   const [row] = await ctx.db
-    .select({ allergens: recipes.allergens })
+    .select({ name: recipes.name, allergens: recipes.allergens })
     .from(recipes)
     .where(eq(recipes.id, recipeId))
     .limit(1)
@@ -229,7 +230,7 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
   const recipe: RestrictableRecipe = {
     allergens: row?.allergens ?? [],
     ingredients: ingredientRows,
-    stepMentions: unlistedDietMentions(stepTexts, ingredientRows.map((i) => i.ingredientName)),
+    stepMentions: unlistedDietMentions(stepTexts, ingredientRows.map((i) => i.ingredientName), row?.name),
   }
   return restrictions.filter((r) => violatesRestrictions(recipe, compileRestrictions([r])))
 }
@@ -1064,6 +1065,16 @@ const generateWeeklyMenu: SkillDefinition = {
     const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
     const weekPlan = weekPlanFromParams(params)
 
+    // PRO-1298: a tapped button makes a whole week only if it (or the question
+    // it answered) asks for one (the review of 23-nov: a button made a week nobody asked for).
+    if (ctx.button && !buttonAsksForWeek(ctx.button)) {
+      return {
+        data: { weekStart, replaced: false },
+        summary: `Menu NO generado: solo ha pulsado el boton «${untrustedText(ctx.button.title, 60)}», que no pide un menu nuevo para la semana. No rehagas la semana: haz lo que pide ese boton (cambiar un plato es swap_meal) o, si no lo tienes claro, preguntaselo.`,
+        uiHint: 'text',
+      }
+    }
+
     // Same promises as POST /menu/generate: locked slots, vetoes and
     // "sin cocinar" days of the current week survive the regeneration.
     const previous = await loadPreviousWeek(userId, weekStart, db)
@@ -1071,6 +1082,15 @@ const generateWeeklyMenu: SkillDefinition = {
     // A week that already has dishes is never remade without an explicit,
     // confirmed request: asking for one dish used to regenerate the whole
     // week and Laura lost her planned leftovers (PRO-63, 2026-10-11).
+    // PRO-1298: written before this week's menu was made (it waited behind the
+    // turn that made it): the same request, already answered. No second menu.
+    if (weekHasDishes(previous.days) && askedBeforeMenu(previous.createdAt, ctx.requestedAt)) {
+      return {
+        data: { weekStart, replaced: false, ...(previous.menuId ? { menuId: previous.menuId } : {}) },
+        summary: `No he generado otro: el menu de la semana del ${dateLabel(weekStart)} se hizo despues de que escribiera este mensaje, asi que ya tiene el que pedia (se lo vuelvo a enseñar). Diselo en una frase, sin repetir los platos. Si en ese mensaje pedia algo distinto, haz ese cambio (swap_meal, add_dish…) o preguntale si rehaces la semana: con su respuesta si se puede.`,
+        uiHint: 'text',
+      }
+    }
     if (params?.replaceExisting !== true && weekHasDishes(previous.days)) {
       return {
         // 21-nov: the menu it kept, so WhatsApp shows it («Tu menú…», never «Listo»).
@@ -1085,9 +1105,18 @@ const generateWeeklyMenu: SkillDefinition = {
     if (fridge.stop) return { data: { weekStart, replaced: false }, summary: fridge.stop, uiHint: 'text' }
     // PRO-1041: an allergy said and not saved goes into this menu anyway.
     const said = await saidForMenu(ctx, params?.restrictions_said)
+    // PRO-1298: the same week already being made (a repeat while it runs): no second one.
+    const claim = claimMenuGeneration(userId, weekStart)
+    if (!claim) {
+      return {
+        data: { weekStart, replaced: false },
+        summary: `No he lanzado otro: el menu de la semana del ${dateLabel(weekStart)} ya se esta preparando por la peticion de antes. Dile que le llega en un momento.`,
+        uiHint: 'text',
+      }
+    }
     const result = await withMenuOnlyRestrictions(said?.apply ?? [], () =>
       generateAndSaveWeek(ctx, weekStart, previous, undefined, fridge.plan, params?.only_favorites === true),
-    )
+    ).finally(claim.release)
     const lines = [result.summary, fridge.saved?.trim(), said && saidRestrictionsLine(said, ctx.channel)].filter(Boolean)
     return { ...result, summary: lines.join('\n') }
   },
@@ -1204,7 +1233,10 @@ async function generateAndSaveWeek(
     // «Cuánto ha acertado» (PRO-155): Mimo tells it following the prompt's
     // guide — never on the sign-up's first menu (19-nov: it opened with «no
     // he conseguido acercarme»): there, the dishes they make often.
-    const fit = await evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
+    // PRO-1298: the sign-up never shows it, so it doesn't wait for it (up to
+    // 12 s a week, two weeks on a Friday): it is saved on the menu all the same.
+    const fitting = evaluateAndSaveMenuFit({ userId, menuId: menu.id, days }, db)
+    const fit = signup ? null : await fitting
     const fitLine = signup ? signupDishesLine(placedDishes, weekStart) : menuFitSummary(fit)
     // Festivos (PRO-226): Mimo mentions them.
     const holidayLine = await weekHolidaySummary(userId, weekStart)
@@ -1425,14 +1457,18 @@ const completeOnboarding: SkillDefinition = {
     for (const weekStart of plan.weeks) {
       const previous = await loadPreviousWeek(userId, weekStart, db)
       if (weekHasDishes(previous.days)) continue
+      // PRO-1298: that week already being made: not a second one.
+      const claim = claimMenuGeneration(userId, weekStart)
+      if (!claim) continue
       const signup = { pastMeals: plan.pastMeals, dishes }
       const week = await withMenuOnlyRestrictions(said?.apply ?? [], () =>
         generateAndSaveWeek(ctx, weekStart, previous, plan.today, undefined, false, signup),
-      )
+      ).finally(claim.release)
       dishes = week.left ?? []
       results.push(week)
     }
-    const menu = results[0] ?? (await generateWeeklyMenu.handler({ restrictions_said: params?.restrictions_said }, ctx))
+    // The sign-up's own call: a button that answered its questions is no reason to stop here.
+    const menu = results[0] ?? (await generateWeeklyMenu.handler({ restrictions_said: params?.restrictions_said }, { ...ctx, button: undefined }))
     const nextLine = results.length > 1 ? ` Tambien he generado la semana que viene (${results[1].summary})` : ''
     const saidLine = said && results.length > 0 ? `\n${saidRestrictionsLine(said, ctx.channel)}${ownVersionLine}` : ''
     return {

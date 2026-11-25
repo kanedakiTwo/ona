@@ -13,13 +13,15 @@
 
 import { randomBytes } from 'crypto'
 import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm'
-import { basketSnapshot, isLiveBasketSend, normalizeBuyName, resolveBuyRule, sourceItemsForBasketKey, splitCompound } from '@ona/shared'
+import { basketSnapshot, isLiveBasketSend, isRedKind, normalizeBuyName, resolveBuyRule, SHOP_ORDER_STATUS_LABELS, sourceItemsForBasketKey, splitCompound } from '@ona/shared'
 import type {
   BasketSendResult,
   BuyableUnit,
   DeliveryCheck,
   ShopFulfilment,
   QuoteSummary,
+  RedPrepareInfo,
+  RedSettings,
   Shop,
   ShopInput,
   ShopKind,
@@ -54,6 +56,11 @@ import { assessQuote } from './validation.js'
 import { buildLine, inputOf } from './lines.js'
 import { capitalize, prettyName } from './format.js'
 import { parseShopReply, type ParsedReply } from './quoteParser.js'
+import { nextRedMax, redBlockers, redDelivers, redOrderRefusal, redView } from '../red/view.js'
+import { emptyRedInfo, prepareRedShops } from '../red/prepare.js'
+import { getRedSettings, isRedShopActive, rememberOutOfRed, sameTerms } from '../red/store.js'
+import { redEnabledFor } from '../red/flag.js'
+import { householdCanCancelRed, RED_HOUSEHOLD_CANCELLABLE, RED_IN_FLIGHT, RED_LISTED_OPEN } from '../red/states.js'
 
 type Db = typeof defaultDb
 /** `db` o una transacción: con lo que se lee y se escribe un pedido. */
@@ -72,7 +79,10 @@ export class ShopOrderError extends Error {
   }
 }
 
-const OPEN_STATUSES: ShopOrderStatus[] = ['draft', 'sent', 'quoted', 'approved']
+/** The household's own shops: what it can still cancel or close. */
+export const OPEN_STATUSES: ShopOrderStatus[] = ['draft', 'sent', 'quoted', 'approved']
+/** Shown among the open orders on /compra (Red orders included). */
+const LISTED_OPEN: ShopOrderStatus[] = [...OPEN_STATUSES, ...RED_LISTED_OPEN]
 
 async function householdOf(userId: string, db: Db): Promise<string> {
   const hh = await getPrimaryHouseholdId(userId, db)
@@ -100,6 +110,8 @@ function toShop(r: ShopRow): Shop {
     deliveryMinEur: r.deliveryMinEur ?? null,
     deliveryFeeEur: r.deliveryFeeEur ?? null,
     position: r.position,
+    redShopId: r.redShopId ?? null,
+    origin: r.origin === 'red' ? 'red' : 'propia',
     createdAt: r.createdAt.toISOString(),
   }
 }
@@ -143,11 +155,27 @@ export async function addShop(userId: string, input: ShopInput, db: Db = default
   return toShop(row)
 }
 
+/**
+ * Pure: an own shop stays linked to the Red only while its WhatsApp and kind
+ * are still the ones it was linked by. Changing either unlinks it; the next
+ * «Preparar» links it again if it still matches a Red shop.
+ */
+export function keepsRedLink(current: { whatsapp: string | null; kind: string }, input: Partial<Pick<ShopInput, 'whatsapp' | 'kind'>>): boolean {
+  return (input.whatsapp === undefined || input.whatsapp === current.whatsapp) && (input.kind === undefined || input.kind === current.kind)
+}
+
 export async function patchShop(userId: string, id: string, input: Partial<ShopInput>, db: Db = defaultDb): Promise<Shop | null> {
   const hh = await householdOf(userId, db)
+  const [current] = await db
+    .select({ origin: householdShops.origin, whatsapp: householdShops.whatsapp, kind: householdShops.kind, redShopId: householdShops.redShopId })
+    .from(householdShops)
+    .where(and(eq(householdShops.id, id), eq(householdShops.householdId, hh)))
+    .limit(1)
+  if (current?.origin === 'red') throw new ShopOrderError(409, 'RED_SHOP', 'Los datos de una tienda de la Red los lleva Mimoia. Si no la quieres, quítala.')
+  const unlink = !!current?.redShopId && !keepsRedLink(current, input)
   const [row] = await db
     .update(householdShops)
-    .set({ ...shopValues(input), updatedAt: new Date() })
+    .set({ ...shopValues(input), ...(unlink ? { redShopId: null } : {}), updatedAt: new Date() })
     .where(and(eq(householdShops.id, id), eq(householdShops.householdId, hh)))
     .returning()
   return row ? toShop(row) : null
@@ -195,6 +223,9 @@ export async function moveShop(userId: string, id: string, to: ShopMove, db: Db 
 
 export async function deleteShop(userId: string, id: string, db: Db = defaultDb): Promise<boolean> {
   const hh = await householdOf(userId, db)
+  // Removing a Red copy is saying no to the Red for that kind: the next «Preparar» neither assigns nor asks it again.
+  const [gone] = await db.select({ origin: householdShops.origin, kind: householdShops.kind }).from(householdShops).where(and(eq(householdShops.id, id), eq(householdShops.householdId, hh))).limit(1)
+  if (gone?.origin === 'red' && isRedKind(gone.kind)) await rememberOutOfRed(hh, gone.kind, db)
   // Drafts for that shop go with it; sent/closed orders keep their snapshot.
   await db.delete(shopOrders).where(and(eq(shopOrders.shopId, id), eq(shopOrders.householdId, hh), eq(shopOrders.status, 'draft')))
   const rows = await db.delete(householdShops).where(and(eq(householdShops.id, id), eq(householdShops.householdId, hh))).returning({ id: householdShops.id })
@@ -214,6 +245,7 @@ function snapshotOf(shop: ShopRow): ShopSnapshot {
     phone: shop.phone,
     deliveryMinEur: shop.deliveryMinEur ?? null,
     deliveryFeeEur: shop.deliveryFeeEur ?? null,
+    red: shop.redShopId ? { shopId: shop.redShopId, origin: shop.origin === 'red' ? 'red' : 'propia' } : null,
   }
 }
 
@@ -274,12 +306,24 @@ function contactLink(shop: ShopSnapshot, text: string | null, subject: string): 
   }
 }
 
+/** A Red order: it has a Red shop and the terms it was drafted with. The one rule for the card and the short link. */
+export function isRedOrderRow<T extends Pick<OrderRow, 'redShopId' | 'redTerms'>>(row: T): row is T & { redShopId: string } {
+  return !!row.redShopId && !!row.redTerms
+}
+
 export function presentOrder(r: OrderRow): ShopOrder {
   const shop = r.shopSnapshot as ShopSnapshot
   const lines = r.lines as ShopOrderLine[]
   const messaging = shop.channel === 'whatsapp' || shop.channel === 'email'
   const fulfilment: ShopFulfilment = r.fulfilment === 'domicilio' ? 'domicilio' : 'recoger'
-  const blockers = r.status === 'draft' ? orderBlockers(lines, fulfilment, r.address ?? null) : []
+  const delivery = deliveryCheck(lines, fulfilment, shop)
+  const red = isRedOrderRow(r)
+    ? redView({ redShopId: r.redShopId, terms: r.redTerms as RedSettings, lines, fulfilment, snapshot: shop, maxEur: r.maxEur ?? null })
+    : null
+  const blockers =
+    r.status === 'draft'
+      ? [...orderBlockers(lines, fulfilment, r.address ?? null), ...(red ? redBlockers(red, delivery, fulfilment) : [])]
+      : []
   const searchLinks: Record<string, string> = {}
   if (shop.channel === 'web') {
     for (const l of lines) {
@@ -301,19 +345,31 @@ export function presentOrder(r: OrderRow): ShopOrder {
     quoteSummary: (r.quoteSummary as QuoteSummary | null) ?? null,
     confirmationText: r.confirmationText,
     finalTotalEur: r.finalTotalEur,
-    links: {
-      order: blocked ? null : contactLink(shop, r.messageText, 'Pedido'),
-      confirmation: r.confirmationText && messaging ? contactLink(shop, r.confirmationText, 'Re: Pedido') : null,
-      shortOrder: messaging && !blocked ? `${env.WEB_PUBLIC_URL}/c/${r.token}` : null,
-      shortConfirmation: r.confirmationText && messaging ? `${env.WEB_PUBLIC_URL}/c/${r.token}?m=ok` : null,
-      tooLong: messaging && isTooLongToPrefill(r.messageText),
-    },
+    links: red
+      ? {
+          // Red orders are never sent from the household's WhatsApp: they're ordered on /compra.
+          order: null,
+          confirmation: null,
+          shortOrder: `${env.WEB_PUBLIC_URL}/c/${r.token}`,
+          shortConfirmation: null,
+          tooLong: false,
+          view: `${env.WEB_PUBLIC_URL}/compra?pedido=${r.id}`,
+        }
+      : {
+          order: blocked ? null : contactLink(shop, r.messageText, 'Pedido'),
+          confirmation: r.confirmationText && messaging ? contactLink(shop, r.confirmationText, 'Re: Pedido') : null,
+          shortOrder: messaging && !blocked ? `${env.WEB_PUBLIC_URL}/c/${r.token}` : null,
+          shortConfirmation: r.confirmationText && messaging ? `${env.WEB_PUBLIC_URL}/c/${r.token}?m=ok` : null,
+          tooLong: messaging && isTooLongToPrefill(r.messageText),
+          view: null,
+        },
     fulfilment,
     address: r.address ?? null,
     blockers,
-    delivery: deliveryCheck(lines, fulfilment, shop),
+    delivery,
     searchLinks,
     extensionResult: (r.extensionResult as StoredBasketResult | null) ?? null,
+    red,
     createdAt: r.createdAt.toISOString(),
     sentAt: r.sentAt?.toISOString() ?? null,
     quotedAt: r.quotedAt?.toISOString() ?? null,
@@ -327,6 +383,8 @@ export async function resolveShortLink(token: string, which: 'order' | 'confirma
   if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return null
   const [row] = await db.select().from(shopOrders).where(eq(shopOrders.token, token)).limit(1)
   if (!row || row.status === 'cancelled' || row.status === 'closed') return null
+  // Red orders: the short link opens their card on /compra (relative: our own site, never an open redirect).
+  if (isRedOrderRow(row)) return which === 'order' ? `/compra?pedido=${row.id}` : null
   const o = presentOrder(row)
   // Only messaging links: a web shop's URL is user-typed and must not turn
   // Mimoia's domain into an open redirect.
@@ -358,9 +416,12 @@ async function withLockedOrder<T>(userId: string, id: string, db: Db, fn: (row: 
   })
 }
 
-function requireStatus(row: OrderRow, allowed: ShopOrderStatus[], what: string) {
+/** «Pedido», «Enviado»… as the household reads it, never the internal code. */
+const statusLabel = (status: string) => SHOP_ORDER_STATUS_LABELS[status as ShopOrderStatus] ?? status
+
+function requireStatus(row: OrderRow, allowed: readonly ShopOrderStatus[], what: string) {
   if (!allowed.includes(row.status as ShopOrderStatus)) {
-    throw new ShopOrderError(409, 'BAD_STATUS', `No se puede ${what}: el pedido está ${row.status}.`)
+    throw new ShopOrderError(409, 'BAD_STATUS', `No se puede ${what} (estado: ${statusLabel(row.status)}).`)
   }
 }
 
@@ -369,11 +430,31 @@ async function update(id: string, values: Partial<typeof shopOrders.$inferInsert
   return presentOrder(row)
 }
 
+/**
+ * Write an order only while it's still in one of these states: an edit or a
+ * cancel racing «Pedir» (or the shop) never rewrites the order it became.
+ */
+async function updateInStatus(
+  id: string,
+  statuses: readonly ShopOrderStatus[],
+  values: Partial<typeof shopOrders.$inferInsert>,
+  db: DbOrTx,
+  what = 'guardarlo',
+): Promise<ShopOrder> {
+  const [row] = await db
+    .update(shopOrders)
+    .set({ ...values, updatedAt: new Date() })
+    .where(and(eq(shopOrders.id, id), inArray(shopOrders.status, [...statuses])))
+    .returning()
+  if (!row) throw new ShopOrderError(409, 'BAD_STATUS', `No se puede ${what}: el pedido acaba de cambiar. Vuelve a mirarlo.`)
+  return presentOrder(row)
+}
+
 export async function listOrders(userId: string, opts: { includeClosed?: boolean } = {}, db: Db = defaultDb): Promise<ShopOrder[]> {
   const hh = await getPrimaryHouseholdId(userId, db)
   if (!hh) return []
   const since = new Date(Date.now() - 30 * 24 * 3600 * 1000)
-  const statuses: ShopOrderStatus[] = opts.includeClosed ? [...OPEN_STATUSES, 'closed'] : OPEN_STATUSES
+  const statuses: ShopOrderStatus[] = opts.includeClosed ? [...LISTED_OPEN, 'closed'] : LISTED_OPEN
   const rows = await db
     .select()
     .from(shopOrders)
@@ -398,13 +479,19 @@ function messageFor(
   return buildOrderMessage({ kind: shop.kind, channel: shop.channel, customerName, fulfilment, address, lines, halal })
 }
 
-/** Someone in the household eats halal (their restrictions, as the menu reads them). A read error counts as no. */
-async function householdIsHalal(userId: string, db: Db): Promise<boolean> {
+/** The household's restrictions as the menu reads them: halal, and whether anyone has an allergy. null = they couldn't be read. */
+async function householdDiet(userId: string, db: Db): Promise<{ halal: boolean; hasAllergies: boolean } | null> {
   try {
-    return compileRestrictions(await loadHouseholdRestrictions(userId, db)).halal
+    const c = compileRestrictions(await loadHouseholdRestrictions(userId, db))
+    return { halal: c.halal, hasAllergies: c.allergens.size > 0 }
   } catch {
-    return false
+    return null
   }
+}
+
+/** Someone in the household eats halal. A read error counts as no. */
+async function householdIsHalal(userId: string, db: Db): Promise<boolean> {
+  return (await householdDiet(userId, db))?.halal ?? false
 }
 
 const identity = (l: ShopOrderLine) => l.ruleKey ?? `name:${normalizeBuyName(l.name)}`
@@ -468,6 +555,19 @@ export interface PrepareResult {
   /** Pantry staples the recipes use and Mimoia assumed at home ("¿Te falta algo de esto?"). */
   pantry: string[]
   hasShops: boolean
+  /** Red de tiendas: postal code, the once-asked question, the shops assigned (`enabled: false` outside RED_TIENDAS_EMAILS). */
+  red: RedPrepareInfo
+}
+
+/**
+ * Pure: the shops «Preparar» drafts for. Red copies (origin `red`) only while
+ * the Red is on for the household and its step worked; otherwise they're left
+ * out, so a Red copy never becomes a plain WhatsApp order. An own shop linked
+ * to the Red (origin `propia` + red_shop_id) always stays: without the Red it's
+ * just the household's shop, with wa.me and no Red fields.
+ */
+export function draftableShops<T extends { origin: string }>(shops: T[], opts: { redOn: boolean; redFailed: boolean }): T[] {
+  return opts.redOn && !opts.redFailed ? shops : shops.filter((s) => s.origin !== 'red')
 }
 
 /**
@@ -477,7 +577,7 @@ export interface PrepareResult {
  */
 export async function prepareOrders(userId: string, opts: { listId?: string } = {}, db: Db = defaultDb): Promise<PrepareResult> {
   const hh = await householdOf(userId, db)
-  const shops = await shopRows(hh, db)
+  let shops = await shopRows(hh, db)
   const listWhere = opts.listId
     ? and(eq(shoppingLists.id, opts.listId), eq(shoppingLists.userId, userId))
     : eq(shoppingLists.userId, userId)
@@ -488,18 +588,44 @@ export async function prepareOrders(userId: string, opts: { listId?: string } = 
   const active = await db
     .select({ lines: shopOrders.lines })
     .from(shopOrders)
-    .where(and(eq(shopOrders.householdId, hh), inArray(shopOrders.status, ['sent', 'quoted', 'approved']), gte(shopOrders.createdAt, since)))
+    .where(and(eq(shopOrders.householdId, hh), inArray(shopOrders.status, ['sent', 'quoted', 'approved', ...RED_IN_FLIGHT]), gte(shopOrders.createdAt, since)))
   const alreadyOrdered = new Set(
     active.flatMap((o) => (o.lines as ShopOrderLine[]).flatMap((l) => l.sourceItemIds ?? (l.sourceItemId ? [l.sourceItemId] : []))),
   )
-  const halal = await householdIsHalal(userId, db)
+  const diet = await householdDiet(userId, db)
+  // The messages: a read error counts as not halal.
+  const halal = diet?.halal ?? false
   const prefs = halalBuyPrefs(await loadPrefs(hh, db), halal)
+  const asDraftShops = (rows: ShopRow[]) =>
+    rows.map((s) => ({ ...s, kind: s.kind as ShopKind, priceMemory: (s.priceMemory ?? {}) as PriceMemory }))
 
-  const draft = draftOrdersFromItems(
-    items,
-    shops.map((s) => ({ ...s, kind: s.kind as ShopKind, priceMemory: (s.priceMemory ?? {}) as PriceMemory })),
-    { alreadyOrdered, prefs },
-  )
+  // Red de tiendas (D-165): only for RED_TIENDAS_EMAILS. Own shops that joined get linked; fresh
+  // kinds without a shop get the postal code question, the once-asked question or a Red copy.
+  let red = emptyRedInfo(false)
+  let terms: RedSettings | null = null
+  const redOn = await redEnabledFor(userId, db)
+  let redFailed = false
+  if (redOn) {
+    try {
+      terms = await getRedSettings(db)
+      const first = draftOrdersFromItems(items, asDraftShops(shops), { alreadyOrdered, prefs })
+      // The Red: a read error counts as halal and allergies (never assign meat or fish blind).
+      const r = await prepareRedShops({ householdId: hh, shops, fellBack: first.fellBack, diet: diet ?? { halal: true, hasAllergies: true }, terms }, db)
+      red = r.info
+      if (r.shopsChanged) shops = await shopRows(hh, db)
+    } catch (err) {
+      // A Red error never stops «Preparar»: the household's own shops get their drafts as usual.
+      console.error('[red] prepare step failed:', err)
+      red = emptyRedInfo(true)
+      terms = null
+      redFailed = true
+      shops = await shopRows(hh, db)
+    }
+  }
+  // Red off (the switch turned off later) or its step failed: no Red copy becomes a plain WhatsApp order.
+  shops = draftableShops(shops, { redOn, redFailed })
+
+  const draft = draftOrdersFromItems(items, asDraftShops(shops), { alreadyOrdered, prefs })
 
   // Re-preparing keeps what the user did on the drafts: added products,
   // picks, amounts, ticks, notes, pickup/delivery and address.
@@ -533,11 +659,13 @@ export async function prepareOrders(userId: string, opts: { listId?: string } = 
         fulfilment,
         address,
         messageText: messageFor(g.shop.customerName, snapshotOf(g.shop), g.lines, fulfilment, address, halal),
+        redShopId: terms && g.shop.redShopId ? g.shop.redShopId : null,
+        redTerms: terms && g.shop.redShopId ? terms : null,
       })
       .returning()
     orders.push(presentOrder(row))
   }
-  return { orders, unassigned: draft.unassigned, skipped: draft.skipped, pantry: draft.pantry, hasShops: shops.length > 0 }
+  return { orders, unassigned: draft.unassigned, skipped: draft.skipped, pantry: draft.pantry, hasShops: shops.length > 0, red }
 }
 
 export interface OrderPatch {
@@ -555,6 +683,8 @@ export interface OrderPatch {
   fulfilment?: ShopFulfilment
   address?: string | null
   capEur?: number | null
+  /** Red orders: «como mucho» (null = back to the computed one). */
+  maxEur?: number | null
 }
 
 function nextKey(lines: ShopOrderLine[]): string {
@@ -601,6 +731,11 @@ function addedLines(adds: NonNullable<OrderPatch['add']>, existing: ShopOrderLin
 export async function patchOrder(userId: string, id: string, patch: OrderPatch, db: Db = defaultDb): Promise<ShopOrder> {
   const { row, householdId } = await loadOrder(userId, id, db)
   requireStatus(row, ['draft'], 'editar')
+  const isRed = isRedOrderRow(row)
+  const currentFulfilment: ShopFulfilment = row.fulfilment === 'domicilio' ? 'domicilio' : 'recoger'
+  if (isRed && patch.fulfilment === 'domicilio' && !redDelivers(row.shopSnapshot as ShopSnapshot)) {
+    throw new ShopOrderError(400, 'NO_DELIVERY', 'Esta tienda no reparte en tu código postal: recógelo en la tienda.')
+  }
   const snap = row.shopSnapshot as ShopSnapshot
   const kind = snap.kind
   const allShops = await shopRows(householdId, db)
@@ -643,10 +778,11 @@ export async function patchOrder(userId: string, id: string, patch: OrderPatch, 
     lines[idx] = buildLine(input, kind, prefs, memory)
   }
   if (patch.add?.length) lines = [...lines, ...addedLines(patch.add, lines, kind, prefs, memory)]
+  for (const shopId of moves.keys()) {
+    if (!allShops.some((s) => s.id === shopId)) throw new ShopOrderError(404, 'SHOP_NOT_FOUND', 'Esa tienda no existe.')
+  }
 
-  for (const [shopId, moved] of moves) await appendToShopDraft(userId, householdId, shopId, moved, prefs, halal, db)
-
-  const fulfilment: ShopFulfilment = patch.fulfilment ?? (row.fulfilment === 'domicilio' ? 'domicilio' : 'recoger')
+  const fulfilment: ShopFulfilment = patch.fulfilment ?? currentFulfilment
   let address = patch.address !== undefined ? patch.address || null : row.address ?? null
   if (fulfilment === 'domicilio' && !address) address = addressFor(shop, allShops)
   const estimate = sumEstimate(lines)
@@ -659,7 +795,18 @@ export async function patchOrder(userId: string, id: string, patch: OrderPatch, 
   }
   if (patch.capEur !== undefined) values.capEur = patch.capEur
   else if ((patch.lines?.length || patch.add?.length) && row.capEur == null) values.capEur = capForLines(lines)
-  return update(row.id, values, db)
+  if (isRed) {
+    // «Como mucho»: the one asked for (not below what's expected), or back to the computed one when what's ordered changes.
+    const view = redView({ redShopId: row.redShopId, terms: row.redTerms as RedSettings, lines, fulfilment, snapshot: snap, maxEur: null })
+    const next = nextRedMax(patch, currentFulfilment, view)
+    if ('refusal' in next) throw new ShopOrderError(400, next.refusal.code, next.refusal.message)
+    if (next.maxEur !== undefined) values.maxEur = next.maxEur
+  }
+  // Only while it's still a draft: an edit racing «Pedir» never rewrites the order placed.
+  const saved = await updateInStatus(row.id, ['draft'], values, db, 'editar')
+  // Moved lines land in the other shop's draft only once this one is saved (a 409 never leaves them twice).
+  for (const [shopId, moved] of moves) await appendToShopDraft(userId, householdId, shopId, moved, prefs, halal, db)
+  return saved
 }
 
 async function appendToShopDraft(userId: string, householdId: string, shopId: string, moved: ShopOrderLine[], prefs: Record<string, string>, halal: boolean, db: Db) {
@@ -673,6 +820,7 @@ async function appendToShopDraft(userId: string, householdId: string, shopId: st
   for (const l of moved) merged.push(buildLine({ ...inputOf(l), key: nextKey(merged) }, kind, prefs, memory))
   const fulfilment: ShopFulfilment = existing ? (existing.fulfilment === 'domicilio' ? 'domicilio' : 'recoger') : shop.fulfilment === 'domicilio' ? 'domicilio' : 'recoger'
   const address = existing ? existing.address ?? null : fulfilment === 'domicilio' ? addressFor(shop, allShops) : null
+  const terms = shop.redShopId && (await redEnabledFor(userId, db)) ? await getRedSettings(db) : null
   const values = {
     lines: merged,
     estimateEur: sumEstimate(merged),
@@ -680,15 +828,53 @@ async function appendToShopDraft(userId: string, householdId: string, shopId: st
     fulfilment,
     address,
     messageText: messageFor(shop.customerName, snapshotOf(shop), merged, fulfilment, address, halal),
+    // Changing the lines brings «como mucho» back to the computed one.
+    maxEur: null,
   }
   if (existing) await db.update(shopOrders).set({ ...values, updatedAt: new Date() }).where(eq(shopOrders.id, existing.id))
-  else await db.insert(shopOrders).values({ ...values, householdId, userId, shopId, shopSnapshot: snapshotOf(shop), status: 'draft', token: randomBytes(12).toString('base64url') })
+  else await db.insert(shopOrders).values({ ...values, householdId, userId, shopId, shopSnapshot: snapshotOf(shop), status: 'draft', token: randomBytes(12).toString('base64url'), redShopId: terms ? shop.redShopId : null, redTerms: terms })
+}
+
+/** Red orders never go through the household's WhatsApp flow (sent → quoted → approved). */
+export function refuseRedInOldFlow(row: Pick<OrderRow, 'redShopId' | 'redTerms'>, what: string): void {
+  if (isRedOrderRow(row)) throw new ShopOrderError(409, 'RED_ORDER', `Los pedidos de la Red no se ${what}: se piden en la app.`)
 }
 
 export async function markSent(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
+  refuseRedInOldFlow(row, 'envían por WhatsApp')
   requireStatus(row, ['draft', 'sent'], 'marcar como enviado')
   return update(row.id, { status: 'sent', sentAt: row.sentAt ?? new Date() }, db)
+}
+
+/**
+ * «Pedir» a Red order (design §3–§4). The household accepts the max it saw;
+ * if the Red's terms changed since the draft, they're refreshed and it has to
+ * look again. Tramo 1a: no card hold yet and the shop isn't told (tramo 1b).
+ */
+export async function placeRedOrder(userId: string, id: string, body: { maxEur: number }, db: Db = defaultDb): Promise<ShopOrder> {
+  if (!(await redEnabledFor(userId, db))) throw new ShopOrderError(403, 'RED_OFF', 'No disponible.')
+  const { row } = await loadOrder(userId, id, db)
+  if (!isRedOrderRow(row)) throw new ShopOrderError(400, 'NOT_RED', 'Este pedido no es de la Red.')
+  requireStatus(row, ['draft'], 'pedir')
+  if (!(await isRedShopActive(row.redShopId, db))) throw new ShopOrderError(409, 'RED_SHOP_UNAVAILABLE', 'Esta tienda de la Red no acepta pedidos ahora mismo.')
+  const terms = await getRedSettings(db)
+  if (!sameTerms(row.redTerms as RedSettings, terms)) {
+    // Only a draft's terms are refreshed: an order already placed keeps the ones it was placed with.
+    // A raised max may now be below the new minimum: back to the computed one.
+    await db
+      .update(shopOrders)
+      .set({ redTerms: terms, maxEur: null, updatedAt: new Date() })
+      .where(and(eq(shopOrders.id, row.id), eq(shopOrders.status, 'draft')))
+    throw new ShopOrderError(409, 'TERMS_CHANGED', 'Han cambiado las condiciones de la Red: revisa el pedido antes de pedirlo.')
+  }
+  return withLockedOrder(userId, id, db, async (locked, tx) => {
+    requireStatus(locked, ['draft'], 'pedir')
+    const current = presentOrder(locked)
+    const refusal = redOrderRefusal(current, body.maxEur)
+    if (refusal) throw new ShopOrderError(409, refusal.code, refusal.message)
+    return update(locked.id, { status: 'ordered', orderedAt: new Date(), orderedByUserId: userId, maxEur: current.red!.maxEur }, tx)
+  })
 }
 
 /**
@@ -744,6 +930,8 @@ type Parser = (input: Parameters<typeof parseShopReply>[0]) => Promise<ParsedRep
 /** The shop answered: parse its reply, assess every line against estimate, band and cap. */
 export async function submitQuote(userId: string, id: string, text: string, deps: { parse?: Parser } = {}, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
+  // Before the model call: a Red order never spends API on a pasted reply.
+  refuseRedInOldFlow(row, 'contestan pegando el mensaje de la tienda')
   requireStatus(row, ['draft', 'sent', 'quoted'], 'registrar la respuesta')
   const snap = row.shopSnapshot as ShopSnapshot
   const lines = row.lines as ShopOrderLine[]
@@ -785,6 +973,7 @@ export async function approveOrder(
   db: Db = defaultDb,
 ): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
+  refuseRedInOldFlow(row, 'aprueban así')
   requireStatus(row, ['quoted', 'approved'], 'aprobar')
   const decisions = body.decisions ?? {}
   const lines = (row.lines as ShopOrderLine[]).map((l) => ({
@@ -817,6 +1006,7 @@ export async function approveOrder(
  */
 export async function closeOrder(userId: string, id: string, body: { finalTotalEur?: number | null }, db: Db = defaultDb): Promise<ShopOrder> {
   return withLockedOrder(userId, id, db, async (row, tx) => {
+    if (isRedOrderRow(row)) throw new ShopOrderError(409, 'RED_ORDER', 'Los pedidos de la Red se cierran solos cuando la tienda lo entrega.')
     requireStatus(row, OPEN_STATUSES, 'cerrar')
     const lines = row.lines as ShopOrderLine[]
     const ext = (row.extensionResult as StoredBasketResult | null) ?? null
@@ -842,6 +1032,17 @@ export async function closeOrder(userId: string, id: string, body: { finalTotalE
 
 export async function cancelOrder(userId: string, id: string, db: Db = defaultDb): Promise<ShopOrder> {
   const { row } = await loadOrder(userId, id, db)
+  if (isRedOrderRow(row)) {
+    if (!householdCanCancelRed(row.status)) {
+      // «Habla con la tienda» only while the shop has it; a cancelled, rejected or closed order just can't.
+      if (RED_LISTED_OPEN.includes(row.status as ShopOrderStatus)) {
+        throw new ShopOrderError(409, 'BAD_STATUS', 'La tienda ya lo está preparando: para cancelarlo, habla con ella.')
+      }
+      requireStatus(row, RED_HOUSEHOLD_CANCELLABLE, 'cancelar')
+    }
+    // Only while it's still cancellable: never over the shop starting it at the same time.
+    return updateInStatus(row.id, RED_HOUSEHOLD_CANCELLABLE, { status: 'cancelled' }, db, 'cancelar')
+  }
   requireStatus(row, OPEN_STATUSES, 'cancelar')
-  return update(row.id, { status: 'cancelled' }, db)
+  return updateInStatus(row.id, OPEN_STATUSES, { status: 'cancelled' }, db, 'cancelar')
 }

@@ -1,0 +1,73 @@
+/**
+ * Red de tiendas: test shops for tramos 1a/1b (the guided sign-up comes in
+ * tramo 2). One made-up frutería, carnicería and pescadería, marked `is_test`,
+ * with 600 000 0NN numbers: never a real shop, number or person (PRO-76).
+ * Seeding again moves them to another postal code (upsert by WhatsApp).
+ */
+import { sql } from 'drizzle-orm'
+import { db as defaultDb } from '../../db/connection.js'
+import { redShops } from '../../db/schema.js'
+
+type Db = typeof defaultDb
+
+export const RED_TEST_SHOPS = [
+  { kind: 'fruteria', name: 'Frutería de prueba', whatsapp: '34600000091', deliveryMinEur: 20, deliveryFeeEur: 3, delivers: true },
+  { kind: 'carniceria', name: 'Carnicería de prueba', whatsapp: '34600000092', deliveryMinEur: null, deliveryFeeEur: null, delivers: false },
+  { kind: 'pescaderia', name: 'Pescadería de prueba', whatsapp: '34600000093', deliveryMinEur: 30, deliveryFeeEur: 4, delivers: true },
+] as const
+
+/**
+ * Railway's production environment. Same signal as emailSink.ts: Railway sets
+ * RAILWAY_ENVIRONMENT_NAME to the environment's name (`production`, `staging`);
+ * CI and local runs don't set it. Not `isDeployedRuntime`, which staging is too.
+ */
+export function isProductionEnv(e: NodeJS.ProcessEnv = process.env): boolean {
+  return e.RAILWAY_ENVIRONMENT_NAME === 'production'
+}
+
+/**
+ * Whether a Red shop can be assigned, linked or ordered from: active, and never
+ * a test shop in production (CI, staging and local runs do see test shops).
+ */
+export function redShopUsable(shop: { status: string; isTest: boolean }, e: NodeJS.ProcessEnv = process.env): boolean {
+  return shop.status === 'activa' && (!shop.isTest || !isProductionEnv(e))
+}
+
+/** A Postgres URL on this machine: localhost, 127.0.0.1, ::1, or no host and the `/tmp` socket. */
+export function isLocalDbUrl(url: string): boolean {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return false
+  }
+  const host = u.hostname.replace(/^\[|\]$/g, '')
+  if (host) return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  return u.searchParams.get('host') === '/tmp'
+}
+
+/** Why scripts/redTestShops.ts must not seed this database, or null. Production: never, not even with --yes. */
+export function testShopsDbRefusal(url: string, e: NodeJS.ProcessEnv, yes: boolean): string | null {
+  if (isProductionEnv(e)) return 'Esto es producción: las tiendas de prueba nunca van ahí.'
+  if (!isLocalDbUrl(url) && !yes) return 'La base no es local. Si de verdad es staging, añade --yes. En producción, nunca.'
+  return null
+}
+
+export async function seedRedTestShops(input: { postalCode: string; deliversTo?: string[] }, db: Db = defaultDb) {
+  if (isProductionEnv()) throw new Error('Las tiendas de prueba nunca van a producción.')
+  const out: Array<{ id: string; kind: string; name: string }> = []
+  for (const s of RED_TEST_SHOPS) {
+    const fields = {
+      name: s.name, postalCode: input.postalCode, deliveryPostalCodes: s.delivers ? [input.postalCode, ...(input.deliversTo ?? [])] : [],
+      deliveryMinEur: s.deliveryMinEur, deliveryFeeEur: s.deliveryFeeEur, notes: 'Tienda de prueba: no existe.', isTest: true,
+    }
+    const [row] = await db
+      .insert(redShops)
+      .values({ ...fields, kind: s.kind, whatsapp: s.whatsapp })
+      // Seeding again refreshes everything: an older seed never lingers.
+      .onConflictDoUpdate({ target: redShops.whatsapp, set: { ...fields, status: 'activa', updatedAt: sql`now()` } })
+      .returning({ id: redShops.id, kind: redShops.kind, name: redShops.name })
+    out.push(row)
+  }
+  return out
+}

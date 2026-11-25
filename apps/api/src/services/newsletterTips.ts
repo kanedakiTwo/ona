@@ -458,7 +458,7 @@ async function restrictableRecipes(db: Db, ids: string[]): Promise<Array<Restric
       name: r.name,
       allergens: r.allergens ?? [],
       ingredients: lines.map((l) => ({ ingredientName: l.ingredientName, allergenTags: l.allergenTags ?? [], containsTags: l.containsTags ?? [] })),
-      stepMentions: unlistedDietMentions(texts, lines.map((l) => l.ingredientName)).map(({ term, category }) => ({ term, category })),
+      stepMentions: unlistedDietMentions(texts, lines.map((l) => l.ingredientName), r.name).map(({ term, category }) => ({ term, category })),
     }
   })
 }

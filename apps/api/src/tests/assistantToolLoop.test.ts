@@ -401,7 +401,7 @@ describe('tool trace', () => {
     const swap = skill('swap_meal', 'menu')
     const f = fakeClient([tools({ id: 's', name: 'swap_meal', input: { dayIndex: 3, meal: 'dinner', recipeName: 'Hamburguesa' } }), text('Hecho.')])
     const r = await runToolLoop(base(f.client, [swap]))
-    expect(r.toolTrace).toEqual([{ name: 'swap_meal', input: '{"dayIndex":3,"meal":"dinner","recipeName":"Hamburguesa"}', summary: 'swap_meal ok' }])
+    expect(r.toolTrace).toEqual([{ name: 'swap_meal', input: '{"dayIndex":3,"meal":"dinner","recipeName":"Hamburguesa"}', summary: 'swap_meal ok', ms: expect.any(Number) }])
   })
 
   it('never lets a ⟦hecho: …⟧ history mark reach the user', async () => {

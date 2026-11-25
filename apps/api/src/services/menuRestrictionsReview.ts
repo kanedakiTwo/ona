@@ -102,7 +102,7 @@ async function loadRecipesForCheck(allIds: string[]): Promise<Map<string, Recipe
         .sort((a, b) => a.index - b.index)
         .map((st) => st.text)
       // PRO-346: meat, fish or allergens the steps name and the ingredients don't, like `loadMatchableRecipes`.
-      const stepMentions = unlistedDietMentions(steps, lines.map((i) => i.ingredientName)).map(({ term, category }) => ({ term, category }))
+      const stepMentions = unlistedDietMentions(steps, lines.map((i) => i.ingredientName), r.name).map(({ term, category }) => ({ term, category }))
       return [r.id, { id: r.id, name: r.name, allergens: r.allergens ?? [], ingredients: lines, stepMentions }]
     }),
   )

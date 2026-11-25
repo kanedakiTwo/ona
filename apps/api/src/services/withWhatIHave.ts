@@ -214,7 +214,7 @@ export async function findRecipesWithWhatIHave(
     authorId: row.authorId,
     allergens: row.allergens ?? [],
     ingredients: byRecipe.get(row.id) ?? [],
-    stepMentions: unlistedDietMentions(stepTexts(row.id), (byRecipe.get(row.id) ?? []).map((i) => i.ingredientName)),
+    stepMentions: unlistedDietMentions(stepTexts(row.id), (byRecipe.get(row.id) ?? []).map((i) => i.ingredientName), row.name),
     row,
   }))
   return rankWithWhatIHave(candidates, chosen, rules, opts.maxChosen).slice(0, limit)

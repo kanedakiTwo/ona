@@ -37,6 +37,7 @@ import {
 } from '../db/schema.js'
 import {
   alertKindOn,
+  habitTurnsOn,
   isTaperVariant,
   PREP_METHOD_HOURS_BEFORE,
   THAW_CONDITIONAL_TEXT,
@@ -44,7 +45,7 @@ import {
   type PrepMethod,
   type Meal,
 } from '@ona/shared'
-import { deliverAlertOverWhatsApp, runProactiveTick, whatsAppAlertState } from './whatsapp/outbound.js'
+import { deliverAlertOverWhatsApp, prepAlertsMayGo, runProactiveTick, whatsAppAlertState } from './whatsapp/outbound.js'
 import { runDailyReviewIfDue } from './whatsapp/reviewer.js'
 import { runProfileRefinerIfDue } from './profile/refiner.js'
 import { runWeeklyPlannerIfDue } from './menuPlannerWeekly.js'
@@ -89,9 +90,10 @@ const HABIT_KEYWORDS_BY_METHOD: Record<PrepMethod, RegExp> = {
 
 const isThaw = (method: PrepMethod) => method === 'thaw_24h' || method === 'thaw_48h'
 
-function habitMatches(method: PrepMethod, habits: readonly string[]): boolean {
+/** PRO-1303: a habit in the negative («no congelamos nada») turns nothing on. */
+export function habitMatches(method: PrepMethod, habits: readonly string[]): boolean {
   const re = HABIT_KEYWORDS_BY_METHOD[method]
-  return habits.some((h) => re.test(h))
+  return habits.some((h) => habitTurnsOn(h, re))
 }
 
 // ─── Cook-time resolver ─────────────────────────────────────────
@@ -357,6 +359,7 @@ export async function enqueuePrepAlertsForMenu(
   }
 
   const prepIngs = await loadPrepIngredientsForRecipes(recipeIds)
+  const recipeNames = await loadRecipeNames([...new Set(prepIngs.map((p) => p.recipeId))])
 
   // Build a recipeId → list of prep-bearing ingredients.
   const byRecipe = new Map<string, PrepIngredient[]>()
@@ -393,12 +396,16 @@ export async function enqueuePrepAlertsForMenu(
       }
 
       const dedupKey = `menu:${menuId}:day:${slot.dayIndex}:meal:${slot.meal}:ing:${ing.ingredientId}:method:${req.method}`
-      const title = `Acuérdate: ${ing.ingredientName}`
-      // PRO-221: a household that freezes only «a veces» gets the conditional text.
-      const body = isThaw(req.method) && thawIsConditional(habits)
-        ? THAW_CONDITIONAL_TEXT
-        : req.notes ??
-          `${describeMethod(req.method)} para la cena del día ${slot.dayIndex + 1}.`
+      const { title, body } = ingredientPrepCopy({
+        ingredientName: ing.ingredientName,
+        method: req.method,
+        notes: req.notes,
+        // PRO-221: a household that freezes only «a veces» gets the conditional text.
+        conditional: isThaw(req.method) && thawIsConditional(habits),
+        meal: slot.meal,
+        dayIndex: slot.dayIndex,
+        recipeName: recipeNames.get(slot.recipeId) ?? null,
+      })
 
       const ok = await insertAlert({
         userId: cooks.get(slot.dayIndex) ?? menu.userId,
@@ -415,12 +422,38 @@ export async function enqueuePrepAlertsForMenu(
   return { inserted, skipped }
 }
 
+async function loadRecipeNames(recipeIds: string[]): Promise<Map<string, string>> {
+  if (recipeIds.length === 0) return new Map()
+  const rows = await db.select({ id: recipes.id, name: recipes.name }).from(recipes).where(inArray(recipes.id, recipeIds))
+  return new Map(rows.map((r) => [r.id, r.name]))
+}
+
+/**
+ * Pure: the words of an ingredient's prep alert. PRO-1303: it said «… para
+ * la cena del día 4» for every meal (a Thursday lunch too) and «Sácalo del
+ * congelador 24 h antes» on the day it had to come out; now the meal, the
+ * weekday and the dish, like the recipe's own preparativos.
+ */
+export function ingredientPrepCopy(p: {
+  ingredientName: string
+  method: PrepMethod
+  notes?: string | null
+  conditional: boolean
+  meal: Meal
+  dayIndex: number
+  recipeName: string | null
+}): { title: string; body: string } {
+  const what = p.conditional ? THAW_CONDITIONAL_TEXT : p.notes?.trim() || `${describeMethod(p.method)}.`
+  const forWhat = `Para ${MEAL_ES[p.meal]} del ${DAY_ES[p.dayIndex] ?? 'día'}${p.recipeName ? `: ${p.recipeName}` : ''}.`
+  return { title: `Acuérdate: ${p.ingredientName}`, body: `${noDot(what)}. ${forWhat}` }
+}
+
 function describeMethod(method: PrepMethod): string {
   switch (method) {
     case 'thaw_24h':
-      return 'Sácalo del congelador 24 h antes'
+      return 'Sácalo hoy del congelador y déjalo en la nevera'
     case 'thaw_48h':
-      return 'Sácalo del congelador 48 h antes'
+      return 'Sácalo hoy del congelador y déjalo en la nevera: necesita dos días'
     case 'soak_overnight':
       return 'Déjalo en remojo toda la noche'
     case 'soak_30min':
@@ -578,19 +611,23 @@ async function deliverPrepMoment(userId: string, rows: Array<typeof notification
   // phone notification only as its fallback, or as the channel when there is
   // no WhatsApp. PRO-237: switched off in «Avisos» → not sent anywhere.
   let waState: WhatsAppAlertState = 'none'
+  let paused = false
   try {
     waState = await whatsAppAlertState(userId, 'prep_alerts')
     if (!alertKindOn('prep_alerts', await loadUserAlertPrefs(userId))) waState = 'kind_off'
+    // PRO-1303: 3 avisos of any kind unanswered on WhatsApp → all of them wait
+    // (prep alerts too, on every channel) until the person answers or writes.
+    else if (waState === 'ready') paused = !(await prepAlertsMayGo(userId, now))
   } catch (err) {
     console.warn('[notificationScheduler] whatsapp state failed (trying push):', err)
   }
-  const channels = channelsFor('prep_alerts', waState)
+  const channels = paused ? [] : channelsFor('prep_alerts', waState)
   if (channels.length === 0) {
     // Nothing goes out, so nothing is a candidate for the weekly budget.
     for (const row of rows) {
       await db
         .update(notificationSchedule)
-        .set({ status: 'cancelled', errorMessage: 'cancelado al enviar: aviso apagado' })
+        .set({ status: 'cancelled', errorMessage: paused ? 'cancelado al enviar: avisos en pausa' : 'cancelado al enviar: aviso apagado' })
         .where(eq(notificationSchedule.id, row.id))
     }
     return

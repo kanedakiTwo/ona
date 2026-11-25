@@ -537,6 +537,21 @@ describe('lintRecipe — errors', () => {
     expect(result.errors.some(e => e.code === 'TIME_INCONSISTENT')).toBe(false)
   })
 
+  it('TIME_INCONSISTENT leaves out a soak of the day before (PRO-402)', () => {
+    // prep+cook = 30, steps = 720 of soaking + 30 → only the 30 count
+    const recipe = makeRecipe({
+      prepTime: 10,
+      cookTime: 20,
+      steps: [
+        { index: 0, text: 'Pon el arroz en remojo con agua fría.', durationMin: 720, ingredientRefs: ['row-2'] },
+        { index: 1, text: 'Trocea el pollo y la cebolla.', durationMin: 10, ingredientRefs: ['row-1', 'row-3'] },
+        { index: 2, text: 'Añade el arroz.', durationMin: 20, ingredientRefs: ['row-2'] },
+      ],
+    })
+    const result = lintRecipe(recipe, opts)
+    expect(result.errors.some(e => e.code === 'TIME_INCONSISTENT')).toBe(false)
+  })
+
   it('TIME_INCONSISTENT skips check when any step has no durationMin', () => {
     const recipe = makeRecipe({
       prepTime: 10,

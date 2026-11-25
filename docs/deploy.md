@@ -62,6 +62,7 @@ scripts/deploy.sh --dry-run   # run the checks + print the plan, deploy nothing
 
 **Why a deploy is faster since 2026-10-15** (it used to take about an hour from PR to production):
 - **E2E in 6 shards** on 6 runners (`e2e-shard` matrix, `playwright test --shard=N/6`, 30 minutes each), each with its own Postgres, API and web; the `E2E (Playwright)` check is an aggregator that is green only when every shard is. Serially the 71 specs took 16 of the CI's ~20 minutes; with 4 shards, shard 2 passed its 20 minutes on 2026-10-22 and master's CI was cancelled.
+- **E2E against the compiled web** (PRO-398, once `docs/workflows/ci-e2e-web-compilada.patch` is applied to `ci.yml`): each shard runs `next build` and the standalone server (`apps/web/scripts/boot-built-web.sh`) instead of `next dev`, which compiled every route on its first hit inside the specs. `retries: 1` in CI; a test that only passes on the retry («inestable») comes out as an «E2E inestable» warning annotation and in `playwright-report/flaky.json` / `flaky.md` of the shard's artifact (`apps/web/e2e/flaky-reporter.ts`): one maintenance task of the Taller per test.
 - **No second CI wait after merging** (point 3 above).
 - **Docs-only pushes don't run CI** (`paths-ignore`), and **on `master` runs queue instead of cancelling** each other (`cancel-in-progress` only on branches): a docs commit used to restart the CI of the code commit before it.
 

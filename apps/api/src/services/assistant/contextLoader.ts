@@ -1,5 +1,5 @@
 import { and, eq, desc } from 'drizzle-orm'
-import { users, menus, userNutrientBalance } from '../../db/schema.js'
+import { users, menus, userNutrientBalance, whatsappLinks } from '../../db/schema.js'
 import { COOKING_STYLE_LABELS, nutrientsToPercentages, TARGET_MACROS, type CookingStyle } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 import { buildMemoryDigest } from '../userMemoryStore.js'
@@ -14,6 +14,7 @@ import { hasMilkAllergy } from '../dietaryRestrictions.js'
 import { withHouseholdRestrictions } from '../householdAllergies.js'
 import { MILK_ALLERGY_CONTEXT } from './healthGuard.js'
 import { householdNoticesForUser, noticesContextBlock } from '../afinaNotice.js'
+import { isWhatsAppAvailableFor } from '../whatsapp/config.js'
 
 const DAY_NAMES_LONG = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -41,11 +42,12 @@ export function clockNote(now: Date): string {
  * Includes: profile, current menu summary, and macro balance.
  */
 /**
- * The «Menu de esta semana» block of Mimo's context, or null when no day has
- * anything. PRO-296: a táper or an added dish saved without its name (before
+ * The «Menu de esta semana» block of Mimo's context (or, with `title`, «Menu
+ * de la semana que viene»), or null when no day has anything. Every dish of
+ * each meal. PRO-296: a táper or an added dish saved without its name (before
  * PRO-240) takes its recipe's, as on the web, instead of «receta sin nombre».
  */
-export async function weekMenuContext(weekStart: string, rawDays: unknown, db: any): Promise<string | null> {
+export async function weekMenuContext(weekStart: string, rawDays: unknown, db: any, title = 'Menu de esta semana'): Promise<string | null> {
   const days = (await fillRecipeNames(rawDays, db)) as any[]
   if (!Array.isArray(days)) return null
   const dayNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -54,7 +56,7 @@ export async function weekMenuContext(weekStart: string, rawDays: unknown, db: a
     const lines = mealLinesForDay(days[i])
     if (lines.length > 0) menuLines.push(`  ${dayNames[i] ?? `D${i + 1}`} (dayIndex ${i}): ${lines.join('; ')}`)
   }
-  return menuLines.length > 0 ? `Menu de esta semana (${weekStart}):\n${menuLines.join('\n')}` : null
+  return menuLines.length > 0 ? `${title} (${weekStart}):\n${menuLines.join('\n')}` : null
 }
 
 const COOKING_FREQ_LABELS: Record<string, string> = {
@@ -74,6 +76,19 @@ const COOKING_FREQ_LABELS: Record<string, string> = {
 export function cookingContextLine(style: CookingStyle | null, cookingFreq: string | null | undefined): string | null {
   if (style) return `como cocinan: «${COOKING_STYLE_LABELS[style]}»`
   return cookingFreq ? COOKING_FREQ_LABELS[cookingFreq] ?? cookingFreq : null
+}
+
+/**
+ * PRO-1040: where WhatsApp connects, for this account. Without it Mimo made
+ * the steps up («Perfil → WhatsApp» when the channel was off, «mimoia.com»
+ * when the account was on staging).
+ */
+export function whatsappContextLine(w: { available: boolean; linked: boolean }): string {
+  if (w.linked) return 'WhatsApp: conectado (se gestiona en Perfil → WhatsApp).'
+  if (w.available) {
+    return 'WhatsApp: sin conectar. Si pregunta como conectarlo: en esta misma web, Perfil → WhatsApp → «Conectar WhatsApp»; le da un codigo y un enlace (o un QR) que abre WhatsApp con el codigo escrito, y lo envia desde su movil. No le mandes a otra web.'
+  }
+  return 'WhatsApp: todavia no esta disponible para su cuenta. Si pregunta como conectarlo, diselo asi en una frase: no le des pasos, no le mandes a Perfil ni a otra web.'
 }
 
 export async function loadUserContext(userId: string, db: any): Promise<string> {
@@ -179,6 +194,22 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   } else {
     parts.push(`No hay menu para esta semana (${weekStart}).`)
   }
+  // PRO-1039: next week's, when it has one («la que viene todavía no tiene
+  // menú», Laura, with the week of the 26th already planned). Nothing said
+  // when it hasn't: that is the usual case before the weekend.
+  try {
+    const nextWeekStart = mondayOf(now.isoDate, now.weekday, 1)
+    const [nextMenu] = await db
+      .select()
+      .from(menus)
+      .where(and(scopeWhere(menus.userId, menus.householdId, await resolveScope(userId, db)), eq(menus.weekStart, nextWeekStart)))
+      .orderBy(desc(menus.createdAt))
+      .limit(1)
+    const block = nextMenu?.days ? await weekMenuContext(nextWeekStart, nextMenu.days, db, 'Menu de la semana que viene') : null
+    if (block) parts.push(block)
+  } catch {
+    // The context never fails for this block.
+  }
 
   // ── Nutrient balance ──────────────────────────────────────
   const [balance] = await db
@@ -223,6 +254,18 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
     if (notices) parts.push(notices)
   } catch {
     // The context never fails for this block.
+  }
+
+  // ── WhatsApp (PRO-1040) ─────────────────────────────────────
+  try {
+    const [link] = await db
+      .select({ userId: whatsappLinks.userId })
+      .from(whatsappLinks)
+      .where(eq(whatsappLinks.userId, userId))
+      .limit(1)
+    parts.push(whatsappContextLine({ available: isWhatsAppAvailableFor(user.email), linked: Boolean(link) }))
+  } catch {
+    // The context never fails for this line.
   }
 
   return parts.join('\n')

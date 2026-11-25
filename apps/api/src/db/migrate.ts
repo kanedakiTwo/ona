@@ -4,6 +4,7 @@ import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import { applyProfileFromMemories } from '../services/profileFromMemories.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
+import { applyHouseholdRecipeTimes } from '../services/householdRecipeTimes.js'
 import { applyCatalogTimeTrim } from '../services/recipeTimeTrim.js'
 import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisles.js'
 import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
@@ -49,6 +50,13 @@ async function main() {
     await applyCatalogRecipeTimes(db)
   } catch (err) {
     console.error('[catalog-recipe-times] failed:', err)
+  }
+  // Idempotent data fix (PRO-1037): household recipes saved without minutes
+  // (Mimo's, before PRO-308) get them estimated from their steps.
+  try {
+    await applyHouseholdRecipeTimes(db)
+  } catch (err) {
+    console.error('[household-recipe-times] failed:', err)
   }
   // Idempotent (PRO-284): realistic totals — prep done while something goes
   // by itself, realistic prep once per recipe; cook time never touched.

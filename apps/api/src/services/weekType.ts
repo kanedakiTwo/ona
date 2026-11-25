@@ -295,6 +295,16 @@ export async function loadWeekTypeForUser(userId: string, db: Db = defaultDb): P
   return { householdId, days: await loadWeekType(householdId, db) }
 }
 
+/**
+ * PRO-1296: does the household cook this meal that day? False when its week
+ * type says «no hay» there (Mimo's «cámbiame la comida del martes» never
+ * creates a meal the household doesn't cook).
+ */
+export async function weekTypeHasMeal(userId: string, dayIndex: number, meal: Meal, db: Db = defaultDb): Promise<boolean> {
+  const { days } = await loadWeekTypeForUser(userId, db)
+  return !weekTypeSlotAt(days, dayIndex, meal).off
+}
+
 export interface SlotChange {
   day: number
   meal: Meal

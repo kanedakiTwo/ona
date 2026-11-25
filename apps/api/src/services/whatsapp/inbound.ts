@@ -34,6 +34,7 @@ import { fatigueAnswerOf, fatigueConfirmation, type FatigueKind } from './fatigu
 import { optOutReasonOf, optOutReasonThanks, optOutWithReason, type OptOutReason } from './optOutReason.js'
 import type { Lang } from './language.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
+import { asksSomething, capNoticeWhatsApp, reachesCap } from '../capNotice.js'
 import {
   ASK_SOURCE_COPY,
   PHOTO_SOURCE_WINDOW_MS,
@@ -113,8 +114,19 @@ export interface InboundDeps {
     history: ChatMessage[],
     opts: ChatOptions,
   ) => Promise<AssistantResponse & { usage: TokenUsage }>
-  /** `spentMicros`: Mimo's spend so far this month (for the 80 % notice); absent → no notice. */
-  checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number; spentMicros?: number }>
+  /**
+   * `spentMicros`: Mimo's spend so far this month (for the 80 % notice); absent → no notice.
+   * PRO-1302: `cap`, the one used up (`asistente` = Mimo's €, `ia` = all paid AI), and
+   * `told`, whether this month's cap notice already went (its `cap_hits` row);
+   * absent → not known: the notice goes on every message, as before.
+   */
+  checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number; spentMicros?: number; cap?: 'asistente' | 'ia'; told?: boolean }>
+  /**
+   * PRO-1302: the cap notice is going out → its mark for the month (`cap_hits`,
+   * PRO-1090). True = the first this month (the notice goes); false = already
+   * marked. Absent → always true.
+   */
+  noteCap?: (userId: string, hit: { cap: 'asistente' | 'ia'; spentMicros: number; budgetMicros: number }) => Promise<boolean>
   /**
    * PRO-385: the household is on Gratis (trial over, no plan; never before
    * launch day). No Mimo: its messages get, once a day, the notice to choose
@@ -680,10 +692,17 @@ export function awaitsAnswer(rows: readonly HistoryRow[], now: Date): boolean {
  * 18-nov (6b): the reply of the turn that takes Mimo's spend past 80 % of the
  * month's cap carries one fixed line (once a month: the spend only grows).
  */
-export function withBudgetWarning(messages: OutboundMessage[]): OutboundMessage[] {
+export function withBudgetWarning(messages: OutboundMessage[], line: string = BUDGET_WARNING_LINE): OutboundMessage[] {
   const last = messages.at(-1)
-  if (last?.type === 'text') return [...messages.slice(0, -1), { ...last, text: `${last.text}\n\n${BUDGET_WARNING_LINE}` }]
-  return [...messages, { type: 'text', text: BUDGET_WARNING_LINE }]
+  if (last?.type === 'text') return [...messages.slice(0, -1), { ...last, text: `${last.text}\n\n${line}` }]
+  return [...messages, { type: 'text', text: line }]
+}
+
+/** PRO-1302: the reply ends asking something (buttons, or a question in its last line): the next message answers it. */
+export function replyAwaitsAnswer(messages: readonly OutboundMessage[]): boolean {
+  const last = messages.at(-1)
+  if (!last) return false
+  return last.type === 'buttons' || asksSomething(last.text)
 }
 
 export async function processInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
@@ -1033,18 +1052,34 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     }
 
     // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
-    // transcription, photo extraction and the chat itself.
+    // transcription, photo extraction and the chat itself. PRO-1302: what the
+    // code answers went above, so it works with the cap used up; here the
+    // notice says so, once a month, and the next ones get nothing.
     let spentBefore: number | null = null
     let budgetLimit = 0
+    let capKind: 'asistente' | 'ia' = 'asistente'
+    // PRO-1302: this message answers what the turn that reached the cap asked.
+    let grace = false
     if (msg.kind !== 'unsupported') {
       const budget = await deps.checkBudget(userId)
       if (budget.exceeded) {
-        await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-        await outText('system', COPY.budget((budget.budgetMicros / 1_000_000).toFixed(0)))
-        return
+        grace =
+          budget.told === false &&
+          link.onboardingDone !== false &&
+          awaitsAnswer(await store.loadHistoryRows(msg.from, new Date(now.getTime() - COURTESY_ANSWER_WINDOW_MS), userId), now)
+        if (!grace) {
+          const tell = budget.told !== true
+          await store.updateInbound(msg.wamid, { status: 'ignored', userId, errorMessage: tell ? 'over_cap' : 'over_cap_told' })
+          if (tell) {
+            await deps.noteCap?.(userId, { cap: budget.cap ?? 'asistente', spentMicros: budget.spentMicros ?? budget.budgetMicros, budgetMicros: budget.budgetMicros })
+            await outText('system', capNoticeWhatsApp(budget.budgetMicros / 1_000_000, deps.webUrl, await languageOf()))
+          }
+          return
+        }
       }
       spentBefore = budget.spentMicros ?? null
       budgetLimit = budget.budgetMicros
+      capKind = budget.cap ?? 'asistente'
     }
     acker.arm()
 
@@ -1155,7 +1190,16 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       },
     })
     const reply = await replyMessages(response, userId, deps, lastSentButtons(rows))
-    await out('reply', nearCap ? withBudgetWarning(reply) : reply)
+    // PRO-1302: the turn that reaches the cap ends whole, with the notice
+    // (once a month) — unless it asks something: the answer finishes it (the
+    // grace above) and that turn says it.
+    let capNotice: string | null = null
+    if (link.onboardingDone !== false && (grace || (reachesCap(spentBefore, added, budgetLimit) && !replyAwaitsAnswer(reply)))) {
+      const spent = Math.max(spentBefore ?? 0, (spentBefore ?? 0) + added)
+      const first = deps.noteCap ? await deps.noteCap(userId, { cap: capKind, spentMicros: spent, budgetMicros: budgetLimit }).catch(() => false) : true
+      if (first) capNotice = capNoticeWhatsApp(budgetLimit / 1_000_000, deps.webUrl, await languageOf())
+    }
+    await out('reply', capNotice ? withBudgetWarning(reply, capNotice) : nearCap ? withBudgetWarning(reply) : reply)
     // 19-nov: a survey always goes as a message of its own (never stuck to the
     // reply nor under another question's buttons).
     if (response.survey) await out('survey', renderPlainText(response.survey))

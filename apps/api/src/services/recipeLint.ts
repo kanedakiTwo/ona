@@ -27,6 +27,7 @@ import { shoppabilityIssues } from './recipeShoppability.js'
 import { cookingMediumFactor } from './nutrition/cookingMedium.js'
 import { noteStartsWithNumber } from '@ona/shared'
 import { DIET_CATEGORY_LABEL, nameHasTerm, unlistedDietMentions } from './stepDietMentions.js'
+import { isDayBeforeWait } from './recipeWaitTime.js'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -642,7 +643,7 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     const listedNames = ingredients
       .map(ing => catalog.byId.get(ing.ingredientId)?.name)
       .filter((n): n is string => !!n)
-    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames)) {
+    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames, recipe.name)) {
       const path = `steps[${m.step}].text`
       const already = errors.some(e =>
         e.code === 'STEP_INGREDIENT_NOT_LISTED' && e.path === path &&
@@ -734,14 +735,17 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     })
   })
 
-  // 9. TIME_INCONSISTENT
+  // 9. TIME_INCONSISTENT — a wait of the day before (soak, marinade…) is
+  // not part of prep+cook (PRO-402), so it doesn't count in the sum.
   if (
     recipe.prepTime != null &&
     recipe.cookTime != null &&
     steps.length > 0 &&
     steps.every(s => s.durationMin != null)
   ) {
-    const sum = steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    const sum = steps
+      .filter(s => !isDayBeforeWait({ text: s.text ?? '', durationMin: s.durationMin, technique: s.technique }))
+      .reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
     const budget = recipe.prepTime + recipe.cookTime
     if (sum > budget * 1.2) {
       errors.push({

@@ -70,6 +70,7 @@ import {
 import { allergenUnion } from './nutrition/allergens.js'
 import { refreshRecipeDishTypes } from './dishTypes.js'
 import { carryIngredientMarks, ingredientMarksOf, type IngredientMarks } from './ingredientRoles.js'
+import { isDayBeforeWait } from './recipeWaitTime.js'
 import type {
   Difficulty,
   IngredientRole,
@@ -446,7 +447,8 @@ function resolveSteps(
 // ─── totalTime ──────────────────────────────────────────────────
 
 function computeTotalTime(input: RecipeWriteInput): number | null {
-  const steps = input.steps ?? []
+  // PRO-402: a wait of the day before (soak, marinade…) is not part of it.
+  const steps = (input.steps ?? []).filter((s) => !isDayBeforeWait({ text: s.text, durationMin: s.durationMin, technique: s.technique }))
   if (steps.length > 0 && steps.every((s) => s.durationMin != null)) {
     return steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
   }

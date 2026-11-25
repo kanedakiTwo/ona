@@ -55,6 +55,7 @@ import {
 import { RestrictionsPicker } from "./RestrictionsPicker"
 import { FieldLabel } from "@/components/FieldLabel"
 import { withTyped } from "@/lib/restrictionText"
+import { readFreeRestrictions } from "@/lib/readFreeRestrictions"
 import { Accent, OnboardingHeader, OnboardingShell } from "./OnboardingShell"
 import { OnboardingChannelChoice, OnboardingWhatsAppLink } from "./OnboardingWhatsApp"
 import { useWhatsAppLinkCode, useWhatsAppStatus } from "@/hooks/useWhatsApp"
@@ -340,9 +341,10 @@ export default function OnboardingFlow({ draft = null, known = {} }: { draft?: O
       setSavingAllergies(true)
       try {
         await api.post(`/user/${user.id}/health-consent`, { consent: true })
-        const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: restrictionsWithTyped })
-        updateUser({ restrictions: updated.restrictions ?? restrictionsWithTyped })
-        setData((d) => ({ ...d, restrictions: restrictionsWithTyped }))
+        const read = await readFreeRestrictions(user.id, restrictionsWithTyped)
+        const updated = await api.put<{ restrictions?: string[] }>(`/user/${user.id}`, { restrictions: read })
+        updateUser({ restrictions: updated.restrictions ?? read })
+        setData((d) => ({ ...d, restrictions: read }))
         setTypedRestriction("")
       } catch {
         setSavingAllergies(false)

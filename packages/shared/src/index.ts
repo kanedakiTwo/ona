@@ -74,6 +74,7 @@ export {
   recipeTotalMinutes,
   recipeActiveMinutes,
   fitsTimeBudget,
+  advancePrepLabel,
 } from './types/cookingTime.js'
 export type { CookingStyle } from './types/cookingStyle.js'
 export {

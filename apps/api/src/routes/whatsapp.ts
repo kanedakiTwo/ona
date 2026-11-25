@@ -5,7 +5,7 @@ import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { isUserAllowed, isWhatsAppConfigured } from '../services/whatsapp/config.js'
+import { isWhatsAppAvailableFor, isWhatsAppConfigured } from '../services/whatsapp/config.js'
 import { verifySignature } from '../services/whatsapp/signature.js'
 import { parseWebhookPayload } from '../services/whatsapp/webhookParser.js'
 import { enqueueInbound } from '../services/whatsapp/inbound.js'
@@ -97,7 +97,7 @@ async function loadEmail(userId: string): Promise<string | null> {
 }
 
 async function isAvailableFor(userId: string): Promise<boolean> {
-  return isWhatsAppConfigured() && isUserAllowed(await loadEmail(userId))
+  return isWhatsAppAvailableFor(await loadEmail(userId))
 }
 
 // GET /whatsapp/status — what the profile card renders.

@@ -24,6 +24,7 @@ import {
   cleanModelRestrictions,
   mergeReading,
   readByRules,
+  readFreeRestrictions,
   readRestrictionText,
   readRestrictionTexts,
   restrictionsByWords,
@@ -34,6 +35,7 @@ const CATALOG = [
   { id: 'i-1', name: 'Pimiento rojo' },
   { id: 'i-2', name: 'Cilantro' },
   { id: 'i-3', name: 'Huevo' },
+  { id: 'i-4', name: 'Acelgas' },
 ]
 const loadCatalog = async () => CATALOG
 
@@ -81,6 +83,13 @@ describe('the reading without the model', () => {
     expect(readByRules('intolerancia al pimiento', CATALOG)).toMatchObject({ restrictions: ['pimiento'], understood: true })
     expect(readByRules('cilantro', CATALOG)).toMatchObject({ restrictions: ['cilantro'], understood: true })
     expect(readByRules('lo de siempre xd', CATALOG)).toMatchObject({ none: false, restrictions: [], understood: false })
+  })
+
+  it('a sentence: what follows «no come» and the catalogue ingredients it names (PRO-1263)', () => {
+    const text = 'nada d alergias. la abuela no come higado ni ver y el peque las acelgas tampoco jaja'
+    expect(readByRules(text, CATALOG)).toEqual({ text, none: false, restrictions: ['higado', 'acelgas'], understood: true })
+    expect(readByRules('sin glutn y al peque no le gusta el cilantro', CATALOG).restrictions).toEqual(['sin gluten', 'cilantro'])
+    expect(readByRules('no come nada raro', CATALOG)).toMatchObject({ understood: false })
   })
 
   it('no false typo on everyday words', () => {
@@ -136,6 +145,15 @@ describe('the reading with the model', () => {
       },
     })
     expect(r).toMatchObject({ restrictions: ['marisco'], understood: true })
+  })
+
+  it('the sign-up\'s list: presets as they are, free texts read, the unclear kept as typed (PRO-1263)', async () => {
+    const create = toolReply({ restrictions: ['hígado', 'acelgas'], none: true })
+    const irene = 'nada d alergias. la abuela no come higado ni ver y el peque las acelgas tampoco jaja'
+    expect(await readFreeRestrictions('u-1', ['sin gluten', irene], { loadCatalog, create })).toEqual(['sin gluten', 'higado', 'acelgas'])
+    expect(await readFreeRestrictions('u-1', ['nada', 'lo de siempre xd'], { loadCatalog, create: toolReply({ restrictions: [], none: false }) })).toEqual([
+      'lo de siempre xd',
+    ])
   })
 
   it('several texts, each once', async () => {

@@ -244,6 +244,14 @@ Own error tracker, Sentry alternative with no third party: `app_errors` grouped 
 
 ---
 
+## [Menu probe (sonda diaria del menú)](./menu-probe.md)
+
+Daily GitHub Actions probe (PRO-396): signs in to staging and production with its own test account, generates next week's menu, times it; ROJO if it fails, comes back empty or takes > 30 s. JSON result without personal data (entorno, segundos, ok, fecha, semana, tope, motivo) as artifacts `menu-probe-staging` / `menu-probe-production`; staging signs up a throwaway account with the smoke invitation; production needs `PROBE_USERNAME` / `PROBE_PASSWORD` in the `menu-probe-production` environment.
+
+**Source**: `apps/api/src/services/menuProbe.ts`, `apps/api/scripts/menuProbe.ts`, `docs/workflows/menu-probe.yml`
+
+---
+
 ## [Admin Audit Log](./admin-audit-log.md)
 
 Append-only `admin_audit_log` table — every successful admin mutation lands here. Action codes (`ingredient.create/update/remap`, `recipe.update/delete`, `user.suspend/unsuspend`, `user.reset_password.generate`, `catalog_draft.publish/discard/restore`, `catalog_batch.publish`, `catalog_import.start`, `catalog_collection.import`, …). Payload is a JSONB before/after diff. Browseable from the "Auditoría" sub-tab in `/admin` with filters by admin and action code, paginated 50/page. Reset-token secrets never appear in payloads (only `token_id` + `expires_at`). Action codes are stable forever — never renamed.

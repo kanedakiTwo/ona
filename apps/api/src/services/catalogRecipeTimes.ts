@@ -173,12 +173,15 @@ export interface EstimatedTimes {
  */
 export function estimateRecipeTimes(
   given: { prepTime?: number | null; cookTime?: number | null },
-  stepTexts: readonly string[],
+  /** Step texts, or saved steps with their minutes and technique (PRO-1037). */
+  stepTexts: readonly (string | StepForTime)[],
 ): EstimatedTimes {
   const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0
   const prep = ok(given.prepTime) ? Math.round(given.prepTime) : null
   const cook = ok(given.cookTime) ? Math.round(given.cookTime) : null
-  const steps: StepForTime[] = stepTexts.filter((t) => t.trim()).map((text) => ({ text }))
+  const steps: StepForTime[] = stepTexts
+    .map((s) => (typeof s === 'string' ? { text: s } : s))
+    .filter((s) => s.text.trim())
   const estimated = steps.map((s) => ({
     ...s,
     durationMin: stepMinutes(s) ?? (isPassiveStep(s) ? DEFAULT_PASSIVE_STEP_MINUTES : DEFAULT_ACTIVE_STEP_MINUTES),

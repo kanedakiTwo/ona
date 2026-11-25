@@ -1,6 +1,6 @@
 # Specs Index · Cuenta, hogar, comunicación y administración
 
-> Parte de [Specs Index](./index.md) (la portada lista todas las partes): auth, versión, privacidad, email, newsletter, lista de espera, blog, planes, opiniones, hogar, roles, admin, métricas, uso, errores, auditoría, usuarios, diseño y ficha del hogar.
+> Parte de [Specs Index](./index.md) (la portada lista todas las partes): auth, versión, privacidad, email, newsletter, lista de espera, blog, planes, opiniones, hogar, roles, admin, métricas, uso, errores, sonda diaria del menú, auditoría, usuarios, diseño y ficha del hogar.
 
 ## [Authentication](./auth.md)
 
@@ -133,6 +133,14 @@ PRO-1023 (D-122, punto 4): catálogo de funciones en código, una entrada por tr
 Own error tracker, Sentry alternative with no third party: `app_errors` grouped table (fingerprint = kind + normalised message + top stack frame; count, first/last seen, sample stack/path, release, browser family, last user, resolved), client errors from the web (`window.onerror`, `unhandledrejection`, `error.tsx` / `global-error.tsx` boundaries "Algo se ha torcido", `navigator.sendBeacon` / keepalive fetch to public `POST /client-errors`, 8 KB cap, per-IP 30/min, dedupe per page load, ≤ 10 reports per page, off in dev unless `NEXT_PUBLIC_ERROR_REPORTING`), API 5xx capture (route pattern, console.error capture via AsyncLocalStorage, error middleware, `unhandledRejection`), scrubbing (emails, phones, IPs, JWT, Bearer, query strings, SQL params, tokens), write throttle / coalescing, `GET /admin/errors` for Mimoia HQ agents (admin JWT or `x-metrics-token`), `POST /admin/errors/:id/resolve` (audited), `errors` block in `/admin/metrics`, migration 0036.
 
 **Source**: `apps/api/src/services/appErrors.ts`, `apps/api/src/routes/appErrors.ts`, `apps/api/src/middleware/errorCapture.ts`, `apps/api/src/db/migrations/0036_app_errors.sql`, `packages/shared/src/types/clientErrors.ts`, `apps/web/src/lib/errorReporter.ts`, `apps/web/src/app/error.tsx`, `apps/web/src/app/global-error.tsx`
+
+---
+
+## [Menu probe (sonda diaria del menú)](./menu-probe.md)
+
+Daily GitHub Actions probe (PRO-396): signs in to staging and production with its own test account, generates next week's menu, times it; ROJO if it fails, comes back empty or takes > 30 s. JSON result without personal data (entorno, segundos, ok, fecha, semana, tope, motivo) as artifacts `menu-probe-staging` / `menu-probe-production`; staging signs up a throwaway account with the smoke invitation; production needs `PROBE_USERNAME` / `PROBE_PASSWORD` in the `menu-probe-production` environment.
+
+**Source**: `apps/api/src/services/menuProbe.ts`, `apps/api/scripts/menuProbe.ts`, `docs/workflows/menu-probe.yml`
 
 ---
 

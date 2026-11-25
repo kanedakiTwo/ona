@@ -394,13 +394,10 @@ export function recipeDetailsSummary(r: {
   steps: string[]
   tips?: string | null
   sourceUrl?: string | null
-<<<<<<< 0864a075acfd25ede50fc44ca79820dd802e93c2
   /** PRO-1071: the household's note and substitutions (`recipe_notes`); undefined = not read. */
   householdNote?: HouseholdRecipeNote | null
-=======
   /** PRO-1037: the minutes were estimated from the steps, not given. */
   timesEstimated?: boolean
->>>>>>> 32660bb601a7bbf4c901633ca6ff4ceb22d91498
 }): string {
   const label = timesLabel(r)
   const minutes = label ? `${label}${r.timesEstimated ? ', estimado' : ''}` : '? min'
@@ -646,11 +643,8 @@ const getRecipeDetails: SkillDefinition = {
       steps,
       tips: recipe.tips,
       sourceUrl: recipe.sourceUrl,
-<<<<<<< 0864a075acfd25ede50fc44ca79820dd802e93c2
       householdNote,
-=======
       timesEstimated: (recipe.internalTags ?? []).includes(TIMES_ESTIMATED_TAG),
->>>>>>> 32660bb601a7bbf4c901633ca6ff4ceb22d91498
     })
     const withNotices = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
     // PRO-1071: whose recipe it is (Mimo called Carmen's own puchero «del catálogo»).

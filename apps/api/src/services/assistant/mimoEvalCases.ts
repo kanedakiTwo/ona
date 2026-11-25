@@ -79,11 +79,7 @@ import { HEALTH_DISCLAIMER, hasDisclaimer, MILK_ALLERGY_CONTEXT, talksHealthEffe
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-<<<<<<< 749d2ef8d68459e820c6d978939047f9e96bb68d
-export type MimoEvalCheck = 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'bebe-semana'
-=======
-export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'despensa-una-llamada'
->>>>>>> f4b1c131f0d47a371212ccdcb5ab3a31e40006f9
+export type MimoEvalCheck = 'comida-improvisada' | 'menu-guardado' | 'bebe-aparta' | 'bebe-cocina' | 'bebe-salud' | 'plato-hecho' | 'leche-alergia' | 'alergeno-sin-mirar' | 'aviso-afina' | 'menu-comensales' | 'menu-un-mensaje' | 'receta-minutos' | 'pregunta-nueva' | 'semana-tipo' | 'soy-ia' | 'preferencia-menu' | 'primer-menu' | 'despensa-una-llamada' | 'bebe-semana'
 
 export interface MimoEvalCase {
   id: string
@@ -529,11 +525,7 @@ export function mimoReplyProblems(reply: string, c: MimoEvalCase, toolsUsed?: st
   if (c.expect && !c.expect.test(text)) problems.push('no-confirma')
   if ((c.forbidden ?? []).some((re) => re.test(text))) problems.push('frase-prohibida')
   if (toolsUsed && c.mustCallOneOf?.length && !c.mustCallOneOf.some((t) => toolsUsed.includes(t))) {
-<<<<<<< 749d2ef8d68459e820c6d978939047f9e96bb68d
-    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'no-guarda' : c.check === 'bebe-semana' ? 'no-mira-ingredientes' : 'no-mira-menu')
-=======
-    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' || c.check === 'despensa-una-llamada' ? 'no-guarda' : 'no-mira-menu')
->>>>>>> f4b1c131f0d47a371212ccdcb5ab3a31e40006f9
+    problems.push(c.check === 'alergeno-sin-mirar' ? 'no-mira-receta' : c.check === 'aviso-afina' ? 'no-quita' : c.check === 'semana-tipo' || c.check === 'preferencia-menu' || c.check === 'primer-menu' || c.check === 'despensa-una-llamada' ? 'no-guarda' : c.check === 'bebe-semana' ? 'no-mira-ingredientes' : 'no-mira-menu')
   }
   if (toolsUsed && c.mustNotCall?.some((t) => toolsUsed.includes(t))) problems.push(c.check === 'semana-tipo' || c.check === 'preferencia-menu' ? 'herramienta-equivocada' : 'compra-lo-hecho')
   if (toolTrace && c.toolInput && !toolTrace.some((t) => t.name === c.toolInput!.name && c.toolInput!.match.every((re) => re.test(t.input)))) problems.push(c.check === 'preferencia-menu' || c.check === 'primer-menu' ? 'guarda-mal' : 'semana-tipo-mal')

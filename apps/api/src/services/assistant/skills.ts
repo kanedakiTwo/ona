@@ -54,11 +54,8 @@ import { alertTimeSkills } from './alertTimeSkills.js'
 import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
-<<<<<<< 749d2ef8d68459e820c6d978939047f9e96bb68d
-import { babyMenuSkills } from './babyMenuSkills.js'
-=======
 import { batchDaySkills } from './batchDaySkills.js'
->>>>>>> f4b1c131f0d47a371212ccdcb5ab3a31e40006f9
+import { babyMenuSkills } from './babyMenuSkills.js'
 import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { householdNoteInline, householdNoteLines, loadHouseholdRecipeNotes, type HouseholdRecipeNote } from './householdRecipeNotes.js'
@@ -3590,13 +3587,10 @@ export const skills: SkillDefinition[] = [
   ...schoolMenuSkills,
   // PRO-228: «Sí, mételo» al repaso mensual del congelador.
   ...freezerSkills,
-<<<<<<< 749d2ef8d68459e820c6d978939047f9e96bb68d
-  // PRO-1035: los platos de la semana, mirados para la ración del bebé.
-  ...babyMenuSkills,
-=======
   // PRO-1046: el día de lote («el domingo hacemos batch para lunes a jueves»).
   ...batchDaySkills,
->>>>>>> f4b1c131f0d47a371212ccdcb5ab3a31e40006f9
+  // PRO-1035: los platos de la semana, mirados para la ración del bebé.
+  ...babyMenuSkills,
   // La receta del día (PRO-1099, specs/recipe-of-the-day.md):
   ...recipeOfTheDaySkills,
   // PRO-1301: la hora del menú del día y de la pregunta de la cena.

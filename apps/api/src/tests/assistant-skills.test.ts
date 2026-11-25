@@ -1629,14 +1629,10 @@ describe('skill export coverage', () => {
     // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
     // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
     // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
-<<<<<<< 749d2ef8d68459e820c6d978939047f9e96bb68d
-    // and 96 with check_menu_for_baby (PRO-1035, mimoBabyWeek.test.ts).
-    expect(skills.length).toBe(96)
-=======
     // and 96 with set_alert_time (PRO-1301, alertTimes.test.ts).
     // and 97 with set_batch_day (PRO-1046, batchDay.test.ts).
-    expect(skills.length).toBe(97)
->>>>>>> f4b1c131f0d47a371212ccdcb5ab3a31e40006f9
+    // and 98 with check_menu_for_baby (PRO-1035, mimoBabyWeek.test.ts).
+    expect(skills.length).toBe(98)
   })
 
   it('every skill has a unique name', () => {

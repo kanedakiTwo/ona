@@ -9,9 +9,10 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../services/recipeImport.js', () => ({
   createRecipeFromParts: vi.fn(async (parts: { name: string }) => ({ recipeId: 'r-created', name: parts.name, warnings: [] })),
 }))
-import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct, namesSameDish } from '../services/assistant/appSkills.js'
+import { appSkills, bestMatch, shoppingListSummary, toBuyable, applyTemplateChange, normalize, findSameProduct, namesSameDish } from '../services/assistant/appSkills.js'
 import { sumDinersByRecipe, withLeftoverBatches } from '../services/shoppingList.js'
 import { MIMO_EVAL_CASES, mimoReplyProblems } from '../services/assistant/mimoEvalCases.js'
+import { toolMadeChange } from '../services/assistant/claims.js'
 import type { DayMenu, Dish } from '@ona/shared'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
@@ -380,7 +381,7 @@ describe('shopping, pantry, staples', () => {
       },
     })
     const r = await get('get_shopping_list').handler({}, ctx(f.api))
-    expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado: 1. En casa: 1.')
+    expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado (1): Huevo. En casa (1): Sal.')
     expect(r.uiHint).toBe('shopping_list')
     // PRO-380: handing out the whole list counts as `shopping_list_shared`.
     expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/list-shared', body: { channel: 'web' } }])
@@ -388,7 +389,7 @@ describe('shopping, pantry, staples', () => {
 
   it('get_shopping_list: all done, and empty list (nothing handed out, nothing counted)', async () => {
     const done = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i1', name: 'Pan', checked: true }] } })
-    expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado: 1.')
+    expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado (1): Pan.')
     const empty = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [] } })
     expect((await get('get_shopping_list').handler({}, ctx(empty.api))).summary).toContain('está vacía')
     expect([...writes(done.calls), ...writes(empty.calls)]).toEqual([])
@@ -474,6 +475,63 @@ describe('shopping, pantry, staples', () => {
     expect(r.summary).toContain('vuelve a estar pendiente')
   })
 
+  // PRO-1039: what the test households saw on /shopping and Mimo didn't.
+  describe('get_shopping_list says the list as /shopping shows it (PRO-1039)', () => {
+    const TODAY = '2026-11-18' // Wednesday: this week from the 16th, the next one from the 23rd
+    const list: any[] = [
+      { id: 'h', ingredientId: 'ing-h', name: 'Huevo', quantity: 44, unit: 'u', aisle: 'proteinas', weeks: { '2026-11-16': 19, '2026-11-23': 25 } },
+      { id: 'p', ingredientId: 'ing-p', name: 'Pimiento rojo', quantity: 2, unit: 'u', aisle: 'produce', weeks: { '2026-11-23': 2 } },
+      { id: 'c', ingredientId: 'ing-c', name: 'Tomate cherry', quantity: 250, unit: 'g', aisle: 'produce', weeks: { '2026-11-16': 250 } },
+      { id: 'v', ingredientId: 'ing-v', name: 'Calabacin', quantity: 400, unit: 'g', aisle: 'produce', checked: true, weeks: { '2026-11-16': 400 } },
+      { id: 's', ingredientId: 'ing-s', name: 'Sal', quantity: 1, unit: 'u', aisle: 'despensa', inStock: true, weeks: { '2026-11-16': 1 } },
+      { id: 'b', ingredientId: null, name: 'Pan de barra', quantity: 1, unit: 'u', aisle: 'otros', kind: 'manual' },
+    ]
+
+    it('each line under its week; a line of both weeks says what each asks', () => {
+      expect(shoppingListSummary(list, TODAY)).toBe(
+        'Te faltan 4 cosas. Esta semana: Tomate cherry (250 g). La que viene: Pimiento rojo (2 unidades). ' +
+          'Para las dos semanas: Huevo (44 unidades) [19 unidades esta semana, 25 unidades la que viene]. A mano o básicos (sin semana): Pan de barra. Ya comprado (1): Calabacín. En casa (1): Sal.',
+      )
+    })
+
+    it('with week, only that week and its amount (the manual lines too)', () => {
+      const next = shoppingListSummary(list, TODAY, 'que_viene')
+      expect(next).toMatch(/^Te faltan 3 cosas para la que viene\. La que viene: /)
+      expect(next).toContain('Huevo (25 unidades; la línea de /shopping junta las dos semanas: Huevo (44 unidades))')
+      expect(next).toContain('Pimiento rojo (2 unidades)')
+      expect(next).toContain('A mano o básicos (sin semana): Pan de barra')
+      expect(next).not.toContain('Tomate cherry (')
+      expect(shoppingListSummary(list.slice(1, 2), TODAY, 'esta')).toBe('No te falta nada para esta semana.')
+    })
+
+    it('never cuts the list: 73 lines, the manual ones at the end, all named', () => {
+      const many = [
+        ...Array.from({ length: 70 }, (_, i) => ({ id: `m${i}`, ingredientId: `i${i}`, name: `Producto ${i}`, quantity: 1, unit: 'u', aisle: 'produce' })),
+        { id: 'x1', ingredientId: null, name: 'Caldo sin sal', kind: 'manual', aisle: 'otros' },
+        { id: 'x2', ingredientId: null, name: 'Pan sin sal', kind: 'manual', aisle: 'otros' },
+        { id: 'x3', ingredientId: null, name: 'Queso en lonchas', kind: 'manual', aisle: 'otros' },
+      ] as any[]
+      const s = shoppingListSummary(many, TODAY)
+      expect(s).toMatch(/^Te faltan 73 cosas/)
+      expect(s).toContain('Producto 69')
+      expect(s).toContain('Caldo sin sal, Pan sin sal, Queso en lonchas')
+      expect(s).not.toMatch(/ más/)
+    })
+
+    it('the tool reads it with today in Madrid', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-18T10:00:00Z'))
+      const r = await get('get_shopping_list').handler({ week: 'que_viene' }, ctx(fakeApi({ 'GET /shopping-list': { id: 'L1', items: list } }).api)).finally(() => vi.useRealTimers())
+      expect(r.summary).toMatch(/^Te faltan 3 cosas para la que viene/)
+    })
+
+    it('«quita los tomates cherry» is Tomate cherry, not Tomate (Ruiz, 2026-10-31)', () => {
+      const rows = [{ name: 'Tomate' }, { name: 'Tomate cherry' }]
+      expect(bestMatch(rows, 'tomates cherry', (r) => r.name)?.name).toBe('Tomate cherry')
+      expect(bestMatch(rows, 'tomate', (r) => r.name)?.name).toBe('Tomate')
+    })
+  })
+
   it('get_shopping_list leaves out what was removed from this shopping and says so', async () => {
     const list = {
       id: 'L1',
@@ -522,6 +580,43 @@ describe('shopping, pantry, staples', () => {
       { method: 'POST', path: '/pantry', body: { name: 'garbanzos', quantity: 400, unit: 'g', expiresAt: '2026-12-01' } },
       { method: 'DELETE', path: '/pantry/p1', body: undefined },
     ])
+  })
+
+  // PRO-1294: a household dictated its pantry and Mimo called update_pantry 70 times (206 s, 0,53 €).
+  it('update_pantry takes 40 products in one call; the one it cannot place is a doubt, not an error', async () => {
+    const names = Array.from({ length: 38 }, (_, i) => `producto ${String.fromCharCode(97 + (i % 26))}${i}`)
+    const f = fakeApi({
+      'GET /pantry': [{ id: 'p1', name: 'Arroz', quantity: 500, unit: 'g' }],
+      'POST /pantry': (body: any) => {
+        if (body.name === 'cosa rara') throw new Error('400 Datos invalidos')
+        return { id: `n-${body.name}`, name: body.name, quantity: body.quantity ?? 0, unit: body.unit ?? 'u' }
+      },
+    })
+    const items = [{ name: 'arroz', quantity: 1, unit: 'kg' }, ...names.map((name) => ({ name })), { name: 'cosa rara' }]
+    expect(items).toHaveLength(40)
+    const r = await get('update_pantry').handler({ action: 'add', location: 'nevera', items }, ctx(f.api))
+    expect(f.calls.filter((c) => c.method === 'GET')).toHaveLength(1)
+    expect(writes(f.calls)).toHaveLength(40)
+    expect(writes(f.calls)[0]).toEqual({ method: 'PATCH', path: '/pantry/p1', body: { quantity: 1500, unit: 'g', location: 'nevera' } })
+    expect(writes(f.calls)[1].body).toEqual({ name: names[0], location: 'nevera' })
+    expect(r.data).toEqual({ added: 39, removed: 0, doubts: ['cosa rara'] })
+    expect(r.summary).toMatch(/^Hecho: 39 productos apuntados en la despensa \(39 en la nevera\)\./)
+    expect(r.summary).toContain('Dudas: no he reconocido "cosa rara"')
+    expect(r.summary).not.toMatch(/error|400|invalid/i)
+    expect(toolMadeChange('update_pantry', r.summary, false)).toBe(true)
+  })
+
+  it('update_pantry in a batch: a repeated product goes to one row; a remove of what is not there and noise are doubts', async () => {
+    const f = fakeApi({ 'GET /pantry': [], 'POST /pantry': (body: any) => ({ id: 'n1', name: body.name, quantity: 0, unit: 'u' }) })
+    const r = await get('update_pantry').handler(
+      { action: 'add', items: [{ name: 'leche' }, { name: 'Leche' }, { name: 'azafrán', action: 'remove' }, { name: '…' }, { name: 'huevos', location: 'congelador' }] },
+      ctx(f.api),
+    )
+    expect(writes(f.calls).map((c) => `${c.method} ${c.path}`)).toEqual(['POST /pantry', 'POST /pantry'])
+    expect(r.summary).toContain('3 productos apuntados en la despensa (1 en el congelador)')
+    expect(r.summary).toContain('no he reconocido "azafrán" y "…"')
+    const none = await get('update_pantry').handler({ action: 'remove', items: [{ name: 'azafrán' }] }, ctx(fakeApi({ 'GET /pantry': [] }).api))
+    expect(toolMadeChange('update_pantry', none.summary, false)).toBe(false)
   })
 
   it('manage_staples adds, pauses and removes', async () => {

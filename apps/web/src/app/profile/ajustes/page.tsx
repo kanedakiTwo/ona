@@ -134,7 +134,7 @@ function MimoBlock() {
       </span>
 
       {showWhatsApp && whatsapp.data && (
-        <ProfileCard icon={MessageCircle} title="WhatsApp" status={whatsapp.data.linked ? 'Conectado' : 'Sin conectar'}>
+        <ProfileCard id="whatsapp" icon={MessageCircle} title="WhatsApp" status={whatsapp.data.linked ? 'Conectado' : 'Sin conectar'}>
           <p className="mt-3 text-[13px] leading-snug text-ink-muted">
             Todo lo que hace el asistente, desde tu WhatsApp: escríbele, mándale audios o compártele recetas.
           </p>

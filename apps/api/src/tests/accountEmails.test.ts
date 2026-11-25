@@ -48,6 +48,30 @@ describe('welcomeEmail', () => {
   })
 })
 
+describe('welcomeEmail · WhatsApp (PRO-1040)', () => {
+  it('promises «Conecta WhatsApp desde tu perfil» only when the channel is on for the account', () => {
+    for (const kind of ['beta', 'general', 'household'] as const) {
+      const on = welcomeEmail({ email: 'a@example.com', kind, publicUrl: WEB, whatsapp: true })
+      const off = welcomeEmail({ email: 'a@example.com', kind, publicUrl: WEB, whatsapp: false })
+      const unset = welcomeEmail({ email: 'a@example.com', kind, publicUrl: WEB })
+      expect(on.text).toContain('Conecta WhatsApp desde tu perfil (Perfil → WhatsApp)')
+      for (const m of [off, unset]) {
+        expect(m.text).not.toContain('WhatsApp')
+        expect(m.html).not.toContain('WhatsApp')
+      }
+    }
+  })
+
+  it('general: «te escribe por WhatsApp» only with the channel on', () => {
+    expect(welcomeEmail({ email: 'a@example.com', kind: 'general', publicUrl: WEB, whatsapp: true }).text).toContain(
+      'hace la lista de la compra y te escribe por WhatsApp cuando toca.',
+    )
+    expect(welcomeEmail({ email: 'a@example.com', kind: 'general', publicUrl: WEB }).text).toContain(
+      'Decide contigo el menú de la semana y hace la lista de la compra.',
+    )
+  })
+})
+
 describe('passwordResetEmail', () => {
   it('carries the one-time link, says it lasts 1 hour and what to do if it was not you', () => {
     const m = passwordResetEmail({ email: 'ana@example.com', resetUrl: 'https://mimoia.com/reset?token=abc' })
@@ -107,6 +131,14 @@ describe('sendWelcomeEmail', () => {
     const d = deps({ firstName: vi.fn(async () => 'Laura') })
     expect(await sendWelcomeEmail({ email: 'laura@example.com', kind: 'beta' }, d)).toBe('sent')
     expect(vi.mocked(d.send).mock.calls[0][0].text).toContain('Hola, Laura:')
+  })
+
+  it('passes on whether WhatsApp is on for the account (PRO-1040)', async () => {
+    const d = deps()
+    await sendWelcomeEmail({ email: 'a@example.com', kind: 'beta', whatsapp: true }, d)
+    await sendWelcomeEmail({ email: 'a@example.com', kind: 'beta', whatsapp: false }, d)
+    expect(vi.mocked(d.send).mock.calls[0][0].text).toContain('Conecta WhatsApp desde tu perfil')
+    expect(vi.mocked(d.send).mock.calls[1][0].text).not.toContain('Conecta WhatsApp')
   })
 })
 

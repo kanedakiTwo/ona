@@ -23,7 +23,7 @@ const NOW = new Date()
 const BODY = 'Una línea de prueba para el cuerpo del correo, lo bastante larga para pasar el mínimo.'
 
 let i = 0
-async function home(opts: { email?: string; baja?: boolean; suspended?: boolean; activeDaysAgo?: number; createdDaysAgo?: number; waitlistName?: string } = {}) {
+async function home(opts: { email?: string; baja?: boolean; suspended?: boolean; activeDaysAgo?: number; autoplanDaysAgo?: number; createdDaysAgo?: number; waitlistName?: string } = {}) {
   i++
   const email = opts.email ?? `${tag}${i}@example.org`
   const [u] = await db
@@ -40,6 +40,9 @@ async function home(opts: { email?: string; baja?: boolean; suspended?: boolean;
   }
   if (opts.activeDaysAgo !== undefined) {
     await db.insert(usageEvents).values({ userId: u.id, householdId: h.id, name: 'menu_generated', createdAt: new Date(NOW.getTime() - opts.activeDaysAgo * DAY) })
+  }
+  if (opts.autoplanDaysAgo !== undefined) {
+    await db.insert(usageEvents).values({ userId: u.id, householdId: h.id, name: 'autoplan_generated', createdAt: new Date(NOW.getTime() - opts.autoplanDaysAgo * DAY) })
   }
   if (opts.waitlistName) {
     await db.insert(waitlistEntries).values({
@@ -60,7 +63,8 @@ async function home(opts: { email?: string; baja?: boolean; suspended?: boolean;
 
 describe.skipIf(!reachable)('pregunta por correo (PRO-1197)', () => {
   it('counts the households that left, sends once per household, never twice', async () => {
-    const a = await home({ activeDaysAgo: 20, waitlistName: 'lucía' })
+    // 24-nov: the week Mimo made by itself yesterday is not the household's activity; `a` still left.
+    const a = await home({ activeDaysAgo: 20, autoplanDaysAgo: 1, waitlistName: 'lucía' })
     const b = await home()
     await home({ activeDaysAgo: 2 })
     await home({ createdDaysAgo: 3 })

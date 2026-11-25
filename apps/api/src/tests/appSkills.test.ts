@@ -402,6 +402,51 @@ describe('shopping, pantry, staples', () => {
     expect(r.summary).toContain('No estaban en la lista: caviar')
   })
 
+  // PRO-1050: «quita el caldo de pollo sin sal, el pollo NO» se llevaba el pollo (Marta y Jorge, 2026-10-25 → 11-17).
+  it('remove_shopping_items quita la línea pedida por su id, nunca la que solo es parte del nombre', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'menu:ing-pollo:g', ingredientId: 'ing-pollo', name: 'Pollo', quantity: 300, unit: 'g', kind: 'menu' },
+        { id: 'menu:ing-caldo:ml', ingredientId: 'ing-caldo', name: 'Caldo de pollo', quantity: 75, unit: 'ml', kind: 'menu' },
+        { id: 'm-css', name: 'Caldo de pollo sin sal', kind: 'manual' },
+        { id: 'menu:ing-tom:g', ingredientId: 'ing-tom', name: 'Tomate', quantity: 500, unit: 'g', kind: 'menu' },
+        { id: 'menu:ing-cherry:g', ingredientId: 'ing-cherry', name: 'Tomate cherry', quantity: 250, unit: 'g', kind: 'menu' },
+      ],
+    }
+    const one = async (names: string[]) => {
+      const f = fakeApi({ 'GET /shopping-list': list })
+      const r = await get('remove_shopping_items').handler({ names }, ctx(f.api))
+      return { w: writes(f.calls).map((c) => `${c.method} ${c.path}`), summary: r.summary }
+    }
+    expect((await one(['caldo de pollo sin sal'])).w).toEqual(['DELETE /shopping-list/L1/item/m-css'])
+    expect((await one(['caldo de pollo'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-caldo:ml/edit'])
+    expect((await one(['pollo'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-pollo:g/edit'])
+    expect((await one(['los tomates cherry'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-cherry:g/edit'])
+    expect((await one(['cherry'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-cherry:g/edit'])
+    // Sin el caldo en la lista, «caldo de pescado» no se lleva nada.
+    const none = await one(['caldo de pescado'])
+    expect(none.w).toEqual([])
+    expect(none.summary).toContain('No estaban en la lista: caldo de pescado')
+    // «caldo» vale para tres líneas: pregunta cuál, no quita ninguna.
+    const which = await one(['caldo'])
+    expect(which.w).toEqual([])
+    expect(which.summary).toContain('Hay varias líneas con "caldo": Caldo de pollo, Caldo de pollo sin sal')
+  })
+
+  it('change_shopping_item_amount no cambia el pollo cuando se pide el caldo de pollo (PRO-1050)', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'p', name: 'Pollo', quantity: 300, unit: 'g', kind: 'manual' },
+        { id: 'c', name: 'Caldo de pollo sin sal', quantity: 1, unit: 'u', kind: 'manual' },
+      ],
+    }
+    const f = fakeApi({ 'GET /shopping-list': list })
+    await get('change_shopping_item_amount').handler({ name: 'caldo de pollo sin sal', quantity: 2 }, ctx(f.api))
+    expect(writes(f.calls).map((c) => c.path)).toEqual(['/shopping-list/L1/item/c'])
+  })
+
   // PRO-175: Mimo «No he podido quitarlos de la lista. La herramienta ha dado un error» on menu lines.
   it('remove_shopping_items leaves a menu line out of this shopping instead of deleting it', async () => {
     const list = {

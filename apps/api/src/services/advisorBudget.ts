@@ -17,6 +17,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { env } from '../config/env.js'
 import { capOverrideEur } from './capOverrides.js'
+import { householdMimoCapEur } from './householdMimoCap.js'
 import { ACTIVE_PRICES } from '../config/pricing.js'
 import { attributeCostToUser, currentCostChannel, recordCost } from './costLedger.js'
 import { CLAUDE_MODEL } from '../config/models.js'
@@ -123,6 +124,16 @@ export function budgetMicros(userId?: string): number {
   return Math.round((capOverrideEur(userId) ?? env.ADVISOR_MONTHLY_BUDGET_EUR) * 1_000_000)
 }
 
+/**
+ * The monthly budget in micro-euros with the household's own cap (PRO-1290,
+ * householdMimoCap.ts): the person's cap, else their household's, else the
+ * configured one.
+ */
+export async function budgetMicrosFor(userId: string, db: Db = defaultDb): Promise<number> {
+  const own = capOverrideEur(userId) ?? (await householdMimoCapEur(userId, db))
+  return Math.round((own ?? env.ADVISOR_MONTHLY_BUDGET_EUR) * 1_000_000)
+}
+
 /** 18-nov: the share of the month's cap at which Mimo says it's running low. */
 export const BUDGET_WARNING_SHARE = 0.8
 /** The line added, once a month, to the reply that crosses it (no euros: the reply doesn't show them). */
@@ -175,7 +186,7 @@ export async function checkAdvisorBudget(
   db: Db = defaultDb,
 ): Promise<{ exceeded: boolean; spentMicros: number; budgetMicros: number }> {
   attributeCostToUser(userId)
-  const limit = budgetMicros(userId)
+  const limit = await budgetMicrosFor(userId, db)
   const spentMicros = await getMonthlySpendMicros(userId, db)
   return { exceeded: spentMicros >= limit, spentMicros, budgetMicros: limit }
 }

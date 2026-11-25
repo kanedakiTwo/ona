@@ -40,6 +40,8 @@ Every admin endpoint that mutates state. Concretely:
 - `catalog_batch.publish` — «Publicar las aprobadas» of a batch (`POST /admin/catalog-batches/:batch/publish`, target type `catalog_batch`, target id = the batch; payload: published, ids, wishesCovered, held by reason). Not written when nothing was published
 - `catalog_import.start` — a Cocina batch file imported as drafts from the web (`POST /admin/catalog-import/jobs`, target type `catalog_import`, target id = the job; payload: batch, origin, fileName, recipes). Written before the background import starts; if it can't be written the import never runs
 - `catalog_recipe.source` — the link to the original or the credit line of a catalogue recipe changed by hand (`PATCH /admin/catalog-recipes/:id/source`, PRO-1015, target type `recipe`; payload: name, `before` and `after` with only what changed — `sourceUrl`, `credit`). Written in the same transaction as the change — see [catalog-import.md](./catalog-import.md)
+- `catalog_recipe.edit` — a catalogue recipe fixed by the office (`PATCH /admin/catalog-recipes/:id`, PRO-1290, target type `recipe`; payload: name, reason, `acceptMentions` when sent, `before` and `after` with only what changed among ingredients, steps, allergens, times and tags). Written in the same transaction as the save; not written when the allergen audit holds it or nothing changed — see [admin-dashboard.md](./admin-dashboard.md) → «Office routes»
+- `household.mimo_cap` — a household's own monthly Mimo cap set or taken back (`PUT /admin/households/:id/mimo-cap`, PRO-1290, target type `household`; payload: `before` / `after` `capEur`, `planCapEur`, `maxEur`). Same transaction; not written when the cap doesn't change
 - `catalog_collection.import` — a Cocina collection uploaded or replaced from «Recetas pendientes» → «Subir colección» (`POST /admin/catalog-collections`, PRO-374, target type `catalog_collection`, target id = the collection; payload: slug, title, recipes, published, created). Written right after the save (not in its transaction): if it fails the answer is a 500 and the collection stays saved — see [catalog-import.md](./catalog-import.md) → «Colecciones»
 
 Admin **read** operations do not write to the log. Failed mutations (validation errors, 4xx responses) do not write either — only successful state changes.
@@ -53,7 +55,7 @@ admin_audit_log (
   id          uuid PRIMARY KEY,
   admin_id    uuid NOT NULL REFERENCES users(id),
   action      text NOT NULL,                       -- 'ingredient.remap' etc.
-  target_type text NOT NULL,                       -- 'ingredient' | 'recipe' | 'user'
+  target_type text NOT NULL,                       -- 'ingredient' | 'recipe' | 'user' | 'household'…
   target_id   text,                                -- the row id; nullable for cross-cutting actions
   payload     jsonb NOT NULL DEFAULT '{}',         -- before/after diff or relevant metadata
   created_at  timestamptz NOT NULL DEFAULT now()

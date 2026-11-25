@@ -1389,17 +1389,21 @@ describe('processInbound — the avisos of 19-nov', () => {
     expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('Cámbiame la cena de hoy por algo rápido')
   })
 
-  it('«¿Te sigo avisando…?»: «No» leaves the kind off, «Sí» switches it on; no model', async () => {
+  it('«¿Te sigo avisando?» (PRO-1303, one for every aviso): «No» switches them off, «Sí» keeps them; no model', async () => {
     const setAvisoKind = vi.fn(async () => {})
     const no = setup({ budgetExceeded: true, extra: { setAvisoKind } })
-    await processInbound(tap('avisos:no:cooking_reminder', 'No'), no.deps)
-    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'cooking_reminder', false)
+    await processInbound(tap('avisos:no:todos', 'No'), no.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'todos', false)
     expect(no.chat).not.toHaveBeenCalled()
-    expect(no.sent[0].text).toContain('no te aviso más')
+    expect(no.sent[0].text).toContain('no te mando más esos avisos')
     const yes = setup({ extra: { setAvisoKind } })
-    await processInbound(tap('avisos:si:dinner_checkin', 'Sí'), yes.deps)
-    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'dinner_checkin', true)
+    await processInbound(tap('avisos:si:todos', 'Sí'), yes.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'todos', true)
     expect(yes.sent).toEqual([{ type: 'text', text: 'Hecho, te sigo avisando.' }])
+    // A question of one kind sent before PRO-1303 still gets its answer.
+    const old = setup({ extra: { setAvisoKind } })
+    await processInbound(tap('avisos:si:dinner_checkin', 'Sí'), old.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'dinner_checkin', true)
   })
 
   it('BAJA: the first time it also asks why, with three buttons; the answer is an opinion, no model', async () => {

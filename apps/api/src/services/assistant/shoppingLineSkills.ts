@@ -1,7 +1,7 @@
 import { capitalize, formatQty, prettyName, type BuyableUnit, type ShoppingItem } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
-import { bestMatch, toBuyable } from './appSkills.js'
+import { bestMatch, findListLine, toBuyable, whichLine } from './appSkills.js'
 
 /**
  * Lines of the shopping list, from chat (D-051): what /shopping does on each
@@ -45,8 +45,10 @@ const changeShoppingItemUnit: SkillDefinition = {
   },
   async handler(p, ctx) {
     const list = await api(ctx)<ListDoc>('GET', '/shopping-list')
-    const hit = bestMatch((list.items ?? []).filter((i) => !i.skipped), String(p.name ?? ''), (i) => i.name)
-    if (!hit) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    const found = findListLine((list.items ?? []).filter((i) => !i.skipped), String(p.name ?? ''))
+    if (!found) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    if ('ambiguous' in found) return text(whichLine(String(p.name), found.ambiguous))
+    const hit = found.line
     const name = capitalize(prettyName(hit.name))
     const target = unitOf(p.unit)
     if (!target) return text(`¿En qué unidad pongo ${name.toLowerCase()}: unidades, gramos o litros?`)
@@ -104,7 +106,9 @@ const setShoppingHabitual: SkillDefinition = {
     const asked = String(p.name ?? '').trim()
     if (!asked) return text('¿Qué producto?')
     const list = await api(ctx)<ListDoc>('GET', '/shopping-list')
-    const hit = bestMatch((list.items ?? []).filter((i) => !i.skipped), asked, (i) => i.name)
+    const found = findListLine((list.items ?? []).filter((i) => !i.skipped), asked)
+    if (found && 'ambiguous' in found) return text(whichLine(asked, found.ambiguous))
+    const hit = found?.line
     if (hit) {
       const name = capitalize(prettyName(hit.name))
       await api(ctx)('PUT', `/shopping-list/${list.id}/item/${encodeURIComponent(hit.id)}/edit`, { habitual: on })

@@ -62,6 +62,23 @@ export async function recordCapHit(hit: CapHitInput, db: Db = defaultDb): Promis
   }
 }
 
+/**
+ * PRO-1302: ¿ya se le ha dicho este mes que llegó al tope? Es lo mismo que
+ * tener su fila de `cap_hits` (se escribe al darle el aviso). Un error de la
+ * base cuenta como «no»: mejor repetir el aviso una vez que callarlo.
+ */
+export async function capHitThisMonth(userId: string, now: Date = new Date(), db: Db = defaultDb): Promise<boolean> {
+  try {
+    const res = await db.execute(sql`
+      SELECT 1 FROM cap_hits WHERE user_id = ${userId}::uuid AND month = ${madridMonthKey(now)} LIMIT 1
+    `)
+    return res.rows.length > 0
+  } catch (err) {
+    console.warn('[capHits] read failed (continuing):', (err as Error)?.message ?? err)
+    return false
+  }
+}
+
 export interface CapHitRow {
   householdId: string | null
   plan: string | null

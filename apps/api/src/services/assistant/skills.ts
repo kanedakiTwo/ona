@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { refreshRecipeDishTypes } from '../dishTypes.js'
-import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt } from '../weekType.js'
+import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt, weekTypeHasMeal } from '../weekType.js'
+import { unmetRulesLine } from '../weekTypePlan.js'
 import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
 import {
   menus,
@@ -30,6 +31,7 @@ import { getSummary } from '../advisor.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { importRecipeFromUrl, createRecipeFromParts, type RecipeParts } from '../recipeImport.js'
 import { estimateRecipeTimes } from '../catalogRecipeTimes.js'
+import { TIMES_ESTIMATED_TAG } from '../householdRecipeTimes.js'
 import { mealLinesForDay } from '../menuText.js'
 import { fillRecipeNames } from '../menuNames.js'
 import { cookedRecipeIds, householdDiners, mealLinesWithFacts, timesLabel, type RecipeTimes } from './menuFacts.js'
@@ -209,7 +211,7 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
   const { restrictions } = await restrictionsFor(ctx)
   if (restrictions.length === 0) return []
   const [row] = await ctx.db
-    .select({ allergens: recipes.allergens })
+    .select({ name: recipes.name, allergens: recipes.allergens })
     .from(recipes)
     .where(eq(recipes.id, recipeId))
     .limit(1)
@@ -228,7 +230,7 @@ async function restrictionConflicts(ctx: SkillContext, recipeId: string): Promis
   const recipe: RestrictableRecipe = {
     allergens: row?.allergens ?? [],
     ingredients: ingredientRows,
-    stepMentions: unlistedDietMentions(stepTexts, ingredientRows.map((i) => i.ingredientName)),
+    stepMentions: unlistedDietMentions(stepTexts, ingredientRows.map((i) => i.ingredientName), row?.name),
   }
   return restrictions.filter((r) => violatesRestrictions(recipe, compileRestrictions([r])))
 }
@@ -312,9 +314,33 @@ const getTodaysMenu: SkillDefinition = {
  * A week with nothing planned answers in text (no menu data) so WhatsApp
  * keeps the model's words.
  */
+/**
+ * A week's lines for get_weekly_menu: day by day, every dish of each meal with
+ * its servings and minutes; «sin cocinar» for a skipped day. Empty when
+ * nothing is planned.
+ */
+async function weekMenuLines(ctx: SkillContext, weekStart: string, menu: { days?: unknown; skippedDays?: number[] | null }): Promise<string[]> {
+  const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
+  const skipped = new Set<number>(menu.skippedDays ?? [])
+  const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
+  if (!planned) return []
+  const facts = await menuFactsFor(ctx, days)
+  const lines: string[] = []
+  for (let i = 0; i < 7; i++) {
+    const label = menuDayOf(weekStart, i).label
+    if (skipped.has(i)) {
+      lines.push(`${label}: sin cocinar`)
+      continue
+    }
+    const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
+    if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
+  }
+  return lines
+}
+
 const getWeeklyMenu: SkillDefinition = {
   name: 'get_weekly_menu',
-  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con las raciones de cada comida y los minutos de cada plato. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
+  description: 'Obtiene el menu de la semana entera (esta o, con nextWeek, la que viene), dia a dia, con todos los platos de cada comida, sus raciones y los minutos de cada plato; con la de esta semana, tambien la que viene si ya tiene menu. Usalo cuando pida ver el menu de la semana; para un solo dia usa get_todays_menu. Una sola llamada, nunca get_todays_menu dia a dia.',
   parameters: {
     type: 'object',
     properties: {
@@ -323,31 +349,28 @@ const getWeeklyMenu: SkillDefinition = {
     required: [],
   },
   async handler(params: { nextWeek?: boolean }, ctx: SkillContext): Promise<SkillResult> {
-    const weekStart = getWeekStart(params?.nextWeek === true ? 1 : 0)
+    const nextWeek = params?.nextWeek === true
+    const weekStart = getWeekStart(nextWeek ? 1 : 0)
     const menu = await menuOfWeek(ctx, weekStart)
     if (!menu) {
       return { data: null, summary: `No hay menu para la semana del ${dateLabel(weekStart)}. Puedes generarlo con generate_weekly_menu.`, uiHint: 'text' }
     }
-    const days = Array.isArray(menu.days) ? (menu.days as DayMenu[]) : []
-    const skipped = new Set<number>(menu.skippedDays ?? [])
-    const lines: string[] = []
-    const planned = days.some((d, i) => !skipped.has(i) && mealLinesForDay(d).length > 0)
-    const facts = planned ? await menuFactsFor(ctx, days) : null
-    for (let i = 0; i < 7; i++) {
-      const label = menuDayOf(weekStart, i).label
-      if (skipped.has(i)) {
-        lines.push(`${label}: sin cocinar`)
-        continue
-      }
-      const meals = facts ? mealLinesWithFacts(days, i, facts.times, facts.diners) : mealLinesForDay(days[i])
-      if (meals.length > 0) lines.push(`${label}: ${meals.join(facts ? '; ' : ', ')}`)
-    }
+    const lines = await weekMenuLines(ctx, weekStart, menu)
     if (lines.length === 0) {
       return { data: null, summary: `La semana del ${dateLabel(weekStart)} no tiene nada planificado todavia.`, uiHint: 'text' }
     }
+    // PRO-1039: «la que viene todavía no tiene menú» (Laura) with it planned:
+    // this week's read says the next one too, when it has one.
+    let next = ''
+    if (!nextWeek) {
+      const nextStart = getWeekStart(1)
+      const nextMenu = await menuOfWeek(ctx, nextStart).catch(() => null)
+      const nextLines = nextMenu ? await weekMenuLines(ctx, nextStart, nextMenu) : []
+      if (nextLines.length > 0) next = `\n\nLa semana que viene (del ${dateLabel(nextStart)}) ya tiene menu:\n${nextLines.join('\n')}`
+    }
     return {
-      data: { menuId: menu.id, weekStart, days, skippedDays: [...skipped] },
-      summary: `Menu de la semana del ${dateLabel(weekStart)}:\n${lines.join('\n')}`,
+      data: { menuId: menu.id, weekStart, days: menu.days, skippedDays: menu.skippedDays ?? [] },
+      summary: `Menu de la semana del ${dateLabel(weekStart)}:\n${lines.join('\n')}${next}`,
       uiHint: 'menu',
     }
   },
@@ -371,8 +394,11 @@ export function recipeDetailsSummary(r: {
   steps: string[]
   tips?: string | null
   sourceUrl?: string | null
+  /** PRO-1037: the minutes were estimated from the steps, not given. */
+  timesEstimated?: boolean
 }): string {
-  const minutes = timesLabel(r) ?? '? min'
+  const label = timesLabel(r)
+  const minutes = label ? `${label}${r.timesEstimated ? ', estimado' : ''}` : '? min'
   const scaled = r.scaledTo != null && r.scaledTo > 0 && r.scaledTo !== (r.servings ?? 2)
   const head = scaled
     ? `${untrustedText(r.name)} (${minutes}; cantidades para ${r.scaledTo} raciones, la receta base es para ${r.servings ?? 2})`
@@ -595,6 +621,7 @@ const getRecipeDetails: SkillDefinition = {
       steps,
       tips: recipe.tips,
       sourceUrl: recipe.sourceUrl,
+      timesEstimated: (recipe.internalTags ?? []).includes(TIMES_ESTIMATED_TAG),
     })
     const withNotices = dietNotices.length > 0 ? `${details}\nAviso para este hogar: ${dietNotices.join('. ')}.` : details
     // PRO-349: which recipe this is, so «la receta de hoy» is never answered from another one.
@@ -1123,6 +1150,8 @@ async function generateAndSaveWeek(
       { onlyFavorites },
     )
     const { favoritesShort } = generated
+    // PRO-1296: what the week couldn't keep, said with a way out.
+    const unmetLine = unmetRulesLine(generated.warnings ?? [])
     let days = generated.days
     let placedDishes: PlacedDish[] = []
     let left: SignupDish[] | undefined
@@ -1220,7 +1249,7 @@ async function generateAndSaveWeek(
         : '\nTodos los platos salen de sus favoritas.'
     return {
       data: { ...menu, fit, ...(onlyFavorites ? { favoritesShort: favoritesShort ?? 0 } : {}) },
-      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
+      summary: `Menu generado para la semana del ${weekStart}.${pastLine} ${menuSummary}${planLine}${favLine}${unmetLine ? `\n${unmetLine}` : ''}${fitLine ? `\n${fitLine}` : ''}${holidayLine ? `\n${holidayLine}` : ''}`,
       uiHint: 'menu',
       ...(left ? { left } : {}),
     }
@@ -1623,6 +1652,17 @@ const swapMeal: SkillDefinition = {
         data: { ...updatedManual, change: changeOf(t, meal, chosen.name) },
         summary: `Hecho. He puesto "${chosen.name}" en la ${slotLabel}.${reactivatedLine(menu, t)}${repeatNote(days, t.weekStart, dayIndex, meal, { recipeId: chosen.id, name: chosen.name })}`,
         uiHint: 'menu',
+      }
+    }
+
+    // PRO-1296: «cámbiame la comida del martes» without a dish never creates a
+    // meal the household doesn't cook (its semana tipo says «no hay» there):
+    // before, it drew a recipe and created that meal («solo cenas» got a lunch).
+    if (!days[dayIndex]?.[meal]?.dishes?.length && !(await weekTypeHasMeal(userId, dayIndex, meal as Meal, db))) {
+      return {
+        data: null,
+        summary: `No he cambiado nada: la ${slotLabel} no esta en el menu (en su semana tipo ese dia no hay ${MEAL_LABEL[meal]}). Si queria cambiar otra comida de ese dia, vuelve a llamar con esa; si quiere ponerla solo esta vez, usa add_dish; si es para siempre, set_week_type_slot.`,
+        uiHint: 'text',
       }
     }
 

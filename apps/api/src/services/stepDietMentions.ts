@@ -28,7 +28,15 @@
  *   - a size isn't the food («del tamaño de una nuez», «como un huevo»,
  *     «una nuez de mantequilla»);
  *   - homographs that are also adjectives («dorada», «clara», «bonito»)
- *     count only after an article, a number or «de».
+ *     count only after an article, a number or «de», and not after «y» that
+ *     joins another adjective («crujiente y dorada»);
+ *   - PRO-401 (the Jerusalem book, 2026-10-25: 40 of 109 rejected): «la
+ *     carne» taken out of a listed aubergine or tomato is its flesh («saca la
+ *     carne con una cuchara»), «el hueso» of a listed peach or olive is its
+ *     stone, unless the word goes on as meat («la carne picada»);
+ *   - the dish the title is made of isn't an unlisted ingredient: «forma las
+ *     galletas» in «Galletas de tahini» (flour listed), «forma las
+ *     hamburguesas» in «Hamburguesas de garbanzos» (chickpeas listed).
  */
 
 export type DietCategory =
@@ -125,6 +133,38 @@ const TERMS: Term[] = [
   t('altramuz', 'altramuz'),
 ]
 
+/**
+ * PRO-401: «la carne» and «el hueso» of a fruit or vegetable. Flesh needs a
+ * verb taking it out just before; a stone also reads so when the fruit is
+ * named in the same step.
+ */
+const FLESHY = [
+  'berenjena', 'calabaza', 'calabacin', 'aguacate', 'tomate', 'pimiento', 'melon', 'sandia', 'mango', 'coco',
+  'boniato', 'patata', 'papaya', 'pina', 'higo', 'melocoton', 'albaricoque', 'ciruela', 'nectarina', 'pera',
+  'manzana', 'membrillo', 'granada', 'kiwi', 'chirimoya', 'aceituna', 'oliva',
+]
+const STONE_FRUIT = [
+  'melocoton', 'albaricoque', 'ciruela', 'cereza', 'nectarina', 'paraguayo', 'aceituna', 'oliva', 'mango',
+  'aguacate', 'datil', 'nispero', 'lichi', 'chirimoya',
+]
+const PART_OF: Record<string, readonly string[]> = { carne: FLESHY, hueso: STONE_FRUIT }
+/** Word starts of «sacar», «vaciar», «extraer», «raspar», «retirar», «quitar», «separar», «recoger», «desechar». */
+const TAKE_OUT = ['sac', 'vaci', 'extra', 'rasp', 'retir', 'quit', 'separ', 'recog', 'desech']
+/** «la carne picada» is meat whatever else is listed. */
+const MEAT_AFTER = new Set(['picada', 'picado', 'molida', 'molido', 'magra', 'guisada', 'roja', 'blanca', 'adobada', 'marinada'])
+/** Dishes made in the recipe: a word of the title, not a bought ingredient. */
+const DISH = ['galleta', 'pan', 'picatoste', 'naan', 'hamburguesa', 'albondiga', 'seitan']
+/** «crujiente y dorada»: the word before «y» is an adjective, so is this one. */
+const ADJECTIVES = new Set([
+  'crujiente', 'tierna', 'tierno', 'blanda', 'blando', 'firme', 'suave', 'ligera', 'ligero', 'espesa', 'espeso',
+  'brillante', 'caliente', 'fina', 'fino', 'jugosa', 'jugoso', 'esponjosa', 'esponjoso', 'melosa', 'meloso',
+  'transparente', 'fragante', 'dorada', 'dorado', 'clara', 'claro',
+])
+function isAdjective(word: string): boolean {
+  const base = word.replace(/s$/, '')
+  return ADJECTIVES.has(base) || /(ad|id)[ao]$/.test(base) || /(ente|ante|os[ao])$/.test(base)
+}
+
 const NOUN_CUES = new Set([
   'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'cada', 'ese', 'esa', 'esos', 'esas', 'su', 'sus', 'de',
   'del', 'con', 'al', 'y', 'e', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'ocho', 'media', 'medio',
@@ -167,13 +207,20 @@ function listedCategories(listedWords: readonly string[]): Set<DietCategory> {
 }
 
 /** Does the term at step words `w[i…]` read as the ingredient here? */
-function readsAsFood(term: Term, w: readonly string[], i: number): boolean {
+function readsAsFood(term: Term, w: readonly string[], i: number, listedWords: readonly string[]): boolean {
   const prev = w[i - 1] ?? ''
   const next = w[i + term.words.length] ?? ''
   const after = w[i + term.words.length + 1] ?? ''
   if (prev === 'sin' || (WITHOUT_FILLER.has(prev) && w[i - 2] === 'sin')) return false
   if (term.cue && !NOUN_CUES.has(prev) && !/^\d+$/.test(prev)) return false
+  if (term.cue && (prev === 'y' || prev === 'e') && isAdjective(w[i - 2] ?? '')) return false
   const head = term.words[0]
+  const produce = PART_OF[head]?.filter((x) => inWords(listedWords, x)) ?? []
+  if (produce.length > 0 && !MEAT_AFTER.has(next)) {
+    const takenOut = w.slice(Math.max(0, i - 3), i).some((x) => TAKE_OUT.some((v) => x.startsWith(v)))
+    const named = head === 'hueso' && w.some((x) => inWords(produce, x))
+    if (takenOut || named) return false
+  }
   if (head === 'nuez' && next === 'moscada') return false
   // A size, not the food: «bolas del tamaño de una nuez», «como un huevo»,
   // «una nuez de mantequilla».
@@ -189,10 +236,15 @@ function readsAsFood(term: Term, w: readonly string[], i: number): boolean {
  * Meat, fish, shellfish and allergens the steps name and the ingredient
  * names don't account for. One finding per step and term.
  */
-export function unlistedDietMentions(steps: readonly string[], ingredientNames: readonly string[]): DietMention[] {
+export function unlistedDietMentions(
+  steps: readonly string[],
+  ingredientNames: readonly string[],
+  recipeName?: string | null,
+): DietMention[] {
   const listedWords = ingredientNames.flatMap(dietWords)
   const listedCats = listedCategories(listedWords)
   const hasEgg = inWords(listedWords, 'huevo')
+  const dish = titleDish(recipeName ?? '', listedWords, listedCats)
   const out: DietMention[] = []
   steps.forEach((text, step) => {
     const w = dietWords(text ?? '')
@@ -203,11 +255,12 @@ export function unlistedDietMentions(steps: readonly string[], ingredientNames: 
       if (term.words.every((x) => inWords(listedWords, x))) continue
       if (term.family && term.family.some((c) => listedCats.has(c))) continue
       if (term.egg && hasEgg) continue
+      if (dish && term.words.length === 1 && sameWord(term.words[0], dish)) continue
       outer: for (let i = 0; i + term.words.length <= w.length; i++) {
         for (let k = 0; k < term.words.length; k++) {
           if (!sameWord(w[i + k], term.words[k])) continue outer
         }
-        if (!readsAsFood(term, w, i)) continue
+        if (!readsAsFood(term, w, i, listedWords)) continue
         seen.add(key)
         out.push({ step, term: key, category: term.category })
         break
@@ -215,6 +268,22 @@ export function unlistedDietMentions(steps: readonly string[], ingredientNames: 
     }
   })
   return out
+}
+
+/**
+ * The dish the title makes («Galletas de tahini» → «galleta»), when the
+ * ingredients account for it: its own category is listed (flour for the
+ * biscuits) or the title says what it's made of and that is listed
+ * («Hamburguesas de garbanzos»). «Pan con tomate» without bread still counts.
+ */
+function titleDish(name: string, listedWords: readonly string[], listedCats: ReadonlySet<DietCategory>): string | null {
+  const w = dietWords(name)
+  const dish = DISH.find((x) => sameWord(x, w[0] ?? ''))
+  if (!dish) return null
+  const category = TERMS.find((t) => t.words.length === 1 && t.words[0] === dish)!.category
+  if (listedCats.has(category)) return dish
+  const madeOf = w[1] === 'de' ? w.slice(2).filter((x) => x.length > 2) : []
+  return madeOf.some((x) => inWords(listedWords, x)) ? dish : null
 }
 
 /** Is this term part of a name (e.g. a catalogue name the reviewer already flagged)? */

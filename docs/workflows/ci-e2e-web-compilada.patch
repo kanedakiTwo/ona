@@ -1,0 +1,60 @@
+--- a/.github/workflows/ci.yml	2026-11-24 16:15:37.906382358 +0100
++++ b/.github/workflows/ci.yml	2026-11-24 16:15:37.973300010 +0100
+@@ -235,6 +235,7 @@
+   # (2026-10-15: serial on one runner it took 16 of the CI's ~20 minutes;
+   # 2026-10-22: with 4, shard 2 — menu-redesign.spec.ts and friends — passed
+   # 20 minutes and master's CI was cancelled twice, so 6 shards and 30 minutes).
++  # 2026-11-24 (PRO-398): against the compiled web, not `next dev`.
+   # Pinned to 24.04: since 2026-11-03 ubuntu-latest is 26.04 and Playwright
+   # 1.59 can't install Chromium there ("does not support chromium on
+   # ubuntu26.04-x64"), so every CI went red.
+@@ -333,25 +334,23 @@
+           done
+           tail -50 /tmp/api.log; exit 1
+ 
+-      - name: Boot Web
+-        run: |
+-          # BLOG_CONTENT_DIR: blog.spec.ts reads the fixture articles (one
+-          # published, one not) instead of content/blog; ignored in production.
+-          BLOG_CONTENT_DIR=e2e/fixtures/blog \
+-          PORT=3001 pnpm --filter @ona/web exec next dev --port 3001 > /tmp/web.log 2>&1 &
+-          echo $! > /tmp/web.pid
+-          for i in $(seq 1 90); do
+-            if curl -fsS "$WEB_URL/" >/dev/null 2>&1; then exit 0; fi
+-            sleep 1
+-          done
+-          tail -80 /tmp/web.log; exit 1
+-
+-      - name: Pre-compile routes
+-        # `next dev` compiles each route on first hit; doing it here keeps
+-        # that (cold-runner) cost out of the specs' 30 s timeouts.
+-        run: bash apps/web/scripts/warm-routes.sh "$WEB_URL"
++      - name: Cache Next.js build
++        uses: actions/cache@v4
++        with:
++          path: apps/web/.next/cache
++          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**', 'packages/shared/src/**') }}
++          restore-keys: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
++
++      - name: Build and boot Web
++        # PRO-398: the compiled web (`next build` + the standalone server, as
++        # in production) instead of `next dev`, which compiled each route on
++        # its first hit inside the specs. The script also points the blog at
++        # e2e/fixtures/blog (blog.spec.ts).
++        run: bash apps/web/scripts/boot-built-web.sh 3001 /tmp/web.log /tmp/web.pid
+ 
+       - name: Run Playwright (shard ${{ matrix.shard }}/6)
++        # Tests that only pass on the retry come out as «E2E inestable»
++        # warnings and in playwright-report/flaky.{json,md} (PRO-398).
+         run: pnpm --filter @ona/web exec playwright test --shard=${{ matrix.shard }}/6
+ 
+       - name: Tail logs on failure
+@@ -359,6 +358,8 @@
+         run: |
+           echo '── api.log ─────────────────────────'
+           tail -200 /tmp/api.log || true
++          echo '── web.log.build ───────────────────'
++          tail -80 /tmp/web.log.build || true
+           echo '── web.log ─────────────────────────'
+           tail -200 /tmp/web.log || true
+ 

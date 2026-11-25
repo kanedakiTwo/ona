@@ -16,6 +16,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     const r = await fetch(`${API}/shop-orders/link/${encodeURIComponent(token)}${m}`, { cache: "no-store" })
     if (r.ok) {
       const { url } = (await r.json()) as { url?: string }
+      // Red de tiendas: the order's card on /compra (relative; our own page only).
+      if (url && /^\/compra\?pedido=[0-9a-f-]{36}$/.test(url)) {
+        return new Response(null, { status: 302, headers: { Location: url } })
+      }
       // Only WhatsApp / mail: never an open redirect to an arbitrary site.
       if (url && /^(https:\/\/wa\.me\/|mailto:)/.test(url)) {
         return NextResponse.redirect(url, 302)

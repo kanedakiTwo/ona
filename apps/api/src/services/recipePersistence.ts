@@ -70,11 +70,7 @@ import {
 import { allergenUnion } from './nutrition/allergens.js'
 import { refreshRecipeDishTypes } from './dishTypes.js'
 import { carryIngredientMarks, ingredientMarksOf, type IngredientMarks } from './ingredientRoles.js'
-<<<<<<< 94d829667f643cb2d27ba809d39ad42052a5d515
 import { isDayBeforeStep, totalWithWaits, waitFloor } from './recipeWaitTime.js'
-=======
-import { isDayBeforeWait } from './recipeWaitTime.js'
->>>>>>> 14819124f74ea6363c39a6e02cdeaa0708f60331
 import type {
   Difficulty,
   IngredientRole,
@@ -450,7 +446,6 @@ function resolveSteps(
 
 // ─── totalTime ──────────────────────────────────────────────────
 
-<<<<<<< 94d829667f643cb2d27ba809d39ad42052a5d515
 /**
  * Sum of `step.durationMin` if all set (a soak or a night in the fridge
  * left out: done the day before), else `prepTime + cookTime` with the waits
@@ -458,11 +453,6 @@ function resolveSteps(
  */
 export function computeTotalTime(input: Pick<RecipeWriteInput, 'steps' | 'prepTime' | 'cookTime'>): number | null {
   const steps = (input.steps ?? []).map((s) => ({ text: s.text ?? '', durationMin: s.durationMin ?? null, technique: s.technique ?? null }))
-=======
-function computeTotalTime(input: RecipeWriteInput): number | null {
-  // PRO-402: a wait of the day before (soak, marinade…) is not part of it.
-  const steps = (input.steps ?? []).filter((s) => !isDayBeforeWait({ text: s.text, durationMin: s.durationMin, technique: s.technique }))
->>>>>>> 14819124f74ea6363c39a6e02cdeaa0708f60331
   if (steps.length > 0 && steps.every((s) => s.durationMin != null)) {
     const sum = steps.filter((s) => !isDayBeforeStep(s)).reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
     return sum > 0 ? sum : steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)

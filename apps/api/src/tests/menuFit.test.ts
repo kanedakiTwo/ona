@@ -20,6 +20,8 @@ import {
   MENU_FIT_FEATURE,
   MENU_FIT_MODEL,
   normalizeFit,
+  reconcileFit,
+  recipeCoveringDish,
   recordFitWishes,
   setMenuFitModelForTests,
   unusedAddMethodsFrom,
@@ -156,6 +158,77 @@ describe('normalizeFit', () => {
     expect(normalizeFit(null, realCase())).toBeNull()
     expect(normalizeFit({ acierto: 50 }, realCase())).toBeNull()
     expect(normalizeFit({ gustos: [{ n: 99, estado: 'si' }] }, realCase())).toBeNull()
+  })
+})
+
+describe('PRO-1051 · what «falta» is checked against the week and the catalogue', () => {
+  const fit = (over: Partial<MenuFit>): MenuFit => ({
+    score: 5,
+    level: 'bajo',
+    met: [],
+    missed: [],
+    unusedAddMethods: ['foto', 'enlace', 'escrita'],
+    evaluatedAt: '2026-10-19T10:00:00.000Z',
+    ...over,
+  })
+
+  it('by a look-alike name, not the exact one: «merluza» is «Merluza rebozada con ensalada»', () => {
+    expect(recipeCoveringDish('merluza', ['Lentejas estofadas', 'Merluza rebozada con ensalada'])).toBe('Merluza rebozada con ensalada')
+    expect(recipeCoveringDish('crema de calabaza', ['Crema de calabaza asada'])).toBe('Crema de calabaza asada')
+    expect(recipeCoveringDish('cremas y sopas', ['Sopa juliana'])).toBe('Sopa juliana')
+    expect(recipeCoveringDish('Tacos de maíz', ['Tacos de maiz con pollo'])).toBe('Tacos de maiz con pollo')
+    expect(recipeCoveringDish('pescado a la plancha', ['Merluza a la plancha'])).toBeNull()
+    expect(recipeCoveringDish('pastel de carne', ['Menestra de verduras con carne'])).toBeNull()
+  })
+
+  it('Marta y Jorge: merluza and the crema are in the week → met, never «aún no tengo»', () => {
+    const out = reconcileFit(
+      fit({
+        missed: [
+          { preference: 'crema de calabaza', reason: 'no_catalogo' },
+          { preference: 'pollo al horno', reason: 'no_catalogo' },
+          { preference: 'merluza', reason: 'no_catalogo' },
+        ],
+      }),
+      ['Merluza rebozada con ensalada', 'Crema de calabaza', 'Lentejas estofadas'],
+      ['Pollo asado al horno con patatas'],
+    )
+    expect(out.met).toEqual([
+      { preference: 'crema de calabaza', recipe: 'Crema de calabaza' },
+      { preference: 'merluza', recipe: 'Merluza rebozada con ensalada' },
+    ])
+    // We have it in Recetas: it didn't fit, it isn't lacking.
+    expect(out.missed).toEqual([{ preference: 'pollo al horno', reason: 'no_cabia' }])
+    expect(out.score).toBe(67)
+    expect(out.level).toBe('medio')
+  })
+
+  it('a stale verdict: a met dish whose recipe left the week is missed again', () => {
+    const out = reconcileFit(
+      fit({ score: 42, level: 'medio', met: [{ preference: 'garbanzos', recipe: 'Garbanzos con tomate' }, { preference: 'tortilla', recipe: 'Tortilla de patatas' }] }),
+      ['Tortilla de patatas', 'Croquetas de jamón'],
+      ['Garbanzos con tomate'],
+    )
+    expect(out.met).toEqual([{ preference: 'tortilla', recipe: 'Tortilla de patatas' }])
+    expect(out.missed).toEqual([{ preference: 'garbanzos', reason: 'no_cabia' }])
+    expect(out.score).toBe(50)
+  })
+
+  it('nothing to fix → the verdict as it was (score and all)', () => {
+    const before = fit({ missed: [{ preference: 'chuletón', reason: 'no_catalogo' }] })
+    expect(reconcileFit(before, ['Lentejas estofadas'], ['Sopa juliana'])).toEqual(before)
+  })
+
+  it('the model\'s answer is reconciled too: «no_cabia» for the chili of the week becomes met', () => {
+    const input: FitInput = {
+      preferences: [{ text: 'Chili con carne', source: 'plato' }, { text: 'arroz con pollo', source: 'plato' }],
+      menuRecipes: ['Chili con carne', 'Tacos de maíz'],
+      catalogNames: ['Chili con carne', 'Tacos de maíz', 'Arroz con pollo al curry'],
+      unusedAddMethods: [],
+    }
+    const out = normalizeFit({ acierto: 10, gustos: [{ n: 1, estado: 'no_cabia' }, { n: 2, estado: 'no_cabia' }] }, input)!
+    expect(out.met).toEqual([{ preference: 'Chili con carne', recipe: 'Chili con carne' }])
+    expect(out.missed).toEqual([{ preference: 'arroz con pollo', reason: 'no_cabia' }])
   })
 })
 

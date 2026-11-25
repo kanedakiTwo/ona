@@ -1,0 +1,1726 @@
+{
+  "version": 1,
+  "que_es": "Referencia de ingredientes y alérgenos (PRO-399). Cada caso es un nombre de ingrediente y los alérgenos que el detector por nombre (inferAllergenTagsFromName, allergens.ts) debe dar, ni más ni menos. El test allergenReference.test.ts lo comprueba en CI. Cocina lo revisa: sus correcciones son casos nuevos o cambios en «alergenos», y luego se arregla el detector.",
+  "etiquetas": [
+    "gluten",
+    "lactosa",
+    "huevo",
+    "frutos_secos",
+    "cacahuetes",
+    "soja",
+    "pescado",
+    "marisco",
+    "crustaceos",
+    "moluscos",
+    "apio",
+    "mostaza",
+    "sesamo",
+    "altramuces",
+    "sulfitos"
+  ],
+  "casos": [
+    {
+      "ingrediente": "leche de coco",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "leche de almendras",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "leche de avena",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)",
+      "nota": "La avena cuenta como gluten (prudente, PRO-61)."
+    },
+    {
+      "ingrediente": "leche de soja",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "leche de arroz",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "bebida de soja",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "bebida de avena",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "yogur de soja",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "yogures de soja",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "yogur de coco",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "yogur vegetal",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "queso vegano rallado",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "queso vegetal",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "nata vegetal",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "nata de coco",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "mantequilla de cacahuete",
+      "alergenos": [
+        "cacahuetes"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "crema de cacahuete",
+      "alergenos": [
+        "cacahuetes"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "crema de almendras",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "kéfir de agua",
+      "alergenos": [],
+      "grupo": "Bebidas y lácteos vegetales",
+      "por": "PRO-193 y Cocina 2026-11-11 (falsos positivos de lactosa)"
+    },
+    {
+      "ingrediente": "leche entera",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "leche sin lactosa",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)",
+      "nota": "«Sin lactosa» sigue siendo leche: la proteína de la leche está."
+    },
+    {
+      "ingrediente": "yogur natural",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "yogur griego",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "yogures",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "queso rallado",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "queso de cabra",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "quesitos",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "mantequilla",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "mantequilla clarificada",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "ghee",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "nata para montar",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "crema de leche",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "natillas",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "requesón",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "mascarpone",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "mozzarella",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "feta",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "parmesano",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "Queso gouda",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "Emmental rallado",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "brie",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "camembert",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "cheddar",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "gorgonzola",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "roquefort",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "ricotta",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "burrata",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "provolone",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "pecorino",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "grana padano",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "manchego",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "Kéfir",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "kéfir natural",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "suero de leche",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "caseína",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "salsa bechamel",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "pisto manchego",
+      "alergenos": [],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)",
+      "nota": "Es un guiso de verduras, no queso."
+    },
+    {
+      "ingrediente": "helado de vainilla",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "helado de turrón",
+      "alergenos": [
+        "frutos_secos",
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)",
+      "nota": "El turrón lleva almendra; a veces también clara de huevo, que el nombre no da."
+    },
+    {
+      "ingrediente": "té helado",
+      "alergenos": [],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "chocolate con leche",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)"
+    },
+    {
+      "ingrediente": "crema de calabaza",
+      "alergenos": [
+        "lactosa"
+      ],
+      "grupo": "Lácteos",
+      "por": "PRO-193, PRO-332 y Cocina 2026-11-12 (helados)",
+      "nota": "Prudente: «crema» cuenta como leche (PRO-332 lo dejó así). Si Cocina prefiere que las cremas de verdura no la den, se cambia aquí y en el detector."
+    },
+    {
+      "ingrediente": "harina de trigo",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "harina de fuerza",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "harina de arroz",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "harina de maíz",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "harina de garbanzo",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "harina de almendra",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "trigo sarraceno",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pan sin gluten",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pasta sin gluten",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "avena sin gluten",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "copos de avena",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pan rallado",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "panko",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pan de molde",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "panes de pita",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "empanadilla",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "galletas",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "cerveza",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "cuscús",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "bulgur",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "seitán",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "espaguetis",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "macarrones",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pasta fresca",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "fideos de arroz",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "fideos shirataki",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)",
+      "nota": "Son de konjac, sin trigo (Cocina, 2026-11-17)."
+    },
+    {
+      "ingrediente": "freekeh",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "farro",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "rebozado",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "panceta",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "Panceta ahumada",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pasta de tomate",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pasta de curry",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pasta de sésamo",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "pastas de té",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
+    },
+    {
+      "ingrediente": "salsa de soja",
+      "alergenos": [
+        "gluten",
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)",
+      "nota": "Suele fermentarse con trigo."
+    },
+    {
+      "ingrediente": "salsa de soja sin gluten",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "tamari",
+      "alergenos": [
+        "gluten",
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "tofu",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "tempeh",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "edamame",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "miso",
+      "alergenos": [
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "salsa teriyaki",
+      "alergenos": [
+        "gluten",
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "salsa hoisin",
+      "alergenos": [
+        "gluten",
+        "soja"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "salsa de ostras",
+      "alergenos": [
+        "gluten",
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "vino shaoxing",
+      "alergenos": [
+        "gluten",
+        "sulfitos"
+      ],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)"
+    },
+    {
+      "ingrediente": "chocolate negro",
+      "alergenos": [],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)",
+      "nota": "Trazas: la leche y la soja (lecitina) van según la marca; el nombre no las da, la etiqueta manda."
+    },
+    {
+      "ingrediente": "chorizo",
+      "alergenos": [],
+      "grupo": "Soja, salsas asiáticas y trazas",
+      "por": "PRO-61, 2026-10-21 (teriyaki, hoisin, ostras, shaoxing)",
+      "nota": "Trazas: según la marca lleva leche y sulfitos (Cocina, 2026-11-11); el nombre no los da."
+    },
+    {
+      "ingrediente": "semillas de sésamo",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "aceite de sésamo",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "tahini",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "hummus",
+      "alergenos": [],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)",
+      "nota": "El nombre no da el tahini; va como ingrediente aparte."
+    },
+    {
+      "ingrediente": "za'atar",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "Za’atar",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "zaatar",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "zatar",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "zahtar",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "za'atar verde",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "mezcla de especias zaatar",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "dukkah",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "dukka",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "gomasio",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "halva",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "halwa de pistacho",
+      "alergenos": [
+        "frutos_secos",
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "shichimi togarashi",
+      "alergenos": [
+        "sesamo"
+      ],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "zanahorias baby",
+      "alergenos": [],
+      "grupo": "Sésamo",
+      "por": "PRO-1096 y 2026-10-21 (shichimi)"
+    },
+    {
+      "ingrediente": "almendras",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "nueces",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "nuez",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "nueces de macadamia",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "avellanas",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "pistachos",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "anacardos",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "castañas",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "nuez moscada",
+      "alergenos": [],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)",
+      "nota": "Es una especia."
+    },
+    {
+      "ingrediente": "nueces y nuez moscada",
+      "alergenos": [
+        "frutos_secos"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "piñones",
+      "alergenos": [],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)",
+      "nota": "No son fruto de cáscara en la lista de la UE; revísalo, Cocina."
+    },
+    {
+      "ingrediente": "cacahuetes",
+      "alergenos": [
+        "cacahuetes"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "maní tostado",
+      "alergenos": [
+        "cacahuetes"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "manitas de cerdo",
+      "alergenos": [],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "mandarina",
+      "alergenos": [],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "mole rojo",
+      "alergenos": [
+        "cacahuetes",
+        "frutos_secos",
+        "gluten",
+        "sesamo"
+      ],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)",
+      "nota": "Se muele con cacahuete, almendra, sésamo y pan o galleta."
+    },
+    {
+      "ingrediente": "guacamole",
+      "alergenos": [],
+      "grupo": "Frutos secos y cacahuete",
+      "por": "PRO-160, PRO-193 y Cocina 2026-11-12 (mole)"
+    },
+    {
+      "ingrediente": "salmón",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "salmonete",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "boquerones",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "sardinillas",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "pescadilla",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "cabracho",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "mero",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "dashi en polvo",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "katsuobushi",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "fumet",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "surimi",
+      "alergenos": [
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "palitos de cangrejo",
+      "alergenos": [
+        "crustaceos",
+        "marisco",
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)",
+      "nota": "Son surimi (pescado); el nombre da también el cangrejo, por prudencia."
+    },
+    {
+      "ingrediente": "salsa Worcestershire",
+      "alergenos": [
+        "gluten",
+        "pescado"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "langostinos",
+      "alergenos": [
+        "crustaceos",
+        "marisco"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "galeras",
+      "alergenos": [
+        "crustaceos",
+        "marisco"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "carabineros",
+      "alergenos": [
+        "crustaceos",
+        "marisco"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "nécoras",
+      "alergenos": [
+        "crustaceos",
+        "marisco"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "centollo",
+      "alergenos": [
+        "crustaceos",
+        "marisco"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "percebes",
+      "alergenos": [
+        "crustaceos",
+        "marisco"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "buey de mar",
+      "alergenos": [
+        "crustaceos",
+        "marisco"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "carne de buey",
+      "alergenos": [],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "mejillones",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "almejas",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "berberechos",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "chirlas",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "coquinas",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "navajas",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "zamburiñas",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "bígaros",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "caracoles",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "calamares",
+      "alergenos": [
+        "marisco",
+        "moluscos"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)"
+    },
+    {
+      "ingrediente": "caracolas de hojaldre",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Pescado, crustáceos y moluscos",
+      "por": "PRO-193, 2026-10-21 (tandas libros-01 y yaya-01) y Cocina 2026-11-11 (surimi)",
+      "nota": "Bollo de hojaldre, no caracol."
+    },
+    {
+      "ingrediente": "apio",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "apionabo",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de pollo",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de verduras",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo vegetal",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de ave",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "Caldo de gallina",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de cocido",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de jamón",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de pescado",
+      "alergenos": [
+        "apio",
+        "pescado"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de marisco",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de huesos",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "concentrado de carne",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "fondo de ave",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "fondo oscuro de ternera",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "pastilla de caldo de pollo",
+      "alergenos": [
+        "apio"
+      ],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "caldo de verduras sin apio",
+      "alergenos": [],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "huesos para caldo",
+      "alergenos": [],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "fondos de alcachofa",
+      "alergenos": [],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "tomate concentrado",
+      "alergenos": [],
+      "grupo": "Apio y caldos",
+      "por": "PRO-363"
+    },
+    {
+      "ingrediente": "mostaza de Dijon",
+      "alergenos": [
+        "mostaza"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "mostaza en grano",
+      "alergenos": [
+        "mostaza"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "curry en polvo",
+      "alergenos": [],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363",
+      "nota": "Trazas: suele llevar mostaza según la marca (Cocina, 2026-11-14); el nombre no la da."
+    },
+    {
+      "ingrediente": "vino blanco",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "vino tinto",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "vinagre de Jerez",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "vinagre de arroz",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "vinagreta",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "pasas",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "Pasas sultanas",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "uvas pasas",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "ciruela pasa",
+      "alergenos": [
+        "sulfitos"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "pasta",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "pastel",
+      "alergenos": [],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363"
+    },
+    {
+      "ingrediente": "coñac",
+      "alergenos": [],
+      "grupo": "Mostaza y sulfitos",
+      "por": "PRO-193 y PRO-363",
+      "nota": "Cocina (2026-11-11): no da sulfitos por el nombre; según la marca."
+    },
+    {
+      "ingrediente": "huevos",
+      "alergenos": [
+        "huevo"
+      ],
+      "grupo": "Huevo",
+      "por": "PRO-61 y PRO-193"
+    },
+    {
+      "ingrediente": "clara de huevo",
+      "alergenos": [
+        "huevo"
+      ],
+      "grupo": "Huevo",
+      "por": "PRO-61 y PRO-193"
+    },
+    {
+      "ingrediente": "yema de huevo",
+      "alergenos": [
+        "huevo"
+      ],
+      "grupo": "Huevo",
+      "por": "PRO-61 y PRO-193"
+    },
+    {
+      "ingrediente": "mayonesa",
+      "alergenos": [
+        "huevo"
+      ],
+      "grupo": "Huevo",
+      "por": "PRO-61 y PRO-193"
+    },
+    {
+      "ingrediente": "miel",
+      "alergenos": [],
+      "grupo": "Miel para bebés",
+      "por": "Auditoría 2026-11-18",
+      "nota": "No es un alérgeno de la UE: el riesgo para menores de 1 año (botulismo) lo lleva otra regla, no el detector de alérgenos."
+    }
+  ]
+}

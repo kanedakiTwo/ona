@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import { defineConfig, devices, webkit } from '@playwright/test'
+import type { DisplayMode } from './e2e/_realCatalog'
 
 /**
  * Playwright config for the Mimoia web E2E suite.
@@ -14,6 +15,12 @@ import { defineConfig, devices, webkit } from '@playwright/test'
  * pins to WebKit and the CI workflow only installs Chromium to keep the
  * cache small. The iPhone sign-up (register-iphone.spec.ts) also runs in a
  * WebKit project wherever WebKit is installed (PRO-354).
+ *
+ * PRO-397: the week's paths with the real catalogue (real-catalog.spec.ts,
+ * a copy of staging's, `e2e/_realCatalog.ts`) also run on a laptop screen
+ * (`desktop-chromium`, 1280×800) and as the installed app
+ * (`standalone-chromium`, `display-mode: standalone`). Both projects only run
+ * that spec; the rest of the suite stays on the phone.
  */
 
 const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3001'
@@ -31,7 +38,7 @@ function webkitInstalled(): boolean {
   }
 }
 
-export default defineConfig({
+export default defineConfig<{ displayMode: DisplayMode }>({
   testDir: './e2e',
   // Closed beta (PRO-27): creates the "e2e" campaign link the specs sign up with.
   globalSetup: './e2e/global-setup.ts',
@@ -80,6 +87,16 @@ export default defineConfig({
           ],
         },
       },
+    },
+    {
+      name: 'desktop-chromium',
+      testMatch: /real-catalog\.spec\.ts$/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      name: 'standalone-chromium',
+      testMatch: /real-catalog\.spec\.ts$/,
+      use: { ...devices['Pixel 7'], displayMode: 'standalone' },
     },
     ...(webkitInstalled()
       ? [

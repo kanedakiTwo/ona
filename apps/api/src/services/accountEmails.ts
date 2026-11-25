@@ -27,6 +27,12 @@ export interface WelcomeEmailInput {
   kind: WelcomeKind
   /** Web origin (`WEB_PUBLIC_URL`). */
   publicUrl: string
+  /**
+   * WhatsApp is on for this account (PRO-1040): only then does the email
+   * promise it. Off (staging, or an account outside the allow-list), Perfil
+   * has nothing to connect it with.
+   */
+  whatsapp?: boolean
 }
 
 function hello(name?: string | null): string {
@@ -34,17 +40,18 @@ function hello(name?: string | null): string {
   return n ? `Hola, ${n}:` : 'Hola:'
 }
 
-const WHATSAPP_STEP = `Conecta WhatsApp desde tu perfil y pídeselo todo a ${ASSISTANT_NAME}, nuestra asistente, como a cualquier contacto.`
+const WHATSAPP_STEP = `Conecta WhatsApp desde tu perfil (Perfil → WhatsApp) y pídeselo todo a ${ASSISTANT_NAME}, nuestra asistente, como a cualquier contacto.`
 const FIRST_STEPS = [
   'Contesta unas preguntas sobre tu casa: quiénes coméis y qué os gusta.',
   'Mira tu primer menú de la semana y cambia lo que no te apetezca.',
   'Abre la lista de la compra: ya sale hecha con lo que te falta.',
-  WHATSAPP_STEP,
 ]
 const TELL_ME = 'Si algo falla o echas algo en falta, contesta a este correo y cuéntamelo: lo leo yo.'
 
 export function welcomeEmail(i: WelcomeEmailInput): EmailMessage {
   const web = i.publicUrl.replace(/\/+$/, '')
+  const whatsapp = i.whatsapp ?? false
+  const withWhatsApp = (steps: string[]) => (whatsapp ? [...steps, WHATSAPP_STEP] : steps)
   const common = {
     button: { label: `Abrir ${BRAND_NAME}`, url: `${web}/menu` },
     from: MIGUEL,
@@ -63,7 +70,7 @@ export function welcomeEmail(i: WelcomeEmailInput): EmailMessage {
         `Estamos en beta. En mi casa lleva cuatro años funcionando, pero contigo empieza a servirle a más gente. ${TELL_ME}`,
         'Para empezar:',
       ],
-      steps: FIRST_STEPS,
+      steps: withWhatsApp(FIRST_STEPS),
       signoff: 'Gracias por estar aquí desde el principio.\nUn abrazo,',
     },
     general: {
@@ -73,11 +80,11 @@ export function welcomeEmail(i: WelcomeEmailInput): EmailMessage {
       heading: 'Te doy la *bienvenida*',
       paragraphs: [
         hello(i.firstName),
-        `Gracias por crear tu cuenta. ${BRAND_NAME} nació en mi casa con una idea sencilla: que solo quede la parte divertida de cocinar. Decide contigo el menú de la semana, hace la lista de la compra y te escribe por WhatsApp cuando toca.`,
+        `Gracias por crear tu cuenta. ${BRAND_NAME} nació en mi casa con una idea sencilla: que solo quede la parte divertida de cocinar. Decide contigo el menú de la semana${whatsapp ? ', hace la lista de la compra y te escribe por WhatsApp cuando toca' : ' y hace la lista de la compra'}.`,
         TELL_ME,
         'Para empezar:',
       ],
-      steps: FIRST_STEPS,
+      steps: withWhatsApp(FIRST_STEPS),
       signoff: 'Un abrazo,',
     },
     household: {
@@ -90,11 +97,10 @@ export function welcomeEmail(i: WelcomeEmailInput): EmailMessage {
         `Alguien de tu casa te ha invitado a ${BRAND_NAME}, así que compartís el mismo menú de la semana, la misma lista de la compra y la misma despensa: lo que cambie uno, lo ve el otro.`,
         'Para empezar:',
       ],
-      steps: [
+      steps: withWhatsApp([
         'Mira el menú de la semana: es el de toda la casa.',
         'Cuando compres algo, márcalo en la lista. Así nadie lo compra dos veces.',
-        WHATSAPP_STEP,
-      ],
+      ]),
       signoff: `${TELL_ME}\n\nUn abrazo,`,
     },
   }[i.kind]

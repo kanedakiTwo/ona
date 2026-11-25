@@ -7,10 +7,12 @@
  * only when the WHOLE message is that, answers them here:
  *   - `ver_menu`: today's, tomorrow's, a weekday's menu, or the week's (on
  *     WhatsApp the week goes as the same picture as always, inbound.ts);
- *   - `paso_cocina`: «siguiente», «anterior», «repite» in cook mode (web).
+ *   - `paso_cocina`: «siguiente», «anterior», «repite» in cook mode (web);
+ *   - `ver_lista` (PRO-1302): «la lista de la compra», «¿qué me falta?» (on
+ *     WhatsApp the list follows as always, the shopping digest of inbound.ts).
  * Anything else — another request, a doubt, a menu that isn't there — goes to
  * the model as before. The reply runs the same tools the model would
- * (get_todays_menu, get_weekly_menu), so it says what the app says, and leaves
+ * (get_todays_menu, get_weekly_menu, get_shopping_list), so it says what the app says, and leaves
  * the same trace (⟦hecho: …⟧ in history). Event `mimo_code_reply {kind}`.
  */
 import type { DayMenu } from '@ona/shared'
@@ -20,8 +22,8 @@ import { DAY_NAMES, menuDayOf } from './menuDay.js'
 import type { CookStep } from './pageContext.js'
 import type { AssistantResponse, SkillContext, SkillResult, ToolTrace } from './types.js'
 
-export type CodeReplyKind = 'ver_menu' | 'paso_cocina'
-export const CODE_REPLY_KINDS: readonly CodeReplyKind[] = ['ver_menu', 'paso_cocina']
+export type CodeReplyKind = 'ver_menu' | 'paso_cocina' | 'ver_lista'
+export const CODE_REPLY_KINDS: readonly CodeReplyKind[] = ['ver_menu', 'paso_cocina', 'ver_lista']
 
 export type MealFilter = 'breakfast' | 'lunch' | 'dinner'
 export type StepDirection = 'next' | 'previous' | 'repeat'
@@ -30,6 +32,7 @@ export type CodeIntent =
   | { kind: 'ver_menu'; scope: 'day'; day: string; meal: MealFilter | null }
   | { kind: 'ver_menu'; scope: 'week'; nextWeek: boolean }
   | { kind: 'paso_cocina'; direction: StepDirection }
+  | { kind: 'ver_lista' }
 
 /** Accents and punctuation off, lower case, one space: what the phrases compare. */
 export function normalizeCodeText(text: string): string {
@@ -75,6 +78,9 @@ const WEEK_MENU = new RegExp(`^(?:${ASK} )?(?:el )?menu(?: ${WEEK_WORDS})?$`)
 const WEEK_ASK = new RegExp(`^que ${VERB} (?:esta semana|en la semana)$`)
 const NEXT_WEEK_MENU = new RegExp(`^(?:${ASK} )?(?:el )?menu ${NEXT_WEEK_WORDS}$`)
 const NEXT_WEEK_ASK = new RegExp(`^que ${VERB} (?:la semana que viene|la proxima semana)$`)
+// PRO-1302: «la lista de la compra», «mándame la lista», «¿qué me falta por comprar?».
+const LIST = new RegExp(`^(?:(?:${ASK}|lee(?:me)?|hazme|me haces) )?(?:la |mi )?lista(?: de (?:la )?compra)?(?: de (?:la|esta) semana)?$`)
+const LIST_ASK = /^que (?:(?:me|nos) falta(?: por comprar| de la compra)?|(?:tengo|tenemos|hay) que comprar)$/
 
 /** The meal a «¿qué cenamos…?» asks for (null = the whole day). */
 function mealOf(t: string): MealFilter | null {
@@ -113,6 +119,7 @@ export function recognizeCodeIntent(message: string, opts: { cooking?: boolean }
     if (STEP_REPEAT.test(t)) return { kind: 'paso_cocina', direction: 'repeat' }
   }
 
+  if (LIST.test(t) || LIST_ASK.test(t)) return { kind: 'ver_lista' }
   if (NEXT_WEEK_MENU.test(t) || NEXT_WEEK_ASK.test(t)) return { kind: 'ver_menu', scope: 'week', nextWeek: true }
   if (WEEK_MENU.test(t) || WEEK_ASK.test(t)) return { kind: 'ver_menu', scope: 'week', nextWeek: false }
   const m = t.match(DAY_ASK) ?? t.match(DAY_FIRST) ?? t.match(DAY_MENU)
@@ -236,6 +243,21 @@ export async function menuCodeReply(
   if (!data?.date) return null
   const message = dayMenuReply(data.day, data.date, intent.meal, now)
   return message ? codeResponse(message, 'get_todays_menu', input, result) : null
+}
+
+/**
+ * PRO-1302: the reply to a `ver_lista` intent, read with `get_shopping_list`.
+ * In the app, the tool's own summary («Te faltan 12 cosas: …»); on WhatsApp no
+ * words: the list goes below as always (inbound.ts, shopping digest). Null
+ * when the list is empty: the model answers then (it can offer to make it).
+ */
+export async function listCodeReply(ctx: SkillContext, opts: { runSkill?: RunSkill } = {}): Promise<AssistantResponse | null> {
+  const run = opts.runSkill ?? runSkillByName
+  const result = await run('get_shopping_list', {}, ctx)
+  const items = (result?.data as { items?: unknown[] } | null)?.items
+  if (!Array.isArray(items) || items.length === 0) return null
+  const message = ctx.channel === 'whatsapp' ? '' : String(result.summary ?? '')
+  return codeResponse(message, 'get_shopping_list', {}, result)
 }
 
 /** The reply to a `paso_cocina` intent: the step's own text and the same `cooking_step` hint the tool gives. */

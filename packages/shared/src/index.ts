@@ -773,6 +773,7 @@ export type {
   CocinaBatchCheck,
   CatalogDraftDecision,
   CatalogDraftView,
+  CatalogPhotoRejectedView,
   CatalogDraftBatchView,
   CatalogDraftsView,
   CatalogImportJobStatus,

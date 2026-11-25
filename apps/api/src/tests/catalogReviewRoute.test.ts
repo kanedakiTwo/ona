@@ -81,6 +81,9 @@ function fakes(over: Partial<CatalogReviewDeps> = {}) {
     editRecipe: vi.fn(async (id: string) =>
       id === ID ? { ok: true as const, id, name: 'Sopa alpujarreña', changed: ['ingredients', 'allergens'], allergens: ['gluten'], warnings: [] } : { ok: false as const, code: 'NOT_FOUND' as const },
     ),
+    retryPhoto: vi.fn(async (id: string) =>
+      id === ID ? { ok: true as const, id, name: 'Sopa alpujarreña' } : { ok: false as const, code: 'HAS_PHOTO' as const },
+    ),
     previewImport: vi.fn(async (names: readonly string[]) => ({ recipes: names.map((name, i) => ({ name, duplicateOf: i === 0 ? 'Guiso de garbanzos' : null })), alreadyInBatch: 3 })),
     canImport: vi.fn(() => true),
     startImport: vi.fn(async (_input: any, opts?: { beforeRun?: (job: ImportJobRow) => Promise<void> }) => {
@@ -126,6 +129,7 @@ describe('access', () => {
       ['POST', '/admin/catalog-batches/cocina-01/publish'],
       ['PATCH', `/admin/catalog-recipes/${ID}/source`],
       ['PATCH', `/admin/catalog-recipes/${ID}`],
+      ['POST', `/admin/catalog-recipes/${ID}/photo-retry`],
       ['POST', '/admin/catalog-import/check'],
       ['POST', '/admin/catalog-import/jobs'],
       ['GET', '/admin/catalog-import/jobs'],
@@ -234,6 +238,21 @@ describe('drafts', () => {
     expect(await r.json()).toEqual({ published: 2, wishesCovered: 0, held: [{ id: 'x', name: 'Otra', reason: 'sin_revisar' }] })
     expect(deps.publishBatch).toHaveBeenLastCalledWith('cocina-01', ADMIN)
     expect((await post(base, '/admin/catalog-batches/..%2Fx/publish')).status).toBe(400)
+  })
+})
+
+describe('«Pedir otra foto» (PRO-1313)', () => {
+  it('passes the admin id; 409 when the recipe already has a photo; 404 for a bad id', async () => {
+    const { base, deps } = await app()
+    const r = await post(base, `/admin/catalog-recipes/${ID}/photo-retry`)
+    expect(r.status).toBe(200)
+    expect(await r.json()).toEqual({ id: ID, name: 'Sopa alpujarreña', retrying: true })
+    expect(deps.retryPhoto).toHaveBeenLastCalledWith(ID, ADMIN)
+    const other = '00000000-0000-4000-8000-000000000999'
+    const has = await post(base, `/admin/catalog-recipes/${other}/photo-retry`)
+    expect(has.status).toBe(409)
+    expect((await has.json()).code).toBe('HAS_PHOTO')
+    expect((await post(base, '/admin/catalog-recipes/nope/photo-retry')).status).toBe(404)
   })
 })
 

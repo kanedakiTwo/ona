@@ -14,6 +14,8 @@
  *   PATCH /admin/catalog-recipes/:id            { ingredients?, steps?, allergens?, prepTime?, cookTime?,
  *                                               activeTime?, tags?, acceptMentions?, reason? } → a catalogue recipe
  *                                               fixed (PRO-1290); 409 when the allergen audit holds it
+ *   POST /admin/catalog-recipes/:id/photo-retry «Pedir otra foto» (PRO-1313): a photo the checker turned
+ *                                               down goes back to the queue; 409 when it already has one
  *   POST /admin/catalog-import/check            { batch, fileName?, file } → the file checked + what it would skip
  *   POST /admin/catalog-import/jobs             same body → 202: import as drafts in the background
  *   GET  /admin/catalog-import/jobs[?limit=]    latest imports with their progress
@@ -47,11 +49,13 @@ import {
   publishApprovedInBatch,
   publishCatalogDraft,
   restoreCatalogDraft,
+  retryCatalogPhoto,
   updateCatalogSource,
   type BatchPublishResult,
   type CatalogSourcePatch,
   type CatalogSourceResult,
   type DraftActionResult,
+  type PhotoRetryResult,
 } from '../services/catalogReview.js'
 import { createAnthropicRewriter } from '../services/catalogRewriter.js'
 import { wakeCatalogPhotos } from '../services/catalogPhotos.js'
@@ -65,6 +69,7 @@ export interface CatalogReviewDeps {
   publishBatch: (batch: string, adminId: string) => Promise<BatchPublishResult>
   updateSource: (id: string, patch: CatalogSourcePatch, adminId: string) => Promise<CatalogSourceResult>
   editRecipe: (id: string, patch: CatalogRecipePatch, adminId: string) => Promise<CatalogRecipeEditResult>
+  retryPhoto: (id: string, adminId: string) => Promise<PhotoRetryResult>
   previewImport: (names: string[], batch: string) => Promise<{ recipes: Array<{ name: string; duplicateOf: string | null }>; alreadyInBatch: number }>
   /** The import needs the house rewrite (Anthropic). */
   canImport: () => boolean
@@ -215,6 +220,7 @@ export function createCatalogReviewRouter(overrides: Partial<CatalogReviewDeps> 
     publishBatch: (batch, adminId) => publishApprovedInBatch(batch, adminId),
     updateSource: (id, patch, adminId) => updateCatalogSource(id, patch, adminId),
     editRecipe: (id, patch, adminId) => editCatalogRecipe(id, patch, adminId),
+    retryPhoto: (id, adminId) => retryCatalogPhoto(id, adminId),
     previewImport: (names, batch) => previewImport(names, batch),
     canImport: () => !!env.ANTHROPIC_API_KEY,
     startImport: (input, opts) => defaultRunner().start(input, opts),
@@ -298,6 +304,18 @@ export function createCatalogReviewRouter(overrides: Partial<CatalogReviewDeps> 
       res.json({ id: r.id, name: r.name, sourceUrl: r.sourceUrl, sourceCredit: r.sourceCredit })
     } catch (err) {
       fail(res, 'catalog source', err)
+    }
+  })
+
+  router.post('/admin/catalog-recipes/:id/photo-retry', ...d.adminAuth, async (req: AuthRequest, res) => {
+    if (!uuid.safeParse(req.params.id).success) return void res.status(404).json(NOT_CATALOGUE)
+    try {
+      const r = await d.retryPhoto(String(req.params.id), req.userId!)
+      if (r.ok) return void res.json({ id: r.id, name: r.name, retrying: true })
+      if (r.code === 'HAS_PHOTO') return void res.status(409).json({ error: 'Esa receta ya tiene foto.', code: 'HAS_PHOTO' })
+      res.status(404).json(NOT_CATALOGUE)
+    } catch (err) {
+      fail(res, 'photo retry', err)
     }
   })
 

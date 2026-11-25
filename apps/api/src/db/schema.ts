@@ -435,6 +435,24 @@ export interface CatalogSourceInfo {
    * publishes it as soon as the photo is saved (if the rule still allows it).
    */
   publishWhenPhoto?: boolean
+  /**
+   * PRO-1313: every try at the house photo (catalogPhotoAttempts.ts), newest
+   * last, the latest 10 — kept here so a restart doesn't forget them.
+   */
+  photoAttempts?: CatalogPhotoAttempt[]
+  /**
+   * Photos the checker turned down since the last «Pedir otra foto». At 2 the
+   * recipe stops asking by itself and shows as «Foto rechazada».
+   */
+  photoRejections?: number
+}
+
+/** One try at a catalogue recipe's photo (PRO-1313). */
+export interface CatalogPhotoAttempt {
+  at: string
+  outcome: 'saved' | 'rejected'
+  /** The checker's reason, on a turn-down. */
+  reason?: string | null
 }
 
 // ─── 5. recipe_ingredients (M:N join) ───────────────────────

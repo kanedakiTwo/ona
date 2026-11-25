@@ -9,13 +9,15 @@
  * (specs/admin-audit-log.md): if the audit can't be written, nothing changes.
  */
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
-import type { CatalogDraftBatchView, CatalogDraftView, CatalogDraftsView, CatalogOriginName } from '@ona/shared'
+import type { CatalogDraftBatchView, CatalogDraftView, CatalogDraftsView, CatalogOriginName, CatalogPhotoRejectedView } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
 import { ingredients, recipeIngredients, recipeSteps, recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { record } from './auditLog.js'
 import { AUDIT_ISSUE_LABEL, type CatalogAuditIssue } from './catalogRecipeAudit.js'
 import { catalogSourceCredit, previewDuplicates, reviewDecision, type HoldReason } from './catalogImport.js'
 import { allCatalogNames, publishBatch } from './catalogImportDb.js'
+import { releaseCatalogPhoto } from './catalogImageOnDemand.js'
+import { lastPhotoRejection, photoGivenUp, withPhotoRetry } from './catalogPhotoAttempts.js'
 import { wakeCatalogPhotos } from './catalogPhotos.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
@@ -84,6 +86,8 @@ export function draftView(r: DraftRow): CatalogDraftView {
     reviewedAt: text(s.reviewedAt),
     decision: reviewDecision({ origin, auditIssues, reviewOk, hasPhoto: !!r.imageUrl }),
     waitingPhoto: !r.imageUrl && !!s.publishWhenPhoto,
+    photoRejected: !r.imageUrl && photoGivenUp(s),
+    photoRejectedReason: !r.imageUrl && photoGivenUp(s) ? lastPhotoRejection(s) : null,
     createdAt: r.createdAt ? r.createdAt.toISOString() : null,
   }
 }
@@ -93,7 +97,11 @@ export function draftView(r: DraftRow): CatalogDraftView {
  * ones still to decide (allergen doubts first, then in import order) and,
  * apart, the ones Miguel turned down.
  */
-export function buildDraftsView(rows: readonly DraftRow[], publishedByBatch: Readonly<Record<string, number>>): CatalogDraftsView {
+export function buildDraftsView(
+  rows: readonly DraftRow[],
+  publishedByBatch: Readonly<Record<string, number>>,
+  photoRejected: CatalogPhotoRejectedView[] = [],
+): CatalogDraftsView {
   const byBatch = new Map<string, CatalogDraftView[]>()
   for (const v of rows.map(draftView)) {
     const list = byBatch.get(v.batch) ?? []
@@ -116,7 +124,7 @@ export function buildDraftsView(rows: readonly DraftRow[], publishedByBatch: Rea
     }
   })
   batches.sort((a, b) => (b.lastImportedAt ?? '').localeCompare(a.lastImportedAt ?? '') || a.batch.localeCompare(b.batch))
-  return { pending: batches.reduce((n, b) => n + b.pending.length, 0), batches }
+  return { pending: batches.reduce((n, b) => n + b.pending.length, 0), batches, photoRejected }
 }
 
 /** Every catalogue draft with its ingredient names and step count, and how many of each batch are out. */
@@ -176,9 +184,21 @@ export async function loadDraftRows(db: Db = defaultDb): Promise<{ rows: DraftRo
   }
 }
 
+/** PRO-1313: published catalogue recipes without a photo that the checker turned down twice. */
+export async function loadPublishedPhotoRejected(db: Db = defaultDb): Promise<CatalogPhotoRejectedView[]> {
+  const rows = await db
+    .select({ id: recipes.id, name: recipes.name, importBatch: recipes.importBatch, catalogSource: recipes.catalogSource })
+    .from(recipes)
+    .where(and(isNull(recipes.authorId), eq(recipes.status, PUBLISHED), isNull(recipes.imageUrl), sql`(${recipes.catalogSource}->>'photoRejections')::int >= 2`))
+    .orderBy(asc(recipes.name))
+  return rows
+    .filter((r) => photoGivenUp(r.catalogSource))
+    .map((r) => ({ id: r.id, name: r.name, batch: r.importBatch ?? text(r.catalogSource?.batch) ?? null, reason: lastPhotoRejection(r.catalogSource) }))
+}
+
 export async function loadCatalogDrafts(db: Db = defaultDb): Promise<CatalogDraftsView> {
-  const { rows, publishedByBatch } = await loadDraftRows(db)
-  return buildDraftsView(rows, publishedByBatch)
+  const [{ rows, publishedByBatch }, rejected] = await Promise.all([loadDraftRows(db), loadPublishedPhotoRejected(db)])
+  return buildDraftsView(rows, publishedByBatch, rejected)
 }
 
 // ─── Miguel's verdict, recipe by recipe ─────────────────────────
@@ -280,6 +300,41 @@ export async function updateCatalogSource(id: string, patch: CatalogSourcePatch,
     const sourceUrl = patch.sourceUrl !== undefined ? patch.sourceUrl : row.sourceUrl ?? null
     return { ok: true, id, name: row.name, sourceUrl, sourceCredit: catalogSourceCredit(catalogSource) } as const
   })
+}
+
+export type PhotoRetryResult = { ok: true; id: string; name: string } | { ok: false; code: 'NOT_FOUND' | 'HAS_PHOTO' }
+
+/**
+ * «Pedir otra foto» (PRO-1313): a catalogue recipe (draft or published)
+ * whose photo the checker turned down goes back to the photo queue — the
+ * turn-down count starts again, the history of tries stays. Audited in the
+ * same transaction; the job is woken so the try starts now.
+ */
+export async function retryCatalogPhoto(
+  id: string,
+  adminId: string,
+  db: Db = defaultDb,
+  wake: () => void = wakeCatalogPhotos,
+  release: (id: string) => void = releaseCatalogPhoto,
+): Promise<PhotoRetryResult> {
+  const result = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ id: recipes.id, name: recipes.name, imageUrl: recipes.imageUrl, catalogSource: recipes.catalogSource })
+      .from(recipes)
+      .where(and(eq(recipes.id, id), isNull(recipes.authorId)))
+      .for('update')
+    if (!row) return { ok: false, code: 'NOT_FOUND' } as const
+    if (row.imageUrl) return { ok: false, code: 'HAS_PHOTO' } as const
+    const source = (row.catalogSource ?? {}) as Partial<CatalogSourceInfo>
+    await tx.update(recipes).set({ catalogSource: withPhotoRetry(source) as CatalogSourceInfo }).where(eq(recipes.id, id))
+    await record({ adminId, action: 'catalog_recipe.photo_retry', targetType: 'recipe', targetId: id, payload: { name: row.name, rejections: source.photoRejections ?? 0, reason: lastPhotoRejection(source) } }, tx)
+    return { ok: true, id, name: row.name } as const
+  })
+  if (result.ok) {
+    release(id)
+    wake()
+  }
+  return result
 }
 
 /** «Descartar»: Miguel's «no» (`review --no`). The draft stays hidden, so a re-import skips it. */

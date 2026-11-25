@@ -482,7 +482,22 @@ export interface CatalogDraftView {
   decision: CatalogDraftDecision
   /** Publishing was asked for: it goes out by itself once its photo is made. */
   waitingPhoto: boolean
+  /**
+   * PRO-1313: the checker turned its photo down twice; it isn't asked for
+   * again by itself, only with «Pedir otra foto».
+   */
+  photoRejected: boolean
+  /** The checker's reason for the last turn-down, if it gave one. */
+  photoRejectedReason: string | null
   createdAt: string | null
+}
+
+/** A published catalogue recipe still without a photo, whose photo the checker turned down twice (PRO-1313). */
+export interface CatalogPhotoRejectedView {
+  id: string
+  name: string
+  batch: string | null
+  reason: string | null
 }
 
 export interface CatalogDraftBatchView {
@@ -501,6 +516,8 @@ export interface CatalogDraftBatchView {
 export interface CatalogDraftsView {
   pending: number
   batches: CatalogDraftBatchView[]
+  /** Published recipes without a photo that wait for «Pedir otra foto» (PRO-1313). */
+  photoRejected?: CatalogPhotoRejectedView[]
 }
 
 export type CatalogImportJobStatus = 'running' | 'done' | 'failed' | 'interrupted'

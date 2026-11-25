@@ -8,7 +8,9 @@
  * a chapter, each recipe a line with dotted leaders to where it comes from),
  * the way recipes from two books were picked for the catalogue. Per recipe:
  * «Publicar» (his OK + this recipe out) and «Descartar» (his «no»); per batch,
- * «Publicar las aprobadas» when the rule leaves any. D-099: every Cocina
+ * «Publicar las aprobadas» when the rule leaves any. A recipe whose photo the
+ * checker turned down twice shows «Foto rechazada» with «Pedir otra foto»
+ * (PRO-1313); published ones in that state are listed on top. D-099: every Cocina
  * recipe is seen and approved one by one; nothing goes out without a click.
  * The import of a new batch file lives on top (CatalogImportPanel), then
  * «Subir colección» for Cocina's catalogue collections (CatalogCollectionPanel).
@@ -17,10 +19,10 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { ApiError } from "@/lib/api"
-import type { CatalogDraftBatchView, CatalogDraftView } from "@ona/shared"
+import type { CatalogDraftBatchView, CatalogDraftView, CatalogPhotoRejectedView } from "@ona/shared"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { RecipeCover } from "@/components/menu/RecipeCover"
-import { useCatalogDrafts, useDraftAction, usePublishBatch } from "@/hooks/useCatalogReview"
+import { useCatalogDrafts, useDraftAction, usePublishBatch, useRetryPhoto } from "@/hooks/useCatalogReview"
 import { CatalogImportPanel } from "./CatalogImportPanel"
 import { CatalogCollectionPanel } from "./CatalogCollectionPanel"
 import { Empty } from "./shared"
@@ -123,6 +125,8 @@ export function PendingRecipesSection() {
           </nav>
         )}
       </div>
+
+      {(drafts.data?.photoRejected?.length ?? 0) > 0 && <PublishedPhotoRejected recipes={drafts.data!.photoRejected!} onNotice={setNotice} />}
 
       {drafts.isLoading && <p className="text-[12px] italic text-ink-muted">Cargando borradores…</p>}
       {drafts.isError && <p className="text-[13px] text-warn-text">No se han podido cargar los borradores. Prueba otra vez.</p>}
@@ -276,8 +280,9 @@ function BatchChapter({
 function DraftLine({ draft: d, onNotice }: { draft: CatalogDraftView; onNotice: (n: Notice) => void }) {
   const publish = useDraftAction("publish")
   const discard = useDraftAction("discard")
+  const retryPhoto = useRetryPhoto()
   const [open, setOpen] = useState(false)
-  const busy = publish.isPending || discard.isPending
+  const busy = publish.isPending || discard.isPending || retryPhoto.isPending
   const held = d.decision === "auditoria"
   const facts = [
     `${d.servings} raciones`,
@@ -308,7 +313,8 @@ function DraftLine({ draft: d, onNotice }: { draft: CatalogDraftView; onNotice: 
             </Chip>
           ))}
           {d.verdict === "ok" && <Chip tone="ink">Ya dijiste que sí</Chip>}
-          {!d.imageUrl && <Chip tone="ink">{d.waitingPhoto ? "Sale en cuanto tenga su foto" : "Haciendo su foto"}</Chip>}
+          {!d.imageUrl && d.photoRejected && <Chip tone="warn">Foto rechazada</Chip>}
+          {!d.imageUrl && !d.photoRejected && <Chip tone="ink">{d.waitingPhoto ? "Sale en cuanto tenga su foto" : "Haciendo su foto"}</Chip>}
           <button
             type="button"
             aria-expanded={open}
@@ -359,7 +365,28 @@ function DraftLine({ draft: d, onNotice }: { draft: CatalogDraftView; onNotice: 
           >
             {discard.isPending ? "Descartando…" : "Descartar"}
           </button>
+          {d.photoRejected && (
+            <button
+              type="button"
+              disabled={busy}
+              aria-label={`Pedir otra foto de ${d.name}`}
+              onClick={() =>
+                retryPhoto.mutate(d.id, {
+                  onSuccess: (r) => onNotice({ tone: "ok", text: `Pedida otra foto de «${r.name}» (unos minutos).` }),
+                  onError: fail,
+                })
+              }
+              className="inline-flex min-h-[44px] items-center rounded-full border border-border px-5 text-[13px] font-medium text-ink-mid hover:border-ink hover:text-ink disabled:opacity-40"
+            >
+              {retryPhoto.isPending ? "Pidiendo…" : "Pedir otra foto"}
+            </button>
+          )}
         </div>
+        {d.photoRejected && (
+          <p className="mt-2 text-[12px] text-ink-muted">
+            El comprobador ha rechazado su foto dos veces{d.photoRejectedReason ? ` («${d.photoRejectedReason}»)` : ""}: no se pide otra sola.
+          </p>
+        )}
         {held && (
           <p className="mt-2 text-[12px] text-warn-text">
             No se puede publicar mientras la auditoría vea algo: corrige la receta o descártala.
@@ -390,6 +417,53 @@ function DiscardedLine({ draft: d, onNotice }: { draft: CatalogDraftView; onNoti
         className="inline-flex min-h-[44px] items-center rounded-full border border-border-soft px-4 text-[13px] font-medium text-ink-mid hover:border-ink disabled:opacity-40"
       >
         Recuperar
+      </button>
+    </li>
+  )
+}
+
+/** PRO-1313: published recipes still without a photo, turned down twice by the checker. */
+function PublishedPhotoRejected({ recipes, onNotice }: { recipes: CatalogPhotoRejectedView[]; onNotice: (n: Notice) => void }) {
+  return (
+    <section aria-labelledby="fotos-rechazadas-title" data-testid="photo-rejected" className="rounded-[16px] border border-border-soft bg-paper p-4">
+      <h2 id="fotos-rechazadas-title" className="font-semibold text-ink">
+        Publicadas con la foto rechazada ({recipes.length})
+      </h2>
+      <p className="mt-1 text-[13px] leading-relaxed text-ink-mid">
+        Ya están en el catálogo sin foto: el comprobador ha rechazado la suya dos veces y no se pide otra sola.
+      </p>
+      <ul className="mt-2">
+        {recipes.map((r) => (
+          <PhotoRejectedLine key={r.id} recipe={r} onNotice={onNotice} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function PhotoRejectedLine({ recipe: r, onNotice }: { recipe: CatalogPhotoRejectedView; onNotice: (n: Notice) => void }) {
+  const retryPhoto = useRetryPhoto()
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-2 border-b border-border-soft py-2 last:border-b-0">
+      <div className="min-w-0">
+        <Link href={`/recipes/${r.id}`} className="text-[14px] text-ink [overflow-wrap:anywhere] hover:underline">
+          {r.name}
+        </Link>
+        {r.reason && <p className="text-[12px] text-ink-muted">«{r.reason}»</p>}
+      </div>
+      <button
+        type="button"
+        aria-label={`Pedir otra foto de ${r.name}`}
+        disabled={retryPhoto.isPending}
+        onClick={() =>
+          retryPhoto.mutate(r.id, {
+            onSuccess: (a) => onNotice({ tone: "ok", text: `Pedida otra foto de «${a.name}» (unos minutos).` }),
+            onError: (err) => onNotice({ tone: "error", text: (err as Error).message }),
+          })
+        }
+        className="inline-flex min-h-[44px] items-center rounded-full border border-border-soft px-4 text-[13px] font-medium text-ink-mid hover:border-ink disabled:opacity-40"
+      >
+        {retryPhoto.isPending ? "Pidiendo…" : "Pedir otra foto"}
       </button>
     </li>
   )

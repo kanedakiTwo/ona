@@ -14,8 +14,10 @@
  * (`wakeCatalogPhotos`). Order: recipes already published without a photo,
  * then the ones waiting to go out, then the other drafts. A discarded draft
  * never costs a photo. Each recipe is tried once every 6 hours at most
- * (`claimCatalogPhoto`, shared with the on-demand path): a photo the checker
- * turned down twice isn't paid for again on every pass; a call that failed
+ * (`claimCatalogPhoto`, shared with the on-demand path, and the last
+ * turn-down kept in the recipe so a restart doesn't forget it); after 2
+ * turn-downs by the checker it isn't tried again until Miguel asks for
+ * another photo (PRO-1313, catalogPhotoAttempts.ts). A call that failed
  * (network) is tried again on the next pass. Cost lands on Mimoia (system
  * recipe: no author).
  */
@@ -25,7 +27,7 @@ import { recipes, type CatalogSourceInfo } from '../db/schema.js'
 import { claimCatalogPhoto, releaseCatalogPhoto } from './catalogImageOnDemand.js'
 import { publishIfWaitingForPhoto } from './catalogImportDb.js'
 import { runWithCostUser } from './costLedger.js'
-import { applyHouseImage, type ApplyOutcome } from './recipeHouseImage.js'
+import { photoGivenUp, photoRecentlyRejected, tryCatalogPhoto, type CatalogPhotoOutcome } from './catalogPhotoAttempts.js'
 import { imageGenerationConfigured } from './recipeImageGenerator.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
 
@@ -39,12 +41,15 @@ export interface PhotoCandidate {
 /**
  * Pure: the catalogue recipes that need a photo, in the order they get it —
  * published ones first (someone may be looking at them), then drafts whose
- * publish is waiting for the photo, then the other drafts.
+ * publish is waiting for the photo, then the other drafts. Never one the
+ * checker turned down twice (it waits for «Pedir otra foto») or in the last
+ * 6 hours.
  */
-export function photoQueue(rows: readonly PhotoCandidate[]): string[] {
+export function photoQueue(rows: readonly PhotoCandidate[], now: number = Date.now()): string[] {
   const rank = (r: PhotoCandidate) => (r.status === PUBLISHED ? 0 : r.catalogSource?.publishWhenPhoto ? 1 : 2)
   return rows
     .filter((r) => !r.imageUrl && (r.status === PUBLISHED || r.status === DRAFT) && r.catalogSource?.reviewOk !== false)
+    .filter((r) => !photoGivenUp(r.catalogSource) && !photoRecentlyRejected(r.catalogSource, now))
     .map((r, i) => ({ r, i }))
     .sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i)
     .map(({ r }) => r.id)
@@ -52,7 +57,8 @@ export function photoQueue(rows: readonly PhotoCandidate[]): string[] {
 
 export interface PhotoSweepDeps {
   load: () => Promise<PhotoCandidate[]>
-  makePhoto: (id: string) => Promise<ApplyOutcome>
+  /** One try, written down in the recipe (`tryCatalogPhoto`). */
+  makePhoto: (id: string) => Promise<CatalogPhotoOutcome>
   /** Publishes the draft if its publish was waiting for the photo; true when it went out. */
   publishIfWaiting: (id: string) => Promise<boolean>
   claim: (id: string) => boolean
@@ -74,6 +80,7 @@ export async function sweepCatalogPhotos(deps: PhotoSweepDeps): Promise<PhotoSwe
     if (!deps.claim(id)) continue
     try {
       const made = await deps.makePhoto(id)
+      if (made.status === 'given_up') continue
       if (made.status === 'rejected') {
         out.rejected += 1
         deps.log(`[catalogPhotos] ${id}: photo turned down by the check (${made.verdict?.reason ?? 'no reason'})`)
@@ -90,14 +97,18 @@ export async function sweepCatalogPhotos(deps: PhotoSweepDeps): Promise<PhotoSwe
   return out
 }
 
+/** The catalogue recipes without a photo, as the job reads them from the table. */
+export function loadPhotoCandidates(): Promise<PhotoCandidate[]> {
+  return db
+    .select({ id: recipes.id, status: recipes.status, imageUrl: recipes.imageUrl, catalogSource: recipes.catalogSource })
+    .from(recipes)
+    .where(and(isNull(recipes.authorId), isNull(recipes.imageUrl), inArray(recipes.status, [DRAFT, PUBLISHED])))
+    .orderBy(recipes.createdAt) as Promise<PhotoCandidate[]>
+}
+
 const realDeps: PhotoSweepDeps = {
-  load: () =>
-    db
-      .select({ id: recipes.id, status: recipes.status, imageUrl: recipes.imageUrl, catalogSource: recipes.catalogSource })
-      .from(recipes)
-      .where(and(isNull(recipes.authorId), isNull(recipes.imageUrl), inArray(recipes.status, [DRAFT, PUBLISHED])))
-      .orderBy(recipes.createdAt) as Promise<PhotoCandidate[]>,
-  makePhoto: (id) => applyHouseImage(id),
+  load: loadPhotoCandidates,
+  makePhoto: (id) => tryCatalogPhoto(id),
   publishIfWaiting: (id) => publishIfWaitingForPhoto(id),
   claim: (id) => claimCatalogPhoto(id),
   release: (id) => releaseCatalogPhoto(id),

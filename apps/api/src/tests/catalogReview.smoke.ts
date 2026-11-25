@@ -9,6 +9,9 @@
  *   - «Publicar las aprobadas» publishes only what the rule allows;
  *   - the source of a catalogue recipe (link + credit) changes without
  *     touching the rest, audited; a user's recipe is never touched (PRO-1015);
+ *   - a photo the checker turned down twice stays out of the photo queue
+ *     after a restart, shows as «foto rechazada», and «Pedir otra foto» puts
+ *     it back, audited (PRO-1313);
  *   - the import job store appends outcomes in order and a boot marks a job
  *     left running as interrupted.
  *
@@ -21,6 +24,9 @@ import { db } from '../db/connection.js'
 import { adminAuditLog, catalogImportJobs, recipeIngredients, recipes, recipeSteps, type CatalogSourceInfo } from '../db/schema.js'
 import { publishIfWaitingForPhoto, saveReview } from '../services/catalogImportDb.js'
 import { createDbImportJobStore } from '../services/catalogImportJobs.js'
+import { _resetRequestedPhotos } from '../services/catalogImageOnDemand.js'
+import { recordPhotoAttempt, tryCatalogPhoto } from '../services/catalogPhotoAttempts.js'
+import { loadPhotoCandidates, photoQueue } from '../services/catalogPhotos.js'
 import {
   discardCatalogDraft,
   loadCatalogDrafts,
@@ -28,6 +34,7 @@ import {
   publishApprovedInBatch,
   publishCatalogDraft,
   restoreCatalogDraft,
+  retryCatalogPhoto,
   updateCatalogSource,
 } from '../services/catalogReview.js'
 
@@ -220,4 +227,45 @@ describe.skipIf(!reachable)('admin «Recetas pendientes» against Postgres', () 
     if (own) expect(await updateCatalogSource(own.id, { credit: 'x' }, USER_ID)).toEqual({ ok: false, code: 'NOT_FOUND' })
   }, 30_000)
 
+  it('a photo turned down twice: out of the queue after a restart, «foto rechazada» on the page, back with «Pedir otra foto» (PRO-1313)', async () => {
+    const draft = await insertDraft(`Pisto de prueba ${tag}`, {}, { noPhoto: true })
+    const published = await insertDraft(`Potaje de prueba ${tag}`, {}, { noPhoto: true })
+    await db.update(recipes).set({ status: 'published' }).where(eq(recipes.id, published))
+    const old = new Date(Date.now() - 7 * 3600_000).toISOString()
+    for (const id of [draft, published]) {
+      await recordPhotoAttempt(id, { at: old, outcome: 'rejected', reason: 'no es el plato' })
+      expect(photoQueue(await loadPhotoCandidates())).toContain(id)
+      await recordPhotoAttempt(id, { at: old, outcome: 'rejected', reason: 'sale otro plato' })
+    }
+    expect((await sourceOf(draft)).catalogSource).toMatchObject({ photoRejections: 2, photoAttempts: [{ outcome: 'rejected' }, { outcome: 'rejected', reason: 'sale otro plato' }] })
+
+    // A restart: the claims in memory are gone, the turn-downs are not.
+    _resetRequestedPhotos()
+    const queue = photoQueue(await loadPhotoCandidates())
+    expect(queue).not.toContain(draft)
+    expect(queue).not.toContain(published)
+    const noCall = () => Promise.reject(new Error('no photo should be asked for'))
+    expect(await tryCatalogPhoto(draft, { load: async () => ({ found: true, source: (await sourceOf(draft)).catalogSource }), make: noCall, record: recordPhotoAttempt, now: () => new Date() })).toEqual({ status: 'given_up' })
+
+    const view = await loadCatalogDrafts()
+    const line = view.batches.find((b) => b.batch === tag)!.pending.find((d) => d.id === draft)!
+    expect(line).toMatchObject({ photoRejected: true, photoRejectedReason: 'sale otro plato' })
+    expect(view.photoRejected).toContainEqual({ id: published, name: `Potaje de prueba ${tag}`, batch: tag, reason: 'sale otro plato' })
+
+    // «Pedir otra foto»: back in the queue at once, the history kept, audited.
+    let woke = 0
+    for (const id of [draft, published]) expect(await retryCatalogPhoto(id, USER_ID, db, () => void (woke += 1))).toMatchObject({ ok: true, id })
+    expect(woke).toBe(2)
+    const again = photoQueue(await loadPhotoCandidates())
+    expect(again).toContain(draft)
+    expect(again).toContain(published)
+    expect((await sourceOf(draft)).catalogSource).toMatchObject({ photoRejections: 0 })
+    expect(((await sourceOf(draft)).catalogSource as CatalogSourceInfo).photoAttempts).toHaveLength(2)
+    expect((await loadCatalogDrafts()).photoRejected?.map((r) => r.id)).not.toContain(published)
+    expect((await auditFor(draft)).map((a) => a.action)).toEqual(['catalog_recipe.photo_retry'])
+
+    // A recipe with its photo has nothing to ask for.
+    const withPhoto = await insertDraft(`Tarta de prueba ${tag}`)
+    expect(await retryCatalogPhoto(withPhoto, USER_ID, db, () => {})).toEqual({ ok: false, code: 'HAS_PHOTO' })
+  }, 30_000)
 })

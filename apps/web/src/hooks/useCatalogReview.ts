@@ -40,6 +40,18 @@ export function useDraftAction(kind: "publish" | "discard" | "restore") {
   })
 }
 
+/** «Pedir otra foto» (PRO-1313): a photo the checker turned down twice goes back to the queue. */
+export function useRetryPhoto() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ id: string; name: string; retrying: boolean }>(`/admin/catalog-recipes/${id}/photo-retry`),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: DRAFTS_KEY })
+      qc.invalidateQueries({ queryKey: ["admin", "audit-log"] })
+    },
+  })
+}
+
 export interface BatchPublishAnswer {
   published: number
   wishesCovered: number

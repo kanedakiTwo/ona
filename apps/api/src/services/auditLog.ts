@@ -56,6 +56,8 @@ export type AdminAction =
   | 'catalog_recipe.source'
   // PRO-1290: a catalogue recipe fixed by the office (ingredients, allergens, steps, times, tags)
   | 'catalog_recipe.edit'
+  // PRO-1313: «Pedir otra foto» for a catalogue recipe whose photo the checker turned down
+  | 'catalog_recipe.photo_retry'
   // PRO-1290: a household's own monthly Mimo cap
   | 'household.mimo_cap'
   // «Pregunta única por WhatsApp» (PRO-1091)

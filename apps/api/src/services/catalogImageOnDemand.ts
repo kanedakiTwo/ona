@@ -4,9 +4,10 @@
  * published without it (catalogPhotos.ts). If one is still published
  * without a photo (a photo the checker turned down, the API down while it
  * was imported), its house photo is asked for the moment it shows up in a
- * menu or someone opens it — through the usual background generator
- * (`scheduleHouseImage`, recipeHouseImage.ts), whose cost lands on Mimoia
- * (system recipe: no author).
+ * menu or someone opens it — through `scheduleCatalogPhoto`
+ * (catalogPhotoAttempts.ts), which writes the try down in the recipe and
+ * never asks again for one the checker turned down twice (PRO-1313); its
+ * cost lands on Mimoia (system recipe: no author).
  *
  * Only catalogue recipes with no image at all; user recipes already get
  * theirs at import time. A recipe is asked for once every 6 hours at most
@@ -14,7 +15,7 @@
  * in 50 menus at once asks once, a rejected photo isn't retried on every
  * page view, and the two paths never pay twice for the same photo.
  */
-import { scheduleHouseImage } from './recipeHouseImage.js'
+import { scheduleCatalogPhoto } from './catalogPhotoAttempts.js'
 
 export interface ImageCandidate {
   id: string
@@ -63,7 +64,7 @@ export function recipesNeedingPhoto(rows: readonly ImageCandidate[], alreadyRequ
  * Ask for the house photo of every catalogue recipe in `rows` that has none.
  * Fire-and-forget; never throws. Returns the ids it asked for.
  */
-export function requestCatalogPhotos(rows: readonly ImageCandidate[], schedule: Scheduler = scheduleHouseImage): string[] {
+export function requestCatalogPhotos(rows: readonly ImageCandidate[], schedule: Scheduler = (id) => scheduleCatalogPhoto(id)): string[] {
   try {
     const ids = recipesNeedingPhoto(rows, recentlyClaimed())
     for (const id of ids) {

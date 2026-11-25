@@ -11,6 +11,7 @@
  *   POST /admin/catalog-drafts/:id/restore      verdict taken back
  *   POST /admin/catalog-batches/:batch/publish  what the rule allows in the batch
  *   PATCH /admin/catalog-recipes/:id/source     the link to the original and the credit line (PRO-1015)
+ *   PATCH /admin/catalog-recipes/:id            a catalogue recipe fixed; 409 if the allergen audit holds it (PRO-1290)
  *   POST /admin/catalog-import/check            the file checked, with what it would skip
  *   POST /admin/catalog-import/jobs             202: import in the background (audited)
  *   GET  /admin/catalog-import/jobs[/:id]       progress
@@ -77,6 +78,9 @@ function fakes(over: Partial<CatalogReviewDeps> = {}) {
     updateSource: vi.fn(async (id: string, patch: { sourceUrl?: string | null; credit?: string | null }) =>
       id === ID ? { ok: true as const, id, name: 'Sopa alpujarreña', sourceUrl: patch.sourceUrl ?? null, sourceCredit: patch.credit ?? null } : { ok: false as const, code: 'NOT_FOUND' as const },
     ),
+    editRecipe: vi.fn(async (id: string) =>
+      id === ID ? { ok: true as const, id, name: 'Sopa alpujarreña', changed: ['ingredients', 'allergens'], allergens: ['gluten'], warnings: [] } : { ok: false as const, code: 'NOT_FOUND' as const },
+    ),
     previewImport: vi.fn(async (names: readonly string[]) => ({ recipes: names.map((name, i) => ({ name, duplicateOf: i === 0 ? 'Guiso de garbanzos' : null })), alreadyInBatch: 3 })),
     canImport: vi.fn(() => true),
     startImport: vi.fn(async (_input: any, opts?: { beforeRun?: (job: ImportJobRow) => Promise<void> }) => {
@@ -121,6 +125,7 @@ describe('access', () => {
       ['POST', `/admin/catalog-drafts/${ID}/restore`],
       ['POST', '/admin/catalog-batches/cocina-01/publish'],
       ['PATCH', `/admin/catalog-recipes/${ID}/source`],
+      ['PATCH', `/admin/catalog-recipes/${ID}`],
       ['POST', '/admin/catalog-import/check'],
       ['POST', '/admin/catalog-import/jobs'],
       ['GET', '/admin/catalog-import/jobs'],
@@ -321,5 +326,60 @@ describe('import a batch file', () => {
     expect(one.status).toBe(200)
     expect((await one.json()).job.id).toBe(JOB.id)
     expect((await fetch(`${base}/admin/catalog-import/jobs/${ID}`)).status).toBe(404)
+  })
+})
+
+describe('fix of a catalogue recipe (PRO-1290)', () => {
+  const ING = '5d1c0b9e-7a3f-4e2b-8c1d-0e9f8a7b6c5d'
+  const patch = (base: string, id: string, body: unknown) =>
+    fetch(`${base}/admin/catalog-recipes/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  const body = {
+    ingredients: [{ ingredientId: ING, quantity: 200, unit: 'g' }],
+    steps: [{ text: 'Cuece la pasta.', durationMin: 10, ingredientRefs: ['ing_0'] }],
+    allergens: ['gluten'],
+    cookTime: 10,
+    tags: ['rápida'],
+    reason: 'Arreglo de alérgenos del 18-nov',
+  }
+
+  it('passes the patch with the admin id and answers what changed', async () => {
+    const { base, deps } = await app()
+    const r = await patch(base, ID, body)
+    expect(r.status).toBe(200)
+    expect(await r.json()).toEqual({ id: ID, name: 'Sopa alpujarreña', changed: ['ingredients', 'allergens'], allergens: ['gluten'], warnings: [] })
+    expect(deps.editRecipe).toHaveBeenCalledWith(ID, body, ADMIN)
+  })
+
+  it('409 with the issues when the allergen audit holds it', async () => {
+    const issues = [{ code: 'ALLERGEN_LOST' as const, message: 'La receta deja de llevar huevo.', lost: ['huevo'] }]
+    const { base } = await app({ editRecipe: vi.fn(async () => ({ ok: false as const, code: 'ALLERGEN_AUDIT' as const, issues })) })
+    const r = await patch(base, ID, { tags: ['x'] })
+    expect(r.status).toBe(409)
+    const j = await r.json()
+    expect(j.code).toBe('ALLERGEN_AUDIT')
+    expect(j.issues).toEqual(issues)
+    expect(j.error).toContain('huevo')
+  })
+
+  it('422 when the lint refuses it; 400 for an ingredient outside the catalogue', async () => {
+    const lint = { code: 'STEP_REF_DANGLING', message: 'Un paso apunta a un ingrediente que no está.', severity: 'error' }
+    let r = await patch((await app({ editRecipe: vi.fn(async () => ({ ok: false as const, code: 'LINT' as const, errors: [lint as any], warnings: [] })) })).base, ID, body)
+    expect(r.status).toBe(422)
+    expect((await r.json()).code).toBe('LINT')
+    r = await patch((await app({ editRecipe: vi.fn(async () => ({ ok: false as const, code: 'UNKNOWN_INGREDIENT' as const, ids: [ING] })) })).base, ID, body)
+    expect(r.status).toBe(400)
+    expect(await r.json()).toMatchObject({ code: 'UNKNOWN_INGREDIENT', ids: [ING] })
+  })
+
+  it('400 for nothing to change, an unknown allergen or field, an empty list; 404 for a bad id or a recipe outside the catalogue', async () => {
+    const { base, deps } = await app()
+    for (const bad of [{}, { reason: 'solo el motivo' }, { tags: ['x'], allergens: ['chocolate'] }, { tags: ['x'], name: 'Otra' }, { ingredients: [] }, { steps: [{ text: '' }] }, { ingredients: [{ ingredientId: ING, quantity: 1, unit: 'puñado' }] }]) {
+      const r = await patch(base, ID, bad)
+      expect(r.status, JSON.stringify(bad)).toBe(400)
+      expect((await r.json()).code).toBe('INVALID_RECIPE_PATCH')
+    }
+    expect(deps.editRecipe).not.toHaveBeenCalled()
+    expect((await patch(base, 'no-es-un-id', body)).status).toBe(404)
+    expect((await patch(base, '3f2a8c1e-0d4b-4c2a-9f1e-2b3c4d5e6f71', body)).status).toBe(404)
   })
 })

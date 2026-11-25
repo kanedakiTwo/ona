@@ -717,6 +717,12 @@ export const households = pgTable('households', {
   postalCode: text('postal_code'),
   /** Red de tiendas: kinds the household keeps at its súper ({ fruteria: 'super' }), so it is asked once. */
   redChoices: jsonb('red_choices').notNull().default({}),
+  /**
+   * PRO-1290: this household's own monthly Mimo cap in euros, set by an admin
+   * (`PUT /admin/households/:id/mimo-cap`, up to 3× its plan's). Null = the
+   * plan's. Applies to every member (services/householdMimoCap.ts).
+   */
+  mimoCapEur: real('mimo_cap_eur'),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])

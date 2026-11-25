@@ -11,6 +11,9 @@
  *   POST /admin/catalog-batches/:batch/publish  what the rule allows in the batch (`publish --batch=…`)
  *   PATCH /admin/catalog-recipes/:id/source     { sourceUrl?, credit? } → the link to the original and the
  *                                               credit line of a catalogue recipe (draft or published)
+ *   PATCH /admin/catalog-recipes/:id            { ingredients?, steps?, allergens?, prepTime?, cookTime?,
+ *                                               activeTime?, tags?, acceptMentions?, reason? } → a catalogue recipe
+ *                                               fixed (PRO-1290); 409 when the allergen audit holds it
  *   POST /admin/catalog-import/check            { batch, fileName?, file } → the file checked + what it would skip
  *   POST /admin/catalog-import/jobs             same body → 202: import as drafts in the background
  *   GET  /admin/catalog-import/jobs[?limit=]    latest imports with their progress
@@ -21,11 +24,13 @@
  */
 import express, { Router, type ErrorRequestHandler, type RequestHandler, type Response } from 'express'
 import { z } from 'zod'
-import { CATALOG_BATCH_ID_RE, catalogImportRequestSchema, checkCocinaBatch, type CatalogDraftsView, type CatalogImportRequest } from '@ona/shared'
+import { CATALOG_BATCH_ID_RE, UNITS, catalogImportRequestSchema, checkCocinaBatch, type CatalogDraftsView, type CatalogImportRequest } from '@ona/shared'
 import { env } from '../config/env.js'
 import { authMiddleware, requireAdmin, type AuthRequest } from '../middleware/auth.js'
 import { record } from '../services/auditLog.js'
 import { draftsFromCocinaJson, importCatalogBatch } from '../services/catalogImport.js'
+import { editCatalogRecipe, type CatalogRecipeEditResult, type CatalogRecipePatch } from '../services/catalogRecipeEdit.js'
+import { ALLERGEN_TAGS } from '../services/nutrition/allergens.js'
 import { createDbCatalogImportDeps } from '../services/catalogImportDb.js'
 import {
   ImportBusyError,
@@ -59,6 +64,7 @@ export interface CatalogReviewDeps {
   restoreDraft: (id: string, adminId: string) => Promise<DraftActionResult>
   publishBatch: (batch: string, adminId: string) => Promise<BatchPublishResult>
   updateSource: (id: string, patch: CatalogSourcePatch, adminId: string) => Promise<CatalogSourceResult>
+  editRecipe: (id: string, patch: CatalogRecipePatch, adminId: string) => Promise<CatalogRecipeEditResult>
   previewImport: (names: string[], batch: string) => Promise<{ recipes: Array<{ name: string; duplicateOf: string | null }>; alreadyInBatch: number }>
   /** The import needs the house rewrite (Anthropic). */
   canImport: () => boolean
@@ -108,6 +114,61 @@ const sourcePatchSchema = z
   .strict()
   .refine((b) => b.sourceUrl !== undefined || b.credit !== undefined, 'Manda el enlace (sourceUrl), el crédito (credit) o los dos.')
 
+const minutes = z.number().int().min(0).max(2880).nullable().optional()
+const optionalText = (max: number) => z.string().trim().max(max).nullable().optional()
+
+/** PRO-1290: a catalogue recipe fixed by the office. Lists sent replace the recipe's; at least one field. */
+const recipePatchSchema = z
+  .object({
+    ingredients: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid().optional(),
+            ingredientId: z.string().uuid(),
+            section: optionalText(80),
+            quantity: z.number().min(0).max(100_000),
+            unit: z.enum(UNITS),
+            optional: z.boolean().optional(),
+            note: optionalText(200),
+            displayOrder: z.number().int().min(0).optional(),
+            displayQuantity: z.number().min(0).nullable().optional(),
+            displayUnit: optionalText(40),
+          })
+          .strict(),
+      )
+      .min(1, 'La receta necesita al menos un ingrediente.')
+      .max(60)
+      .optional(),
+    steps: z
+      .array(
+        z
+          .object({
+            text: z.string().trim().min(1).max(2000),
+            durationMin: minutes,
+            temperature: z.number().int().min(-30).max(300).nullable().optional(),
+            technique: optionalText(60),
+            ingredientRefs: z.array(z.string().regex(/^(ing_\d{1,3}|[0-9a-f-]{36})$/i, 'Un id de fila o ing_<n>.')).max(60).optional(),
+          })
+          .strict(),
+      )
+      .min(1, 'La receta necesita al menos un paso.')
+      .max(40)
+      .optional(),
+    allergens: z.array(z.enum(ALLERGEN_TAGS)).max(ALLERGEN_TAGS.length).optional(),
+    prepTime: minutes,
+    cookTime: minutes,
+    activeTime: minutes,
+    tags: z.array(z.string().trim().min(1).max(60)).max(30).optional(),
+    acceptMentions: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict()
+  .refine(
+    (b) => (['ingredients', 'steps', 'prepTime', 'cookTime', 'activeTime', 'tags'] as const).some((k) => b[k] !== undefined),
+    'Manda algo que cambiar: ingredients, steps, prepTime, cookTime, activeTime o tags.',
+  )
+
 /** The body checked with the shared schema; the problems in Spanish when it fails. */
 function readImportBody(body: unknown): { ok: true; data: CatalogImportRequest } | { ok: false; problems: string[] } {
   const parsed = catalogImportRequestSchema.safeParse(body)
@@ -153,6 +214,7 @@ export function createCatalogReviewRouter(overrides: Partial<CatalogReviewDeps> 
     restoreDraft: (id, adminId) => restoreCatalogDraft(id, adminId),
     publishBatch: (batch, adminId) => publishApprovedInBatch(batch, adminId),
     updateSource: (id, patch, adminId) => updateCatalogSource(id, patch, adminId),
+    editRecipe: (id, patch, adminId) => editCatalogRecipe(id, patch, adminId),
     previewImport: (names, batch) => previewImport(names, batch),
     canImport: () => !!env.ANTHROPIC_API_KEY,
     startImport: (input, opts) => defaultRunner().start(input, opts),
@@ -236,6 +298,35 @@ export function createCatalogReviewRouter(overrides: Partial<CatalogReviewDeps> 
       res.json({ id: r.id, name: r.name, sourceUrl: r.sourceUrl, sourceCredit: r.sourceCredit })
     } catch (err) {
       fail(res, 'catalog source', err)
+    }
+  })
+
+  router.patch('/admin/catalog-recipes/:id', ...d.adminAuth, express.json(), async (req: AuthRequest, res) => {
+    if (!uuid.safeParse(req.params.id).success) return void res.status(404).json(NOT_CATALOGUE)
+    const body = recipePatchSchema.safeParse(req.body)
+    if (!body.success) {
+      const problems = body.error.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))
+      return void res.status(400).json({ error: problems[0], code: 'INVALID_RECIPE_PATCH', problems })
+    }
+    try {
+      const r = await d.editRecipe(String(req.params.id), body.data as CatalogRecipePatch, req.userId!)
+      if (r.ok) return void res.json({ id: r.id, name: r.name, changed: r.changed, allergens: r.allergens, warnings: r.warnings })
+      switch (r.code) {
+        case 'NOT_FOUND':
+          return void res.status(404).json(NOT_CATALOGUE)
+        case 'UNKNOWN_INGREDIENT':
+          return void res.status(400).json({ error: 'Hay ingredientes que no están en el catálogo de ingredientes.', code: 'UNKNOWN_INGREDIENT', ids: r.ids })
+        case 'ALLERGEN_AUDIT':
+          return void res.status(409).json({
+            error: `No se guarda: ${r.issues.map((i) => i.message).join(' ')}`,
+            code: 'ALLERGEN_AUDIT',
+            issues: r.issues,
+          })
+        case 'LINT':
+          return void res.status(422).json({ error: r.errors[0]?.message ?? 'La receta no pasa la revisión.', code: 'LINT', errors: r.errors, warnings: r.warnings })
+      }
+    } catch (err) {
+      fail(res, 'catalog recipe edit', err)
     }
   })
 

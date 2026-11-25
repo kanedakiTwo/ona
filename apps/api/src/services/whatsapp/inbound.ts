@@ -154,7 +154,7 @@ export interface InboundDeps {
   /** 19-nov: the language this number writes in, for the fixed lines (language.ts). Absent → Spanish. */
   language?: (phone: string) => Promise<Lang>
   /** 19-nov: «¿Te sigo avisando de…?» answered (fatigue.ts): the kind on or off. Absent → Mimo answers. */
-  setAvisoKind?: (userId: string, kind: FatigueKind, on: boolean) => Promise<void>
+  setAvisoKind?: (userId: string, kind: FatigueKind | 'todos', on: boolean) => Promise<void>
   /** 19-nov: why they wrote BAJA (optOutReason.ts), as an opinion. Absent → no question, no record. */
   saveOptOutReason?: (userId: string, reason: OptOutReason, text: string) => Promise<void>
   /** Speech-to-text for voice notes. Absent → voice notes get a polite "escríbemelo". */
@@ -1252,7 +1252,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
  * 19-nov: the avisos' buttons answered with a fixed line and no model (they
  * cost no turn and work with the monthly cap used up). True = handled.
  *   - «Lo hago» (`cooking:ok`) under «hora de cocinar»;
- *   - «¿Te sigo avisando de…?» Sí / No (fatigue.ts): the kind on or off;
+ *   - «¿Te sigo avisando?» Sí / No (fatigue.ts): the pause lifted, with «No» every aviso off;
  *   - why BAJA (optOutReason.ts): an opinion tagged `baja_avisos`.
  */
 async function answerAvisoButton(

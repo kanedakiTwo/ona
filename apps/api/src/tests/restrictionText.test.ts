@@ -16,6 +16,21 @@ describe('saysNone', () => {
   })
 })
 
+describe('saysNone after a «nada» (PRO-1263)', () => {
+  it('a «nada» followed by what someone doesn\'t eat is kept', () => {
+    for (const t of [
+      'nada d alergias. la abuela no come higado ni ver y el peque las acelgas tampoco jaja',
+      'nada d cerdo',
+      'ninguna alergia, pero el niño no come pescado',
+      'nada, excepto el picante',
+    ]) expect(saysNone(t), t).toBe(false)
+  })
+
+  it('a «nada» that only says there is none is still none', () => {
+    for (const t of ['nada d alergias', 'Nada de alergias ni intolerancias', 'nada, no tengo alergias']) expect(saysNone(t), t).toBe(true)
+  })
+})
+
 describe('withTyped', () => {
   it('what is typed counts, once, and «nada» does not', () => {
     expect(withTyped([], ' Pimiento ')).toEqual(['pimiento'])

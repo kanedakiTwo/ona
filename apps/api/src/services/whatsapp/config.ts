@@ -22,3 +22,8 @@ export function isUserAllowed(
   if (!email) return false
   return allowed.includes(email.trim().toLowerCase())
 }
+
+/** The channel is on for this account: what /whatsapp/status calls `available`. */
+export function isWhatsAppAvailableFor(email: string | null | undefined): boolean {
+  return isWhatsAppConfigured() && isUserAllowed(email)
+}

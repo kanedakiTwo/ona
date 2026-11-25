@@ -2,24 +2,15 @@
  * PRO-372: the catalogue recipes that already exist get their storage seals
  * («Se puede congelar» / «No se congela», «Aguanta N días en nevera»;
  * specs/recipes.md → Conservación). New ones bring them from the batch or
- * the house rewrite (catalogImport.ts); this fills the rest in the
- * background, in the API, like catalogPhotos.ts.
+ * the house rewrite (catalogImport.ts).
  *
- * 60 s after boot and every hour: the catalogue recipes (no author) missing
- * one of the two, 20 at a time, one Claude call per 20 (the rewriter's
- * model, cost `catalog_storage_labels` on Mimoia). Only empty columns are
- * written: what Cocina set is never overwritten, and users' recipes are
- * never touched. A recipe the model isn't sure about stays without the seal
- * and isn't asked again until the next boot.
+ * PRO-1314 (D-164, API savings): the API no longer runs this at boot or every
+ * hour — staging boots many times a day and asked the model again about the
+ * unsure ones each time. The seals still missing are set by Cocina in its
+ * batches. What stays here is the pass itself, pure and with its deps
+ * injected: 20 at a time, only catalogue recipes, only empty columns.
  */
-import Anthropic from '@anthropic-ai/sdk'
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
-import { env } from '../config/env.js'
-import { db } from '../db/connection.js'
-import { ingredients, recipeIngredients, recipes } from '../db/schema.js'
 import { cleanFridgeDays } from './catalogImport.js'
-import { REWRITE_MODEL } from './catalogRewriter.js'
-import { recordAnthropicCost, runWithCostUser } from './costLedger.js'
 
 export const STORAGE_LABEL_BATCH = 20
 
@@ -129,89 +120,4 @@ export async function sweepCatalogStorageLabels(deps: StorageSweepDeps, tried: S
     }
   }
   return out
-}
-
-function createAnthropicLabeller(): (lot: StorageLabelInput[]) => Promise<StorageLabel[]> {
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
-  return async (lot) => {
-    const response = await client.messages.create({
-      model: REWRITE_MODEL,
-      max_tokens: 2000,
-      system: STORAGE_LABEL_PROMPT,
-      messages: [{ role: 'user', content: storageLabelMessage(lot) }],
-    })
-    recordAnthropicCost('catalog_storage_labels', REWRITE_MODEL, response.usage, null)
-    const block = response.content.find((b) => b.type === 'text')
-    if (!block || block.type !== 'text') throw new Error('El etiquetado de conservación no devolvió texto')
-    return parseStorageLabels(block.text, lot)
-  }
-}
-
-function realDeps(): StorageSweepDeps {
-  return {
-    load: () =>
-      db
-        .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId, freezable: recipes.freezable, fridgeDays: recipes.fridgeDays })
-        .from(recipes)
-        .where(and(isNull(recipes.authorId), or(isNull(recipes.freezable), isNull(recipes.fridgeDays))))
-        .orderBy(asc(recipes.createdAt)),
-    ingredientsOf: async (ids) => {
-      const rows = await db
-        .select({ recipeId: recipeIngredients.recipeId, name: ingredients.name })
-        .from(recipeIngredients)
-        .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
-        .where(inArray(recipeIngredients.recipeId, ids))
-        .orderBy(asc(recipeIngredients.displayOrder))
-      const out = new Map<string, string[]>()
-      for (const r of rows) out.set(r.recipeId, [...(out.get(r.recipeId) ?? []), r.name])
-      return out
-    },
-    label: createAnthropicLabeller(),
-    save: async (labels) => {
-      for (const l of labels) {
-        await db
-          .update(recipes)
-          .set({
-            freezable: sql`COALESCE(${recipes.freezable}, ${l.freezable})`,
-            fridgeDays: sql`COALESCE(${recipes.fridgeDays}, ${l.fridgeDays}::smallint)`,
-          })
-          .where(and(eq(recipes.id, l.id), isNull(recipes.authorId)))
-      }
-    },
-    log: (line) => console.warn(line),
-  }
-}
-
-const INTERVAL_MS = 60 * 60_000
-const FIRST_RUN_MS = 60_000
-
-const tried = new Set<string>()
-let running: Promise<void> | null = null
-let timer: ReturnType<typeof setInterval> | null = null
-
-function enabled(): boolean {
-  return !!env.ANTHROPIC_API_KEY && process.env.NODE_ENV !== 'test' && !process.env.VITEST
-}
-
-/** One pass now, unless one is running. Fire-and-forget. */
-export function wakeCatalogStorageLabels(): void {
-  if (!enabled() || running) return
-  running = runWithCostUser(null, async () => {
-    try {
-      const r = await sweepCatalogStorageLabels(realDeps(), tried)
-      if (r.lots) console.info(`[catalogStorageLabels] ${r.labelled} recipes labelled in ${r.lots} lots, ${r.failed} failed`)
-    } catch (err) {
-      console.warn('[catalogStorageLabels] pass failed:', (err as Error)?.message ?? err)
-    }
-  }).finally(() => {
-    running = null
-  })
-}
-
-/** Boot: a first pass in 60 s, then every hour. Idempotent. */
-export function startCatalogStorageLabels(): void {
-  if (timer || !enabled()) return
-  setTimeout(wakeCatalogStorageLabels, FIRST_RUN_MS).unref?.()
-  timer = setInterval(wakeCatalogStorageLabels, INTERVAL_MS)
-  timer.unref?.()
 }

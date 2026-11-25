@@ -4,6 +4,9 @@
  * only catalogue recipes without the data, 20 at a time, never users'
  * recipes, and each recipe asked once per process. Fake AI and database.
  */
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   STORAGE_LABEL_BATCH,
@@ -109,5 +112,15 @@ describe('catalogue storage labels (PRO-372)', () => {
       { id: 'b', freezable: null, fridgeDays: null },
     ])
     expect(storageLabelMessage([{ id: 'a', name: 'Lentejas', ingredients: ['lentejas', 'chorizo'] }])).toBe('1. Lentejas — lentejas, chorizo')
+  })
+})
+
+describe('boot (PRO-1314)', () => {
+  it('the API boots without the storage-seal fill', async () => {
+    const here = path.dirname(fileURLToPath(import.meta.url))
+    const boot = readFileSync(path.resolve(here, '../index.ts'), 'utf8')
+    expect(boot).not.toMatch(/catalogStorageLabels/)
+    const mod: Record<string, unknown> = await import('../services/catalogStorageLabels.js')
+    expect(Object.keys(mod).filter((k) => /^(start|wake)/.test(k))).toEqual([])
   })
 })

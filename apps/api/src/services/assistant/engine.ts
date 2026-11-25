@@ -65,6 +65,11 @@ export interface ChatOptions {
   surface?: ChatSurface
   /** PRO-392: the page the web companion writes from. Since PRO-1291 every turn carries every tool, so it no longer picks any. */
   page?: PageKind
+  /**
+   * PRO-1295: tools this turn may not use (an opinion on a proposal is no
+   * cooked meal: no `log_cooked`). Absent → all of the selection.
+   */
+  withoutTools?: readonly string[]
 }
 
 /**
@@ -89,7 +94,7 @@ export async function chat(
   // 2–4. System, tools and messages (see buildChatRequest). PRO-1291: every
   // tool and every rule on every turn, as before PRO-392: picking them per
   // turn changed the start of the request and the cache never held.
-  const { system, tools, messages } = buildChatRequest({
+  const { system, tools: allTools, messages } = buildChatRequest({
     userContext,
     history,
     message,
@@ -99,6 +104,9 @@ export async function chat(
     onboarding: opts.onboarding === true,
     surface: opts.surface,
   })
+  // PRO-1295: a turn that may not use some tools (an opinion: no `log_cooked`)
+  // sends the rest; only that turn misses the tools cache.
+  const tools = opts.withoutTools?.length ? withLastToolCached(allTools.filter((t) => !opts.withoutTools!.includes(t.name))) : allTools
 
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
   // PRO-313: none of the reply offers on Telegram (their texts and budgets are WhatsApp's).
@@ -121,7 +129,8 @@ export async function chat(
     system,
     tools,
     messages,
-    skills,
+    // PRO-1295: a tool left out can't run either, even if the model names it.
+    skills: opts.withoutTools?.length ? skills.filter((s) => !opts.withoutTools!.includes(s.name)) : skills,
     ctx: { userId, db, channel: mode, surface: opts.surface },
     onToolStart: opts.onToolStart,
   })

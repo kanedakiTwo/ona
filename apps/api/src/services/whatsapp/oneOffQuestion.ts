@@ -34,6 +34,7 @@ import { emailSinkDomains } from '../emailSink.js'
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { isUserAllowed, isWhatsAppConfigured } from './config.js'
 import { surveyedHouseholds } from '../surveyCap.js'
+import { passiveEventsSql } from '../usageEvents.js'
 import { optInDeclinedSql } from './optInOffer.js'
 import { parseTemplateMap } from './proactive.js'
 import * as client from './client.js'
@@ -104,7 +105,7 @@ export interface CandidateMember {
 export interface CandidateHousehold {
   householdId: string
   createdAt: Date
-  /** Last thing anyone in it did (app usage or a WhatsApp message); null = never. */
+  /** Last thing anyone in it did (app usage or a WhatsApp message; not what Mimo did alone, `PASSIVE_USAGE_EVENTS`); null = never. */
   lastActivityAt: Date | null
   members: CandidateMember[]
 }
@@ -203,7 +204,7 @@ export function createDbQuestionStore(db: Db = defaultDb): QuestionStore {
       const res = await db.execute(sql`
         SELECT h.id::text AS household_id, h.created_at AS household_created_at,
                GREATEST(
-                 (SELECT max(e.created_at) FROM usage_events e WHERE e.household_id = h.id),
+                 (SELECT max(e.created_at) FROM usage_events e WHERE e.household_id = h.id AND e.name NOT IN (${passiveEventsSql()})),
                  (SELECT max(l2.last_inbound_at) FROM household_members m2
                     JOIN whatsapp_links l2 ON l2.user_id = m2.user_id WHERE m2.household_id = h.id)
                ) AS last_activity_at,

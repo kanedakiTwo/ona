@@ -40,6 +40,11 @@ export function checkinAnswerOf(replyId: string | null | undefined): CheckinAnsw
 
 /** A tap counts for a check-in sent this long ago at most (a late tap goes to Mimo). */
 export const CHECKIN_ANSWER_WINDOW_MS = 30 * 60 * 60 * 1000
+/**
+ * PRO-1295: a tap whose button says which check-in it answers counts for
+ * that day's dinner up to a week later (older → Mimo).
+ */
+export const CHECKIN_REF_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 /**
  * 20-nov (reviewer, `webhook.emoji_tono_piel_ignorado`): a 👍🏻 typed instead

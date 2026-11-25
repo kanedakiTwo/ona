@@ -9,6 +9,7 @@ import { db } from '../db/connection.js'
 import { recipes } from '../db/schema.js'
 import { and, eq } from 'drizzle-orm'
 import { estimateRecipeTimes } from './catalogRecipeTimes.js'
+import { TIMES_ESTIMATED_TAG } from './householdRecipeTimes.js'
 
 /**
  * One persist path for every "import a recipe" entry point: the
@@ -217,5 +218,8 @@ export async function createRecipeFromParts(
     unmatchedCount: unmatched,
     warnings: unmatched > 0 ? [...warnings, `${unmatched} ingrediente(s) no encontrado(s) en la base de datos`] : warnings,
   }
-  return saveOrThrow(extracted, userId, opts.estimated ? ['assistant-created', 'estimated'] : ['assistant-created'])
+  // PRO-1037: minutes that came from the steps, not from Mimo, are marked as estimated.
+  const given = [parts.prepTime, parts.cookTime].some((n) => typeof n === 'number' && n > 0)
+  const tags = ['assistant-created', ...(opts.estimated ? ['estimated'] : []), ...(!given && n.totalTime ? [TIMES_ESTIMATED_TAG] : [])]
+  return saveOrThrow(extracted, userId, tags)
 }

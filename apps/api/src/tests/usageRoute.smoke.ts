@@ -44,7 +44,7 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     expect(Array.isArray(before.body.proactive.weekly)).toBe(true)
     const count = (r: any, name: string) => Number(r.body.totals.events[name] ?? 0)
 
-    const reg = await call('POST', '/register', { username: tag, email: `${tag}@test.local`, password: 'e2epass123', ageConfirmed: true })
+    const reg = await call('POST', '/register', { username: tag, email: `${tag}@test.local`, password: 'e2epass123', ageConfirmed: true, signupSource: 'receta', utmSource: 'IG' })
     expect(reg.status).toBe(201)
     const auth = { Authorization: `Bearer ${reg.body.token}` }
     const userId = reg.body.user.id
@@ -77,6 +77,21 @@ describe.skipIf(!reachable || !METRICS_TOKEN)('usage events + conversation flags
     expect(today.day).toBe(after.body.to)
     expect(today.activeHouseholds).toBeGreaterThanOrEqual(1)
     expect(after.body.funnel.at(-1).signups).toBeGreaterThanOrEqual(1)
+    // PRO-1288: the signup's `?ref` label and utm_source (real SQL on users.signup_attribution), under the closed lists.
+    const bySource = after.body.signupSources.find((r: any) => r.week === after.body.funnel.at(-1).week && r.source === 'receta' && r.utmSource === 'instagram')
+    expect(bySource).toEqual(
+      expect.objectContaining({
+        isoWeek: expect.any(String),
+        signups: expect.any(Number),
+        firstMenu: expect.any(Number),
+        // PRO-1310: counts of households, and partial while day 14 hasn't come (today it has not).
+        firstHit: expect.any(Number),
+        week2MenuReady: expect.any(Number),
+        twoPlusPeople: expect.any(Number),
+        partial: true,
+      }),
+    )
+    expect(bySource.firstMenu).toBeGreaterThanOrEqual(1)
     // PRO-106: households snapshot (the new household counts) and the weekly channel split.
     expect(after.body.households.households).toBeGreaterThanOrEqual(1)
     expect(after.body.households).toEqual(

@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tansta
 import { z } from "zod"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
+import { isOffline } from "@/lib/pwa/network"
 import { createRecipeSchema } from "@ona/shared"
 import type { ExtractedRecipe, Ingredient, Recipe, SeasonalProduceCount } from "@ona/shared"
 
@@ -165,7 +166,7 @@ export function useToggleFavorite() {
     mutationFn: async (params: { userId: string; recipeId: string }) => {
       const url = `/user/${params.userId}/recipes/${params.recipeId}/favorite`
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,

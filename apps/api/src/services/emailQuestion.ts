@@ -28,6 +28,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { isEmailConfigured, sendEmail, type EmailMessage, type EmailResult } from './email.js'
 import { BODY, brandAssets, emailDocument, esc, footerBand, paragraphs, row, type BrandAssets } from './emailBrand.js'
 import { cleanFirstName, nameFromUsername } from './newsletterLetter.js'
+import { passiveEventsSql } from './usageEvents.js'
 import { optInDeclinedSql } from './whatsapp/optInOffer.js'
 import { isInternalAccount, isTestEmail } from './whatsapp/oneOffQuestion.js'
 
@@ -195,7 +196,7 @@ export function createDbEmailQuestionStore(db: Db = defaultDb): EmailQuestionSto
       const res = await db.execute(sql`
         SELECT h.id::text AS household_id, h.created_at AS household_created_at,
                GREATEST(
-                 (SELECT max(e.created_at) FROM usage_events e WHERE e.household_id = h.id),
+                 (SELECT max(e.created_at) FROM usage_events e WHERE e.household_id = h.id AND e.name NOT IN (${passiveEventsSql()})),
                  (SELECT max(l2.last_inbound_at) FROM household_members m2
                     JOIN whatsapp_links l2 ON l2.user_id = m2.user_id WHERE m2.household_id = h.id)
                ) AS last_activity_at,

@@ -643,7 +643,7 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     const listedNames = ingredients
       .map(ing => catalog.byId.get(ing.ingredientId)?.name)
       .filter((n): n is string => !!n)
-    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames)) {
+    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames, recipe.name)) {
       const path = `steps[${m.step}].text`
       const already = errors.some(e =>
         e.code === 'STEP_INGREDIENT_NOT_LISTED' && e.path === path &&

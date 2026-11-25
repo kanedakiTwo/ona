@@ -26,7 +26,7 @@ import {
 } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
-import { madridParts, madridWeekStart } from '../madridTime.js'
+import { addDays, madridParts, madridWeekStart, mondayOf } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
@@ -107,6 +107,8 @@ export function bestMatch<T>(items: readonly T[], query: string, nameOf: (t: T) 
     if (!n) continue
     let score = 0
     if (n === q) score = 100
+    // «tomates cherry» is «Tomate cherry», not «Tomate» (PRO-1039).
+    else if (sameWords(productWords(n), q.split(' '))) score = 95
     else if (n.startsWith(q)) score = 85
     else if (n.includes(q)) score = 70
     else if (q.includes(n)) score = 55
@@ -771,7 +773,11 @@ const addFreezerDish: SkillDefinition = {
 // ─── Shopping list ───────────────────────────────────────────────
 
 type ListItem = Pick<ShoppingItem, 'id' | 'name'> &
+<<<<<<< 3049451361e588d50c25b3f147c7e5d56876f274
   Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'manualParts' | 'manualExtra'>>
+=======
+  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'weeks'>>
+>>>>>>> 14819124f74ea6363c39a6e02cdeaa0708f60331
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.
@@ -802,6 +808,10 @@ export function itemLabel(i: ListItem): string {
 function sameWord(a: string, b: string): boolean {
   return a === b || `${a}s` === b || `${b}s` === a || `${a}es` === b || `${b}es` === a
 }
+/** Same words in the same order, singular or plural. */
+function sameWords(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((w, i) => sameWord(w, b[i]))
+}
 function productWords(name: string): string[] {
   const words = normalize(name).split(' ')
   return words.filter((w) => !(STOPWORDS.has(w) && words.length > 1))
@@ -826,39 +836,92 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
   return prefixHit
 }
 
+const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+/** Monday `YYYY-MM-DD` of the week of an ISO date. */
+const mondayOfDate = (iso: string) => mondayOf(iso, (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7)
+/** «Esta semana», «La que viene» or «Semana del 7 dic», as /shopping labels a line (lineWeekLabel). */
+function weekName(monday: string, thisMonday: string): string {
+  if (monday === thisMonday) return 'Esta semana'
+  if (monday === addDays(thisMonday, 7)) return 'La que viene'
+  const [, m, d] = monday.split('-').map(Number)
+  return `Semana del ${d} ${MONTHS_SHORT[m - 1]}`
+}
+/** The weeks (Mondays) a menu line is for, from its `weeks` (PRO-270); none for manual lines and staples. */
+const lineWeeks = (i: ListItem): string[] =>
+  Object.entries(i.weeks ?? {})
+    .filter(([, q]) => q > 0)
+    .map(([w]) => w)
+    .sort()
+
+/**
+ * What get_shopping_list tells Mimo (PRO-1039): the same list /shopping shows,
+ * every pending line (manual ones too: a cap of 60 left «Pan de barra ·
+ * MANUAL» out), each under the week it's for, a line of both weeks with what
+ * each one asks («44 huevos» were 19 + 25), and the names of what is bought
+ * or at home. With `week`, only that week's lines and amounts, like the
+ * «Esta semana» / «La que viene» chips (plus the lines that have no week).
+ */
+export function shoppingListSummary(items: readonly ListItem[], today: string, week?: 'esta' | 'que_viene'): string {
+  if (items.length === 0) return 'La lista de la compra está vacía: no hay menú para estos días ni nada apuntado a mano.'
+  const thisMonday = mondayOfDate(today)
+  const wanted = week === 'esta' ? thisMonday : week === 'que_viene' ? addDays(thisMonday, 7) : null
+  const names = (list: ListItem[]) => list.map((i) => prettyName(i.name)).join(', ')
+  const bought = items.filter((i) => i.checked)
+  const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped)
+  const skipped = items.filter((i) => i.skipped)
+  const extra = [
+    bought.length ? `Ya comprado (${bought.length}): ${names(bought)}.` : '',
+    atHome.length ? `En casa (${atHome.length}): ${names(atHome)}.` : '',
+    skipped.length ? `Quitado de esta compra: ${names(skipped)}.` : '',
+  ].filter(Boolean).join(' ')
+  let missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
+  if (wanted) missing = missing.filter((i) => lineWeeks(i).length === 0 || lineWeeks(i).includes(wanted))
+  const scope = wanted ? ` para ${weekName(wanted, thisMonday).toLowerCase()}` : ''
+  if (missing.length === 0) return `${wanted ? `No te falta nada${scope}.` : 'Ya lo tienes todo.'} ${extra}`.trim()
+
+  // Weeks in order, then the lines of both weeks, then the ones without a week.
+  const groups = new Map<string, { order: string; labels: string[] }>()
+  const put = (group: string, label: string, order = group) => {
+    const g = groups.get(group) ?? { order, labels: [] }
+    groups.set(group, { ...g, labels: [...g.labels, label] })
+  }
+  for (const i of missing) {
+    const ws = lineWeeks(i)
+    const amount = (w: string) => (i.unit ? formatQty(i.weeks![w], i.unit) : String(i.weeks![w]))
+    if (ws.length === 0) put('A mano o básicos (sin semana)', itemLabel(i), '9')
+    else if (wanted) put(weekName(wanted, thisMonday), ws.length > 1 ? `${prettyName(i.name)} (${amount(wanted)}; la línea de /shopping junta las dos semanas: ${itemLabel(i)})` : itemLabel(i), wanted)
+    else if (ws.length === 1) put(weekName(ws[0], thisMonday), itemLabel(i), ws[0])
+    else put('Para las dos semanas', `${itemLabel(i)} [${ws.map((w) => `${amount(w)} ${weekName(w, thisMonday).toLowerCase()}`).join(', ')}]`, '8')
+  }
+  const head = `Te faltan ${missing.length} cosas${scope}`
+  const sorted = [...groups].sort(([, a], [, b]) => a.order.localeCompare(b.order))
+  const body =
+    sorted.length === 1 && !wanted
+      ? `${head}: ${sorted[0][1].labels.join(', ')}.`
+      : `${head}. ${sorted.map(([g, { labels }]) => `${g}: ${labels.join(', ')}.`).join(' ')}`
+  return `${body} ${extra}`.trim()
+}
+
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:
-    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista", "hazme la lista de la compra", "mandame la lista".',
-  parameters: { type: 'object', properties: {}, required: [] },
-  async handler(_p, ctx) {
+    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar, cada cosa con su semana ("Esta semana", "La que viene", o las dos con lo de cada una), y los nombres de lo ya comprado y de lo que hay en casa. Con week, solo lo de esa semana (como los atajos de /shopping). Usala para "que me falta", "que tengo que comprar", "lee la lista", "que he comprado ya", "hazme la lista de la compra", "mandame la lista".',
+  parameters: {
+    type: 'object',
+    properties: {
+      week: { type: 'string', enum: ['esta', 'que_viene'], description: 'Solo si pregunta por una semana: "esta" o "que_viene". Sin week, las dos.' },
+    },
+    required: [],
+  },
+  async handler(p, ctx) {
     const list = await currentList(ctx)
     const items = list.items ?? []
     const data = { listId: list.id, items }
-    if (items.length === 0) {
-      return { data, summary: 'La lista de la compra está vacía: no hay menú para estos días ni nada apuntado a mano.', uiHint: 'shopping_list' }
-    }
-    const missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
-    const bought = items.filter((i) => i.checked).length
-    const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped).length
-    const skipped = items.filter((i) => i.skipped).map((i) => prettyName(i.name))
-    const extra = [
-      bought ? `Ya comprado: ${bought}.` : '',
-      atHome ? `En casa: ${atHome}.` : '',
-      skipped.length ? `Quitado de esta compra: ${skipped.join(', ')}.` : '',
-    ].filter(Boolean).join(' ')
-    if (missing.length === 0) {
-      return { data, summary: `Ya lo tienes todo. ${extra}`.trim(), uiHint: 'shopping_list' }
-    }
-    const shown = missing.slice(0, 60).map(itemLabel)
-    const more = missing.length > shown.length ? ` y ${missing.length - shown.length} más` : ''
+    const week = p?.week === 'esta' || p?.week === 'que_viene' ? p.week : undefined
+    const summary = shoppingListSummary(items, madridParts(new Date()).isoDate, week)
     // PRO-380: Mimo handing out the whole list counts like «Mandar la lista» (a resolved week).
-    await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
-    return {
-      data,
-      summary: `Te faltan ${missing.length} cosas: ${shown.join(', ')}${more}. ${extra}`.trim(),
-      uiHint: 'shopping_list',
-    }
+    if (summary.startsWith('Te faltan')) await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
+    return { data, summary, uiHint: 'shopping_list' }
   },
 }
 

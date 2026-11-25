@@ -29,6 +29,7 @@ import { useShops } from '@/hooks/useShopOrders'
 import { useTasteStatus } from '@/hooks/useTaste'
 import { useFicha } from '@/hooks/useFicha'
 import { useHouseholdPeople } from '@/hooks/useHouseholdPeople'
+import { useWhatsAppStatus } from '@/hooks/useWhatsApp'
 import { useAuth } from '@/lib/auth'
 import { api, type ApiError } from '@/lib/api'
 import { factsCountLabel, portraitOpening, recentlyLearnt, visibleQuestion } from '@/lib/ficha'
@@ -62,6 +63,7 @@ export default function ProfilePage() {
           <HowYouCook />
           <WhatYouLike />
           <Shopping />
+          <WhatsAppSection />
         </div>
 
         {/* PRO-163: another household, not someone of this one (that's «Invitar» in «Quién come»). */}
@@ -277,6 +279,27 @@ function Shopping() {
         href="/compra/tiendas"
         title="Tus tiendas"
         status={shops.data == null ? LOADING : listLine(shops.data.map((s) => s.name), 3) ?? 'Ninguna todavía'}
+      />
+    </Section>
+  )
+}
+
+/**
+ * «WhatsApp» (PRO-1040): the welcome email and Mimo say «conecta WhatsApp
+ * desde tu perfil», so Perfil has the row; it opens the card in Ajustes that
+ * gives the code and the QR. Only when the channel is on for this account
+ * (or a phone is already linked), like that card.
+ */
+function WhatsAppSection() {
+  const whatsapp = useWhatsAppStatus()
+  const s = whatsapp.data
+  if (!s || !(s.available || s.linked)) return null
+  return (
+    <Section id="profile-whatsapp" title="Mimo en WhatsApp">
+      <Row
+        href="/profile/ajustes#whatsapp"
+        title="WhatsApp"
+        status={s.linked ? `Conectado${s.phone ? ` · ${s.phone}` : ''}` : 'Sin conectar · te da un código para conectarlo'}
       />
     </Section>
   )

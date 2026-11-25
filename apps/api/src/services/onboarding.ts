@@ -8,6 +8,7 @@ import { getMemoryForUser, setMemoryFact } from './userMemoryStore.js'
 import { cookingStyleHousehold, setCookingStyle } from './profile/cookingStyle.js'
 import { setShopper } from './profile/shopper.js'
 import { trackEvent } from './usageEvents.js'
+import { readFreeRestrictions } from './restrictionReader.js'
 
 /**
  * Save the first-steps answers and mark the user onboarded. Shared by the web
@@ -109,6 +110,9 @@ export async function saveOnboarding(userId: string, input: OnboardingInput, dat
   if (note) set.onboardingNote = note
   if (input.restrictions !== undefined) {
     let restrictions = healthConsent === true || (await hasHealthConsent(userId)) ? input.restrictions : []
+    // PRO-1263: what was written by hand in «Otra», read as Mimo reads it
+    // («nada d alergias. la abuela no come higado…» → «higado»). Real database only.
+    if (restrictions.length > 0 && database === defaultDb) restrictions = await readFreeRestrictions(userId, restrictions)
     // A consent given now is the current text; an older one (v1) doesn't name a religious diet (E-19).
     if (healthConsent !== true && restrictions.some(isReligiousDiet) && !(await healthConsentCoversReligion(userId))) {
       restrictions = restrictions.filter((r) => !isReligiousDiet(r))

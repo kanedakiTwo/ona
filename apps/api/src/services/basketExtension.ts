@@ -25,15 +25,14 @@ import {
 import { db as defaultDb } from '../db/connection.js'
 import { basketExtensionConsents, recipeIngredients, recipes, shopOrders, users } from '../db/schema.js'
 import { env } from '../config/env.js'
+import { isEmailAllowed } from './emailAllowList.js'
 import { madridParts } from './madridTime.js'
 
 type Db = typeof defaultDb
 
 /** Lista vacía = nadie (al revés que WhatsApp). Entradas: email exacto o `@dominio`. */
 export function isBasketExtensionAllowed(email: string | null | undefined, allowed: readonly string[] = env.BASKET_EXTENSION_EMAILS): boolean {
-  if (!email || allowed.length === 0) return false
-  const e = email.trim().toLowerCase()
-  return allowed.some((a) => (a.startsWith('@') ? e.endsWith(a) : e === a))
+  return isEmailAllowed(email, allowed)
 }
 
 export async function basketExtensionEnabledFor(userId: string, db: Db = defaultDb): Promise<boolean> {

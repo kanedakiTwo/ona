@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tansta
 import type { Aisle, BuyableUnit } from "@ona/shared"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
+import { isOffline } from "@/lib/pwa/network"
 
 export interface ShoppingItem {
   id: string
@@ -102,7 +103,7 @@ export function useCheckItem() {
       const url = `/shopping-list/${params.listId}/item/${params.itemId}/check`
       const body = { checked: params.checked }
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,
@@ -281,7 +282,7 @@ export function useStockItem() {
       const url = `/shopping-list/${params.listId}/item/${params.itemId}/stock`
       const body = { inStock: params.inStock }
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,

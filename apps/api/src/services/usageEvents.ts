@@ -93,7 +93,7 @@ export const USAGE_EVENTS = [
   'shopper_answered',
   // PRO-1174: an option tapped in one of the menu's «···» sheets (`props.sheet`, `props.action`: MENU_SHEET_ACTIONS).
   'menu_sheet_action',
-  // PRO-1292: a message to Mimo the code answered without the model (`props.kind`: ver_menu · paso_cocina).
+  // PRO-1292: a message to Mimo the code answered without the model (`props.kind`: ver_menu · paso_cocina · ver_lista, PRO-1302).
   'mimo_code_reply',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]

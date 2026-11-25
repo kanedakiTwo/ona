@@ -778,6 +778,13 @@
       "when": 1795486226765,
       "tag": "0115_alert_times",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1795536865041,
+      "tag": "0116_red_tiendas",
+      "breakpoints": true
     }
   ]
 }

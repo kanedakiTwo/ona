@@ -773,11 +773,7 @@ const addFreezerDish: SkillDefinition = {
 // ─── Shopping list ───────────────────────────────────────────────
 
 type ListItem = Pick<ShoppingItem, 'id' | 'name'> &
-<<<<<<< 3049451361e588d50c25b3f147c7e5d56876f274
-  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'manualParts' | 'manualExtra'>>
-=======
-  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'weeks'>>
->>>>>>> 14819124f74ea6363c39a6e02cdeaa0708f60331
+  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'manualParts' | 'manualExtra' | 'weeks'>>
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.

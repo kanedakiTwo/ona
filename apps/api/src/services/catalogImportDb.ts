@@ -12,6 +12,7 @@ import { tokenSetMatch } from './ingredientTokenMatch.js'
 import { persistRecipe } from './recipePersistence.js'
 import { detectSourceType } from './sources/sourceType.js'
 import { applyCatalogTimeTrim } from './recipeTimeTrim.js'
+import { splitDayBeforeWaits } from './recipeWaitTime.js'
 import { markWishesCovered } from './catalogWishes.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
 import { baseNameKey, catalogSourceRecord, planBatchPublish, reviewDecision, type BatchRecipe, type CatalogImportDeps, type CatalogRewrite, type CatalogDraftInput, type RewriteOptions, type DraftIngredient, type MatchedIngredient, type PersistDraftInput } from './catalogImport.js'
@@ -100,14 +101,18 @@ export async function persistCatalogDraft(input: PersistDraftInput, db: Db = def
     if (input.featuredOn && isFeaturedOnConflict(err)) return { ok: false, errors: [featuredOnTaken(input.featuredOn, null)] }
     throw err
   }
+  // PRO-402: a soak or a marinade of the day before is not cooking time;
+  // it goes to the recipe's «preparativos con antelación».
+  const times = splitDayBeforeWaits(input, input.steps)
   try {
     const res = await persistRecipe(
       {
         name: input.name,
         servings: input.servings,
         servingsConfidence: 'explicit',
-        prepTime: input.prepTime,
-        cookTime: input.cookTime,
+        prepTime: times.prepTime,
+        cookTime: times.cookTime,
+        ...(times.advancePrep.length ? { advancePrep: times.advancePrep } : {}),
         difficulty: input.difficulty,
         meals: input.meals,
         seasons: input.seasons,

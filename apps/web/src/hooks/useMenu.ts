@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query"
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
+import { isOffline } from "@/lib/pwa/network"
 import { dishKey, slotKey, type MenuFit, type WeekPlan, type WeekTypeOption } from "@ona/shared"
 import { NO_RECIPE_OF_TYPE, regenerateDishBody, regenerateMealBody, type WeekTypeApplied } from "@/lib/mealSheet"
 import {
@@ -255,7 +256,7 @@ export function useRegenerateMeal() {
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,
@@ -504,7 +505,7 @@ export function useLockMeal() {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/lock`
       const body = { locked: params.locked }
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,

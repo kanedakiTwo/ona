@@ -329,6 +329,22 @@ describe('get_weekly_menu', () => {
     )
   })
 
+  // PRO-1039: Carmen heard the week without the curry of Friday (only the
+  // first dish of each meal) and Laura «la que viene todavía no tiene menú»
+  // with it planned.
+  it('names every dish of a meal and adds next week when it has a menu', async () => {
+    const days = [{}, {}, {}, {}, { dinner: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Arroz blanco' }, { kind: 'recipe', recipeId: 'b', recipeName: 'Curry de berenjena' }] } }, {}, {}]
+    const next = [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'c', recipeName: 'Paella' }, { kind: 'note', text: 'Ensalada' }] } }, {}, {}, {}, {}, {}, {}]
+    const db = makeDb([{ id: 'm-7', days, skippedDays: [] }], [], [], [{ id: 'm-8', days: next, skippedDays: [] }], [], [])
+    const r = await at(() => skill.handler({}, ctx(db)))
+    expect(r.summary).toBe(
+      'Menu de la semana del lunes 12 de octubre:\nviernes 16 de octubre: cena · 2 raciones: Arroz blanco + Curry de berenjena' +
+        '\n\nLa semana que viene (del lunes 19 de octubre) ya tiene menu:\nlunes 19 de octubre: comida · 2 raciones: Paella + Ensalada',
+    )
+    // The picture on WhatsApp stays this week's.
+    expect(r.data).toMatchObject({ menuId: 'm-7', weekStart: '2026-10-12' })
+  })
+
   it('nextWeek reads next week', async () => {
     const db = makeDb([{ id: 'm-8', days: [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Paella' }] } }], skippedDays: [] }], /* diners */ [], /* recipe times */ [])
     const r = await at(() => skill.handler({ nextWeek: true }, ctx(db)))

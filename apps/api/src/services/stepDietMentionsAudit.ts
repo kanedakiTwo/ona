@@ -42,7 +42,7 @@ export function auditStepMentions(recipes: readonly AuditRecipe[], catalogNames:
   const other: OtherFinding[] = []
   for (const r of recipes) {
     const base = { ...(r.id ? { id: r.id } : {}), name: r.name, status: r.status }
-    const dm = unlistedDietMentions(r.steps, r.ingredients)
+    const dm = unlistedDietMentions(r.steps, r.ingredients, r.name)
     if (dm.length > 0) diet.push({ ...base, mentions: dm.map((m) => ({ ...m, step: m.step + 1, text: r.steps[m.step] })) })
 
     const lint = lintRecipe(

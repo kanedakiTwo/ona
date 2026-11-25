@@ -61,7 +61,7 @@ import {
   timelineString,
 } from "@/lib/recipeView"
 import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
-import { BRAND_NAME, normalizeReferralCode, recipeSharePayload } from "@ona/shared"
+import { BRAND_NAME, advancePrepLabel, normalizeReferralCode, recipeSharePayload } from "@ona/shared"
 import { ApiError } from "@/lib/api"
 import { loginHrefFor } from "@/lib/routeAccess"
 import { recipeBackTarget } from "@/lib/menuReturn"
@@ -338,10 +338,18 @@ export default function RecipeDetailPage() {
   const stepsBlock = (
     <>
       {timeLine && (
-        <p className="mb-5 flex items-center gap-1.5 text-[13px] text-[#4A4239]">
+        <p className={`${recipe.advancePrep?.length ? "mb-1.5" : "mb-5"} flex items-center gap-1.5 text-[13px] text-[#4A4239]`}>
           <Clock size={14} className="text-[#7A7066]" aria-hidden />
           {timeLine}
         </p>
+      )}
+      {/* PRO-402: what goes the day before (a soak, a marinade) is not in the time above. */}
+      {recipe.advancePrep && recipe.advancePrep.length > 0 && (
+        <ul className="mb-5 flex flex-col gap-0.5 text-[13px] text-[#4A4239]" data-testid="recipe-advance-prep">
+          {recipe.advancePrep.map((p) => (
+            <li key={`${p.hoursBefore}-${p.text}`}>{advancePrepLabel(p)}</li>
+          ))}
+        </ul>
       )}
       {stepCount > 0 ? (
         <StepsSection

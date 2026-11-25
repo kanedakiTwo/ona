@@ -11,13 +11,18 @@ import { db } from '../db/connection.js'
 import { menus, menuEdits, users } from '../db/schema.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
+<<<<<<< 17b5e38f242ef4d4bbbc37b73882de302960e041
 import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema, pastDayIndexes, isTaperVariant, isValidBatchDate, addDaysIso, BATCH_MAX_DAYS_BEFORE } from '@ona/shared'
 import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, RecipeDish, WeekTypeOption } from '@ona/shared'
+=======
+import { dishKey, slotKey, MENU_CHANGED_CODE, fridgeTextOf, FRIDGE_HEALTH_QUESTION_CODE, type FridgeHealthQuestion, type WeekPlan, generateMenuSchema, isFixedDish, isTaperDish, lockMealSchema, MEALS, courseSchema, weekTypeSlotAt, isDishType, dishTypeInfo, swapLocks, withLock, weekTypeOptionSchema, pastDayIndexes } from '@ona/shared'
+import type { DayMenu, DayTemplate, Dish, LockedSlots, Meal, MealSlot, MenuFit, RecipeDish, WeekTypeOption } from '@ona/shared'
+>>>>>>> 14819124f74ea6363c39a6e02cdeaa0708f60331
 import { applyTaper, removeTaper } from '../services/taper.js'
 import { prepareFridgeForMenu } from '../services/fridgeReader.js'
 import { currentWeekStart, fromWeekTypeOf, isChildOfHousehold, loadWeekTypeForUser, poolOfChipType, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt, weekTypeMealChange, weekTypeSlotSaving } from '../services/weekType.js'
 import { planWeekType } from '../services/weekTypePlan.js'
-import { evaluateAndSaveMenuFit } from '../services/menuFit.js'
+import { currentMenuFit, evaluateAndSaveMenuFit } from '../services/menuFit.js'
 import { findRecipeForSlot, normaliseEquipment, type RecipeWithIngredients } from '../services/recipeMatcher.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import { loadHouseholdRatingSets, withHouseholdRatings } from '../services/householdRatings.js'
@@ -205,7 +210,11 @@ async function hydrateMenuImages<T extends { days: unknown }>(menu: T): Promise<
     }
     return next
   })
-  return { ...menu, days: hydratedDays }
+  // PRO-1051: the verdict as of the week now, not as it was when made.
+  const fit = (menu as { fit?: MenuFit | null }).fit
+  if (!fit) return { ...menu, days: hydratedDays }
+  const userId = (menu as { userId?: string | null }).userId ?? null
+  return { ...menu, days: hydratedDays, fit: await currentMenuFit({ fit, days: hydratedDays, userId }) }
 }
 
 // POST /menu/generate - requires auth; a caller may only (re)generate their

@@ -12,6 +12,7 @@ import { ArrowDown, ArrowUp, ChevronLeft, MessageCircle, Mail, Globe, Phone, Pen
 import { SHOP_KIND_LABELS, type Shop } from "@ona/shared"
 import { useAuth } from "@/lib/auth"
 import { useDeleteShop, useMoveShop, useShops } from "@/hooks/useShopOrders"
+import { useRedStatus } from "@/hooks/useRed"
 import { ShopForm } from "@/components/compra/ShopForm"
 
 function contactOf(s: Shop): { icon: React.ReactNode; text: string } {
@@ -33,6 +34,9 @@ export default function ShopsPage() {
   const del = useDeleteShop()
   const move = useMoveShop()
   const [editing, setEditing] = useState<Shop | "new" | null>(null)
+  const { data: redStatus } = useRedStatus()
+  // The live discount; without it (still loading, Red off) no number at all.
+  const redDiscount = redStatus?.discountPct != null ? `−${redStatus.discountPct} %` : "con descuento"
 
   if (!user) return null
 
@@ -73,6 +77,8 @@ export default function ShopsPage() {
                   <div className="min-w-0">
                     <div className="text-[10px] uppercase tracking-[0.14em] text-[#C65D38]">
                       {SHOP_KIND_LABELS[s.kind]}
+                      {s.origin === "red" && <span className="text-[#2D6A4F]"> · de la Red · {redDiscount}</span>}
+                      {s.origin !== "red" && s.redShopId && <span className="text-[#2D6A4F]"> · en la Red · {redDiscount}</span>}
                       {sameKind(s).length > 1 ? (
                         <span className="ml-1.5 normal-case tracking-normal text-[#7A7066]">
                           · {rank(s) === 0 ? "la primera: recibe el pedido" : `${rank(s) + 1}.ª`}
@@ -110,9 +116,11 @@ export default function ShopsPage() {
                         </button>
                       </>
                     ) : null}
-                    <button aria-label={`Editar ${s.name}`} onClick={() => setEditing(s)} className="rounded-full p-2 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612]">
-                      <Pencil size={14} />
-                    </button>
+                    {s.origin !== "red" && (
+                      <button aria-label={`Editar ${s.name}`} onClick={() => setEditing(s)} className="rounded-full p-2 text-[#7A7066] hover:bg-[#F2EDE0] hover:text-[#1A1612]">
+                        <Pencil size={14} />
+                      </button>
+                    )}
                     <button
                       aria-label={`Borrar ${s.name}`}
                       onClick={() => {

@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm'
 import { isHealthMemoryKey, shouldAskRating, type DayMenu } from '@ona/shared'
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { activityEvents, chatMessages, cookLogs, householdMembers, households, menus, recipes, userFeedback, userMemories, users, whatsappMessages } from '../../db/schema.js'
+import { activityEvents, chatMessages, cookLogs, householdMembers, households, menus, recipes, usageEvents, userFeedback, userMemories, users, whatsappMessages } from '../../db/schema.js'
 import { getRecipeNotesForUser } from '../recipeNotesStore.js'
 import { madridMidnightUtc } from '../madridTime.js'
 import { appApiFor } from '../assistant/appApi.js'
@@ -41,7 +41,7 @@ import {
 } from './proactive.js'
 import { recordCost } from '../costLedger.js'
 import { recordServiceMessageCost } from './serviceCost.js'
-import { budgetMicros, getMonthlySpendMicros } from '../advisorBudget.js'
+import { budgetMicrosFor, getMonthlySpendMicros } from '../advisorBudget.js'
 import { spendCapStatus } from '../spendCap.js'
 import { composeGuided, guidedMeta, type GuideSpec, type GuidedContext, type GuidedResult } from './guided.js'
 import { isOnFreePlan } from '../accountAccess.js'
@@ -54,10 +54,10 @@ import { listPantryForUser } from '../pantryStore.js'
 import { freezerItemsDue } from '@ona/shared'
 import { quietAfterSignUp } from './signUpQuiet.js'
 import { isShoppingReminderWindow } from './proactive.js'
-import { loadUserAlertPrefs, mergeAlertPrefs, setAlertPrefs } from '../notifications/alertPrefs.js'
+import { loadHouseholdAlertTimes, loadUserAlertPrefs, mergeAlertPrefs, setAlertPrefs } from '../notifications/alertPrefs.js'
 import { ratingToSave } from './checkinButtons.js'
 import { detectLanguage, type Lang } from './language.js'
-import { FATIGUE_STREAK, fatigueAskKind, fatigueQuestion, fatiguedKind, type FatigueKind } from './fatigue.js'
+import { DORMANT_SKIPPED_KINDS, FATIGUE_KINDS, FATIGUE_STREAK, PAUSE_ASK_KIND, avisoPauseState, fatigueQuestion, isDormant, type FatigueKind } from './fatigue.js'
 import { OPT_OUT_REASON_TAG, type OptOutReason } from './optOutReason.js'
 import { fallbackKindsToday, pushFallbackForProactive, type WhatsAppAlertState } from '../notifications/channels.js'
 import { fillRecipeNames } from '../menuNames.js'
@@ -236,7 +236,9 @@ export async function recordDinnerCheckinAnswer(
   const [logged] = await db
     .select({ id: cookLogs.id })
     .from(cookLogs)
-    .where(and(eq(cookLogs.userId, userId), gte(cookLogs.cookedAt, checkinAt)))
+    // PRO-1295: this dinner's log — an old check-in tapped days later isn't
+    // «logged» by another day's dinner.
+    .where(and(eq(cookLogs.userId, userId), eq(cookLogs.recipeId, recipeId), gte(cookLogs.cookedAt, checkinAt)))
     .limit(1)
   if (!logged) {
     await api('POST', '/cook-logs', {
@@ -313,9 +315,14 @@ export async function languageForPhone(phone: string): Promise<Lang> {
   }
 }
 
-/** 19-nov (fatigue.ts): «Sí» switches the kind back on; «No» leaves it off. */
-export async function setAvisoKind(userId: string, kind: FatigueKind, on: boolean): Promise<void> {
-  await setAlertPrefs(userId, { [kind]: on } as Record<string, boolean>)
+/**
+ * The answer to «¿Te sigo avisando?» (fatigue.ts). PRO-1303 (`todos`): the
+ * answer itself lifts the pause; «No» also switches every aviso off. A
+ * question from before (one kind): that kind on or off.
+ */
+export async function setAvisoKind(userId: string, kind: FatigueKind | 'todos', on: boolean): Promise<void> {
+  if (kind !== 'todos') await setAlertPrefs(userId, { [kind]: on } as Record<string, boolean>)
+  else if (!on) await setAlertPrefs(userId, Object.fromEntries(FATIGUE_KINDS.map((k) => [k, false])))
 }
 
 /** 19-nov (optOutReason.ts): why they wrote BAJA, as an opinion tagged `baja_avisos`. */
@@ -323,19 +330,79 @@ export async function saveOptOutReason(userId: string, reason: OptOutReason, tex
   await db.insert(userFeedback).values({ userId, channel: 'whatsapp', text: text.slice(0, 2000), tag: OPT_OUT_REASON_TAG, answer: reason })
 }
 
+/** PRO-1303: the last time this person used the app (any usage event from the web). */
+async function lastAppUseAt(userId: string): Promise<Date | null> {
+  const [row] = await db
+    .select({ at: sql<Date | null>`max(${usageEvents.createdAt})` })
+    .from(usageEvents)
+    .where(and(eq(usageEvents.userId, userId), eq(usageEvents.channel, 'web')))
+  return row?.at ? new Date(row.at) : null
+}
+
 /**
- * 19-nov: before an aviso goes, has this number stopped answering that kind
- * (5 in a row)? Then the kind is switched off and the question goes instead
- * of it, once per kind. Returns the kind paused (dropped from `planned`).
+ * PRO-1303 (fatigue.ts): may avisos go to this number now? False when every
+ * aviso is paused — and, when 3 in a row went unanswered, the single
+ * «¿Te sigo avisando?» goes out now (by `templateKind`'s template outside the
+ * 24 h window) and starts the pause. Never throws: true (as before).
  */
-async function pauseFatiguedKind(link: LinkWithUser, planned: PlannedMessage[], now: Date): Promise<FatigueKind | null> {
-  const rows = await store.avisoActivity(link.phone, new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000))
-  const kind = fatiguedKind(rows, planned.map((p) => p.kind), now)
-  if (!kind) return null
-  await setAvisoKind(link.userId, kind, false)
-  console.info(`[whatsapp] ${kind} paused for ${link.userId}: ${FATIGUE_STREAK}+ unanswered in a row`)
-  await sendProactive(link, [fatigueQuestion(kind, await languageForPhone(link.phone))], fatigueAskKind(kind), now, { templateKind: kind })
-  return kind
+export async function avisosMayGo(link: LinkWithUser, templateKind: string, now: Date): Promise<boolean> {
+  try {
+    const [rows, appSeenAt] = await Promise.all([
+      store.avisoActivity(link.phone, new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000)),
+      lastAppUseAt(link.userId),
+    ])
+    const state = avisoPauseState(rows, appSeenAt, now)
+    if (state === 'send') return true
+    if (state === 'ask') {
+      console.info(`[whatsapp] avisos paused for ${link.userId}: ${FATIGUE_STREAK}+ unanswered in a row`)
+      await sendProactive(link, [fatigueQuestion(await languageForPhone(link.phone))], PAUSE_ASK_KIND, now, { templateKind })
+    }
+    return false
+  } catch (err: any) {
+    console.warn('[whatsapp] aviso pause not read (sending):', err?.message ?? err)
+    return true
+  }
+}
+
+/** PRO-1303: the prep alerts' tick asks the same (by the user's WhatsApp, when linked). */
+export async function prepAlertsMayGo(userId: string, now: Date = new Date()): Promise<boolean> {
+  const link = await notifiableLink(userId)
+  return link ? avisosMayGo(link, 'prep_alerts', now) : true
+}
+
+/**
+ * PRO-1303: a household that hasn't opened this week's menu in the app nor
+ * written to Mimo in 14 days (fatigue.ts `isDormant`). Never throws: false.
+ */
+async function isDormantHousehold(link: LinkWithUser, parts: MadridParts, now: Date): Promise<boolean> {
+  try {
+    const [u] = await db.select({ householdId: users.primaryHouseholdId }).from(users).where(eq(users.id, link.userId)).limit(1)
+    const who = u?.householdId ? eq(usageEvents.householdId, u.householdId) : eq(usageEvents.userId, link.userId)
+    const monday = madridMidnightUtc(mondayOf(parts.isoDate, parts.weekday))
+    const [opened] = await db
+      .select({ id: usageEvents.id })
+      .from(usageEvents)
+      .where(
+        and(
+          who,
+          gte(usageEvents.createdAt, monday),
+          or(and(eq(usageEvents.name, 'screen_viewed'), sql`${usageEvents.props}->>'screen' = 'menu'`), eq(usageEvents.name, 'autoplan_viewed')),
+        ),
+      )
+      .limit(1)
+    if (opened) return false
+    const [wrote] = await db
+      .select({ at: sql<Date | null>`max(${usageEvents.createdAt})` })
+      .from(usageEvents)
+      .where(and(who, eq(usageEvents.name, 'mimo_message')))
+    const lastWroteAt = [link.lastInboundAt, wrote?.at ? new Date(wrote.at) : null]
+      .filter((d): d is Date => d instanceof Date)
+      .sort((a, b) => b.getTime() - a.getTime())[0] ?? null
+    return isDormant({ openedWeekMenu: false, lastWroteAt }, now)
+  } catch (err: any) {
+    console.warn('[whatsapp] dormant check failed (sending):', err?.message ?? err)
+    return false
+  }
 }
 
 /** PRO-235: did today's menu come up in a conversation (WhatsApp or the web chat) since midnight? */
@@ -362,7 +429,7 @@ async function sawMenuThisMorning(userId: string, parts: MadridParts, now: Date)
  * turn checks it. Then the fixed text goes out instead of a guided one.
  */
 export async function guidedOverBudget(userId: string): Promise<boolean> {
-  if ((await getMonthlySpendMicros(userId, db)) >= budgetMicros()) return true
+  if ((await getMonthlySpendMicros(userId, db)) >= (await budgetMicrosFor(userId, db))) return true
   const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
   if (row?.role === 'admin') return false
   return (await spendCapStatus(userId)).exceeded
@@ -524,9 +591,11 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
       // PRO-385 (D-158): Mimo writing first isn't in the Gratis plan (never before launch day).
       if (await isOnFreePlan(link.userId, now)) continue
       const times = await loadMealTimes(link.userId)
+      // PRO-1301: the household's own time for the morning menu and the dinner question.
+      const alertTimes = await loadHouseholdAlertTimes(link.userId)
       const shoppingUse = await shoppingUseFor(link.userId, parts, now)
       // Only touch the DB for cooldowns inside a window that could fire.
-      if (!anyProactiveWindow(parts, times.breakfast, times.dinner, shoppingUse)) continue
+      if (!anyProactiveWindow(parts, times.breakfast, times.dinner, shoppingUse, alertTimes)) continue
       const since = new Date(now.getTime() - WEEKLY_NUDGE_COOLDOWN_MS)
       const [recent, noticed, fellBack, userPrefs] = await Promise.all([
         store.recentOutboundKinds(link.phone, since),
@@ -554,6 +623,7 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         parts,
         breakfastTime: times.breakfast,
         dinnerTime: times.dinner,
+        alertTimes,
         // A kind is off if WhatsApp's prefs, «Avisos» (PRO-237) or the household
         // recipient rule (PRO-236: shopping/Sunday to one person) say so.
         prefs: mergeAlertPrefs(link.prefs, userPrefs, household.offFor(link.userId)),
@@ -583,10 +653,14 @@ export async function runProactiveTick(now: Date = new Date()): Promise<void> {
         ? withoutMimoButtonAvisos(planned, await guidedOverBudget(link.userId))
         : planned
       if (capped.length === 0) continue
-      // 19-nov: a kind left unanswered 5 times in a row pauses; the question goes instead.
-      const paused = await pauseFatiguedKind(link, capped, now)
-      const toSend = paused ? capped.filter((p) => p.kind !== paused) : capped
+      // PRO-1303: no «hora de cocinar» nor «¿qué tal la cena?» to a household
+      // that hasn't opened this week's menu nor written in 14 days.
+      const toSend = capped.some((p) => DORMANT_SKIPPED_KINDS.has(p.kind)) && (await isDormantHousehold(link, parts, now))
+        ? capped.filter((p) => !DORMANT_SKIPPED_KINDS.has(p.kind))
+        : capped
       if (toSend.length === 0) continue
+      // PRO-1303: 3 avisos of any kind unanswered → one question, and all wait.
+      if (!(await avisosMayGo(link, toSend[0].kind, now))) continue
       await sendMoment(link, toSend, parts.isoDate, now)
     } catch (err: any) {
       console.error(`[whatsapp] proactive tick failed for ${link.userId}:`, err?.message ?? err)

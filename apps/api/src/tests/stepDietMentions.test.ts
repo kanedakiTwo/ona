@@ -12,7 +12,7 @@ import { auditStepMentions, renderStepMentionsReport } from '../services/stepDie
 import { lintRecipe, type CatalogIngredient, type RecipeInput } from '../services/recipeLint.js'
 import { seedRecipes } from '../seed/recipes.js'
 
-const terms = (steps: string[], names: string[]) => unlistedDietMentions(steps, names).map((m) => m.term)
+const terms = (steps: string[], names: string[], recipeName?: string) => unlistedDietMentions(steps, names, recipeName).map((m) => m.term)
 
 const LENTEJAS = seedRecipes.find((r) => r.name === 'Lentejas guisadas')!
 
@@ -74,6 +74,78 @@ describe('unlistedDietMentions', () => {
 
   it('the rest of the specific meats still count with another meat listed (a pork-free home)', () => {
     expect(terms(['Añade el chorizo.'], ['pollo'])).toEqual(['chorizo'])
+  })
+})
+
+/**
+ * PRO-401 — the Jerusalem book (2026-10-25): the reviewer rejected 40 of 109
+ * recipes for single words. From `catalogo-admin.log` and the audit of
+ * 2026-11-18: «Pudin de yogur con melocotones … menciona "hueso" (carne)»,
+ * «Ossobuco … menciona "dorada" (pescado)», «carne» for an aubergine's flesh,
+ * «galleta» in «Galletas de tahini». The step sentences are rebuilt.
+ */
+describe('PRO-401: words that are not the ingredient', () => {
+  it('«la carne» of a listed aubergine, tomato or avocado is its flesh', () => {
+    expect(terms(['Saca la carne con una cuchara y mézclala con el yogur.'], ['berenjena', 'yogur natural'])).toEqual([])
+    expect(terms(['Abre las berenjenas asadas, vacía la carne y escúrrela.'], ['berenjena'])).toEqual([])
+    expect(terms(['Raspa la carne de los tomates rallados.'], ['tomate'])).toEqual([])
+    expect(terms(['Parte los aguacates, retira el hueso y extrae la carne.'], ['aguacate', 'lima'])).toEqual([])
+  })
+
+  it('«el hueso» of a listed peach, apricot or olive is its stone', () => {
+    expect(terms(['Parte los melocotones por la mitad y quita el hueso.'], ['melocotón', 'yogur griego', 'miel'])).toEqual([])
+    expect(terms(['Retira los huesos y trocea la fruta.'], ['albaricoques secos'])).toEqual([])
+    expect(terms(['Aplasta las aceitunas para sacarles el hueso.'], ['aceitunas negras'])).toEqual([])
+  })
+
+  it('«dorada» joined by «y» to another adjective is the colour', () => {
+    const steps = [
+      'Dora los jarretes hasta que la carne quede crujiente y dorada.',
+      'Hornea hasta que la masa esté hinchada y dorada.',
+      'Fríe las cebollas hasta que estén blandas y doradas.',
+    ]
+    expect(terms(steps, ['jarrete de ternera', 'cebolla', 'harina'])).toEqual([])
+  })
+
+  it('the dish of the title is not an unlisted ingredient', () => {
+    const tahini = ['harina de trigo', 'mantequilla', 'azúcar', 'tahini', 'sésamo']
+    expect(terms(['Forma las galletas y hornéalas 15 minutos.'], tahini, 'Galletas de tahini')).toEqual([])
+    expect(terms(['Forma las hamburguesas y dóralas en la sartén.'], ['garbanzos cocidos', 'cebolla'], 'Hamburguesas de garbanzos')).toEqual([])
+    expect(terms(['Forma las albóndigas con las manos húmedas.'], ['lentejas', 'pan rallado'], 'Albóndigas de lentejas')).toEqual([])
+  })
+
+  it('the real ones still come out: meat in a vegetarian recipe, an undeclared allergen', () => {
+    // Meat: a fleshy vegetable listed doesn't hide meat named as meat.
+    expect(terms(['Añade la carne picada al sofrito de tomate.'], ['tomate', 'cebolla'])).toEqual(['carne'])
+    expect(terms(['Sofríe el tomate y añade la carne.'], ['tomate', 'cebolla'])).toEqual(['carne'])
+    expect(terms(['Retira la carne picada de la sartén.'], ['berenjena'])).toEqual(['carne'])
+    // A bone, with no stone fruit in the recipe (Lentejas guisadas).
+    expect(terms(['Añadir huesos y pimentón.'], ['lentejas', 'zanahoria'])).toEqual(['hueso'])
+    expect(terms(['Quita el hueso y desmenuza.'], ['lentejas'])).toEqual(['hueso'])
+    // The fish, with an article.
+    expect(terms(['Coloca la dorada en la bandeja.'], ['patata'])).toEqual(['dorada'])
+    expect(terms(['Limpia la merluza y la dorada.'], ['patata'])).toEqual(['merluza', 'dorada'])
+    // An allergen the title doesn't account for: biscuits for a cheesecake base, bread not listed.
+    expect(terms(['Tritura las galletas con la mantequilla.'], ['queso crema', 'mantequilla', 'azúcar'], 'Tarta de queso')).toEqual(['galleta'])
+    expect(terms(['Tuesta el pan y frota el tomate.'], ['tomate', 'aceite de oliva'], 'Pan con tomate')).toEqual(['pan'])
+    expect(terms(['Forma las hamburguesas.'], ['cebolla'], 'Hamburguesas caseras')).toEqual(['hamburguesa'])
+    // Steps with peanuts in a recipe that lists apricots.
+    expect(terms(['Espolvorea cacahuetes picados.'], ['albaricoques'])).toEqual(['cacahuete'])
+  })
+
+  it('the reviewer passes «Galletas de tahini» and still blocks a cake with unlisted biscuits', () => {
+    const catalog: CatalogIngredient[] = ['harina de trigo', 'mantequilla', 'azúcar', 'tahini'].map((name) => ({ id: `cat:${name}`, name, fdcId: 1, density: 1 }))
+    const ingredients = catalog.map((c, i) => ({ id: `row-${i}`, ingredientId: c.id, quantity: 100, unit: 'g' as const }))
+    const input = (name: string, steps: string[]): RecipeInput => ({
+      name,
+      servings: 4,
+      equipment: ['horno'],
+      ingredients,
+      steps: steps.map((text, index) => ({ index, text, ingredientRefs: index === 0 ? ingredients.map((r) => r.id) : [] })),
+    })
+    const diet = (r: RecipeInput) => lintRecipe(r, { ingredientCatalog: catalog }).errors.filter((e) => e.code === 'STEP_DIET_INGREDIENT_NOT_LISTED')
+    expect(diet(input('Galletas de tahini', ['Mezcla la harina de trigo, la mantequilla, el azúcar y el tahini.', 'Forma las galletas y hornéalas 15 minutos hasta que estén firmes y doradas.']))).toEqual([])
+    expect(diet(input('Bizcocho de tahini', ['Mezcla la harina de trigo, la mantequilla, el azúcar y el tahini.', 'Sirve con unas almendras tostadas.'])).map((e) => e.path)).toEqual(['steps[1].text'])
   })
 })
 

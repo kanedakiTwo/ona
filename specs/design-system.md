@@ -167,7 +167,7 @@ None of the in-app pages since 2026-10-10 (PRO-36…46 moved the rest to "D · L
 | `MimoPanel` | `components/mimo/MimoPanel.tsx` | Bottom sheet < lg / 400 px column at lg+; chat, mic, «Manos libres», voice picker, AI caption |
 | `AuthShell` (+ `AuthField`, `AuthHeading`, `AuthError`) | `components/auth/AuthShell.tsx` | Access screens (/login, /register, /reset, /invites): photo + overlapping paper card, 50/50 at `lg+` |
 | `FieldLabel` (+ `FieldMark`, `RequiredNote`) | `components/FieldLabel.tsx` | Every form label: « \*» required / « (opcional)» optional, and the «\* Obligatorio» foot line (see Constraints) |
-| `MimoButton` | `components/mimo/MimoButton.tsx` | Floating Mimo button (brand spoon on terracotta); position per page (`mimoButtonPosition`) |
+| `MimoButton` | `components/mimo/MimoButton.tsx` | Floating Mimo button (brand spoon on terracotta); position per page (`mimoButtonPosition`). In cook mode it floats over the step, so `StepCard` leaves `pb-24` below its content (since 2026-11-23: it used to cover the «Siguiente paso» preview) |
 
 ## Related specs
 

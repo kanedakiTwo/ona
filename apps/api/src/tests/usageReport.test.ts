@@ -4,14 +4,17 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  SIGNUP_SOURCES_OPEN_DAYS,
   buildChannelSplit,
   buildDaily,
   buildFunnel,
   buildHouseholdSnapshot,
+  buildSignupSources,
   buildTotals,
   buildWeekly,
   dayRange,
   type UsageInput,
+  week2Monday,
 } from '../services/usageReport.js'
 
 const hd = (householdId: string, day: string, name: string) => ({ householdId, day, name })
@@ -176,5 +179,132 @@ describe('PRO-106 — households: WhatsApp, avisos, members, channel split', () 
       { week: '2026-10-05', isoWeek: '2026-W41', webOnly: 2, whatsappOnly: 1, both: 1, unknownOnly: 1 },
       { week: '2026-10-12', isoWeek: '2026-W42', webOnly: 1, whatsappOnly: 0, both: 0, unknownOnly: 0 },
     ])
+  })
+})
+
+describe('buildSignupSources (PRO-1288)', () => {
+  it('counts signups by week, closed ?ref label and utm_source, each with its first menu', () => {
+    const input: UsageInput = {
+      days: dayRange('2026-11-16', '2026-11-29'),
+      today: '2026-11-29',
+      counts: [],
+      householdDays: [
+        hd('h1', '2026-11-23', 'signup_completed'),
+        hd('h1', '2026-11-24', 'menu_generated'),
+        hd('h2', '2026-11-23', 'signup_completed'),
+        hd('h3', '2026-11-25', 'signup_completed'),
+        hd('h3', '2026-11-25', 'menu_generated'),
+        // h4: menu on day 8 → no first menu.
+        hd('h4', '2026-11-17', 'signup_completed'),
+        hd('h4', '2026-11-25', 'menu_generated'),
+      ],
+    }
+    const known = new Set(['directo', 'receta', 'iar-receta'])
+    const rows = buildSignupSources(
+      input,
+      [
+        { householdId: 'h1', day: '2026-11-23', source: 'iar-receta', utmSource: 'Instagram' },
+        { householdId: 'h2', day: '2026-11-23', source: 'Juan García', utmSource: null },
+        { householdId: 'h3', day: '2026-11-25', source: null, utmSource: null },
+        { householdId: 'h4', day: '2026-11-17', source: '', utmSource: 'boletin-raro' },
+      ],
+      known,
+    )
+    expect(rows).toEqual([
+      { week: '2026-11-16', isoWeek: '2026-W47', source: 'directo', utmSource: 'otro', signups: 1, firstMenu: 0, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 0, partial: true },
+      { week: '2026-11-23', isoWeek: '2026-W48', source: 'directo', utmSource: 'ninguna', signups: 1, firstMenu: 1, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 0, partial: true },
+      { week: '2026-11-23', isoWeek: '2026-W48', source: 'iar-receta', utmSource: 'instagram', signups: 1, firstMenu: 1, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 0, partial: true },
+      { week: '2026-11-23', isoWeek: '2026-W48', source: 'otro', utmSource: 'ninguna', signups: 1, firstMenu: 0, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 0, partial: true },
+    ])
+    expect(JSON.stringify(rows)).not.toMatch(/h[1-4]|Juan/)
+  })
+
+  it('a household with two signups counts once, with the first one', () => {
+    const input: UsageInput = { days: dayRange('2026-11-23', '2026-11-29'), today: '2026-11-29', counts: [], householdDays: [] }
+    const rows = buildSignupSources(
+      input,
+      [
+        { householdId: 'h1', day: '2026-11-26', source: null, utmSource: null },
+        { householdId: 'h1', day: '2026-11-24', source: 'receta', utmSource: 'wa' },
+      ],
+      new Set(['directo', 'receta']),
+    )
+    expect(rows).toEqual([{ week: '2026-11-23', isoWeek: '2026-W48', source: 'receta', utmSource: 'whatsapp', signups: 1, firstMenu: 0, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 0, partial: true }])
+  })
+})
+
+describe('signupSources: first hit, week 2 and 2 people or more (PRO-1310)', () => {
+  // Signed up on Tuesday 10-nov and Wednesday 11-nov (W46): both windows (day 7 and day 14) are over on Sunday 29-nov.
+  const input: UsageInput = {
+    days: dayRange('2026-11-02', '2026-11-29'),
+    today: '2026-11-29',
+    counts: [],
+    householdDays: [
+      // h1: iar-receta by Instagram — cooks and ticks the list in its first week.
+      hd('h1', '2026-11-10', 'signup_completed'),
+      hd('h1', '2026-11-10', 'menu_generated'),
+      hd('h1', '2026-11-11', 'shopping_item_checked'),
+      hd('h1', '2026-11-12', 'meal_cooked'),
+      // h2: iar-receta by Facebook — only cooks, no list; the list on day 7 is too late.
+      hd('h2', '2026-11-10', 'signup_completed'),
+      hd('h2', '2026-11-11', 'cook_mode_started'),
+      hd('h2', '2026-11-17', 'shopping_list_shared'),
+      // h3: no label, 2 people — list and cooking, but the cooking on day 7.
+      hd('h3', '2026-11-11', 'signup_completed'),
+      hd('h3', '2026-11-12', 'carrefour_click'),
+      hd('h3', '2026-11-18', 'meal_cooked'),
+      // h4: iar-receta by Instagram this week (W48): its windows are still open.
+      hd('h4', '2026-11-24', 'signup_completed'),
+      hd('h4', '2026-11-24', 'meal_cooked'),
+      hd('h4', '2026-11-24', 'basket_extension_sent'),
+    ],
+  }
+  const signups = [
+    { householdId: 'h1', day: '2026-11-10', source: 'iar-receta', utmSource: 'Instagram' },
+    { householdId: 'h2', day: '2026-11-10', source: 'iar-receta', utmSource: 'fb' },
+    { householdId: 'h3', day: '2026-11-11', source: null, utmSource: null },
+    { householdId: 'h4', day: '2026-11-24', source: 'iar-receta', utmSource: 'ig' },
+  ]
+  const outcomes = {
+    menus: [
+      // h1: week 2 (Monday 23-nov, day 13) made on Friday 20-nov → ready.
+      { householdId: 'h1', week: '2026-11-23', firstCreatedAt: '2026-11-20T10:00:00.000Z', autoplanSeenAt: null },
+      // h2: the Monday on day 6 is week 1, not week 2; week 2 made on that Monday at noon → not ready.
+      { householdId: 'h2', week: '2026-11-16', firstCreatedAt: '2026-11-14T10:00:00.000Z', autoplanSeenAt: null },
+      { householdId: 'h2', week: '2026-11-23', firstCreatedAt: '2026-11-23T11:00:00.000Z', autoplanSeenAt: null },
+      // h3: week 2 (Monday 23-nov, day 12) by the Thursday autopilot, never seen → not ready.
+      { householdId: 'h3', week: '2026-11-23', firstCreatedAt: null, autoplanSeenAt: null },
+    ],
+    people: [
+      { householdId: 'h1', people: 1, accounts: 1 },
+      { householdId: 'h2', people: 0, accounts: 1 },
+      { householdId: 'h3', people: 2, accounts: 1 },
+      { householdId: 'h4', people: 1, accounts: 2 },
+    ],
+  }
+  const known = new Set(['directo', 'iar-receta'])
+
+  it('per row: firstHit, week2MenuReady, twoPlusPeople and partial; Instagram apart from Facebook', () => {
+    const rows = buildSignupSources(input, signups, known, outcomes)
+    expect(rows).toEqual([
+      { week: '2026-11-09', isoWeek: '2026-W46', source: 'directo', utmSource: 'ninguna', signups: 1, firstMenu: 0, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 1, partial: false },
+      { week: '2026-11-09', isoWeek: '2026-W46', source: 'iar-receta', utmSource: 'facebook', signups: 1, firstMenu: 0, firstHit: 0, week2MenuReady: 0, twoPlusPeople: 0, partial: false },
+      { week: '2026-11-09', isoWeek: '2026-W46', source: 'iar-receta', utmSource: 'instagram', signups: 1, firstMenu: 1, firstHit: 1, week2MenuReady: 1, twoPlusPeople: 0, partial: false },
+      { week: '2026-11-23', isoWeek: '2026-W48', source: 'iar-receta', utmSource: 'instagram', signups: 1, firstMenu: 0, firstHit: 1, week2MenuReady: 0, twoPlusPeople: 1, partial: true },
+    ])
+    expect(JSON.stringify(rows)).not.toMatch(/h[1-4]|2026-11-1[0-9]T|fb|ig"/)
+  })
+
+  it('partial until day 14 of the last household; without outcomes, week 2 and people are 0', () => {
+    const one = (today: string) => buildSignupSources({ ...input, today }, [signups[0]], known)[0]
+    expect(one('2026-11-23')).toMatchObject({ firstHit: 1, week2MenuReady: 0, twoPlusPeople: 0, partial: true })
+    expect(one('2026-11-24')).toMatchObject({ partial: false })
+    expect(SIGNUP_SOURCES_OPEN_DAYS).toBe(14)
+  })
+
+  it('week2Monday: the Monday on days 7–13 from signup', () => {
+    expect(week2Monday('2026-11-09')).toBe('2026-11-16') // Monday → day 7
+    expect(week2Monday('2026-11-10')).toBe('2026-11-23') // Tuesday → day 13
+    expect(week2Monday('2026-11-15')).toBe('2026-11-23') // Sunday → day 8
   })
 })

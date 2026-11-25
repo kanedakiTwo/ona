@@ -1,0 +1,19 @@
+--- a/.github/workflows/ci.yml	2026-11-24 17:32:10.201256674 +0100
++++ b/.github/workflows/ci.yml	2026-11-24 17:32:10.220256874 +0100
+@@ -129,2 +129,4 @@
+       BASKET_EXTENSION_EMAILS: '@test.local'
++      # Red de tiendas v2 (D-165): solo las cuentas de prueba @red.test.local (redOrders.smoke.ts, compra-red.spec.ts).
++      RED_TIENDAS_EMAILS: '@red.test.local'
+       # Un hogar de los nuestros (admin) en basketExtensionRoute.smoke.ts; el admin
+@@ -285,2 +287,4 @@
+       BASKET_EXTENSION_EMAILS: '@test.local'
++      # Red de tiendas v2 (D-165): solo las cuentas de prueba @red.test.local (redOrders.smoke.ts, compra-red.spec.ts).
++      RED_TIENDAS_EMAILS: '@red.test.local'
+       NEXT_PUBLIC_BASKET_EXTENSION_ID: e2e-basket-extension
+@@ -316,2 +320,6 @@
+ 
++      - name: Seed Red test shops
++        # compra-red.spec.ts needs a frutería of the Red in 28001 (scripts/redTestShops.ts).
++        run: pnpm --filter @ona/api exec tsx scripts/redTestShops.ts --cp 28001
++
+       - name: Cache Playwright browsers

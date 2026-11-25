@@ -3,7 +3,7 @@
  * where it arrives and its switch. Mimo changes the same switches.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { AlertKind, AlertsOverview, AutoplanNotice } from "@ona/shared"
+import type { AlertKind, AlertsOverview, AlertTimeKind, AutoplanNotice } from "@ona/shared"
 import { api } from "@/lib/api"
 
 export function useAlerts() {
@@ -19,6 +19,16 @@ export function useSetAlert() {
   return useMutation({
     mutationFn: (p: { kind: AlertKind; on: boolean }) =>
       api.patch<AlertsOverview>("/notifications/prefs", { prefs: { [p.kind]: p.on } }),
+    onSuccess: (data) => qc.setQueryData(["alerts"], data),
+  })
+}
+
+/** PRO-1301: the household's time for the morning menu / dinner question (null = back to the default). */
+export function useSetAlertTime() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: { kind: AlertTimeKind; time: string | null }) =>
+      api.patch<AlertsOverview>("/notifications/prefs", { times: { [p.kind]: p.time } }),
     onSuccess: (data) => qc.setQueryData(["alerts"], data),
   })
 }

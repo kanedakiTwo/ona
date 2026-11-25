@@ -252,7 +252,7 @@ export function toRecheckRecipe(
   lines: RecheckRecipe['ingredients'][number][],
   steps: readonly string[],
 ): RecheckRecipe {
-  const stepMentions = unlistedDietMentions(steps, lines.map((l) => l.ingredientName)).map(({ term, category }) => ({ term, category }))
+  const stepMentions = unlistedDietMentions(steps, lines.map((l) => l.ingredientName), row.name).map(({ term, category }) => ({ term, category }))
   return { id: row.id, name: row.name, allergens: row.allergens ?? [], updatedAt: row.updatedAt ?? null, ingredients: lines, stepMentions }
 }
 

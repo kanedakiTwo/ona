@@ -44,6 +44,9 @@ const MEAL_SHEET_ACTIONS = [
   'desmarcar_cocinada',
   'taper_si',
   'taper_no',
+  // PRO-1046: «Lo cocino en el lote del domingo» / «Lo cocino su día».
+  'lote_si',
+  'lote_no',
   'comensales_menos',
   'comensales_mas',
   'comensales_quitar',

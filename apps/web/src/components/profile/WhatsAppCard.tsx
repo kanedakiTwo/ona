@@ -11,6 +11,7 @@ import {
   type WhatsAppStatus,
 } from '@/hooks/useWhatsApp'
 import { WhatsAppQr } from "@/components/whatsapp/WhatsAppQr"
+import { WhatsAppLink } from "@/components/whatsapp/WhatsAppLink"
 
 /**
  * "Mimo en WhatsApp" block inside the WhatsApp card on /profile ("D · Luz y
@@ -90,14 +91,14 @@ function UnlinkedState() {
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {pending.waLink && (
-                  <a
+                  <WhatsAppLink
                     href={pending.waLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={PILL_INK}
                   >
                     Abrir WhatsApp
-                  </a>
+                  </WhatsAppLink>
                 )}
                 <span className="text-[12px] text-ink-muted">
                   Esperando tu mensaje… caduca en 10 min.
@@ -132,14 +133,14 @@ function LinkedState({ status }: { status: WhatsAppStatus }) {
             {status.phone}
           </div>
           {status.chatLink && (
-            <a
+            <WhatsAppLink
               href={status.chatLink}
               target="_blank"
               rel="noopener noreferrer"
               className={`mt-3 ${PILL_INK}`}
             >
               Abrir chat con Mimo
-            </a>
+            </WhatsAppLink>
           )}
         </div>
       </div>

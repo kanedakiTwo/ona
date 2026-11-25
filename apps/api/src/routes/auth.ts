@@ -30,6 +30,7 @@ import { trackEvent } from '../services/usageEvents.js'
 import { accountReferralUrl, ensureReferralCode, inviterCodeForSignup } from '../services/accountReferrals.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { welcomeKind } from '../services/accountEmails.js'
+import { isWhatsAppAvailableFor } from '../services/whatsapp/config.js'
 import { defaultAccountMailerDeps, requestPasswordReset, sendWelcomeEmail } from '../services/accountMailer.js'
 
 const router = Router()
@@ -177,7 +178,12 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
     // Welcome email (specs/email.md): beta, joining a home, or open sign-up.
     // Fire and forget: it never delays or fails the registration.
     void sendWelcomeEmail(
-      { email: user.email, kind: welcomeKind({ access, joiningHousehold: !!householdInviteToken }) },
+      {
+        email: user.email,
+        kind: welcomeKind({ access, joiningHousehold: !!householdInviteToken }),
+        // PRO-1040: the «Conecta WhatsApp» step only when Perfil can connect it.
+        whatsapp: isWhatsAppAvailableFor(user.email),
+      },
       defaultAccountMailerDeps(),
     ).catch((e) => console.error('[register] welcome email failed (continuing):', e?.message ?? e))
 

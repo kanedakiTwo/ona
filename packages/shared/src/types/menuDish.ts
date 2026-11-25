@@ -49,6 +49,13 @@ export interface RecipeDish {
   /** Back-reference when `variant === 'leftover'`. Carries the dish position because a slot can have multiple recipes now. */
   leftoverOf?: { day: number; meal: string; dishPosition: number } | null
   /**
+   * PRO-1046: cooked in a batch on an earlier day (YYYY-MM-DD, 1 to 6 days
+   * before this meal, the week before included): that day shows «Cocinas
+   * hoy: … ×N (para lunes a jueves)» and this meal is a táper of it. Still
+   * bought like a planned dish. Only on a planned recipe (`isBatchCooked`).
+   */
+  batchDate?: string | null
+  /**
    * PRO-259: the line of why Mimo chose this dish («lentejas porque os
    * gustan los guisos…»). Only set when the menu comes from the planner
    * (menú inteligente, specs/smart-menu.md); today's generator never sets it.

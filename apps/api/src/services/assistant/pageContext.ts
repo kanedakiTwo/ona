@@ -22,14 +22,36 @@ export function describePage(path: string | null | undefined): { kind: PageKind;
   return { kind: 'other' }
 }
 
+/** 23-nov: the cook mode's step the web sends (1-based); anything malformed → null. */
+export interface CookStep {
+  step: number
+  total: number
+}
+export function cookStepOf(raw: unknown): CookStep | null {
+  if (!raw || typeof raw !== 'object') return null
+  const { step, total } = raw as Record<string, unknown>
+  if (!Number.isInteger(step) || !Number.isInteger(total)) return null
+  const s = step as number
+  const t = total as number
+  if (t < 1 || t > 200 || s < 1 || s > t) return null
+  return { step: s, total: t }
+}
+
 /** Pure: the note added to the message, or null when the page says nothing useful. */
-export function pageContextNote(page: { kind: PageKind; recipeId?: string }, recipeName: string | null): string | null {
+export function pageContextNote(
+  page: { kind: PageKind; recipeId?: string },
+  recipeName: string | null,
+  cookStep: CookStep | null = null,
+): string | null {
   // A recipe the user can't see (or that doesn't exist) adds nothing.
   if (page.recipeId && !recipeName) return null
   const recipe = page.recipeId ? `la receta «${recipeName}» (id ${page.recipeId})` : ''
   switch (page.kind) {
     case 'cooking':
-      return `Está cocinando ${recipe} en el modo cocina: «siguiente», «temporizador» o «cuánto falta» se refieren a esa receta.`
+      // 23-nov: without the step Mimo answered «no veo en cuál de los cinco estás».
+      return cookStep
+        ? `Está cocinando ${recipe} en el modo cocina y tiene en pantalla el paso ${cookStep.step} de ${cookStep.total}: «siguiente», «temporizador» o «cuánto falta» se refieren a esa receta, y «el siguiente paso» es el ${cookStep.step < cookStep.total ? cookStep.step + 1 : `último (el ${cookStep.total}, ya está en él)`}.`
+        : `Está cocinando ${recipe} en el modo cocina: «siguiente», «temporizador» o «cuánto falta» se refieren a esa receta.`
     case 'recipe':
       return `Está viendo ${recipe}: «esta receta» es esa.`
     case 'menu':

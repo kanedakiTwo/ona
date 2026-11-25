@@ -54,6 +54,10 @@ export type AdminAction =
   | 'catalog_import.start'
   | 'catalog_collection.import'
   | 'catalog_recipe.source'
+  // PRO-1290: a catalogue recipe fixed by the office (ingredients, allergens, steps, times, tags)
+  | 'catalog_recipe.edit'
+  // PRO-1290: a household's own monthly Mimo cap
+  | 'household.mimo_cap'
   // «Pregunta única por WhatsApp» (PRO-1091)
   | 'whatsapp_question.send'
   // «Pregunta por correo» (PRO-1197)
@@ -72,6 +76,7 @@ export type AuditTargetType =
   | 'catalog_collection'
   | 'whatsapp_question'
   | 'email_question'
+  | 'household'
 
 export interface AuditRecord {
   adminId: string

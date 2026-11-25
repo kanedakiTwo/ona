@@ -1,4 +1,4 @@
-import { madeWithMimoLine, timeBudgetsByDay, type DayMenu, type Dish, type SpanishRegion } from '@ona/shared'
+import { isBatchCooked, madeWithMimoLine, timeBudgetsByDay, weekdayNameOfIso, type DayMenu, type Dish, type SpanishRegion } from '@ona/shared'
 import { holidayRelaxedDay, holidayTimeBudgets } from './menuHolidays.js'
 
 /**
@@ -22,6 +22,8 @@ export function dishLabel(d: Dish): string | null {
     if (d.variant === 'freezer') return `${name} (del congelador)`
     if (d.variant === 'fridge') return `${name} (táper de la nevera)`
     if (d.variant === 'cooked') return `${name} (sobras de otro día)`
+    // PRO-1046: cooked earlier, in the batch of that day.
+    if (isBatchCooked(d)) return `${name} (táper del lote del ${weekdayNameOfIso(d.batchDate)})`
     return d.variant === 'leftover' ? `${name} (sobras)` : name
   }
   return null

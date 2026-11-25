@@ -12,26 +12,27 @@ function listOf(items: string[], max = 3): string {
   return `${shown.slice(0, -1).join(", ")} y ${shown[shown.length - 1]}`
 }
 
-/** Pure: the line under the menu for each level (PRO-155). */
+/**
+ * Pure: the line under the menu for each level (PRO-155). No percentage
+ * (PRO-1051: nobody understood «12 %»), and «aún no tengo» names only what
+ * isn't in the catalogue: what we have but didn't fit is not «lacking».
+ * The API checks the verdict against the week before sending it.
+ */
 export function menuFitText(fit: MenuFit): string {
   const missing = fit.missed.map((m) => m.preference)
   const notInCatalog = fit.missed.filter((m) => m.reason === "no_catalogo").map((m) => m.preference)
-  const pct = `${fit.score} %`
   if (fit.level === "alto") {
     const got = fit.met.map((m) => m.preference)
-    return got.length
-      ? `Este menú se acerca mucho a lo que os gusta (${pct}): hay ${listOf(got)}.`
-      : `Este menú se acerca mucho a lo que os gusta (${pct}).`
+    return got.length ? `Este menú se acerca mucho a lo que os gusta: hay ${listOf(got)}.` : "Este menú se acerca mucho a lo que os gusta."
   }
   if (fit.level === "medio") {
     return missing.length
-      ? `Se acerca bastante a lo que os gusta (${pct}). No he podido meter ${listOf(missing)}; puedes ponerlo en lugar de otro plato.`
-      : `Se acerca bastante a lo que os gusta (${pct}).`
+      ? `Se acerca bastante a lo que os gusta. No he podido meter ${listOf(missing)}; puedes ponerlo en lugar de otro plato.`
+      : "Se acerca bastante a lo que os gusta."
   }
-  const lacking = notInCatalog.length ? notInCatalog : missing
-  return lacking.length
-    ? `Con las recetas que tengo no me he acercado mucho a lo que os gusta (${pct}): aún no tengo ${listOf(lacking)}. Si añades tus recetas, las tendré en cuenta.`
-    : `Con las recetas que tengo no me he acercado mucho a lo que os gusta (${pct}). Si añades tus recetas, las tendré en cuenta.`
+  return notInCatalog.length
+    ? `Con las recetas que tengo no me he acercado mucho a lo que os gusta: aún no tengo ${listOf(notInCatalog)}. Si añades tus recetas, las tendré en cuenta.`
+    : "Con las recetas que tengo no me he acercado mucho a lo que os gusta. Si añades tus recetas, las tendré en cuenta."
 }
 
 /** «Cuánto ha acertado» (PRO-155, specs/menus.md): one line under the generated week. Nothing without a verdict. */

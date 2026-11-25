@@ -169,7 +169,6 @@ describe('«Cambiar» a dish (pickForSlot)', () => {
 describe('«25 min de trabajo · 2 h en total» and the week\'s minutes', () => {
   it('the hands-on time first, the total when longer', () => {
     expect(workTimeLabel({ activeTime: 25, totalTime: 120 })).toBe('25 min de trabajo · 2 h en total')
-    expect(workTimeLabel({ activeTime: 25, totalTime: 120 }, { short: true })).toBe('25 min de trabajo · 2 h')
     expect(workTimeLabel({ activeTime: 20, totalTime: 20 })).toBe('20 min de trabajo')
     expect(workTimeLabel({ prepTime: 15, cookTime: 75 })).toBe('15 min de trabajo · 1 h 30 min en total')
     expect(workTimeLabel({ totalTime: 40 })).toBe('40 min')
@@ -185,6 +184,7 @@ describe('«25 min de trabajo · 2 h en total» and the week\'s minutes', () => 
       { lunch: { dishes: [{ ...b, leftoverOf: { day: 0, meal: 'dinner' } }] }, dinner: { dishes: [{ kind: 'note', text: 'Cena fuera' }] } },
       { lunch: { dishes: [{ kind: 'recipe', recipeId: 'zzz' }] } }, // no times: nothing
       { lunch: { dishes: [a] } }, // a day marked «sin cocinar»
+      { lunch: { dishes: [{ ...a, variant: 'freezer' }, { ...b, variant: 'fridge' }, { ...c, variant: 'cooked' }] } }, // tápers: nothing to cook
     ]
     expect(weekWorkMinutes(days, [4])).toBe(80)
     expect(weekWorkMinutes(days)).toBe(105)

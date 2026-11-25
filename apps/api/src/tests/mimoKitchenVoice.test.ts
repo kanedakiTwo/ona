@@ -28,8 +28,9 @@ describe('the rule', () => {
     expect(KITCHEN_VOICE_RULE).toMatch(/30 minutos de trabajo/)
     expect(KITCHEN_VOICE_RULE).toMatch(/Sin promesas de salud/)
   })
-  it('never says «sano», «sana» or «saludable» (kb and social replies forbid them)', () => {
-    expect(KITCHEN_VOICE_RULE).not.toMatch(/\b(sano|sana|sanos|sanas|saludables?)\b/i)
+  it('«sana sin obsesión» is the only health word (Miguel, 25-nov): no «saludable», «dieta» nor «adelgazar»', () => {
+    expect(KITCHEN_VOICE_RULE).toMatch(/sana sin obsesion/)
+    expect(KITCHEN_VOICE_RULE.replace(/sana sin obsesion/gi, '')).not.toMatch(/\b(sano|sana|sanos|sanas|saludables?|dieta|adelgaz\w*)\b/i)
   })
 })
 

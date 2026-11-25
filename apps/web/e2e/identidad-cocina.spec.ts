@@ -100,7 +100,7 @@ test('/menu: «Esta semana: … de cocina» sums the work of the week', async ({
     if (skipped.has(d)) return
     for (const slot of Object.values(day ?? {})) {
       for (const dish of slot?.dishes ?? []) {
-        if (dish.kind !== 'recipe' || dish.leftoverOf) continue
+        if (dish.kind !== 'recipe' || dish.leftoverOf || ['leftover', 'freezer', 'fridge', 'cooked'].includes(dish.variant)) continue
         const m = dish.activeTime > 0 ? dish.activeTime : dish.prepTime > 0 ? dish.prepTime : 0
         minutes += m
       }

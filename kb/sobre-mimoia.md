@@ -21,8 +21,8 @@ Mimo es su asistente: una inteligencia artificial que habla contigo en la app y 
 - **Atajos de casa:** legumbre de bote, olla rápida, bases hechas de antemano y congeladas por raciones, hacer el doble y congelar la mitad. Cuando un plato gana con más tiempo, al final de su ficha «Y si tienes más tiempo…» cuenta cómo mejorarlo.
 - **El producto manda:** un buen pescado a la plancha o un chuletón con patatas son recetas de pleno derecho, aunque tengan tres pasos.
 - **De aquí y del mundo:** cocina española y mediterránea, y también Japón, Tailandia, Vietnam, Perú o México, con lo que hay en un súper español. Con niños, los platos del mundo llevan su versión para ellos: sin picante y con la salsa aparte.
-- **Sin dogma:** producto de verdad, verdura y legumbre a menudo, poco ultraprocesado; la mantequilla y el aceite bueno, sí. Sin contar calorías y sin promesas de salud.
-- **En el menú:** de diario, nada que pida más de 30 minutos de trabajo; en un festivo, con invitados o si eliges tú el plato, lo que quieras.
+- **Sana sin obsesión:** producto de verdad, verdura y legumbre a menudo, poco ultraprocesado; la mantequilla y el aceite bueno, sí. Sin contar calorías y sin promesas de salud.
+- **En el menú:** de diario, platos de 30 minutos de trabajo como mucho siempre que haya dónde elegir; en un festivo, en una comida con invitados que digas al hacer la semana o si eliges tú el plato, sin ese límite.
 
 ## Qué puedes hacer con Mimoia
 

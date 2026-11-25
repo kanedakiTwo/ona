@@ -23,14 +23,24 @@ export type CatalogCardRecipe = CatalogRecipeLike & {
 /** Fraunces at UI sizes: semibold, automatic optical size (not the 144 hero cut of `.font-display`). */
 export const DISPLAY_UI = "[font-family:var(--font-display)] font-[650] tracking-[-0.01em]"
 
-/** D-1028: «25 min de trabajo · 2 h» — the cook's time first, then the total when longer. */
+/**
+ * D-1028: the cook's time first — «25 min de trabajo» — and, when longer,
+ * the total on a second line («2 h en total»), so the card never cuts it.
+ */
 function TimePill({ label, className = "" }: { label: string; className?: string }) {
+  const [work, total] = label.split(" · ")
   return (
     <span
       data-testid="recipe-card-time"
-      className={`max-w-[calc(100%-1rem)] truncate rounded-full bg-paper px-2 py-[3px] text-[12px] font-semibold leading-none text-ink lg:px-[9px] ${className}`}
+      className={`flex w-fit flex-col rounded-[10px] bg-paper px-2 py-[3px] text-[12px] font-semibold leading-[1.25] text-ink lg:px-[9px] ${className}`}
     >
-      {label}
+      <span className="whitespace-nowrap">{work}</span>
+      {total && (
+        <>
+          <span className="sr-only"> · </span>
+          <span className="whitespace-nowrap font-medium text-ink-soft">{total}</span>
+        </>
+      )}
     </span>
   )
 }
@@ -46,7 +56,7 @@ export function RecipeCard({
   recipe: CatalogCardRecipe
   shape?: "tall" | "short"
 }) {
-  const time = workTimeLabel(recipe, { short: true })
+  const time = workTimeLabel(recipe)
 
   return (
     <Link

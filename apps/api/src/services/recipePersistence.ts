@@ -589,7 +589,8 @@ export async function persistRecipe(
       tips: textOrNull(input.tips),
       substitutions: textOrNull(input.substitutions),
       storage: textOrNull(input.storage),
-      moreTime: textOrNull(input.moreTime),
+      // D-1028: only when sent (an update that leaves it out keeps it, like advancePrep).
+      ...(input.moreTime !== undefined ? { moreTime: textOrNull(input.moreTime) } : {}),
       nutritionPerServing: aggregate.perServing,
       nutritionIncomplete: aggregate.incomplete,
       tags: input.tags ?? [],

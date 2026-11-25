@@ -11,6 +11,7 @@
  * A missing day or 0 minutes = no limit that day.
  */
 import { z } from 'zod'
+import { isTaperVariant } from './menuDish.js'
 
 export const COOKING_WEEKDAYS = [
   'lunes',
@@ -164,17 +165,16 @@ export function fitsEverydayWork(r: RecipeTimes, cap: number = EVERYDAY_WORK_MIN
 
 /**
  * «25 min de trabajo · 2 h en total» (D-1028): the hands-on time first, then
- * the total when it is longer. `short` (the card's pill) leaves out «en
- * total». Without a hands-on time, just the total («40 min»); without
- * either, ''.
+ * the total when it is longer. Without a hands-on time, just the total
+ * («40 min»); without either, ''.
  */
-export function workTimeLabel(r: RecipeTimes, opts: { short?: boolean } = {}): string {
+export function workTimeLabel(r: RecipeTimes): string {
   const active = recipeActiveMinutes(r)
   const total = recipeTotalMinutes(r)
   if (active == null) return total != null ? minutesText(total) : ''
   const work = `${minutesText(active)} de trabajo`
   if (total == null || total <= active) return work
-  return `${work} · ${minutesText(total)}${opts.short ? '' : ' en total'}`
+  return `${work} · ${minutesText(total)} en total`
 }
 
 /** 41 → «41 min»; 90 → «1 h 30 min»; 120 → «2 h». */
@@ -189,11 +189,13 @@ export function minutesText(min: number): string {
 /**
  * «Esta semana: 2 h 40 min de cocina» (D-1028): the hands-on minutes of the
  * week's dishes with a recipe, read from the dish's hydrated times (each
- * recipe as many times as it appears; a táper of leftovers is not cooked
- * again; a day marked «sin cocinar» adds nothing). Null when no dish has a time.
+ * recipe as many times as it appears; a táper — leftovers, freezer, fridge,
+ * already cooked — is not cooked again; a day marked «sin cocinar» adds
+ * nothing). Null when no dish has a time.
  */
+
 export function weekWorkMinutes(
-  days: ReadonlyArray<Record<string, { dishes?: ReadonlyArray<{ kind: string; leftoverOf?: unknown } & RecipeTimes> } | null | undefined> | null | undefined>,
+  days: ReadonlyArray<Record<string, { dishes?: ReadonlyArray<{ kind: string; leftoverOf?: unknown; variant?: string | null } & RecipeTimes> } | null | undefined> | null | undefined>,
   skippedDays: Iterable<number> = [],
 ): number | null {
   const skipped = new Set(skippedDays)
@@ -203,7 +205,8 @@ export function weekWorkMinutes(
     if (skipped.has(dayIndex)) return
     for (const slot of Object.values(day ?? {})) {
       for (const dish of slot?.dishes ?? []) {
-        if (dish.kind !== 'recipe' || dish.leftoverOf) continue
+        // A táper (leftovers, from the freezer or the fridge, already cooked) is not cooked again.
+        if (dish.kind !== 'recipe' || dish.leftoverOf || dish.variant === 'leftover' || isTaperVariant(dish.variant)) continue
         const minutes = recipeActiveMinutes(dish)
         if (minutes == null) continue
         sum += minutes

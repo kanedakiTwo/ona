@@ -39,12 +39,13 @@ export function derivedRecipeReads(
   audit: Parameters<typeof catalogAuditIssuesFor>[1],
   auditOptions: Parameters<typeof catalogAuditIssuesFor>[2],
 ) {
-  const mentionsKey = JSON.stringify([steps, ingredientNames])
+  const name = audit?.name ?? null
+  const mentionsKey = JSON.stringify([steps, ingredientNames, name])
   let mentions = mentionsMemo.get(id)
   if (!mentions || mentions.key !== mentionsKey) {
     mentions = {
       key: mentionsKey,
-      value: unlistedDietMentions(steps, ingredientNames).map(({ term, category }) => ({ term, category })),
+      value: unlistedDietMentions(steps, ingredientNames, name).map(({ term, category }) => ({ term, category })),
     }
     mentionsMemo.set(id, mentions)
   }

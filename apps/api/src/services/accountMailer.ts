@@ -82,11 +82,13 @@ export async function requestPasswordReset(email: string, deps: AccountMailerDep
 }
 
 export async function sendWelcomeEmail(
-  i: { email: string; kind: WelcomeKind },
+  i: { email: string; kind: WelcomeKind; whatsapp?: boolean },
   deps: AccountMailerDeps,
 ): Promise<EmailResult['status']> {
   const firstName = await deps.firstName(i.email).catch(() => null)
-  const r = await deps.send(welcomeEmail({ email: i.email, firstName, kind: i.kind, publicUrl: deps.publicUrl }))
+  const r = await deps.send(
+    welcomeEmail({ email: i.email, firstName, kind: i.kind, publicUrl: deps.publicUrl, whatsapp: i.whatsapp }),
+  )
   console.log(`[account-mail] welcome (${i.kind}) to ${maskEmail(i.email)}: ${r.status}`)
   return r.status
 }

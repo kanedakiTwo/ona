@@ -125,12 +125,12 @@ test('/shopping: «Hoy» shows only today, «Dos semanas» restores the default 
   // PRO-69: the tapped shortcut slides fully into view by itself, after the
   // date chip has re-rendered with the wider range label. `scrollLeft` is
   // rounded to whole pixels, so up to a pixel may stay clipped (CI saw 0.9965
-  // of the chip shown); a half-cut chip still fails.
+  // of the chip shown), here too; a half-cut chip still fails.
   await expect(semana).toBeInViewport({ ratio: 0.99 })
   await expect
     .poll(async () => {
       const b = (await semana.boundingBox())!
-      return b.x >= 0 && b.x + b.width <= 390
+      return b.x >= -1 && b.x + b.width <= 391
     })
     .toBe(true)
   await expect(range).toHaveText(defaultLabel)

@@ -35,7 +35,7 @@ test('tocar un plato del menú, «Ver receta», Mis recetas y el catálogo abre 
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => {
-    if (m.type() === 'error' && /not iterable|client-side exception/i.test(m.text())) errors.push(m.text())
+    if (m.type() === 'error' && /not iterable|client-side exception|hydrat/i.test(m.text())) errors.push(m.text())
   })
   // The photos don't load (the households' proxy cut them): the page still opens.
   await page.route(/\.(?:jpe?g|png|webp|avif)(?:\?.*)?$/i, (route) => route.abort())

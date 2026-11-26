@@ -17,10 +17,16 @@ import MimoProvider from "@/components/mimo/MimoProvider"
 import { FeedbackButton } from "@/components/feedback/FeedbackButton"
 import { rememberPath } from "@/lib/navHistory"
 import { stashMarkedFromLocation } from "@/lib/markedRestrictions"
+import { isRecipeSegment } from "@/lib/recipeShell"
+import { ServerHtmlOnly } from "@/components/shared/ServerHtmlOnly"
 
 /** Empty cream page while the session resolves or a redirect is on its way: never the wrong page for a frame. */
-function Blank() {
-  return <main className="min-h-screen bg-[#FAF6EE]" aria-busy="true" />
+function Blank({ children }: { children?: ReactNode }) {
+  return (
+    <main className="min-h-screen bg-[#FAF6EE]" aria-busy="true">
+      {children}
+    </main>
+  )
 }
 
 /** Signed out on a page that needs an account: off to `/login?next=<path+query>`. */
@@ -51,7 +57,8 @@ function ToLogin() {
  *
  * The session lives in localStorage and resolves in the first effect, so
  * until then every page whose access or chrome depends on it paints an empty
- * cream page instead of flashing the wrong one.
+ * cream page instead of flashing the wrong one (on a recipe, with its JSON-LD
+ * in the server HTML: `ServerHtmlOnly`).
  */
 export function RootShell({ pathname, children }: { pathname: string; children: ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -63,7 +70,8 @@ export function RootShell({ pathname, children }: { pathname: string; children: 
   const openChrome = signedOutChrome(pathname)
 
   if (privatePage || openChrome) {
-    if (isLoading) return <Blank />
+    // A recipe's JSON-LD still goes in the server HTML (PRO-1077, PRO-1346: components/shared/ServerHtmlOnly.tsx).
+    if (isLoading) return <Blank>{isRecipeSegment(pathname) && <ServerHtmlOnly>{children}</ServerHtmlOnly>}</Blank>
     if (!user && privatePage) return <ToLogin />
     if (!user && openChrome === "fullscreen") {
       return (

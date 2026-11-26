@@ -56,6 +56,7 @@ import { weekTypeSkills } from './weekTypeSkills.js'
 import { schoolMenuSkills } from './schoolMenuSkills.js'
 import { freezerSkills } from './freezerSkills.js'
 import { batchDaySkills } from './batchDaySkills.js'
+import { babyMenuSkills } from './babyMenuSkills.js'
 import { recipeOfTheDaySkills } from './recipeOfTheDaySkills.js'
 import { visibleAuthorIds, visibleRecipeWhere } from '../recipeVisibility.js'
 import { householdNoteInline, householdNoteLines, loadHouseholdRecipeNotes, type HouseholdRecipeNote } from './householdRecipeNotes.js'
@@ -3596,6 +3597,8 @@ export const skills: SkillDefinition[] = [
   ...freezerSkills,
   // PRO-1046: el día de lote («el domingo hacemos batch para lunes a jueves»).
   ...batchDaySkills,
+  // PRO-1035: los platos de la semana, mirados para la ración del bebé.
+  ...babyMenuSkills,
   // La receta del día (PRO-1099, specs/recipe-of-the-day.md):
   ...recipeOfTheDaySkills,
   // PRO-1301: la hora del menú del día y de la pregunta de la cena.

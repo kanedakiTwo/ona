@@ -1633,7 +1633,8 @@ describe('skill export coverage', () => {
     // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
     // and 96 with set_alert_time (PRO-1301, alertTimes.test.ts).
     // and 97 with set_batch_day (PRO-1046, batchDay.test.ts).
-    expect(skills.length).toBe(97)
+    // and 98 with check_menu_for_baby (PRO-1035, mimoBabyWeek.test.ts).
+    expect(skills.length).toBe(98)
   })
 
   it('every skill has a unique name', () => {

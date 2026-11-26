@@ -83,15 +83,14 @@ test.describe('Windows desktop, mouse', () => {
     expect(await page.evaluate(() => matchMedia('(display-mode: standalone)').matches)).toBe(true)
     await expect(page.getByTestId('profile-ficha')).toBeVisible({ timeout: 15_000 })
 
+    // PRO-1202: the rows of the five sections, and the gear to Ajustes.
     const cards: Array<[RegExp, RegExp]> = [
       [/^Tu ficha/, /\/profile\/ficha$/],
-      [/^Casa/, /\/profile\/casa$/],
+      [/^Ajustes$/, /\/profile\/ajustes$/],
+      [/^Tiempo/, /\/profile\/memoria#rutina$/],
       [/^Afina tu menú/, /\/afinar$/],
-      [/^Creencias/, /\/profile\/creencias$/],
-      [/^Despensa/, /\/profile\/pantry$/],
-      [/^Fijos/, /\/profile\/staples$/],
-      [/^Recetarios/, /\/profile\/cookbooks$/],
-      [/^Suscripción/, /\/profile\/suscripcion$/],
+      [/^Lo que os importa/, /\/profile\/creencias$/],
+      [/^Básicos fijos/, /\/profile\/staples$/],
     ]
     for (const [name, url] of cards) {
       await slippyClick(page, page.locator('main').getByRole('link', { name }).first())
@@ -103,12 +102,15 @@ test.describe('Windows desktop, mouse', () => {
       await expect(page).toHaveURL(/\/profile$/, { timeout: 15_000 })
       await expect(page.getByTestId('profile-ficha')).toBeVisible()
     }
+
+    // «Despensa» lives in the «Cocinar» tab only (PRO-1107, PRO-1202): not in Perfil any more.
+    await expect(page.locator('main').getByRole('link', { name: /^Despensa/ })).toHaveCount(0)
   })
 
   test('a mouse drag across a page (selecting text) neither slides it nor changes section', async ({ page }) => {
     await signUp(page)
     await page.goto('/profile')
-    const note = page.getByText('pasa a ser parte de tu ficha')
+    const note = page.getByText('El menú sale de aquí')
     await expect(note).toBeVisible({ timeout: 15_000 })
     const box = (await note.boundingBox())!
     await page.mouse.move(box.x + 5, box.y + box.height / 2)

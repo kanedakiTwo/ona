@@ -7,9 +7,7 @@
  * it. This spec covers the happy path so the same class of bug fails CI
  * on the next push.
  *
- * If the test DB has no ingredients seeded, the test soft-skips after
- * asserting the page rendered — the contract is "form is usable", not
- * "seed is correct" (that's another spec's job).
+ * The seed has «ajo»; the ingredients go one per line (PRO-1115).
  */
 
 import { test, expect } from '@playwright/test'
@@ -38,30 +36,12 @@ test('happy path: fill the form, click Crear, land on the new recipe', async ({ 
   // Seasons: pick "Primavera"
   await page.getByRole('button', { name: /primavera/i }).first().click()
 
-  // Ingredient: type into the autocomplete and pick the option that
-  // matches what we typed. We have to wait for the debounced search
-  // (200ms) to refresh the dropdown — clicking the literal first <li>
-  // would pick whatever the empty-query fetch returned first (e.g.
-  // "aceite de oliva virgen" alphabetically), which causes the server's
-  // lint to fire ORPHAN_INGREDIENT + STEP_INGREDIENT_NOT_LISTED later.
-  const ingredientInput = page.getByPlaceholder(/ingrediente|cargando/i).first()
-  await ingredientInput.fill('ajo')
-  const ajoOption = page
-    .locator('ul[role="listbox"] li button', { hasText: /^ajo$/i })
-    .first()
-  try {
-    await ajoOption.waitFor({ state: 'visible', timeout: 10_000 })
-  } catch {
-    test.skip(true, 'Catalog has no exact "ajo" match — seed missing or renamed.')
-    return
-  }
-  await ajoOption.click()
-
-  // Quantity for that ingredient
-  await page.locator('input[placeholder="Cant."]').first().fill('10')
+  // Ingredients, one per line (PRO-1115): «✓» once the library knows it.
+  await page.locator('#recipe-ingredients').fill('10 g de ajo')
+  await expect(page.getByTestId('ingredient-line').first()).toHaveAttribute('data-status', 'match', { timeout: 10_000 })
 
   // Step
-  await page.locator('textarea').first().fill('Pelar y picar el ajo')
+  await page.locator('#recipe-steps').fill('Pelar y picar el ajo')
 
   // Submit
   const submit = page.getByRole('button', { name: /^crear receta$/i })

@@ -34,6 +34,25 @@ export const freezeAnswerSchema = z.enum(FREEZE_ANSWERS)
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 const THAW_HABIT_RE = /congel|descongel/
 const SOMETIMES_RE = /\b(a veces|algunas veces|de vez en cuando)\b/
+/** A «no», «nunca», «sin»… earlier in the same clause (no comma, dot or semicolon in between). */
+const NEGATION_BEFORE_RE = /\b(no|nunca|jamas|sin|ni|tampoco)\b[^.,;]*$/
+
+/**
+ * Does this habit turn on the alert whose keyword is `keyword`? PRO-1303: a
+ * habit Mimo wrote in the negative («No congelan nada, compran fresco»,
+ * «nunca congela el pescado») matched /congel/ and sent «sácalo del
+ * congelador» to a household that never freezes. A negation before the
+ * keyword in the same clause turns it off; one after it doesn't («congelo
+ * la carne, no el pescado»).
+ */
+export function habitTurnsOn(habit: string, keyword: RegExp): boolean {
+  const h = norm(habit)
+  const m = new RegExp(keyword.source, keyword.flags.replace('g', '')).exec(h)
+  if (!m) return false
+  return !NEGATION_BEFORE_RE.test(h.slice(0, m.index))
+}
+
+const freezes = (h: string) => habitTurnsOn(h, THAW_HABIT_RE)
 
 /**
  * The habits once the answer is saved. The answer replaces every habit that
@@ -54,7 +73,7 @@ export function applyFreezeAnswer(habits: readonly string[] | null | undefined, 
  */
 export function freezeAnswerFromHabits(habits: readonly string[] | null | undefined): FreezeAnswer | null {
   const list = (habits ?? []).filter((h): h is string => typeof h === 'string')
-  if (!list.some((h) => THAW_HABIT_RE.test(norm(h)))) return null
+  if (!list.some(freezes)) return null
   return thawIsConditional(list) ? 'sometimes' : 'yes'
 }
 
@@ -64,6 +83,6 @@ export function freezeAnswerFromHabits(habits: readonly string[] | null | undefi
  * with «siempre congelo el pescado» too, the usual text).
  */
 export function thawIsConditional(habits: readonly string[]): boolean {
-  const thaw = habits.map(norm).filter((h) => THAW_HABIT_RE.test(h))
+  const thaw = habits.filter(freezes).map(norm)
   return thaw.length > 0 && thaw.every((h) => SOMETIMES_RE.test(h))
 }

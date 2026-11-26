@@ -11,6 +11,7 @@
  * A missing day or 0 minutes = no limit that day.
  */
 import { z } from 'zod'
+import { isTaperVariant } from './menuDish.js'
 
 export const COOKING_WEEKDAYS = [
   'lunes',
@@ -140,4 +141,91 @@ export function fitsTimeBudget(r: RecipeTimes, budget: DayTimeBudget | null | un
   if (!budget || budget.minutes <= 0) return true
   const minutes = budget.mode === 'activo' ? recipeActiveMinutes(r) : recipeTotalMinutes(r)
   return minutes != null && minutes <= budget.minutes
+}
+
+// ─── D-1028: 30 minutes of your time, at most ─────────────────────
+
+/**
+ * «Comida rica de verdad… con 30 minutos de tu tiempo como mucho» (the
+ * kitchen manifesto, D-1028). The menu's draw keeps every dish within this
+ * much hands-on time, whatever the total (a cocido of 2 h with 20 min of
+ * work is an everyday dish), except on a special occasion: a holiday, a meal
+ * with guests, or a recipe the household chose itself.
+ */
+export const EVERYDAY_WORK_MINUTES = 30
+
+/**
+ * Does a recipe stay within an everyday cap of hands-on time? `activeTime`,
+ * else `prepTime`; a recipe with neither passes (nothing to go by).
+ */
+export function fitsEverydayWork(r: RecipeTimes, cap: number = EVERYDAY_WORK_MINUTES): boolean {
+  const minutes = recipeActiveMinutes(r)
+  return minutes == null || minutes <= cap
+}
+
+/**
+ * «25 min de trabajo · 2 h en total» (D-1028): the hands-on time first, then
+ * the total when it is longer. Without a hands-on time, just the total
+ * («40 min»); without either, ''.
+ */
+export function workTimeLabel(r: RecipeTimes): string {
+  const active = recipeActiveMinutes(r)
+  const total = recipeTotalMinutes(r)
+  if (active == null) return total != null ? minutesText(total) : ''
+  const work = `${minutesText(active)} de trabajo`
+  if (total == null || total <= active) return work
+  return `${work} · ${minutesText(total)} en total`
+}
+
+/** 41 → «41 min»; 90 → «1 h 30 min»; 120 → «2 h». */
+export function minutesText(min: number): string {
+  const rounded = Math.round(min)
+  const h = Math.floor(rounded / 60)
+  const m = rounded % 60
+  if (h === 0) return `${m} min`
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
+/**
+ * «Esta semana: 2 h 40 min de cocina» (D-1028): the hands-on minutes of the
+ * week's dishes with a recipe, read from the dish's hydrated times (each
+ * recipe as many times as it appears; a táper — leftovers, freezer, fridge,
+ * already cooked — is not cooked again; a day marked «sin cocinar» adds
+ * nothing). Null when no dish has a time.
+ */
+
+export function weekWorkMinutes(
+  days: ReadonlyArray<Record<string, { dishes?: ReadonlyArray<{ kind: string; leftoverOf?: unknown; variant?: string | null } & RecipeTimes> } | null | undefined> | null | undefined>,
+  skippedDays: Iterable<number> = [],
+): number | null {
+  const skipped = new Set(skippedDays)
+  let sum = 0
+  let any = false
+  days.forEach((day, dayIndex) => {
+    if (skipped.has(dayIndex)) return
+    for (const slot of Object.values(day ?? {})) {
+      for (const dish of slot?.dishes ?? []) {
+        // A táper (leftovers, from the freezer or the fridge, already cooked) is not cooked again.
+        if (dish.kind !== 'recipe' || dish.leftoverOf || dish.variant === 'leftover' || isTaperVariant(dish.variant)) continue
+        const minutes = recipeActiveMinutes(dish)
+        if (minutes == null) continue
+        sum += minutes
+        any = true
+      }
+    }
+  })
+  return any ? sum : null
+}
+
+/**
+ * PRO-402: a «preparativo con antelación» on the ficha, next to the time it
+ * is not part of. 8 h or more before → «La víspera: pon los garbanzos en
+ * remojo»; less → «2 h antes: saca la carne de la nevera».
+ */
+export function advancePrepLabel(p: { text: string; hoursBefore: number }): string {
+  const text = p.text.trim()
+  const lower = text.charAt(0).toLowerCase() + text.slice(1)
+  if (p.hoursBefore >= 8) return `La víspera: ${lower}`
+  const hours = Math.round(p.hoursBefore * 10) / 10
+  return `${String(hours).replace('.', ',')} h antes: ${lower}`
 }

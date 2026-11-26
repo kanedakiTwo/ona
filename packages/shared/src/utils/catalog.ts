@@ -23,6 +23,9 @@ export interface CatalogRecipeLike {
   imageUrl?: string | null
   seasons?: readonly string[] | null
   prepTime?: number | null
+  cookTime?: number | null
+  /** D-1028: hands-on minutes; the card shows them first («25 min de trabajo»). */
+  activeTime?: number | null
   totalTime?: number | null
   meals?: readonly string[] | null
   /** 'starter' | 'main' | 'dessert'; null = versatile. */

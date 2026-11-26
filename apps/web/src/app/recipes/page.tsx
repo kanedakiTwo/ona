@@ -7,6 +7,7 @@ import {
   BRAND_NAME,
   detectSeason,
   filterCatalogRecipes,
+  matchesRecipeSearch,
   pickFeaturedRecipes,
   type CatalogIntent,
   type CatalogScope,
@@ -30,6 +31,7 @@ import { CollectionsRow } from "@/components/recipes/CollectionsRow"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
 import { CatalogueWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
 import { MonthMenuCard } from "@/components/recipes/MonthMenuCard"
+import { YourRecipesLinks } from "@/components/recipes/YourRecipesLinks"
 import { SeasonalProduceRow } from "@/components/recipes/SeasonalProduceRow"
 
 const SCOPE_KEY = "ona.recipes.scope"
@@ -127,10 +129,9 @@ export default function RecipesPage() {
   // (server-side on the plain catalogue) are applied here instead.
   const recipes = useMemo(() => {
     if (!withWhatIHave) return catalogRecipes
-    const q = searchQuery.trim().toLowerCase()
     return (withWhatIHaveRecipes ?? []).filter(
       (r) =>
-        (!q || r.name.toLowerCase().includes(q)) &&
+        matchesRecipeSearch(r.name, searchQuery) &&
         (!selectedMeal || (r.meals ?? []).includes(selectedMeal)),
     )
   }, [withWhatIHave, catalogRecipes, withWhatIHaveRecipes, searchQuery, selectedMeal])
@@ -320,6 +321,9 @@ export default function RecipesPage() {
 
         {/* «Menú de <mes>» (PRO-378): signed in, nothing filtered. */}
         {!signedOut && !anyFilterActive && <MonthMenuCard className="mx-4 mt-3 lg:mx-0 lg:mt-5" />}
+
+        {/* «Mis recetas» y «Recetarios» (PRO-1202): moved here from Perfil. */}
+        {!signedOut && !anyFilterActive && <YourRecipesLinks className="mx-4 mt-3 lg:mx-0 lg:mt-5" />}
 
         {/* «Colecciones» (PRO-374): Cocina's collections, only on the unfiltered catalogue. */}
         {!anyFilterActive && (

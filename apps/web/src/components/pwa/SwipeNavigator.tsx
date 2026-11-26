@@ -4,7 +4,8 @@ import { type ReactNode, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { motion, useMotionValue, animate, type PanInfo } from "motion/react"
 
-const NAV_ORDER = ["/menu", "/shopping", "/recipes", "/profile"]
+// Same order as the bottom tab bar (Navbar NAV_ITEMS).
+const NAV_ORDER = ["/menu", "/cocinar", "/shopping", "/recipes", "/profile"]
 
 /**
  * The swipe between tabs is a finger gesture. With a mouse (or a touchpad,

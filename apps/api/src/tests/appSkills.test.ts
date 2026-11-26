@@ -9,14 +9,15 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../services/recipeImport.js', () => ({
   createRecipeFromParts: vi.fn(async (parts: { name: string }) => ({ recipeId: 'r-created', name: parts.name, warnings: [] })),
 }))
-import { appSkills, bestMatch, toBuyable, applyTemplateChange, normalize, findSameProduct, namesSameDish } from '../services/assistant/appSkills.js'
+import { appSkills, bestMatch, shoppingListSummary, toBuyable, applyTemplateChange, normalize, findSameProduct, namesSameDish } from '../services/assistant/appSkills.js'
 import { sumDinersByRecipe, withLeftoverBatches } from '../services/shoppingList.js'
 import { MIMO_EVAL_CASES, mimoReplyProblems } from '../services/assistant/mimoEvalCases.js'
+import { toolMadeChange } from '../services/assistant/claims.js'
 import type { DayMenu, Dish } from '@ona/shared'
 import { AppApiError, type AppApi } from '../services/assistant/appApi.js'
 import { madridWeekStart } from '../services/madridTime.js'
 import { buildSystemParts } from '../services/assistant/systemPrompt.js'
-import { updateProfileSchema } from '@ona/shared'
+import { fullWeekTypeDays, updateProfileSchema } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from '../services/dietaryRestrictions.js'
 
 const get = (name: string) => {
@@ -177,6 +178,19 @@ describe('menu skills', () => {
     expect(writes(g.calls)).toEqual([{ method: 'POST', path: '/menu/m1/day/0/meal/lunch/dish/random', body: undefined }])
   })
 
+  // PRO-349 (Dani y Sara, 2026-10-22): the route takes the day out of
+  // skippedDays; the summary tells Mimo so it can say it.
+  it('add_dish and set_meal_note on a «sin cocinar» day say it is active again; on another day, nothing', async () => {
+    const skipped = { ...MENU, skippedDays: [5] }
+    const f = fakeApi({ 'GET /recipes': [], 'GET /menu/u1/*': skipped })
+    const added = await get('add_dish').handler({ dayIndex: 5, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(added.summary).toMatch(/El sábado \d+ de \w+ estaba marcado sin cocinar: ya vuelve a estar activo\./)
+    const note = await get('set_meal_note').handler({ dayIndex: 5, meal: 'lunch', text: 'Arroz de limpieza' }, ctx(f.api))
+    expect(note.summary).toContain('estaba marcado sin cocinar: ya vuelve a estar activo.')
+    const other = await get('add_dish').handler({ dayIndex: 2, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(f.api))
+    expect(other.summary).not.toContain('sin cocinar')
+  })
+
   it('remove_dish deletes by position found by name', async () => {
     const f = fakeApi()
     await get('remove_dish').handler({ dayIndex: 0, meal: 'lunch', dishName: 'ensalada' }, ctx(f.api))
@@ -221,7 +235,7 @@ describe('menu skills', () => {
         { dinner: { dishes: [lent, { kind: 'recipe', recipeId: 'r-ens', recipeName: 'Ensalada verde' }] } }, // miércoles
         {},
         { dinner: { servings: 2, dishes: [{ ...lent, variant: 'leftover', leftoverOf: { day: 2, meal: 'dinner', dishPosition: 0 } }] } }, // viernes: sobras del miércoles
-        { lunch: { dishes: [lent] } },                                                   // sábado: fijada
+        { lunch: { dishes: [lent] } },                                                   // sábado: fijada (se cambia igual, PRO-1175)
         { dinner: { dishes: [lent] } },                                                  // domingo: sin alternativa
       ],
     }
@@ -231,6 +245,7 @@ describe('menu skills', () => {
         const f = fakeApi({
           'GET /menu/u1/*': WEEK,
           'POST /menu/m1/day/2/meal/dinner/dish/0/regenerate': { dish: { kind: 'recipe', recipeId: 'r-gar', recipeName: 'Garbanzos con espinacas' } },
+          'POST /menu/m1/day/5/meal/lunch/dish/0/regenerate': { dish: { kind: 'recipe', recipeId: 'r-alu', recipeName: 'Alubias blancas' } },
           'POST /menu/m1/day/6/meal/dinner/dish/0/regenerate': new AppApiError(409, 'No candidates'),
         })
         const r = await get('ban_recipe_this_week').handler({ recipeName: 'lentejas' }, ctx(f.api))
@@ -245,6 +260,7 @@ describe('menu skills', () => {
       expect(writes(f.calls)).toEqual([
         { method: 'POST', path: '/menu/m1/ban', body: { recipeId: 'r-lent' } },
         { method: 'POST', path: '/menu/m1/day/2/meal/dinner/dish/0/regenerate', body: undefined },
+        { method: 'POST', path: '/menu/m1/day/5/meal/lunch/dish/0/regenerate', body: undefined },
         { method: 'POST', path: '/menu/m1/day/6/meal/dinner/dish/0/regenerate', body: undefined },
         { method: 'DELETE', path: '/menu/m1/day/4/meal/dinner', body: undefined },
         { method: 'POST', path: '/menu/m1/day/4/leftover', body: { sourceDay: 2, sourceMeal: 'dinner', targetMeal: 'dinner' } },
@@ -259,11 +275,14 @@ describe('menu skills', () => {
       expect(r.summary).toContain('- Miércoles 14 de octubre, cena: "Garbanzos con espinacas"')
       expect(r.summary).toContain('- Viernes 16 de octubre, cena: sobras de "Garbanzos con espinacas"')
       expect(r.summary).toContain('Martes 13 de octubre, comida (es un taper del congelador)')
-      expect(r.summary).toContain('Sábado 17 de octubre, comida (esta fijada)')
+      // A locked meal is changed too (PRO-1175): the lock only keeps it when the week is redone.
+      expect(r.summary).toContain('- Sábado 17 de octubre, comida: "Alubias blancas"')
+      expect(r.summary).not.toContain('esta fijada')
       expect(r.summary).toContain('Domingo 18 de octubre, cena (no hay otra receta que encaje)')
       expect(r.summary).not.toContain('Lunes 12')
       expect((r.data as any).changes.map((c: any) => [c.date, c.meal, c.recipeName])).toEqual([
         ['2026-10-14', 'dinner', 'Garbanzos con espinacas'],
+        ['2026-10-17', 'lunch', 'Alubias blancas'],
         ['2026-10-16', 'dinner', 'Garbanzos con espinacas'],
       ])
     })
@@ -362,7 +381,7 @@ describe('shopping, pantry, staples', () => {
       },
     })
     const r = await get('get_shopping_list').handler({}, ctx(f.api))
-    expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado: 1. En casa: 1.')
+    expect(r.summary).toBe('Te faltan 3 cosas: Tomate (1 kg), Champiñones (250 g), Papel de cocina. Ya comprado (1): Huevo. En casa (1): Sal.')
     expect(r.uiHint).toBe('shopping_list')
     // PRO-380: handing out the whole list counts as `shopping_list_shared`.
     expect(writes(f.calls)).toEqual([{ method: 'POST', path: '/usage/list-shared', body: { channel: 'web' } }])
@@ -370,7 +389,7 @@ describe('shopping, pantry, staples', () => {
 
   it('get_shopping_list: all done, and empty list (nothing handed out, nothing counted)', async () => {
     const done = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [{ id: 'i1', name: 'Pan', checked: true }] } })
-    expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado: 1.')
+    expect((await get('get_shopping_list').handler({}, ctx(done.api))).summary).toBe('Ya lo tienes todo. Ya comprado (1): Pan.')
     const empty = fakeApi({ 'GET /shopping-list': { id: 'L1', items: [] } })
     expect((await get('get_shopping_list').handler({}, ctx(empty.api))).summary).toContain('está vacía')
     expect([...writes(done.calls), ...writes(empty.calls)]).toEqual([])
@@ -381,6 +400,51 @@ describe('shopping, pantry, staples', () => {
     const r = await get('remove_shopping_items').handler({ names: ['leche', 'caviar'] }, ctx(f.api))
     expect(writes(f.calls)).toEqual([{ method: 'DELETE', path: '/shopping-list/L1/item/i1', body: undefined }])
     expect(r.summary).toContain('No estaban en la lista: caviar')
+  })
+
+  // PRO-1050: «quita el caldo de pollo sin sal, el pollo NO» se llevaba el pollo (Marta y Jorge, 2026-10-25 → 11-17).
+  it('remove_shopping_items quita la línea pedida por su id, nunca la que solo es parte del nombre', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'menu:ing-pollo:g', ingredientId: 'ing-pollo', name: 'Pollo', quantity: 300, unit: 'g', kind: 'menu' },
+        { id: 'menu:ing-caldo:ml', ingredientId: 'ing-caldo', name: 'Caldo de pollo', quantity: 75, unit: 'ml', kind: 'menu' },
+        { id: 'm-css', name: 'Caldo de pollo sin sal', kind: 'manual' },
+        { id: 'menu:ing-tom:g', ingredientId: 'ing-tom', name: 'Tomate', quantity: 500, unit: 'g', kind: 'menu' },
+        { id: 'menu:ing-cherry:g', ingredientId: 'ing-cherry', name: 'Tomate cherry', quantity: 250, unit: 'g', kind: 'menu' },
+      ],
+    }
+    const one = async (names: string[]) => {
+      const f = fakeApi({ 'GET /shopping-list': list })
+      const r = await get('remove_shopping_items').handler({ names }, ctx(f.api))
+      return { w: writes(f.calls).map((c) => `${c.method} ${c.path}`), summary: r.summary }
+    }
+    expect((await one(['caldo de pollo sin sal'])).w).toEqual(['DELETE /shopping-list/L1/item/m-css'])
+    expect((await one(['caldo de pollo'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-caldo:ml/edit'])
+    expect((await one(['pollo'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-pollo:g/edit'])
+    expect((await one(['los tomates cherry'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-cherry:g/edit'])
+    expect((await one(['cherry'])).w).toEqual(['PUT /shopping-list/L1/item/menu:ing-cherry:g/edit'])
+    // Sin el caldo en la lista, «caldo de pescado» no se lleva nada.
+    const none = await one(['caldo de pescado'])
+    expect(none.w).toEqual([])
+    expect(none.summary).toContain('No estaban en la lista: caldo de pescado')
+    // «caldo» vale para tres líneas: pregunta cuál, no quita ninguna.
+    const which = await one(['caldo'])
+    expect(which.w).toEqual([])
+    expect(which.summary).toContain('Hay varias líneas con "caldo": Caldo de pollo, Caldo de pollo sin sal')
+  })
+
+  it('change_shopping_item_amount no cambia el pollo cuando se pide el caldo de pollo (PRO-1050)', async () => {
+    const list = {
+      id: 'L1',
+      items: [
+        { id: 'p', name: 'Pollo', quantity: 300, unit: 'g', kind: 'manual' },
+        { id: 'c', name: 'Caldo de pollo sin sal', quantity: 1, unit: 'u', kind: 'manual' },
+      ],
+    }
+    const f = fakeApi({ 'GET /shopping-list': list })
+    await get('change_shopping_item_amount').handler({ name: 'caldo de pollo sin sal', quantity: 2 }, ctx(f.api))
+    expect(writes(f.calls).map((c) => c.path)).toEqual(['/shopping-list/L1/item/c'])
   })
 
   // PRO-175: Mimo «No he podido quitarlos de la lista. La herramienta ha dado un error» on menu lines.
@@ -409,6 +473,63 @@ describe('shopping, pantry, staples', () => {
     const r = await get('add_shopping_items').handler({ items: [{ name: 'patatas' }] }, ctx(f.api))
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/shopping-list/L1/item/menu:ing-pat:g/edit', body: { skipped: false } }])
     expect(r.summary).toContain('vuelve a estar pendiente')
+  })
+
+  // PRO-1039: what the test households saw on /shopping and Mimo didn't.
+  describe('get_shopping_list says the list as /shopping shows it (PRO-1039)', () => {
+    const TODAY = '2026-11-18' // Wednesday: this week from the 16th, the next one from the 23rd
+    const list: any[] = [
+      { id: 'h', ingredientId: 'ing-h', name: 'Huevo', quantity: 44, unit: 'u', aisle: 'proteinas', weeks: { '2026-11-16': 19, '2026-11-23': 25 } },
+      { id: 'p', ingredientId: 'ing-p', name: 'Pimiento rojo', quantity: 2, unit: 'u', aisle: 'produce', weeks: { '2026-11-23': 2 } },
+      { id: 'c', ingredientId: 'ing-c', name: 'Tomate cherry', quantity: 250, unit: 'g', aisle: 'produce', weeks: { '2026-11-16': 250 } },
+      { id: 'v', ingredientId: 'ing-v', name: 'Calabacin', quantity: 400, unit: 'g', aisle: 'produce', checked: true, weeks: { '2026-11-16': 400 } },
+      { id: 's', ingredientId: 'ing-s', name: 'Sal', quantity: 1, unit: 'u', aisle: 'despensa', inStock: true, weeks: { '2026-11-16': 1 } },
+      { id: 'b', ingredientId: null, name: 'Pan de barra', quantity: 1, unit: 'u', aisle: 'otros', kind: 'manual' },
+    ]
+
+    it('each line under its week; a line of both weeks says what each asks', () => {
+      expect(shoppingListSummary(list, TODAY)).toBe(
+        'Te faltan 4 cosas. Esta semana: Tomate cherry (250 g). La que viene: Pimiento rojo (2 unidades). ' +
+          'Para las dos semanas: Huevo (44 unidades) [19 unidades esta semana, 25 unidades la que viene]. A mano o básicos (sin semana): Pan de barra. Ya comprado (1): Calabacín. En casa (1): Sal.',
+      )
+    })
+
+    it('with week, only that week and its amount (the manual lines too)', () => {
+      const next = shoppingListSummary(list, TODAY, 'que_viene')
+      expect(next).toMatch(/^Te faltan 3 cosas para la que viene\. La que viene: /)
+      expect(next).toContain('Huevo (25 unidades; la línea de /shopping junta las dos semanas: Huevo (44 unidades))')
+      expect(next).toContain('Pimiento rojo (2 unidades)')
+      expect(next).toContain('A mano o básicos (sin semana): Pan de barra')
+      expect(next).not.toContain('Tomate cherry (')
+      expect(shoppingListSummary(list.slice(1, 2), TODAY, 'esta')).toBe('No te falta nada para esta semana.')
+    })
+
+    it('never cuts the list: 73 lines, the manual ones at the end, all named', () => {
+      const many = [
+        ...Array.from({ length: 70 }, (_, i) => ({ id: `m${i}`, ingredientId: `i${i}`, name: `Producto ${i}`, quantity: 1, unit: 'u', aisle: 'produce' })),
+        { id: 'x1', ingredientId: null, name: 'Caldo sin sal', kind: 'manual', aisle: 'otros' },
+        { id: 'x2', ingredientId: null, name: 'Pan sin sal', kind: 'manual', aisle: 'otros' },
+        { id: 'x3', ingredientId: null, name: 'Queso en lonchas', kind: 'manual', aisle: 'otros' },
+      ] as any[]
+      const s = shoppingListSummary(many, TODAY)
+      expect(s).toMatch(/^Te faltan 73 cosas/)
+      expect(s).toContain('Producto 69')
+      expect(s).toContain('Caldo sin sal, Pan sin sal, Queso en lonchas')
+      expect(s).not.toMatch(/ más/)
+    })
+
+    it('the tool reads it with today in Madrid', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-18T10:00:00Z'))
+      const r = await get('get_shopping_list').handler({ week: 'que_viene' }, ctx(fakeApi({ 'GET /shopping-list': { id: 'L1', items: list } }).api)).finally(() => vi.useRealTimers())
+      expect(r.summary).toMatch(/^Te faltan 3 cosas para la que viene/)
+    })
+
+    it('«quita los tomates cherry» is Tomate cherry, not Tomate (Ruiz, 2026-10-31)', () => {
+      const rows = [{ name: 'Tomate' }, { name: 'Tomate cherry' }]
+      expect(bestMatch(rows, 'tomates cherry', (r) => r.name)?.name).toBe('Tomate cherry')
+      expect(bestMatch(rows, 'tomate', (r) => r.name)?.name).toBe('Tomate')
+    })
   })
 
   it('get_shopping_list leaves out what was removed from this shopping and says so', async () => {
@@ -459,6 +580,43 @@ describe('shopping, pantry, staples', () => {
       { method: 'POST', path: '/pantry', body: { name: 'garbanzos', quantity: 400, unit: 'g', expiresAt: '2026-12-01' } },
       { method: 'DELETE', path: '/pantry/p1', body: undefined },
     ])
+  })
+
+  // PRO-1294: a household dictated its pantry and Mimo called update_pantry 70 times (206 s, 0,53 €).
+  it('update_pantry takes 40 products in one call; the one it cannot place is a doubt, not an error', async () => {
+    const names = Array.from({ length: 38 }, (_, i) => `producto ${String.fromCharCode(97 + (i % 26))}${i}`)
+    const f = fakeApi({
+      'GET /pantry': [{ id: 'p1', name: 'Arroz', quantity: 500, unit: 'g' }],
+      'POST /pantry': (body: any) => {
+        if (body.name === 'cosa rara') throw new Error('400 Datos invalidos')
+        return { id: `n-${body.name}`, name: body.name, quantity: body.quantity ?? 0, unit: body.unit ?? 'u' }
+      },
+    })
+    const items = [{ name: 'arroz', quantity: 1, unit: 'kg' }, ...names.map((name) => ({ name })), { name: 'cosa rara' }]
+    expect(items).toHaveLength(40)
+    const r = await get('update_pantry').handler({ action: 'add', location: 'nevera', items }, ctx(f.api))
+    expect(f.calls.filter((c) => c.method === 'GET')).toHaveLength(1)
+    expect(writes(f.calls)).toHaveLength(40)
+    expect(writes(f.calls)[0]).toEqual({ method: 'PATCH', path: '/pantry/p1', body: { quantity: 1500, unit: 'g', location: 'nevera' } })
+    expect(writes(f.calls)[1].body).toEqual({ name: names[0], location: 'nevera' })
+    expect(r.data).toEqual({ added: 39, removed: 0, doubts: ['cosa rara'] })
+    expect(r.summary).toMatch(/^Hecho: 39 productos apuntados en la despensa \(39 en la nevera\)\./)
+    expect(r.summary).toContain('Dudas: no he reconocido "cosa rara"')
+    expect(r.summary).not.toMatch(/error|400|invalid/i)
+    expect(toolMadeChange('update_pantry', r.summary, false)).toBe(true)
+  })
+
+  it('update_pantry in a batch: a repeated product goes to one row; a remove of what is not there and noise are doubts', async () => {
+    const f = fakeApi({ 'GET /pantry': [], 'POST /pantry': (body: any) => ({ id: 'n1', name: body.name, quantity: 0, unit: 'u' }) })
+    const r = await get('update_pantry').handler(
+      { action: 'add', items: [{ name: 'leche' }, { name: 'Leche' }, { name: 'azafrán', action: 'remove' }, { name: '…' }, { name: 'huevos', location: 'congelador' }] },
+      ctx(f.api),
+    )
+    expect(writes(f.calls).map((c) => `${c.method} ${c.path}`)).toEqual(['POST /pantry', 'POST /pantry'])
+    expect(r.summary).toContain('3 productos apuntados en la despensa (1 en el congelador)')
+    expect(r.summary).toContain('no he reconocido "azafrán" y "…"')
+    const none = await get('update_pantry').handler({ action: 'remove', items: [{ name: 'azafrán' }] }, ctx(fakeApi({ 'GET /pantry': [] }).api))
+    expect(toolMadeChange('update_pantry', none.summary, false)).toBe(false)
   })
 
   it('manage_staples adds, pauses and removes', async () => {
@@ -644,10 +802,22 @@ describe('recipes, profile, household', () => {
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { priority: 'cheap' } }])
   })
 
-  it('update_weekly_template writes the merged settings blob', async () => {
-    const f = fakeApi({ 'GET /user/u1/settings': { template: { mealTemplate: { sabado: { cena: 2 } } } } })
+  it('update_weekly_template writes only the slots that change in the household\'s «semana tipo» (D-182)', async () => {
+    const days = fullWeekTypeDays()
+    days[5].dinner = { diners: 2, options: [{ kind: 'type', type: 'pizza' }] }
+    const f = fakeApi({ 'GET /households/me/week-type': { days } })
     await get('update_weekly_template').handler({ days: [5], meal: 'dinner', diners: 0 }, ctx(f.api))
-    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1/settings', body: { template: { mealTemplate: { sabado: { cena: 0 } } } } }])
+    // Saturday's dinner is off; its pizza stays for when it comes back; nothing else is written.
+    expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/households/me/week-type/5/dinner', body: { off: true, options: [{ kind: 'type', type: 'pizza' }] } }])
+  })
+
+  it('update_weekly_template counts the household’s real diners: «somos dos» in a house of 4 writes those slots', async () => {
+    const f = fakeApi({ 'GET /households/me/week-type': { days: fullWeekTypeDays() }, 'GET /user/u1': { adults: 4, kidsCount: 0 } })
+    await get('update_weekly_template').handler({ days: [0, 1], meal: 'dinner', diners: 2 }, ctx(f.api))
+    expect(writes(f.calls)).toEqual([
+      { method: 'PUT', path: '/households/me/week-type/0/dinner', body: { diners: 2 } },
+      { method: 'PUT', path: '/households/me/week-type/1/dinner', body: { diners: 2 } },
+    ])
   })
 
   it('invite_to_household returns the written message with the link, counted as sent by Mimo (PRO-260)', async () => {

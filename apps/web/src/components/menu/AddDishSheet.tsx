@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Sparkles, Search, Coffee, X } from 'lucide-react'
+import { Shuffle, Search, PenLine, X } from 'lucide-react'
+import { ADD_DISH_OPTIONS, type AddDishOption } from '@/lib/addDishSheet'
 import { RecipePickerSheet } from './RecipePickerSheet'
 import type { Course } from '@ona/shared'
 
@@ -64,7 +65,7 @@ export function AddDishSheet({
             >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="font-display text-xl text-[#1A1612]">
-                  {mode === 'choose' ? 'Añadir plato' : 'Añadir nota'}
+                  {mode === 'choose' ? 'Añadir plato' : 'Escribir un plato'}
                 </h3>
                 <button onClick={reset} aria-label="Cerrar">
                   <X size={18} className="text-[#7A7066]" />
@@ -73,41 +74,36 @@ export function AddDishSheet({
 
               {mode === 'choose' && (
                 <div className="space-y-2">
-                  <button
-                    onClick={() => { onPickAleatorio(); reset() }}
-                    className="flex w-full items-center gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3 text-left hover:border-[#1A1612]"
-                  >
-                    <Sparkles size={18} className="text-[#C65D38]" />
-                    <div>
-                      <p className="text-[14px] font-medium text-[#1A1612]">Mimoia sugiere</p>
-                      <p className="text-[12px] text-[#7A7066]">{courseHint}</p>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setMode('picker')
-                      setPickerOpen(true)
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3 text-left hover:border-[#1A1612]"
-                  >
-                    <Search size={18} className="text-[#7A7066]" />
-                    <div>
-                      <p className="text-[14px] font-medium text-[#1A1612]">Elegir del catálogo</p>
-                      <p className="text-[12px] text-[#7A7066]">Busca por nombre.</p>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => setMode('note')}
-                    className="flex w-full items-center gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3 text-left hover:border-[#1A1612]"
-                  >
-                    <Coffee size={18} className="text-[#7A7066]" />
-                    <div>
-                      <p className="text-[14px] font-medium text-[#1A1612]">Añadir nota</p>
-                      <p className="text-[12px] text-[#7A7066]">"Pan con tomate", "comemos fuera"…</p>
-                    </div>
-                  </button>
+                  {/* PRO-1180: choosing first; «Que elija Mimoia», last and without sparkles. */}
+                  {ADD_DISH_OPTIONS.map(({ key, label }) => {
+                    const option: Record<AddDishOption, { icon: typeof Search; hint: string; onClick: () => void }> = {
+                      catalog: {
+                        icon: Search,
+                        hint: 'Busca por nombre.',
+                        onClick: () => {
+                          setMode('picker')
+                          setPickerOpen(true)
+                        },
+                      },
+                      write: { icon: PenLine, hint: '"Pan con tomate", "comemos fuera"…', onClick: () => setMode('note') },
+                      mimoia: { icon: Shuffle, hint: courseHint, onClick: () => { onPickAleatorio(); reset() } },
+                    }
+                    const { icon: Icon, hint, onClick } = option[key]
+                    return (
+                      <button
+                        key={key}
+                        data-testid={`add-dish-${key}`}
+                        onClick={onClick}
+                        className="flex w-full items-center gap-3 rounded-xl border border-[#DDD6C5] bg-[#FFFEFA] px-4 py-3 text-left hover:border-[#1A1612]"
+                      >
+                        <Icon size={18} className="text-[#7A7066]" />
+                        <div>
+                          <p className="text-[14px] font-medium text-[#1A1612]">{label}</p>
+                          <p className="text-[12px] text-[#7A7066]">{hint}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
 

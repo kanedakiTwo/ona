@@ -58,7 +58,7 @@ test('the main button is «Mandar la lista»; «Por WhatsApp» opens wa.me by ai
   await expect(whatsapp).toHaveAttribute('href', /^https:\/\/wa\.me\/\?text=/, { timeout: 15_000 })
   await expect
     .poll(async () => decodeURIComponent(((await whatsapp.getAttribute('href')) ?? '').replace('https://wa.me/?text=', '')), { timeout: 15_000 })
-    .toContain(`/?ref=lista&invita=${me.code}`)
+    .toContain(`/i/${me.code}`)
   const text = decodeURIComponent((await whatsapp.getAttribute('href'))!.replace('https://wa.me/?text=', ''))
   // By aisle: a bold aisle heading, then «- name…» lines.
   expect(text).toContain('Lista de la compra')

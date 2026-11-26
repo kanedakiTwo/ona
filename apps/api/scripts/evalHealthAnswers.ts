@@ -12,7 +12,16 @@
  * case's own forbidden phrases. Exits 1 if any reply fails.
  *
  *   ANTHROPIC_API_KEY=… pnpm --filter @ona/api exec tsx scripts/evalHealthAnswers.ts \
- *     [--mode=whatsapp|text|voice] [--runs=3] [--case=arroz-caldero-azucar] [--out=eval.json]
+ *     [--mode=whatsapp|text|voice] [--runs=3] [--case=arroz-caldero-azucar] [--out=eval.json] [--por-turno] [--remoto]
+ *
+ * PRO-1291: each case gets the fixed block the engine sends (`buildFixedBlock`:
+ * every tool and the whole prompt, as until 2026-11-11 and again since);
+ * `--por-turno` gives it only the tools of its turn (`selectToolGroups`, with
+ * `more_tools`, PRO-392 from 2026-11-11), to compare. `--antes` is the
+ * default now and is still accepted. `--remoto` (D-168: the battery
+ * goes by the subscription, never by the API) sends each round to «Mimo
+ * remoto» (PRO-1102) instead of Anthropic: it needs `DATABASE_URL` of the
+ * database the office answers (staging), and no API key.
  *
  * Needs no database: the user context is synthetic (in each case) and every
  * tool is simulated («(simulado) …»), so nothing is read or written and no
@@ -23,19 +32,30 @@ import Anthropic from '@anthropic-ai/sdk'
 import { writeFile } from 'node:fs/promises'
 import { buildSystemParts, knowledgeBaseReady, type AssistantMode } from '../src/services/assistant/systemPrompt.js'
 import { getToolDefinitions, toolsFor } from '../src/services/assistant/skills.js'
-import { runToolLoop } from '../src/services/assistant/engine.js'
+import { buildFixedBlock, runToolLoop, withLastToolCached } from '../src/services/assistant/engine.js'
+import { TOOL_GROUPS, selectToolGroups } from '../src/services/assistant/toolGroups.js'
 import { HEALTH_EVAL_CASES, healthReplyProblems } from '../src/services/assistant/healthGuard.js'
 import { MIMO_EVAL_CASES, mimoReplyProblems } from '../src/services/assistant/mimoEvalCases.js'
+import { CLAIM_EVAL_CASES, claimReplyProblems } from '../src/services/assistant/mimoClaimEvalCases.js'
+import { CONDUCT_EVAL_CASES, conductReplyProblems } from '../src/services/assistant/mimoConductEvalCases.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
 const mode = (arg('mode') ?? 'whatsapp') as AssistantMode
 const runs = Math.max(1, Number(arg('runs') ?? 1))
 const only = arg('case')
-if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is required')
+const perTurn = process.argv.includes('--por-turno')
+const remote = process.argv.includes('--remoto')
+if (!remote && !process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is required (or --remoto)')
 
 await knowledgeBaseReady
-const anthropic = new Anthropic()
+const anthropic = remote
+  ? await (async () => {
+      const { db } = await import('../src/db/connection.js')
+      const { dbTurnStore, remoteMessagesClient } = await import('../src/services/assistant/mimoRemoto.js')
+      return remoteMessagesClient(dbTurnStore(db))
+    })()
+  : new Anthropic()
 /** Every tool is simulated; a case can say what a read tool answers. */
 const simulated = (results: Record<string, string> = {}): SkillDefinition[] =>
   toolsFor({ mode }).map((s) => ({
@@ -45,25 +65,35 @@ const simulated = (results: Record<string, string> = {}): SkillDefinition[] =>
 
 const out: unknown[] = []
 let failed = 0
-type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[], trace: { name: string; input: string }[]) => string[]; toolResults?: Record<string, string> }
+type Trace = { name: string; input: string; summary?: string; error?: boolean }[]
+type EvalCase = { id: string; context: string; history: { role: 'user' | 'assistant'; content: string }[]; message: string; grade: (reply: string, tools: string[], trace: Trace) => string[]; toolResults?: Record<string, string>; onboarding?: boolean }
 const cases: EvalCase[] = [
   ...HEALTH_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string) => healthReplyProblems(reply, c) })),
-  ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: { name: string; input: string }[]) => mimoReplyProblems(reply, c, tools, trace) })),
+  ...MIMO_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => mimoReplyProblems(reply, c, tools, trace) })),
+  // PRO-349: «Hecho» only when a tool confirmed it.
+  ...CLAIM_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[], trace: Trace) => claimReplyProblems(reply, c, tools, trace) })),
+  // PRO-1297: acts instead of asking, reads before it says, no tail-ends.
+  ...CONDUCT_EVAL_CASES.map((c) => ({ ...c, grade: (reply: string, tools: string[]) => conductReplyProblems(reply, c, tools) })),
 ]
 for (const c of cases.filter((x) => !only || x.id === only)) {
-  const { instructions, context } = buildSystemParts(c.context, mode)
+  // `primer-menu`: the WhatsApp sign-up's turn (its prompt block and complete_onboarding).
+  const onboarding = c.onboarding === true
+  const sel = perTurn ? selectToolGroups({ message: c.message, history: c.history, mode, onboarding }) : null
+  const fixed = buildFixedBlock({ mode, onboarding })
+  const { instructions, context } = buildSystemParts(c.context, mode, { ...(sel ? { tools: sel.tools, about: sel.about } : {}), onboarding })
   for (let i = 1; i <= runs; i += 1) {
     const r = await runToolLoop({
       client: anthropic as never,
-      system: [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }, { type: 'text', text: context }],
-      tools: getToolDefinitions({ mode }),
+      system: [sel ? { type: 'text', text: instructions, cache_control: { type: 'ephemeral' } } : fixed.instructions, { type: 'text', text: context }],
+      tools: sel ? withLastToolCached(getToolDefinitions({ mode, onboarding, only: sel.tools })) : fixed.tools,
+      ...(sel ? { moreTools: (groups) => getToolDefinitions({ mode, only: new Set(groups.flatMap((g) => TOOL_GROUPS[g].tools)) }) } : {}),
       skills: simulated(c.toolResults),
       messages: [...c.history, { role: 'user' as const, content: c.message }],
       ctx: { userId: 'eval-health', db: null, channel: mode },
     })
     const problems = c.grade(r.message, r.toolsUsed ?? [], r.toolTrace ?? [])
     if (problems.length) failed += 1
-    out.push({ case: c.id, run: i, mode, user: c.message, reply: r.message, tools: r.toolsUsed, flags: r.corrections, problems })
+    out.push({ case: c.id, run: i, mode, tools_set: perTurn ? 'por-turno' : 'todas', user: c.message, reply: r.message, tools: r.toolsUsed, flags: r.corrections, problems })
     console.log(`\n### ${c.id} (${i}/${runs}) ${problems.length ? `FALLA: ${problems.join(', ')}` : 'ok'}`)
     console.log(`  USUARIO: ${c.message}`)
     for (const t of r.toolTrace ?? []) console.log(`  · ${t.name} ${t.input.slice(0, 160)}`)
@@ -74,4 +104,8 @@ for (const c of cases.filter((x) => !only || x.id === only)) {
 const outPath = arg('out')
 if (outPath) await writeFile(outPath, JSON.stringify(out, null, 1))
 console.log(`\n${out.length - failed}/${out.length} respuestas sin problemas.`)
+// pass^3 (D-168): a case passes only when every run of it passed.
+const byCase = new Map<string, boolean>()
+for (const o of out as { case: string; problems: string[] }[]) byCase.set(o.case, (byCase.get(o.case) ?? true) && o.problems.length === 0)
+console.log(`pass^${runs}: ${[...byCase.values()].filter(Boolean).length}/${byCase.size} casos (${perTurn ? 'herramientas por turno' : 'todas las herramientas'}).`)
 process.exit(failed ? 1 : 0)

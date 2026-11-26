@@ -8,12 +8,14 @@
  * script.
  *
  * Tag visibility (spec/recipes.md "Tag Visibility"):
- *   - Public responses NEVER include `internalTags` or notes/tips/etc.
+ *   - Public responses NEVER include `internalTags` or notes/tips/etc.;
+ *     the detail for its author or an admin carries notes/tips/
+ *     substitutions/storage/course (PRO-1259, for «Editar receta»).
  *   - The card list filters tags via `publicTagsOf` so reserved values
  *     (meal/season/difficulty/internal) never leak.
  */
 import { Router, type NextFunction, type Response } from 'express'
-import { eq, and, sql, asc, count, arrayContains, inArray, isNull, notInArray } from 'drizzle-orm'
+import { eq, and, sql, asc, arrayContains, inArray, isNull, notInArray } from 'drizzle-orm'
 import multer from 'multer'
 import crypto from 'crypto'
 import { db } from '../db/connection.js'
@@ -23,14 +25,11 @@ import {
   recipeSteps,
   ingredients,
   userFavorites,
-  users,
   recipeNotes,
   type CatalogSourceInfo,
 } from '../db/schema.js'
 import { env } from '../config/env.js'
 import {
-  buildRecipePrompt,
-  generateRecipeImage,
   imageGenerationConfigured,
   writeRecipeImage,
   AikitNotConfiguredError,
@@ -45,6 +44,7 @@ import {
   saveOwnRecipeImage,
 } from '../services/recipeOwnImage.js'
 import { recipeShoppingIssues } from '../services/recipeShoppability.js'
+import { isInternalCall, trackEvent } from '../services/usageEvents.js'
 import {
   authMiddleware,
   optionalAuthMiddleware,
@@ -58,6 +58,10 @@ import {
   SEASONS,
   DIFFICULTIES,
   RETIRED_RECIPE_TAG,
+  PLAN_GRATIS_IMPORTS_MESSAGE,
+  isDishType,
+  recipeSearchRank,
+  type Course,
   type Difficulty,
   type Meal,
   type Recipe,
@@ -69,7 +73,9 @@ import {
 } from '@ona/shared'
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
 import { sortCatalog, type CatalogOrderRow } from '../services/recipeCatalogOrder.js'
+import { recipeNameSearch } from '../services/recipeSearch.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
+import { requirePaidPlan } from '../services/accountAccess.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
 import { runWithCostUser } from '../services/costLedger.js'
 import {
@@ -86,7 +92,6 @@ import { NoExtractableContentError } from '../services/sources/youtube.js'
 import { PageFetchError, UnsafeUrlError } from '../services/net/publicFetch.js'
 import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../services/scopeResolver.js'
 import { sanitizeCustomTags } from '../services/recipeNotesStore.js'
-import { findPantryMatches } from '../services/pantryMatcher.js'
 import { chosenFromIds, findRecipesWithWhatIHave, loadUserRestrictions, MAX_CHOSEN_INGREDIENTS } from '../services/withWhatIHave.js'
 import { recipeIdsNamedByDislikes } from '../services/dishDislikes.js'
 import { loadFichaMenuConstraints, withFichaFilters } from '../services/profile/reader.js'
@@ -98,6 +103,7 @@ import { canViewRecipe, isHiddenDraft, PUBLISHED } from '../services/recipeVisib
 import { requestCatalogPhotos } from '../services/catalogImageOnDemand.js'
 import { catalogSourceCredit } from '../services/catalogImport.js'
 import { isBookRecipe, loadSitemapRecipes } from '../services/recipeSeo.js'
+import { loadRecipeBaseUses } from '../services/recipeBases.js'
 import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
 import { ingredientMarksOf } from '../services/ingredientRoles.js'
 import { z } from 'zod'
@@ -176,6 +182,8 @@ interface RecipeRow {
   tips: string | null
   substitutions: string | null
   storage: string | null
+  /** D-1028 (migration 0118); absent on pre-migration rows. */
+  moreTime?: string | null
   /** PRO-372 (migration 0097); absent on pre-migration rows. */
   freezable?: boolean | null
   fridgeDays?: number | null
@@ -211,6 +219,8 @@ interface RecipeCard {
   imageUrl: string | null
   prepTime: number | null
   cookTime: number | null
+  /** D-1028: the card says «25 min de trabajo» first. */
+  activeTime: number | null
   totalTime: number | null
   meals: Meal[]
   seasons: Season[]
@@ -250,6 +260,7 @@ function toCard(row: RecipeRow): RecipeCard {
     imageUrl: row.imageUrl,
     prepTime: row.prepTime,
     cookTime: row.cookTime,
+    activeTime: row.activeTime,
     totalTime: row.totalTime,
     meals: (row.meals ?? []) as Meal[],
     seasons: (row.seasons ?? []) as Season[],
@@ -401,10 +412,25 @@ function toDetailRecipe(
   // PRO-372: the ficha's «Se puede congelar» / «Aguanta N días en nevera» seals.
   if (row.freezable != null) detail.freezable = row.freezable
   if (row.fridgeDays != null) detail.fridgeDays = row.fridgeDays
+  // D-1028: «Y si tienes más tiempo…», public like the rest of the ficha.
+  if (row.moreTime?.trim()) detail.moreTime = row.moreTime
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".
 
   return detail
+}
+
+/**
+ * PRO-1259: what only the author and admins see on the detail — the texts
+ * and the course «Editar receta» loads so a save doesn't drop them.
+ */
+function withEditorFields(recipe: Recipe, row: RecipeRow): Recipe {
+  const out: Recipe = { ...recipe, course: (row.course as Course | null) ?? null }
+  if (row.notes != null) out.notes = row.notes
+  if (row.tips != null) out.tips = row.tips
+  if (row.substitutions != null) out.substitutions = row.substitutions
+  if (row.storage != null) out.storage = row.storage
+  return out
 }
 
 // ─── DB read helpers ──────────────────────────────────────────────
@@ -520,7 +546,14 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     if (mine) conditions.push(req.userId ? eq(recipes.authorId, req.userId) : sql`FALSE`)
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
-    if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
+    // Search (2026-11-25): each word, any order, no accents or case (services/recipeSearch.ts).
+    const searchWhere = typeof search === 'string' ? recipeNameSearch(search) : null
+    if (searchWhere) conditions.push(searchWhere)
+    // ?dishType=<clave> (PRO-1175): the type chips of the menu's picker
+    // («Legumbres», «Cremas y sopas»…), `recipes.dish_types` (D-182). An
+    // unknown key is ignored.
+    const dishType = req.query.dishType
+    if (isDishType(dishType)) conditions.push(arrayContains(recipes.dishTypes, [dishType]))
     // ?ingredient=<nombre> (PRO-375, «Este mes»): recipes with that
     // ingredient, by normalised name (a calendar product takes its terms:
     // «setas» → champiñón, boletus…).
@@ -588,7 +621,10 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
       .from(recipes)
       .where(where)) as CatalogOrderRow[]
     const total = orderRows.length
-    const pageIds = sortCatalog(orderRows.map((r) => ({ ...r, favoriteHouseholds: Number(r.favoriteHouseholds) })))
+    const sorted = sortCatalog(orderRows.map((r) => ({ ...r, favoriteHouseholds: Number(r.favoriteHouseholds) })))
+    // With a search, names that start with a searched word first (stable: the catalogue order stays inside each group).
+    if (searchWhere) sorted.sort((a, b) => recipeSearchRank(a.name, search!) - recipeSearchRank(b.name, search!))
+    const pageIds = sorted
       .slice(offset, offset + perPage)
       .map((r) => r.id)
 
@@ -633,23 +669,6 @@ router.get('/recipes/sitemap', async (_req, res) => {
     res.json(await loadSitemapRecipes())
   } catch (err) {
     console.error('GET /recipes/sitemap error:', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
-
-// GET /recipes/match-pantry?limit=N — cook-from-pantry suggestions (PR 12).
-// Auth-only. Ranks every catalogue recipe by what fraction of its required
-// ingredients the caller's household already has at home. Returns the top
-// `limit` (default 3, max 20) sorted by coverage desc. **Must be declared
-// before `/recipes/:id`** so the more-specific path matches first.
-router.get('/recipes/match-pantry', authMiddleware, async (req: AuthRequest, res) => {
-  try {
-    const limitRaw = parseInt(String(req.query.limit ?? '3'), 10)
-    const limit = Math.min(20, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 3))
-    const matches = await findPantryMatches(req.userId!, limit)
-    res.json(matches)
-  } catch (err) {
-    console.error('GET /recipes/match-pantry error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -714,12 +733,16 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
       fetchStepsForRecipes([id]),
     ])
 
-    const recipe = toDetailRecipe(row, ings, steps)
+    const isEditor = !!req.userId && (row.authorId === req.userId || req.user?.role === 'admin')
+    const recipe = isEditor ? withEditorFields(toDetailRecipe(row, ings, steps), row) : toDetailRecipe(row, ings, steps)
+    // PRO-373: «Usa: Sofrito (2 raciones)», with a link to each base.
+    const bases = await loadRecipeBaseUses(id, { userId: req.userId, isAdmin: req.user?.role === 'admin' })
+    if (bases.length > 0) recipe.bases = bases
     // The reader's heart (it was never sent, so the button looked dead: it
     // saved the favourite and the refetch said «not favourite» again).
     if (req.userId) recipe.is_favorite = (await favoriteIdsOf(req.userId, [id])).has(id)
     // "¿Se puede comprar?" — for whoever can fix the recipe.
-    if (req.userId && (row.authorId === req.userId || req.user?.role === 'admin')) {
+    if (isEditor) {
       recipe.shoppingIssues = recipeShoppingIssues(
         ings.map((i) => ({ id: i.id, name: i.ingredientName, quantity: i.quantity, unit: i.unit as Unit, note: i.note, optional: i.optional })),
       )
@@ -754,10 +777,14 @@ router.get('/recipes/:id', requireRecipeId(), optionalAuthMiddleware, async (req
   }
 })
 
+// Importing recipes (a photo, a link) isn't in the Gratis plan (PRO-385, D-158).
+const paidPlanForImports = requirePaidPlan({ message: PLAN_GRATIS_IMPORTS_MESSAGE })
+
 // POST /recipes/extract-from-image — extract from photo (auth required).
 router.post(
   '/recipes/extract-from-image',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   upload.single('image'),
   async (req: AuthRequest, res) => {
@@ -813,6 +840,7 @@ const extractFromUrlSchema = z.object({
 router.post(
   '/recipes/extract-from-url',
   authMiddleware,
+  paidPlanForImports,
   requireSpendCapacity(),
   async (req: AuthRequest, res) => {
     try {
@@ -974,14 +1002,28 @@ router.post(
 
 // PUT /recipes/:id — update (auth required, author only, lint-validated).
 /**
- * The edit form never sends `internalTags` (the public payload strips them),
- * so a save used to wipe them: `compartida`, `retirada`, `tiempos-pro284`
- * (PRO-284: without it the next boot would cut the prep a second time).
- * Kept unless the body sends its own.
+ * What a PUT that leaves a field out keeps from the saved recipe (PRO-1259).
+ * The edit form never sends `internalTags` (the public payload strips them:
+ * `compartida`, `retirada`, `tiempos-pro284`…) nor `substitutions`,
+ * `storage`, `activeTime`…, and a save used to set them to NULL. A field
+ * sent (even null or '') wins. Not here: `mealFit` / `seasonFit`, derived
+ * from `meals` / `seasons` when absent.
  */
-export function withKeptInternalTags<T extends { internalTags?: string[] | null }>(body: T, existing: string[] | null | undefined): T {
-  if (body.internalTags !== undefined) return body
-  return { ...body, internalTags: existing ?? [] }
+export const KEPT_ON_UPDATE = [
+  'notes', 'tips', 'substitutions', 'storage', 'moreTime', 'course',
+  'yieldText', 'prepTime', 'cookTime', 'activeTime', 'servingsConfidence', 'difficulty',
+  'seasons', 'equipment', 'tags', 'internalTags', 'frequency', 'sourceUrl', 'sourceType',
+] as const satisfies ReadonlyArray<keyof RecipeWriteInput>
+
+export function withKeptFields<T extends Partial<RecipeWriteInput>>(
+  body: T,
+  existing: Partial<Record<(typeof KEPT_ON_UPDATE)[number], unknown>>,
+): T {
+  const out: Record<string, unknown> = { ...body }
+  for (const key of KEPT_ON_UPDATE) {
+    if (out[key] === undefined && existing[key] !== undefined) out[key] = existing[key]
+  }
+  return out as T
 }
 
 router.put(
@@ -993,11 +1035,7 @@ router.put(
     try {
       const recipeId = String(req.params.id)
 
-      const [existing] = await db
-        .select({ authorId: recipes.authorId, internalTags: recipes.internalTags })
-        .from(recipes)
-        .where(eq(recipes.id, recipeId))
-        .limit(1)
+      const existing = await fetchRecipeById(recipeId)
 
       if (!existing) {
         res.status(404).json({ error: 'Recipe not found' })
@@ -1042,7 +1080,7 @@ router.put(
       const force =
         req.query.force === '1' ||
         (req.body && (req.body as { force?: unknown }).force === true)
-      const result = await persistRecipe(withKeptInternalTags(body, existing.internalTags) as RecipeWriteInput, {
+      const result = await persistRecipe(withKeptFields(body, existing) as RecipeWriteInput, {
         authorId: existing.authorId,
         recipeId,
         softLint: force,
@@ -1069,7 +1107,7 @@ router.put(
         fetchIngredientsForRecipes([recipeId]),
         fetchStepsForRecipes([recipeId]),
       ])
-      res.json(toDetailRecipe(newRow, ings, steps))
+      res.json(withEditorFields(toDetailRecipe(newRow, ings, steps), newRow))
     } catch (err) {
       console.error('Update recipe error:', err)
       res.status(500).json({ error: 'Internal server error' })
@@ -1093,14 +1131,20 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
       .from(recipes)
       .where(eq(recipes.id, sourceId))
       .limit(1)
-    if (!source || isHiddenDraft(source, req.user?.role === 'admin')) {
+    // Only what the caller can open (PRO-1273): another household's private
+    // recipe is a 404, like GET /recipes/:id, so the copy can't leak it.
+    if (
+      !source ||
+      isHiddenDraft(source, req.user?.role === 'admin') ||
+      !(await canViewRecipe(req.userId, source.authorId))
+    ) {
       res.status(404).json({ error: 'Recipe not found' })
       return
     }
 
     // Refuse silently if the user already owns this very row (we'd dup their
-    // own recipe). Copying someone else's user recipe is fine — it becomes
-    // theirs from then on.
+    // own recipe). Copying a recipe of someone in your household is fine — it
+    // becomes yours from then on.
     if (source.authorId === req.userId) {
       res.status(409).json({ error: 'Esta receta ya es tuya.' })
       return
@@ -1152,9 +1196,11 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
           tips: source.tips,
           substitutions: source.substitutions,
           storage: source.storage,
+          moreTime: source.moreTime ?? null,
           advancePrep: source.advancePrep ?? [],
           nutritionPerServing: source.nutritionPerServing,
           nutritionIncomplete: source.nutritionIncomplete ?? false,
+          dishTypes: source.dishTypes ?? null,
           tags: source.tags ?? [],
           internalTags: baseInternalTags,
           sourceUrl: source.sourceUrl,
@@ -1559,12 +1605,13 @@ router.post(
         await db
           .delete(userFavorites)
           .where(and(eq(userFavorites.userId, userId), eq(userFavorites.recipeId, recipeId)))
-        res.json({ favorited: false })
       } else {
         const householdId = await getPrimaryHouseholdId(userId)
         await db.insert(userFavorites).values({ userId, householdId, recipeId })
-        res.json({ favorited: true })
       }
+      // PRO-1024: `user_favorites` has no date; the event does (Mimo's toggle_favorite counts in the skill runner).
+      if (!isInternalCall(req)) trackEvent('favorite_toggled', { userId, channel: 'web', props: { on: !existing } })
+      res.json({ favorited: !existing })
     } catch (err) {
       console.error('Toggle favorite error:', err)
       res.status(500).json({ error: 'Internal server error' })

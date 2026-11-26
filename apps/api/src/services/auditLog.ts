@@ -30,6 +30,8 @@ export type AdminAction =
   | 'ingredient.estimate_nutrition'
   | 'recipe.update'
   | 'recipe.delete'
+  // PRO-1118: an ingredient's allergens changed → the recipes using it
+  | 'recipe.allergens_recompute'
   | 'user.suspend'
   | 'user.unsuspend'
   | 'user.reset_password.generate'
@@ -39,6 +41,7 @@ export type AdminAction =
   | 'invite_campaign.delete'
   | 'newsletter.send'
   // Admin «Newsletter» editor (PRO-1123)
+  | 'newsletter.recommendation'
   | 'newsletter.template_save'
   | 'newsletter.preview'
   | 'newsletter.proof'
@@ -51,8 +54,14 @@ export type AdminAction =
   | 'catalog_import.start'
   | 'catalog_collection.import'
   | 'catalog_recipe.source'
+  // PRO-1290: a catalogue recipe fixed by the office (ingredients, allergens, steps, times, tags)
+  | 'catalog_recipe.edit'
+  // PRO-1290: a household's own monthly Mimo cap
+  | 'household.mimo_cap'
   // «Pregunta única por WhatsApp» (PRO-1091)
   | 'whatsapp_question.send'
+  // «Pregunta por correo» (PRO-1197)
+  | 'email_question.send'
 
 export type AuditTargetType =
   | 'ingredient'
@@ -66,6 +75,8 @@ export type AuditTargetType =
   | 'catalog_import'
   | 'catalog_collection'
   | 'whatsapp_question'
+  | 'email_question'
+  | 'household'
 
 export interface AuditRecord {
   adminId: string

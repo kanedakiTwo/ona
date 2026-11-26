@@ -21,18 +21,12 @@ test('«6 dientes, laminados» for 4 reads «1½ dientes, laminados» for 1', as
   await page.getByRole('button', { name: /comida/i }).first().click()
   await page.getByRole('button', { name: /primavera/i }).first().click()
 
-  await page.getByPlaceholder(/ingrediente|cargando/i).first().fill('ajo')
-  const ajoOption = page.locator('ul[role="listbox"] li button', { hasText: /^ajo$/i }).first()
-  try {
-    await ajoOption.waitFor({ state: 'visible', timeout: 10_000 })
-  } catch {
-    test.skip(true, 'Catalog has no exact "ajo" match — seed missing or renamed.')
-    return
-  }
-  await ajoOption.click()
-  await page.locator('input[placeholder="Cant."]').first().fill('24')
-  await page.getByRole('textbox', { name: /nota de ajo/i }).fill('6 dientes, laminados')
-  await page.locator('textarea').first().fill('Laminar el ajo y dorarlo')
+  // Since PRO-1115 the note goes after the comma in the ingredient's line.
+  await page.locator('#recipe-ingredients').fill('24 g de ajo, 6 dientes, laminados')
+  const line = page.getByTestId('ingredient-line').first()
+  await expect(line).toHaveAttribute('data-status', 'match', { timeout: 10_000 })
+  await expect(line).toContainText('6 dientes, laminados')
+  await page.locator('#recipe-steps').fill('Laminar el ajo y dorarlo')
 
   await Promise.all([
     page.waitForURL(/\/recipes\/[0-9a-f-]{36}\/edit/, { timeout: 20_000 }),

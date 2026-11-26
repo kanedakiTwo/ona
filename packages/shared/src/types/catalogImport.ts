@@ -78,6 +78,16 @@ const stepSchema = z.preprocess(
 )
 
 /**
+ * PRO-373: a base the recipe uses (sofrito, verduras asadas…), by the name of
+ * a catalogue recipe or one of the same batch, and how many of its servings
+ * for the recipe's `servings`. A name that isn't found rejects the recipe.
+ */
+const baseSchema = z.object({
+  name: z.string().trim().min(1).max(150),
+  servings: z.number().positive().max(100),
+})
+
+/**
  * PRO-1097 (D-150, C): the labels `catalogRewriter` gives a recipe, written
  * by Cocina (Claude Code, on the subscription) in a batch with
  * `reescrita: true`, so the import saves it without calling the model.
@@ -114,12 +124,15 @@ export const cocinaRecipeSchema = catalogRewriteLabelsSchema.extend({
   freezable: z.boolean().nullish(),
   /** PRO-372: «Aguanta N días en nevera». Absent = the rewriter guesses it. */
   fridgeDays: z.number().int().min(1).max(30).nullish(),
+  /** D-1028: «Y si tienes más tiempo…», how the quick version gets better with more time. */
+  moreTime: z.string().trim().max(2000).nullish(),
   /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día»; one recipe per day. */
   featuredOn: z
     .string()
     .nullish()
     .refine((v) => v == null || isIsoDay(v), { message: 'la fecha de la receta del día (featuredOn) tiene que ser un día AAAA-MM-DD (por ejemplo, 2026-11-05)' }),
   source: sourceSchema.optional(),
+  bases: z.array(baseSchema).max(10).optional(),
 })
 
 export const cocinaBatchFileSchema = z.preprocess(
@@ -184,6 +197,7 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   freezable: { label: 'si se congela (freezable)' },
   fridgeDays: { label: 'los días en nevera (fridgeDays)', plural: true },
   featuredOn: { label: 'la fecha de la receta del día (featuredOn)' },
+  moreTime: { label: '«Y si tienes más tiempo…» (moreTime)' },
   source: { label: 'source' },
   origin: { label: 'el origen (source.origin)' },
   book: { label: 'el libro (source.book)' },
@@ -206,6 +220,7 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   allergenDoubt: { label: 'la duda de alérgenos (allergenDoubt)' },
   allergenNote: { label: 'la nota de alérgenos (allergenNote)' },
   tips: { label: 'el consejo (tips)' },
+  bases: { label: 'las bases (bases)', plural: true },
 }
 
 const TYPE_NAMES: Record<string, string> = {
@@ -248,6 +263,11 @@ function locate(path: ReadonlyArray<string | number>, json: unknown): { where: s
   } else if (rest[0] === 'steps' && typeof rest[1] === 'number') {
     where += `, paso ${rest[1] + 1}`
     rest = rest.slice(2)
+  } else if (rest[0] === 'bases' && typeof rest[1] === 'number') {
+    const b = (Array.isArray(recipe?.bases) ? recipe!.bases : [])[rest[1]] as Record<string, unknown> | undefined
+    const baseName = textOf(b?.name)
+    where += `, base ${rest[1] + 1}${baseName ? ` («${baseName}»)` : ''}`
+    rest = rest.slice(2)
   }
   return { where, rest }
 }
@@ -269,7 +289,7 @@ function phrase(issue: z.ZodIssue, rest: Array<string | number>, path: ReadonlyA
         if (parentKey === 'ingredients') return 'tiene que ser un objeto con name, qty y unit'
         return 'tiene que ser un objeto'
       }
-      if (issue.received === 'undefined' || issue.received === 'null') return `falta ${label}`
+      if (issue.received === 'undefined' || issue.received === 'null') return `${verb('falta', 'faltan')} ${label}`
       const expected = TYPE_NAMES[issue.expected] ?? issue.expected
       return elementOf ? { field: key!, text: `cada elemento tiene que ser ${expected}` } : `${label} ${verb('tiene', 'tienen')} que ser ${expected}`
     }
@@ -499,6 +519,7 @@ export const CATALOG_IMPORT_REJECT_LABELS: Record<string, string> = {
   no_es_receta: 'no parece una receta',
   copia_del_libro: 'copia frases de la fuente',
   ingredientes: 'ingredientes que no casan con el catálogo',
+  bases: 'usa una base que no está en el catálogo ni en la tanda',
   revisor: 'el revisor la rechaza',
   error: 'error al importarla',
 }

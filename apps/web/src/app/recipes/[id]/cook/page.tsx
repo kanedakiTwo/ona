@@ -6,12 +6,14 @@ import { useRecipe } from "@/hooks/useRecipes"
 import { useAuth } from "@/lib/auth"
 import { api } from "@/lib/api"
 import { householdToDinersOrNull } from "@/lib/recipeView"
+import { menuContextFromSearch } from "@/lib/cookHref"
 import { CookingShell } from "@/components/cooking/CookingShell"
 
 /**
  * Cooking-mode route entry point.
  *
- * URL: `/recipes/[id]/cook?servings=N`
+ * URL: `/recipes/[id]/cook?servings=N`, plus `&menu=&day=&meal=` when it
+ * cooks a menu meal (lib/cookHref.ts): «Terminar» then marks it eaten.
  *
  * The route is rendered as a fullscreen overlay by `<CookingShell>`
  * (`fixed inset-0 z-[100]`), which sits on top of the global bottom
@@ -36,6 +38,11 @@ export default function CookPage() {
     const n = parseInt(raw, 10)
     return Number.isFinite(n) && n > 0 ? n : null
   }, [])
+
+  const menuContext = useMemo(
+    () => (typeof window === "undefined" ? null : menuContextFromSearch(window.location.search)),
+    [],
+  )
 
   const [servings, setServings] = useState<number | null>(urlServings)
   const seededRef = useRef(urlServings != null)
@@ -113,6 +120,7 @@ export default function CookPage() {
       recipe={recipe}
       servings={servings}
       onServingsChange={setServings}
+      menuContext={menuContext}
     />
   )
 }

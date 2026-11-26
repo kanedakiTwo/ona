@@ -11,7 +11,6 @@ import {
   type CookNowChooseRequest,
   type CookNowProposalRequest,
   type DayMenu,
-  type LockedSlots,
   type Meal,
   type RecipeDish,
 } from '@ona/shared'
@@ -64,7 +63,6 @@ export async function loadCookNowToday(userId: string, now: Date = new Date()) {
   const weekStart = madridWeekStart(now)
   const menu = await menuOfWeek(userId, weekStart)
   const days = ((menu?.days as DayMenu[] | undefined) ?? []).slice()
-  const lockedMap = (menu?.locked as LockedSlots | null | undefined) ?? {}
   const meal = cookNowMeal(days[day] ?? {}, hour)
   const slot = meal ? days[day]?.[meal] : undefined
   const dishes = plannedRecipeDishes(slot)
@@ -88,9 +86,8 @@ export async function loadCookNowToday(userId: string, now: Date = new Date()) {
     menu,
     days,
     planned,
-    locked: meal ? !!lockedMap[String(day)]?.[meal] : false,
     slotServings: slot?.servings ?? null,
-    targets: meal ? displaceTargets(days, day, meal, lockedMap, (menu?.skippedDays as number[] | undefined) ?? []) : [],
+    targets: meal ? displaceTargets(days, day, meal, (menu?.skippedDays as number[] | undefined) ?? []) : [],
   }
 }
 
@@ -206,7 +203,7 @@ export async function loadPhraseFacts(userId: string, recipeId: string, now: Dat
 
 export type CookNowChooseResult =
   | { placed: true; menuId: string; weekStart: string; day: number; meal: string }
-  | { placed: false; reason: 'no_meal' | 'locked' | 'not_found' | 'banned' | 'bad_target' }
+  | { placed: false; reason: 'no_meal' | 'not_found' | 'banned' | 'bad_target' }
 
 /** POST /cook-now/choose: the recipe goes into the meal of now; the planned dishes move to `displacedTo` or go. */
 export async function chooseCookNowRecipe(
@@ -218,7 +215,7 @@ export async function chooseCookNowRecipe(
   const today = await loadCookNowToday(userId, now)
   const { meal, day, menu } = today
   if (!meal) return { placed: false, reason: 'no_meal' }
-  if (today.locked) return { placed: false, reason: 'locked' }
+  // A locked meal is replaced too (PRO-1175): the lock only keeps it when the week is redone.
   const [recipe] = await db
     .select({ id: recipes.id, name: recipes.name })
     .from(recipes)

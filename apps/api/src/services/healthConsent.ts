@@ -22,6 +22,7 @@ import {
 import { db } from '../db/connection.js'
 import { profileChanges, profileFacts, userMemories, users, userSettings } from '../db/schema.js'
 import { env } from '../config/env.js'
+import { ensureErasureLog, recordErasure } from './erasureLog.js'
 
 /**
  * WhatsApp is not for special-category data (Meta's terms 4.2, PRO-24): over
@@ -31,6 +32,30 @@ export const WHATSAPP_HEALTH_DATA_REPLY = `Por WhatsApp no guardo datos de salud
 
 /** What the assistant says when asked to store health data without consent. */
 export const HEALTH_CONSENT_SKILL_REPLY = `No lo he guardado: las alergias, intolerancias y datos físicos son datos de salud y solo los guardo si das tu consentimiento en tu perfil: ${env.WEB_PUBLIC_URL}/profile`
+
+/**
+ * PRO-1041: the web link for the consent, on «Tus alergias y tu dieta», with
+ * `restrictions` already marked (the box stays unticked). They go in the
+ * fragment (`#marcar=`): browsers never send it, so no server log keeps
+ * them. `next=/menu`: after saving, the page offers to remake this week.
+ */
+export function healthConsentLink(restrictions: readonly string[] = []): string {
+  const base = `${env.WEB_PUBLIC_URL}/profile/casa/alergias?next=%2Fmenu`
+  const marked = [...new Set(restrictions.map((r) => r.trim().toLowerCase()).filter((r) => r && r.length <= 40))].slice(0, 8)
+  return marked.length > 0 ? `${base}#marcar=${marked.map(encodeURIComponent).join(',')}` : base
+}
+
+/**
+ * PRO-1041: what Mimo says when someone tells it an allergy it can't save
+ * (no consent, or over WhatsApp): the link with it already marked, and that
+ * the menu it generates applies it meanwhile.
+ */
+export function saidAllergyReply(restrictions: readonly string[], channel?: string): string {
+  const why = channel === 'whatsapp'
+    ? 'Por WhatsApp no guardo datos de salud (alergias, intolerancias ni restricciones)'
+    : 'No lo he guardado: las alergias e intolerancias son datos de salud y solo los guardo con tu consentimiento'
+  return `${why}. Para guardarlo, abre este enlace: ya va marcado y solo tienes que dar tu permiso: ${healthConsentLink(restrictions)} Mientras no este guardado, el menu que te genere lo aplica igualmente (solo ese menu).`
+}
 
 /** …and a diet for religious reasons under a consent text that didn't name it (v1, Legal E-19). */
 export const RELIGION_CONSENT_SKILL_REPLY = `No lo he guardado: para guardar una dieta por motivos religiosos (como halal) necesito que aceptes el texto nuevo del consentimiento en tu perfil: ${env.WEB_PUBLIC_URL}/profile`
@@ -131,14 +156,18 @@ export async function grantHealthConsent(userId: string): Promise<void> {
 
 /**
  * Withdraw (or decline) the consent: record the date and delete every copy
- * of the health data. The consent date and version stay as the record.
+ * of the health data. The consent date and version stay as the record, and
+ * the erasure log keeps the id and the date (PRO-1122) for a restored backup.
  */
-export async function withdrawHealthConsent(userId: string): Promise<void> {
-  await db.transaction(async (tx) => {
+export async function withdrawHealthConsent(userId: string, opts: { db?: typeof db; at?: Date } = {}): Promise<void> {
+  const conn = opts.db ?? db
+  const at = opts.at ?? new Date()
+  await ensureErasureLog(conn)
+  await conn.transaction(async (tx) => {
     await tx
       .update(users)
       .set({
-        healthConsentWithdrawnAt: new Date(),
+        healthConsentWithdrawnAt: at,
         // A «No tengo ninguna» from before no longer stands for what was saved since.
         allergiesNoneAt: null,
         sex: null,
@@ -169,6 +198,7 @@ export async function withdrawHealthConsent(userId: string): Promise<void> {
         .set({ template: stripHealthFromTemplate(settings.template) as object })
         .where(eq(userSettings.userId, userId))
     }
+    await recordErasure(tx, 'health_consent', userId, at)
   })
 }
 

@@ -9,7 +9,7 @@
  *   - the pure `build*` functions below apply every rule, so they are
  *     unit-tested without a database (businessMetrics.test.ts).
  */
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { addDays, madridMidnightUtc, madridWeekStart } from './madridTime.js'
 import { loadErrorSummary } from './appErrors.js'
@@ -52,9 +52,11 @@ export interface MetricsInput {
   activity: HouseholdWeek[]
   /**
    * Households that have a menu whose `week_start` is that week, with when
-   * the household's first menu for that week was created (ISO, PRO-246).
+   * the household's first menu for that week was created (ISO, PRO-246) and,
+   * when the Thursday autopilot made it, when they first saw or changed it
+   * (PRO-1208; see `MenuWeekReady`).
    */
-  menus: Array<HouseholdWeek & { firstCreatedAt?: string | null }>
+  menus: Array<HouseholdWeek & MenuWeekReady>
   /** Days a household interacted with its shopping list. */
   shoppingDays: HouseholdDay[]
   /**
@@ -139,6 +141,23 @@ export function shoppingWeeksFor(day: string): Week[] {
   return weekday >= 5 ? [week, addDays(week, 7)] : [week]
 }
 
+/**
+ * When a household had a week's menu ready (PRO-246, PRO-1208). `firstCreatedAt`
+ * is its first menu for that week that the Thursday autopilot (PRO-381) did not
+ * make; a week the autopilot made counts from `autoplanSeenAt`, the first
+ * `autoplan_viewed` or `autoplan_changed` of that week in the household.
+ */
+export interface MenuWeekReady {
+  firstCreatedAt?: string | null
+  autoplanSeenAt?: string | null
+}
+
+/** Pure: the menu was ready before 00:00 of its Monday, Europe/Madrid (made by the household, or the autopilot's seen or changed). */
+export function readyByMonday(m: MenuWeekReady & { week: Week }): boolean {
+  const cutoff = madridMidnightUtc(m.week).getTime()
+  return [m.firstCreatedAt, m.autoplanSeenAt].some((at) => at != null && new Date(at).getTime() < cutoff)
+}
+
 const eur = (micros: number) => Math.round(micros / 100) / 10_000 // micro-€ → € (4 decimals)
 
 function groupSets(pairs: HouseholdWeek[]): Map<Week, Set<string>> {
@@ -191,12 +210,7 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
     const menuSet = menus.get(week) ?? new Set<string>()
     const shopSet = shopped.get(week) ?? new Set<string>()
     const resolved = [...menuSet].filter((h) => shopSet.has(h)).length
-    const mondayCutoff = madridMidnightUtc(week).getTime()
-    const readyByMonday = new Set(
-      input.menus
-        .filter((m) => m.week === week && m.firstCreatedAt && new Date(m.firstCreatedAt).getTime() < mondayCutoff)
-        .map((m) => m.householdId),
-    )
+    const readyHouseholds = new Set(input.menus.filter((m) => m.week === week && readyByMonday(m)).map((m) => m.householdId))
     const weekCosts = input.costs.filter((c) => c.week === week)
     const counted = weekCosts.filter(isCounted)
     const system = weekCosts.filter(isSystem)
@@ -209,7 +223,7 @@ export function buildWeekly(input: MetricsInput): WeeklyMetrics[] {
       activeHouseholds,
       resolvedWeekHouseholds: resolved,
       menuHouseholds: menuSet.size,
-      menuReadyByMondayHouseholds: readyByMonday.size,
+      menuReadyByMondayHouseholds: readyHouseholds.size,
       newHouseholds: signups.get(week)?.size ?? 0,
       costEur,
       internalCostEur: eur(internalMicros),
@@ -336,13 +350,13 @@ export const DEFINITIONS = {
   excluded:
     'Admin accounts (role=admin) and suspended users are excluded from every count and from costEur; their spend is reported as internalCostEur. There is no demo-account flag. `includeInternal=1` counts them.',
   activeHouseholds:
-    'Distinct households with at least one meaningful action in the week: generated a menu, logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to Mimo, changed something in their ficha (confirm, correct, forget), or triggered a paid AI feature (talking to Mimo typed or spoken, recipe import, image). Calls Mimoia makes by itself do not count, even when billed to the household (PRO-1069): the ficha refiner\'s nightly and weekly passes (`ficha`), the messages Mimo sends on its own (`whatsapp_guided`, `whatsapp_template`, `whatsapp_service`) and any other night job. Weeks before 2026-10-09 also count OpenAI Realtime voice sessions (retired, D-023). Opening a screen is not tracked.',
+    'Distinct households with at least one meaningful action in the week: generated a menu (not the week the Thursday autopilot made for them, PRO-1208), logged a cooked meal, used the shopping list (checked / in-stock / added an item), created a recipe, sent a WhatsApp message to Mimo, changed something in their ficha (confirm, correct, forget), or triggered a paid AI feature (talking to Mimo typed or spoken, recipe import, image). Calls Mimoia makes by itself do not count, even when billed to the household (PRO-1069): the ficha refiner\'s nightly and weekly passes (`ficha`), the messages Mimo sends on its own (`whatsapp_guided`, `whatsapp_template`, `whatsapp_service`) and any other night job. Weeks before 2026-10-09 also count OpenAI Realtime voice sessions (retired, D-023). Opening a screen is not tracked.',
   resolvedWeekHouseholds:
     'Households that (a) have a menu whose week_start is that week AND (b) used or sent the shopping list during that week or the Saturday/Sunday right before it: checked an item, toggled in-stock or added an item (web or assistant); sent the list («Mandar la lista» on the web, or Mimo handing out the whole list in the chat or on WhatsApp: shopping_list_shared, PRO-380); or sent an order to a shop or the súper (an undone send does not count). Opening the list does not count: the list row is rewritten on every read, including by the WhatsApp shopping reminder.',
   menuHouseholds:
-    'Households with a menu whose week_start is that week (generated, regenerated or emptied — any menu row for the week). Counts only.',
+    'Households with a menu whose week_start is that week (generated, regenerated or emptied — any menu row for the week, also the one the Thursday autopilot made). Counts only.',
   menuReadyByMondayHouseholds:
-    "Of menuHouseholds, those whose first menu for that week was created before 00:00 of that Monday, Europe/Madrid: they prepared the week before it started. A later regenerate doesn't move the first creation time.",
+    "Of menuHouseholds, those whose first menu for that week was created before 00:00 of that Monday, Europe/Madrid: they prepared the week before it started. A later regenerate doesn't move the first creation time. A menu the Thursday autopilot made (PRO-381) counts only if someone in the household saw it or changed it (autoplan_viewed or autoplan_changed) before that Monday, from that moment (PRO-1208).",
   newHouseholds: 'Households created (at registration) that week and still primary for a counted user.',
   costEur:
     'Estimated provider cost (EUR) from the cost ledger for counted users, split by provider and feature. Calls with no user behind them (userId null: catalogue import, ingredient matching, the daily conversation reviewer…) are not here but in systemCostEur (PRO-309, D-108). Prices in config/pricing.ts; USD converted with ADVISOR_EUR_PER_USD. WhatsApp service messages sent by Mimo are recorded one row each (feature whatsapp_service): 0 € for the first 1,000 of the month, €0.0166 from the 1,001st.',
@@ -383,8 +397,8 @@ export const FEATURE_DEFINITIONS: Record<string, string> = {
   whatsapp_service: 'One free-form WhatsApp message sent by Mimo (reply or proactive inside the 24 h window); 0 € for the first 1,000 of the month.',
   whatsapp_template: 'One template message sent by Mimo outside the 24 h window (Meta utility template).',
   whatsapp_review: 'One call of the daily conversation reviewer (system cost; an admin re-run is another row).',
-  voice_note_transcription: 'One WhatsApp voice note transcribed by one provider (Groq, AiKit or OpenAI; the provider says which). When one hears nothing and the next one tries, each is a row.',
-  mimo_voice_transcription: "One recording of the user's voice in the app transcribed by one provider (POST /stt; Groq, AiKit or OpenAI, as voice_note_transcription).",
+  voice_note_transcription: 'One WhatsApp voice note transcribed by one provider (Groq or OpenAI; the provider says which; AiKit until PRO-1122). When one hears nothing and the next one tries, each is a row.',
+  mimo_voice_transcription: "One recording of the user's voice in the app transcribed by one provider (POST /stt; Groq or OpenAI, as voice_note_transcription).",
   chat_tts: "One of Mimo's replies read aloud (POST /tts).",
   voice_realtime: 'Historical: one OpenAI Realtime voice session (retired 2026-10-09).',
   recipe_extract_photo: 'One recipe read from a photo (web or WhatsApp).',
@@ -428,14 +442,58 @@ export const NO_GESTURE_FEATURES = ['whatsapp_template', 'whatsapp_service', 'wh
 const countedUsers = (inc: boolean) => sql`(${inc}::boolean OR (u.role <> 'admin' AND u.suspended_at IS NULL))`
 const weekOf = (col: ReturnType<typeof sql>) => sql`to_char(date_trunc('week', ${col} AT TIME ZONE ${TZ}), 'YYYY-MM-DD')`
 
+/**
+ * SQL: the menu row `m` is the one the Thursday autopilot made (PRO-381): its
+ * claim row `autoplan:<scope>:<week>` in `notification_schedule` keeps its id.
+ */
+export const AUTOPLAN_MENU = sql`EXISTS (
+  SELECT 1 FROM notification_schedule ns
+   WHERE ns.dedup_key LIKE 'autoplan:%' AND ns.payload ->> 'menuId' = m.id::text
+)`
+
+/**
+ * One row per (household, week_start) with menus (PRO-246, PRO-1208): the first one
+ * the household made itself and when it first saw or changed the autopilot's.
+ * `filter` reads `m` (menus), `u` (its user) and `hh` (the household). Ids stay in the caller.
+ */
+export async function loadMenuWeeks(filter: SQL, db: Db = defaultDb): Promise<Array<HouseholdWeek & MenuWeekReady>> {
+  const res = await db.execute(sql`
+    WITH mm AS (
+      SELECT x.hh, m.week_start, m.created_at, ${AUTOPLAN_MENU} AS autoplan
+        FROM menus m JOIN users u ON u.id = m.user_id
+        CROSS JOIN LATERAL (SELECT COALESCE(m.household_id, u.primary_household_id) AS hh) x
+        WHERE x.hh IS NOT NULL AND ${filter}
+    ),
+    seen AS (
+      SELECT e.household_id AS hh, e.props ->> 'week' AS week, MIN(e.created_at) AS at
+        FROM usage_events e
+        WHERE e.name IN ('autoplan_viewed', 'autoplan_changed') AND e.household_id IN (SELECT hh FROM mm)
+        GROUP BY 1, 2
+    )
+    SELECT mm.hh::text AS household_id, to_char(mm.week_start, 'YYYY-MM-DD') AS week,
+           MIN(mm.created_at) FILTER (WHERE NOT mm.autoplan) AS first_created_at,
+           MIN(seen.at) FILTER (WHERE mm.autoplan) AS autoplan_seen_at
+      FROM mm LEFT JOIN seen ON seen.hh = mm.hh AND seen.week = to_char(mm.week_start, 'YYYY-MM-DD')
+      GROUP BY 1, 2
+  `)
+  const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null)
+  return (res.rows as any[]).map((r) => ({
+    householdId: r.household_id,
+    week: r.week,
+    firstCreatedAt: iso(r.first_created_at),
+    autoplanSeenAt: iso(r.autoplan_seen_at),
+  }))
+}
+
 /** Distinct (household, week) pairs with a meaningful action since `from` (see DEFINITIONS.activeHouseholds). */
 export async function loadActivity(from: Date, includeInternal: boolean, db: Db = defaultDb): Promise<HouseholdWeek[]> {
   const counted = countedUsers(includeInternal)
   const noGesture = sql.join(NO_GESTURE_FEATURES.map((f) => sql`${f}`), sql`, `)
   const res = await db.execute(sql`
     WITH ev AS (
+      -- The week the Thursday autopilot made is not a gesture (PRO-1208); seeing or changing it is.
       SELECT COALESCE(m.household_id, u.primary_household_id) AS hh, m.created_at AS at
-        FROM menus m JOIN users u ON u.id = m.user_id WHERE m.created_at >= ${from} AND ${counted}
+        FROM menus m JOIN users u ON u.id = m.user_id WHERE m.created_at >= ${from} AND ${counted} AND NOT ${AUTOPLAN_MENU}
       UNION ALL
       SELECT COALESCE(c.household_id, u.primary_household_id), c.created_at
         FROM cook_logs c JOIN users u ON u.id = c.user_id WHERE c.created_at >= ${from} AND ${counted}
@@ -484,14 +542,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
 
   const activityQ = loadActivity(from, inc, db)
 
-  const menusQ = db.execute(sql`
-    SELECT COALESCE(m.household_id, u.primary_household_id)::text AS household_id, to_char(m.week_start, 'YYYY-MM-DD') AS week,
-           MIN(m.created_at) AS first_created_at
-      FROM menus m JOIN users u ON u.id = m.user_id
-      WHERE m.week_start >= ${fromDay}::date AND ${counted}
-        AND COALESCE(m.household_id, u.primary_household_id) IS NOT NULL
-      GROUP BY 1, 2
-  `)
+  const menusQ = loadMenuWeeks(sql`m.week_start >= ${fromDay}::date AND ${counted}`, db)
 
   // From the Saturday before the window so a weekend shop counts for week 1.
   const shoppingFrom = madridMidnightUtc(addDays(fromDay, -2))
@@ -556,7 +607,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
            (SELECT MIN(created_at) FROM activity_events) AS activity_log
   `)
 
-  const [activity, menuRows, shopping, listSent, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor, circleCodes] = await Promise.all([
+  const [activity, menus, shopping, listSent, signups, costs, since, errors, waitlist, campaignRows, installs, notifications, kFactor, circleCodes] = await Promise.all([
     activityQ, menusQ, shoppingQ, listSentQ, signupsQ, costsQ, sinceQ, loadErrorSummary(7, db, now), loadWaitlistSummary(db, now),
     campaignsQ, loadInstallRows({ from, includeInternal: inc }, db),
     loadNoticeMetrics({ weeks, currentWeek: weeks[weeks.length - 1], from, includeInternal: inc }, db),
@@ -568,11 +619,7 @@ export async function loadBusinessMetrics(opts: LoadOptions, db: Db = defaultDb)
     weeks,
     currentWeek: weeks[weeks.length - 1],
     activity,
-    menus: (menuRows.rows as any[]).map((r) => ({
-      householdId: r.household_id,
-      week: r.week,
-      firstCreatedAt: r.first_created_at ? new Date(r.first_created_at).toISOString() : null,
-    })),
+    menus,
     shoppingDays: (shopping.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     listSentDays: (listSent.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),
     signups: (signups.rows as any[]).map((r) => ({ householdId: r.household_id, day: r.day })),

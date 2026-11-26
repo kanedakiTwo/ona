@@ -1,5 +1,5 @@
 /**
- * PRO-228 · /profile/pantry groups what's at home by place (Nevera,
+ * PRO-228 · the pantry (/cocinar#despensa since PRO-1107) groups what's at home by place (Nevera,
  * Congelador, Despensa). Adding with «Dónde está» puts it in its group, the
  * freezer says since when, and the row's «···» moves it.
  */
@@ -10,7 +10,9 @@ test('the pantry groups by place and moves things between them', async ({ page }
   test.setTimeout(90_000)
   await registerFreshUser(page)
   await completeOnboarding(page)
+  // The pantry moved to «Cocinar»: the old address takes you there.
   await page.goto('/profile/pantry')
+  await expect(page).toHaveURL(/\/cocinar#despensa$/, { timeout: 20_000 })
 
   const add = async (name: string, place: string) => {
     await page.getByLabel('Nombre', { exact: true }).fill(name)

@@ -1,24 +1,30 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../../config/env.js'
 import { clockNote, loadUserContext } from './contextLoader.js'
-import { buildSystemParts, type AssistantMode, type ChatSurface } from './systemPrompt.js'
+import { buildSystemParts, knowledgeBaseReady, type AssistantMode, type ChatSurface } from './systemPrompt.js'
 import { skills, getToolDefinitions } from './skills.js'
+import { MORE_TOOLS_NAME, moreToolsSummary, validGroups, type ToolGroupId } from './toolGroups.js'
+import type { PageKind } from './pageContext.js'
 import type { AssistantResponse, ChatMessage, SkillContext, SkillDefinition, SkillResult, ToolTrace } from './types.js'
 import { recordSkillActivity } from '../activityEvents.js'
 import { recordSkillUsage } from '../usageEvents.js'
-import { claimsAction, toolMadeChange } from './claims.js'
+import { admitsNotDone, claimsAction, toolMadeChange, unconfirmedCalls } from './claims.js'
 import { ensureHealthDisclaimer, talksHealthEffects } from './healthGuard.js'
+import { withPromisedAppLink } from './promisedLink.js'
 import { maybeAppendInviteOffer, recordInviteOfferAnswer } from '../inviteOffer.js'
 import { maybeAppendFamilyInviteOffer, recordFamilyInviteAnswer } from '../familyInviteMimo.js'
-import { maybeAppendLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
+import { maybeLeftoversQuestion, recordLeftoversAnswer } from '../leftoversQuestion.js'
+import { surveyedThisWeek } from '../surveyCap.js'
 import { recordQuestionAnswer } from '../whatsapp/oneOffQuestion.js'
+import { maybeSeanEllisQuestion, recordSeanEllisReply } from '../seanEllisSurvey.js'
 import {
   EMPTY_USAGE,
   addAnthropicUsage,
   type TokenUsage,
+  type TurnUsage,
 } from '../advisorBudget.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
-import { hasLikedRecipes } from '../tasteStore.js'
+import { dbTurnStore, remoteMessagesClient } from './mimoRemoto.js'
 import { noteApiCallOk } from '../apiSaldo.js'
 
 let client: Anthropic | null = null
@@ -57,6 +63,17 @@ export interface ChatOptions {
    * end of a reply (family, other household, leftovers) are WhatsApp-only.
    */
   surface?: ChatSurface
+  /** PRO-392: the page the web companion writes from. Since PRO-1291 every turn carries every tool, so it no longer picks any. */
+  page?: PageKind
+  /** PRO-1298: when the person sent the message (`ctx.requestedAt`). */
+  requestedAt?: Date
+  /** PRO-1298: the message is a tapped button (`ctx.button`). */
+  button?: SkillContext['button']
+  /**
+   * PRO-1295: tools this turn may not use (an opinion on a proposal is no
+   * cooked meal: no `log_cooked`). Absent → all of the selection.
+   */
+  withoutTools?: readonly string[]
 }
 
 /**
@@ -69,40 +86,31 @@ export async function chat(
   history: ChatMessage[],
   db: any,
   opts: ChatOptions = {},
-): Promise<AssistantResponse & { usage: TokenUsage }> {
-  const anthropic = getClient()
+): Promise<AssistantResponse & { usage: TurnUsage }> {
+  // PRO-1102: staging's «Mimo remoto» — the office answers each round, not Anthropic.
+  const anthropic: MessagesClient = env.MIMO_REMOTO ? remoteMessagesClient(dbTurnStore(db)) : getClient()
   const mode = opts.mode ?? 'text'
 
-  // 1. Load user context
-  const userContext = await loadUserContext(userId, db)
+  // 1. Load user context (and the kb/ files: the fixed block must be the same
+  // on the first turn after a restart as on every other one).
+  const [userContext] = await Promise.all([loadUserContext(userId, db), knowledgeBaseReady])
 
-  // 2. System prompt in two blocks: the instructions (identical for every
-  // user of a channel → cached) and this user's data (date, menu, memory →
-  // changes when the menu or memory does, so it goes after the instructions'
-  // breakpoint). Until 2026-10-12 it was one block with "son las HH:MM"
-  // inside, so the cache never survived from one message to the next; until
-  // 2026-10-16 the time was still in the context block, which re-wrote the
-  // context and the history on every message. The clock now rides on the
-  // newest message (buildTurnMessages).
-  // WhatsApp sign-up: ask for a few favourite dishes only when «Afina tu menú»
-  // got no «Me apetece» / «Me encanta» (2026-11-03). On a failed read, don't ask.
-  const askFavorites = opts.onboarding === true && !(await hasLikedRecipes(userId, db).catch(() => true))
-  const { instructions, context } = buildSystemParts(userContext, mode, { onboarding: opts.onboarding === true, askFavorites, surface: opts.surface })
-  const system = [
-    { type: 'text' as const, text: instructions, cache_control: { type: 'ephemeral' as const } },
-    { type: 'text' as const, text: context },
-  ]
-
-  // 3. History (cache breakpoint at its end) + the new message with the clock.
-  const messages = buildTurnMessages(history, message, opts.images ?? [], new Date())
-
-  // 4. Tools for this channel, the last one marked as a cache breakpoint.
-  const baseTools = getToolDefinitions({ mode, onboarding: opts.onboarding === true })
-  const tools = baseTools.map((t, i) =>
-    i === baseTools.length - 1
-      ? { ...t, cache_control: { type: 'ephemeral' as const } }
-      : t,
-  )
+  // 2–4. System, tools and messages (see buildChatRequest). PRO-1291: every
+  // tool and every rule on every turn, as before PRO-392: picking them per
+  // turn changed the start of the request and the cache never held.
+  const { system, tools: allTools, messages } = buildChatRequest({
+    userContext,
+    history,
+    message,
+    images: opts.images ?? [],
+    now: new Date(),
+    mode,
+    onboarding: opts.onboarding === true,
+    surface: opts.surface,
+  })
+  // PRO-1295: a turn that may not use some tools (an opinion: no `log_cooked`)
+  // sends the rest; only that turn misses the tools cache.
+  const tools = opts.withoutTools?.length ? withLastToolCached(allTools.filter((t) => !opts.withoutTools!.includes(t.name))) : allTools
 
   // PRO-164: a «no» right after Mimo's offer to invite another household turns it off for good.
   // PRO-313: none of the reply offers on Telegram (their texts and budgets are WhatsApp's).
@@ -116,6 +124,8 @@ export async function chat(
   if (mode === 'whatsapp' && offersOn) await recordLeftoversAnswer(userId, message, history)
   // PRO-1091: the next message after the «pregunta única» is its answer (tagged `pregunta_unica`).
   if (mode === 'whatsapp' && opts.surface !== 'telegram') await recordQuestionAnswer(userId, message, db)
+  // PRO-334: the message right after the Sean Ellis question is its answer (tagged `sean_ellis`).
+  if (mode === 'whatsapp' && offersOn) await recordSeanEllisReply(userId, message, history)
 
   // 5. Model ↔ tools loop (see runToolLoop).
   const result = await runToolLoop({
@@ -123,8 +133,13 @@ export async function chat(
     system,
     tools,
     messages,
-    skills,
-    ctx: { userId, db, channel: mode, surface: opts.surface },
+    // PRO-1295: a tool left out can't run either, even if the model names it.
+    skills: opts.withoutTools?.length ? skills.filter((s) => !opts.withoutTools!.includes(s.name)) : skills,
+    ctx: {
+      userId, db, channel: mode, surface: opts.surface,
+      ...(opts.requestedAt ? { requestedAt: opts.requestedAt } : {}),
+      ...(opts.button ? { button: opts.button } : {}),
+    },
     onToolStart: opts.onToolStart,
   })
 
@@ -136,6 +151,7 @@ export async function chat(
     const done = await appendReplyOffers(userId, result.message, { mode: familyOfferMode, invite: offerApplies })
     result.message = done.message
     if (done.offerAdded) result.offerAdded = true
+    if (done.survey) result.survey = done.survey
   }
   return result
 }
@@ -143,32 +159,42 @@ export async function chat(
 export interface ReplyOfferSteps {
   family: (userId: string, reply: string, channel: 'text' | 'whatsapp') => Promise<string>
   invite: (userId: string, reply: string) => Promise<string>
-  leftovers: typeof maybeAppendLeftoversQuestion
+  leftovers: typeof maybeLeftoversQuestion
+  seanEllis: typeof maybeSeanEllisQuestion
+  /** 19-nov: the household already got a survey in the last 7 days (absent → never). */
+  surveyedThisWeek?: (userId: string) => Promise<boolean>
 }
 
 const REPLY_OFFER_STEPS: ReplyOfferSteps = {
   family: (userId, reply, channel) => maybeAppendFamilyInviteOffer(userId, reply, channel),
   invite: (userId, reply) => maybeAppendInviteOffer(userId, reply),
-  leftovers: maybeAppendLeftoversQuestion,
+  leftovers: maybeLeftoversQuestion,
+  seanEllis: maybeSeanEllisQuestion,
+  surveyedThisWeek: (userId) => surveyedThisWeek(userId),
 }
 
 /**
- * At most ONE line at the end of a reply (never two offers together): the
- * family offer (PRO-262) first; the other-household offer (PRO-164) only
- * when that one didn't go; Mimo's leftovers question (PRO-285, WhatsApp only)
- * only when neither did. `offerAdded` then holds back the avisos re-offer
- * (PRO-248) for this turn.
+ * At most ONE offer per reply (never two together): the family offer
+ * (PRO-262) first; the other-household offer (PRO-164) only when that one
+ * didn't go; then, WhatsApp only, Mimo's leftovers question (PRO-285) or the
+ * Sean Ellis survey (PRO-334). The invites go at the end of the reply; a
+ * survey comes back apart (`survey`) and goes as a message of its own, at
+ * most one a week per household (19-nov). `offerAdded` then holds back the
+ * avisos re-offer (PRO-248) for this turn.
  */
 export async function appendReplyOffers(
   userId: string,
   reply: string,
   opts: { mode: 'text' | 'whatsapp'; invite: boolean },
   steps: ReplyOfferSteps = REPLY_OFFER_STEPS,
-): Promise<{ message: string; offerAdded: boolean }> {
+): Promise<{ message: string; offerAdded: boolean; survey: string | null }> {
   let message = await steps.family(userId, reply, opts.mode)
   if (opts.invite && message === reply) message = await steps.invite(userId, message)
-  if (message === reply) message = await steps.leftovers(userId, message, { mode: opts.mode, otherOffer: false })
-  return { message, offerAdded: message !== reply }
+  let survey: string | null = null
+  if (message === reply && opts.mode === 'whatsapp' && !(await steps.surveyedThisWeek?.(userId).catch(() => true))) {
+    survey = (await steps.leftovers(userId, { mode: opts.mode, otherOffer: false })) ?? (await steps.seanEllis(userId, { mode: opts.mode, otherOffer: false }))
+  }
+  return { message, offerAdded: message !== reply || survey !== null, survey }
 }
 
 /**
@@ -208,9 +234,84 @@ export const TRUNCATED_NOTE =
 export const UNBACKED_CLAIM_NOTE =
   '[Nota del sistema, no la menciones] En este turno no has hecho ningun cambio: no ha corrido ninguna herramienta que cambie algo. Si el ultimo mensaje del usuario te pide un cambio, hazlo ahora con la herramienta; si no puedes hacerlo, o ya estaba asi de antes y lo has comprobado, dilo con claridad sin afirmar que acabas de hacerlo. Si su ultimo mensaje es una pregunta o no pide ningun cambio, contesta solo a esa pregunta: sin decir que no has cambiado nada y sin repetir lo hecho en turnos anteriores. No pidas perdon por esta nota ni hables de herramientas.'
 
+/**
+ * PRO-349: the reply says it changed things, something did change, but a tool
+ * that changes things failed or changed nothing (and wasn't fixed later in
+ * the turn). Same extra round, naming what wasn't confirmed.
+ */
+export function partialClaimNote(unconfirmed: readonly string[]): string {
+  const what = unconfirmed.map((s) => `«${s.replace(/\s+/g, ' ').trim().slice(0, 200)}»`).join('; ')
+  return `[Nota del sistema, no la menciones] Parte de lo que dices que has hecho no esta hecho. Esto no se ha confirmado: ${what}. Hazlo ahora con la herramienta o dile al usuario con claridad que eso no esta hecho. Di "hecho" solo de lo que se ha confirmado. No pidas perdon por esta nota ni hables de herramientas.`
+}
+
 const REFUSAL_REPLY = 'Perdona, con eso no te puedo ayudar. ¿Te echo una mano con el menú, una receta o la compra?'
 
 type MessagesClient = { messages: { create: (args: any, options?: any) => Promise<any> } }
+
+/**
+ * PRO-393: the fixed block (tools + instructions, ~47 000 tokens) is cached
+ * for an hour. It has nothing of the household in it, so one entry serves
+ * every household of a channel. With the 5-minute cache, a reply more than
+ * 5 minutes after the previous one wrote the whole block again (5 $/MTok on
+ * Opus 5.5, ≈0,18 € a reply: most of the 0,20 € of E-45); a 1-hour write
+ * costs 2× input once, and every turn of the hour reads it at 0,2 $/MTok.
+ * 1-hour entries must come before 5-minute ones: tools, then system.
+ */
+export const FIXED_BLOCK_CACHE = { type: 'ephemeral' as const, ttl: '1h' as const }
+/** The household's context and history: 5 minutes (the default), it changes with the menu. */
+const TURN_CACHE = { type: 'ephemeral' as const }
+
+export interface FixedBlockOptions {
+  mode: AssistantMode
+  onboarding?: boolean
+  surface?: ChatSurface
+}
+
+/**
+ * PRO-1291: the voice onboarding only ever gets `update_memory` (its prompt
+ * allows nothing else, PRO-392); every other channel, all its tools.
+ */
+function fixedToolNames(mode: AssistantMode): ReadonlySet<string> | undefined {
+  return mode === 'onboarding' ? new Set(['update_memory']) : undefined
+}
+
+/**
+ * The part of the request that must be byte-identical between two turns of
+ * the same household (and of every household of a channel): the tools, the
+ * last one a breakpoint, and the instructions block. It depends only on the
+ * channel and the sign-up flags, never on the user, the date or the time
+ * (`mimoFixedBlock.test.ts`). Anything per household goes in `context`.
+ */
+export function buildFixedBlock(opts: FixedBlockOptions) {
+  const only = fixedToolNames(opts.mode)
+  const baseTools = getToolDefinitions({ mode: opts.mode, onboarding: opts.onboarding === true, only })
+  const tools = baseTools.map((t, i) => (i === baseTools.length - 1 ? { ...t, cache_control: FIXED_BLOCK_CACHE } : t))
+  const { instructions } = buildSystemParts('', opts.mode, { onboarding: opts.onboarding === true, surface: opts.surface, tools: only })
+  return { tools, instructions: { type: 'text' as const, text: instructions, cache_control: FIXED_BLOCK_CACHE } }
+}
+
+/**
+ * One turn's request, without calling the model. The system prompt goes in
+ * two blocks: the instructions (fixed block, cached for an hour) and this
+ * household's data (date, menu, memory: changes when the menu or memory
+ * does, so it goes after the instructions' breakpoint and is never cached on
+ * its own). Until 2026-10-12 it was one block with "son las HH:MM" inside;
+ * until 2026-10-16 the time was in the context block. The clock rides on the
+ * newest message (buildTurnMessages).
+ */
+export function buildChatRequest(input: FixedBlockOptions & {
+  userContext: string
+  history: readonly { role: 'user' | 'assistant'; content: string }[]
+  message: string
+  images: readonly { mediaType: string; data: string }[]
+  now: Date
+}) {
+  const { tools, instructions } = buildFixedBlock(input)
+  const { context } = buildSystemParts(input.userContext, input.mode, { onboarding: input.onboarding === true, surface: input.surface, tools: fixedToolNames(input.mode) })
+  const system = [instructions, { type: 'text' as const, text: context }]
+  const messages = buildTurnMessages(input.history, input.message, input.images, input.now)
+  return { system, tools, messages }
+}
 
 /**
  * Messages for one turn: the history, with a cache breakpoint on its last
@@ -218,8 +319,8 @@ type MessagesClient = { messages: { create: (args: any, options?: any) => Promis
  * photos, then the text. The next turn's history starts with exactly the same
  * messages, so it reads context + history from the cache written here (as
  * long as the 5-minute cache is alive and the menu/memory didn't change).
- * Breakpoints in a request: tools, instructions, history end and the newest
- * block (`withLastMessageCached`) — the API's maximum of 4.
+ * Breakpoints in a request: tools and instructions (1 hour), history end and
+ * the newest block (`withLastMessageCached`, 5 minutes) — the API's maximum of 4.
  */
 export function buildTurnMessages(
   history: readonly { role: 'user' | 'assistant'; content: string }[],
@@ -242,6 +343,14 @@ export function buildTurnMessages(
   return messages
 }
 
+/** Tool definitions with a cache breakpoint on the last one (and on no other). */
+export function withLastToolCached<T extends object>(tools: readonly T[]): T[] {
+  return tools.map((t, i) => {
+    const { cache_control: _drop, ...rest } = t as T & { cache_control?: unknown }
+    return (i === tools.length - 1 ? { ...rest, cache_control: { type: 'ephemeral' as const } } : rest) as T
+  })
+}
+
 /** Copy of `messages` with a cache breakpoint on the last block, so later rounds of the same turn reuse the prefix. */
 export function withLastMessageCached(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
   if (messages.length === 0) return messages
@@ -250,7 +359,7 @@ export function withLastMessageCached(messages: Anthropic.MessageParam[]): Anthr
   const blocks: any[] = typeof last.content === 'string' ? [{ type: 'text', text: last.content }] : [...(last.content as any[])]
   const i = blocks.length - 1
   if (i >= 0 && blocks[i] && blocks[i].type !== 'thinking' && blocks[i].type !== 'redacted_thinking') {
-    blocks[i] = { ...blocks[i], cache_control: { type: 'ephemeral' } }
+    blocks[i] = { ...blocks[i], cache_control: TURN_CACHE }
   }
   out.push({ role: last.role, content: blocks } as Anthropic.MessageParam)
   return out
@@ -277,16 +386,24 @@ export async function runToolLoop(params: {
   /** Model and effort for this turn (default `ASSISTANT_MODEL` / `ASSISTANT_EFFORT`); `scripts/compareMimoModels.ts` runs the same turn on several. */
   model?: string
   effort?: string
-}): Promise<AssistantResponse & { usage: TokenUsage }> {
+  /**
+   * PRO-392: tool definitions of the groups `more_tools` asks for. With it the
+   * engine answers `more_tools` itself and the next round carries those tools
+   * too; without it (scripts with every tool), the skill's own handler runs.
+   * `chat()` doesn't pass it since PRO-1291: it sends every tool.
+   */
+  moreTools?: (groups: ToolGroupId[]) => { name: string }[]
+}): Promise<AssistantResponse & { usage: TurnUsage }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS
   const model = params.model ?? ASSISTANT_MODEL
   const effort = params.effort ?? ASSISTANT_EFFORT
   const messages = [...params.messages]
   const executed: ExecutedTool[] = []
-  let usage: TokenUsage = EMPTY_USAGE
+  let usage: TurnUsage = EMPTY_USAGE
   let retriedTruncation = false
   let retriedClaim = false
   const flags: string[] = []
+  let tools = params.tools
 
   for (let round = 0; ; round += 1) {
     const response = await params.client.messages.create(
@@ -297,14 +414,17 @@ export async function runToolLoop(params: {
         fallbacks: 'default',
         system: params.system,
         messages: withLastMessageCached(messages),
-        tools: params.tools,
+        tools,
         ...(round >= maxRounds ? { tool_choice: { type: 'none' } } : {}),
       },
       { headers: { 'anthropic-beta': FALLBACK_BETA } },
     )
-    usage = addAnthropicUsage(usage, response.usage)
+    // PRO-393: model calls and tools run so far ride along to `cost_events`
+    // (every return below happens before this round's tools run).
+    usage = { ...addAnthropicUsage(usage, response.usage), rounds: round + 1, toolCalls: executed.length }
     // PRO-1101: Anthropic contesta, así que hay saldo: cierra la racha `saldo_api` si la había.
-    noteApiCallOk()
+    // PRO-1102: con «Mimo remoto» contesta la oficina, que no dice nada del saldo.
+    if (!env.MIMO_REMOTO) noteApiCallOk()
 
     if (response.stop_reason === 'refusal') {
       flags.push('refusal')
@@ -345,17 +465,21 @@ export async function runToolLoop(params: {
       // replies of all; since then it only flagged turns with no tool at all,
       // so «Ya está apuntado como cocinado» after `get_shopping_list` slipped
       // through. The note goes as an extra round, never shown to the user.
+      // PRO-349: also when something changed but another changing tool of
+      // the turn failed or changed nothing (a «Hecho» only half true).
       const changed = executed.some((e) => toolMadeChange(e.name, e.result.summary, e.isError))
-      if (!changed && claimsAction(text)) {
+      const unconfirmed = unconfirmedCalls(executed.map((e) => ({ name: e.name, summary: e.result.summary, error: e.isError })))
+      const halfTrue = changed && unconfirmed.length > 0 && !admitsNotDone(text)
+      if ((!changed || halfTrue) && claimsAction(text)) {
         if (!retriedClaim && round < maxRounds) {
           retriedClaim = true
           flags.push('claim_retry')
-          console.warn('[assistant] claimed a change without a changing tool; one more round')
+          console.warn(changed ? '[assistant] claimed a change a tool did not confirm; one more round' : '[assistant] claimed a change without a changing tool; one more round')
           messages.push({ role: 'assistant', content: content as any })
-          messages.push({ role: 'user', content: UNBACKED_CLAIM_NOTE })
+          messages.push({ role: 'user', content: changed ? partialClaimNote(unconfirmed.map((u) => String(u.summary ?? ''))) : UNBACKED_CLAIM_NOTE })
           continue
         }
-        flags.push('unverified_claim')
+        flags.push(changed ? 'partial_claim' : 'unverified_claim')
       }
       return buildResponse(text, executed, usage, flags)
     }
@@ -371,7 +495,15 @@ export async function runToolLoop(params: {
       const skill = params.skills.find((s) => s.name === toolUse.name)
       let result: SkillResult
       let isError = false
-      if (!skill) {
+      const started = Date.now()
+      if (toolUse.name === MORE_TOOLS_NAME && params.moreTools) {
+        const groups = validGroups((toolUse.input as { groups?: unknown })?.groups)
+        const have = new Set((tools as { name?: string }[]).map((t) => t.name))
+        const added = params.moreTools(groups).filter((t) => !have.has(t.name))
+        if (added.length > 0) tools = withLastToolCached([...(tools as object[]), ...added])
+        result = { data: null, summary: moreToolsSummary(groups), uiHint: 'text' }
+        isError = groups.length === 0
+      } else if (!skill) {
         result = { data: null, summary: `Herramienta desconocida: ${toolUse.name}`, uiHint: 'text' }
         isError = true
       } else {
@@ -385,7 +517,7 @@ export async function runToolLoop(params: {
           isError = true
         }
       }
-      executed.push({ name: toolUse.name, input: toolUse.input, result, isError })
+      executed.push({ name: toolUse.name, input: toolUse.input, result, isError, ms: Date.now() - started })
       results.push({
         type: 'tool_result',
         tool_use_id: toolUse.id,
@@ -404,6 +536,8 @@ interface ExecutedTool {
   input: unknown
   result: SkillResult
   isError: boolean
+  /** PRO-1298: how long the tool took. */
+  ms?: number
 }
 
 // claimsAction lives in claims.ts (no imports) so the conversation flags can use it without the engine.
@@ -416,6 +550,8 @@ export function traceOf(executed: ExecutedTool[]): ToolTrace[] {
     input: compactJson(e.input, 300),
     summary: String(e.result.summary ?? '').replace(/\s+/g, ' ').slice(0, 400),
     ...(e.isError ? { error: true } : {}),
+    ...((e.result.data as { replaced?: unknown } | null | undefined)?.replaced === false ? { unchanged: true } : {}),
+    ...(typeof e.ms === 'number' ? { ms: e.ms } : {}),
   }))
 }
 
@@ -427,6 +563,16 @@ function compactJson(value: unknown, max: number): string {
     s = String(value)
   }
   return s.length > max ? `${s.slice(0, max - 1)}…` : s
+}
+
+/** The recipe the turn's tools last answered about, if any (for «el enlace de la receta»). */
+function lastRecipeId(executed: ExecutedTool[]): string | null {
+  for (const e of [...executed].reverse()) {
+    const d = e.result.data as Record<string, unknown> | null
+    if (d && typeof d === 'object' && typeof d.recipeId === 'string') return d.recipeId
+    if (d && typeof d === 'object' && e.result.uiHint === 'recipe' && typeof d.id === 'string') return d.id
+  }
+  return null
 }
 
 /**
@@ -448,6 +594,10 @@ function buildResponse(
   // one that talks about body effects anyway is flagged for the daily review.
   text = ensureHealthDisclaimer(text)
   if (talksHealthEffects(text) && !flags.includes('health_talk')) flags.push('health_talk')
+  // PRO-1301: a link to the app the reply announces («te paso el enlace del menú») is written by code.
+  const linked = withPromisedAppLink(text, env.WEB_PUBLIC_URL, lastRecipeId(executed))
+  if (linked !== text) flags.push('app_link_added')
+  text = linked
   const trace = { toolsUsed: executed.map((e) => e.name), corrections: flags, toolTrace: traceOf(executed) }
   if (executed.length === 0) {
     return { message: text || 'No he podido generar una respuesta.', actionTaken: false, usage, ...trace }

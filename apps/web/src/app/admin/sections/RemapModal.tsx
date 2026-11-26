@@ -1,14 +1,16 @@
 "use client"
 
 /**
- * Remap modal — reuses the auto-create modal's USDA picker UX, but on confirm
- * hits PATCH /ingredients/:id/remap to refresh the ingredient's fdcId and
- * per-100 g nutrition (rather than creating a new row).
+ * Remap modal — PATCH /ingredients/:id/remap refreshes the ingredient's
+ * per-100 g nutrition from a USDA or a BEDCA entry, and the API recomputes
+ * every recipe that uses it (PRO-1125).
  *
- * Adds:
- *   - Manual search box (curator can refine the query the API sends to USDA)
+ *   - The best entry comes preselected: «Vale» applies it, «Buscar otra»
+ *     opens the list and the manual search.
+ *   - The manual search takes the automatic path: translated for USDA and in
+ *     Spanish for BEDCA. Only ingredients: no FNDDS, no restaurant or
+ *     prepared dishes (the API filters them).
  *   - Spanish translations on each USDA candidate (English shown as fine-print)
- *   - BEDCA fallback when USDA returns nothing
  *   - "Estimar con Mimoia" — last-resort Claude-powered per-100g estimate
  *     written directly to the ingredient row (POST /ingredients/:id/estimate-nutrition)
  */
@@ -18,12 +20,17 @@ import { Search, Sparkles, X } from "lucide-react"
 import {
   useEstimateNutrition,
   useSuggestIngredient,
+  type AutoCreateCandidate,
 } from "@/hooks/useIngredients"
 import { useRemapIngredient } from "@/hooks/useAdmin"
 import { CandidateCard } from "@/components/recipes/IngredientCandidateCard"
 import { useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
 import { DISPLAY_UI } from "@/components/recipes/RecipeCard"
+
+/** The entry «Vale» applies: the first one with any value (BEDCA comes first). */
+export function bestCandidate(candidates: readonly AutoCreateCandidate[]): AutoCreateCandidate | null {
+  return candidates.find((c) => Object.values(c.per100g).some((v) => v > 0)) ?? candidates[0] ?? null
+}
 
 function useDebouncedString(value: string, ms: number): string {
   const [v, setV] = useState(value)
@@ -54,14 +61,11 @@ export function RemapModal({
   const [pickedBedca, setPickedBedca] = useState<string | null>(null)
   const [estimated, setEstimated] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // «Buscar otra»: the list + manual search instead of the one proposal.
+  const [browsing, setBrowsing] = useState(false)
 
   const candidates = suggest.data?.candidates ?? []
-  const defaultPick = useMemo(() => {
-    const top = candidates.find(
-      (c) => c.dataType === "Foundation" || c.dataType === "SR Legacy",
-    )
-    return top ?? candidates[0] ?? null
-  }, [candidates])
+  const defaultPick = useMemo(() => bestCandidate(candidates), [candidates])
 
   useEffect(() => {
     if (
@@ -109,58 +113,35 @@ export function RemapModal({
     }
   }
 
-  async function handleConfirm() {
+  function handleConfirm() {
     setError(null)
     if (estimated) {
-      // The estimate route already wrote to the DB. Just close + refresh.
+      // The estimate route already wrote to the DB (and recomputed the
+      // recipes). Just close + refresh.
       queryClient.invalidateQueries({ queryKey: ["curator"] })
       queryClient.invalidateQueries({ queryKey: ["ingredients"] })
       onClose()
       return
     }
-    if (pickedFdc != null) {
-      remap.mutate(
-        { id, fdcId: pickedFdc },
-        {
-          onSuccess: () => onClose(),
-          onError: (err) => setError(err.message ?? "Error al re-mapear."),
-        },
-      )
-      return
-    }
-    if (pickedBedca != null) {
-      // BEDCA persistence path: the existing /remap endpoint only takes an
-      // fdcId, so we fall back to a direct PATCH that writes the per-100g
-      // we already fetched on the client. Cleaner long-term would be a
-      // dedicated /:id/remap-bedca endpoint, but PATCH covers it for now.
-      const c = candidates.find((x) => x.bedcaId === pickedBedca)
-      if (!c) return
-      try {
-        await api.patch(`/ingredients/${id}`, {
-          calories: c.per100g.kcal,
-          protein: c.per100g.proteinG,
-          carbs: c.per100g.carbsG,
-          fat: c.per100g.fatG,
-          fiber: c.per100g.fiberG,
-          salt: c.per100g.saltG,
-        })
-        queryClient.invalidateQueries({ queryKey: ["curator"] })
-        queryClient.invalidateQueries({ queryKey: ["ingredients"] })
-        onClose()
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "No se pudo aplicar la fuente BEDCA.",
-        )
-      }
-      return
-    }
+    // USDA or BEDCA, same endpoint (the BEDCA path used to PATCH fields the
+    // route doesn't take, and nothing changed).
+    const source =
+      pickedFdc != null ? { fdcId: pickedFdc } : pickedBedca != null ? { bedcaId: pickedBedca } : null
+    if (!source) return
+    remap.mutate(
+      { id, ...source },
+      {
+        onSuccess: () => onClose(),
+        onError: (err) => setError(err.message ?? "Error al re-mapear."),
+      },
+    )
   }
 
   const hasCandidates = candidates.length > 0
   const canConfirm =
     !!estimated || pickedFdc != null || pickedBedca != null
+  // The single proposal until «Buscar otra».
+  const proposing = !browsing && !estimated && !suggest.isLoading && defaultPick != null
 
   return (
     <div
@@ -191,30 +172,44 @@ export function RemapModal({
           </button>
         </div>
 
-        <div className="mt-4">
-          <label
-            htmlFor="remap-search"
-            className="text-[10px] uppercase tracking-[0.12em] text-ink-muted"
-          >
-            Búsqueda manual
-          </label>
-          <div className="mt-1 flex items-center gap-2 rounded-lg border border-border-soft bg-cream-deep px-3 py-2 focus-within:border-ink focus-within:ring-1 focus-within:ring-ink">
-            <Search size={14} className="shrink-0 text-ink-muted" />
-            <input
-              id="remap-search"
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Refina la búsqueda en USDA (en inglés)…"
-              className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-muted focus:outline-none"
-            />
+        {!proposing && (
+          <div className="mt-4">
+            <label
+              htmlFor="remap-search"
+              className="text-[10px] uppercase tracking-[0.12em] text-ink-muted"
+            >
+              Búsqueda manual
+            </label>
+            <div className="mt-1 flex items-center gap-2 rounded-lg border border-border-soft bg-cream-deep px-3 py-2 focus-within:border-ink focus-within:ring-1 focus-within:ring-ink">
+              <Search size={14} className="shrink-0 text-ink-muted" />
+              <input
+                id="remap-search"
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Busca otro nombre (en español o en inglés)…"
+                className="w-full bg-transparent text-[14px] text-ink placeholder:text-ink-muted focus:outline-none"
+              />
+            </div>
+            {suggest.data?.queryUsed && (
+              <p className="mt-1 text-[11px] italic text-ink-muted">
+                En USDA: <span className="not-italic">&ldquo;{suggest.data.queryUsed}&rdquo;</span>
+              </p>
+            )}
           </div>
-          {suggest.data?.queryUsed && (
-            <p className="mt-1 text-[11px] italic text-ink-muted">
-              Buscando: <span className="not-italic">&ldquo;{suggest.data.queryUsed}&rdquo;</span>
+        )}
+
+        {proposing && defaultPick && (
+          <div className="mt-5">
+            <p className="text-[13px] text-ink-mid">La ficha que mejor encaja:</p>
+            <div className="mt-2">
+              <CandidateCard candidate={defaultPick} picked onClick={() => selectCandidate(defaultPick)} />
+            </div>
+            <p className="mt-2 text-[12px] text-ink-muted">
+              Al aplicarla se recalculan las recetas que usan este ingrediente.
             </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {suggest.isLoading && (
           <p className="mt-4 text-[13px] italic text-ink-muted">
@@ -227,7 +222,7 @@ export function RemapModal({
           </p>
         )}
 
-        {!suggest.isLoading && hasCandidates && (
+        {!proposing && !suggest.isLoading && hasCandidates && (
           <ul className="mt-5 space-y-2">
             {candidates.map((c) => {
               const key = c.fdcId != null ? `fdc-${c.fdcId}` : `bedca-${c.bedcaId}`
@@ -277,17 +272,31 @@ export function RemapModal({
               ? "Aplicando..."
               : estimated
               ? "Cerrar (estimación guardada)"
+              : proposing
+              ? "Vale"
               : "Aplicar mapeo"}
           </button>
-          <button
-            type="button"
-            disabled={estimate.isPending || remap.isPending}
-            onClick={runEstimate}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border-soft bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-ink-mid transition-all hover:border-ink hover:text-ink active:scale-95 disabled:opacity-40"
-          >
-            <Sparkles size={12} />
-            {estimate.isPending ? "Estimando..." : "Estimar con Mimoia"}
-          </button>
+          {proposing && (
+            <button
+              type="button"
+              disabled={remap.isPending}
+              onClick={() => setBrowsing(true)}
+              className="rounded-full border border-border-soft bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-ink-mid transition-all hover:border-ink hover:text-ink active:scale-95 disabled:opacity-40"
+            >
+              Buscar otra
+            </button>
+          )}
+          {!proposing && (
+            <button
+              type="button"
+              disabled={estimate.isPending || remap.isPending}
+              onClick={runEstimate}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border-soft bg-transparent px-5 py-2 text-[12px] uppercase tracking-[0.12em] text-ink-mid transition-all hover:border-ink hover:text-ink active:scale-95 disabled:opacity-40"
+            >
+              <Sparkles size={12} />
+              {estimate.isPending ? "Estimando..." : "Estimar con Mimoia"}
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

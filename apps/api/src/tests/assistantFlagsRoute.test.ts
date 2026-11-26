@@ -23,6 +23,13 @@ vi.mock('../services/assistantFlags.js', () => ({
     items: [
       { date: '2026-10-20', channel: 'whatsapp', category: 'health_talk', source: 'both', reviewerCategory: 'proactividad', severity: 'alta', reply: 'Para Lucía, sin gluten…', note: 'Su hijo es celíaco' },
     ],
+    hallazgos: [
+      {
+        date: '2026-10-20', canal: 'whatsapp', clave: 'aviso.salud', gravedad: 'alta', categoria: 'proactividad', tipo: 'arreglo', dias: 2, regresion: false,
+        patron: 'El aviso para Lucía (600 111 222) dice «sin gluten, que es celíaco»', donde: 'guia_aviso:daily_brief',
+        arreglo: 'La guía del resumen prohíbe hablar de salud', prueba: 'Un test de la guía con una alergia en la ficha',
+      },
+    ],
   }),
 }))
 
@@ -54,7 +61,11 @@ describe('GET /admin/assistant-reviews/flags', () => {
     expect(body.items).toEqual([
       { date: '2026-10-20', channel: 'whatsapp', category: 'health_talk', source: 'both', reviewerCategory: 'proactividad', severity: 'alta' },
     ])
-    expect(JSON.stringify(body)).not.toMatch(/Lucía|celíaco|gluten/)
+    expect(JSON.stringify(body)).not.toMatch(/Lucía|celíaco|gluten|600 111 222/)
+    // D-189: the reviewer's patterns do reach the agents, without the user text.
+    expect(body.hallazgos).toEqual([
+      expect.objectContaining({ clave: 'aviso.salud', donde: 'guia_aviso:daily_brief', tipo: 'arreglo', gravedad: 'alta', dias: 2, arreglo: 'La guía del resumen prohíbe hablar de salud' }),
+    ])
   })
 
   it('the admin view (no token header) still gets the reply and the note', async () => {

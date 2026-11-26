@@ -11,6 +11,12 @@
  *
  * Skin: "D · Luz y foto" (PRO-40) — paper group cards, rows split by
  * hairlines, two columns at lg+.
+ *
+ * PRO-201: the allergies, the diet and who eats at home come from the profile
+ * («Del perfil», `MemoryProfileSection`), not from the memory keys: the
+ * memory's `household.*` rows are gone, and its own `restrictions` (what Mimo
+ * noted) show only when there are some — never an empty «Añadir» next to a
+ * diet the profile has.
  */
 import { useState } from "react"
 import { Pencil, Plus, Trash2 } from "lucide-react"
@@ -23,12 +29,18 @@ import { SubLoadError, useQueryLoad } from "@/components/profile/SubLoadError"
 import type { MemoryKey, MemoryFact } from "@ona/shared"
 import { TasteMemorySection } from "@/components/taste/TasteMemorySection"
 import { FreezeHabitQuestion } from "@/components/profile/FreezeHabitQuestion"
+import { MemoryProfileSection } from "@/components/profile/MemoryProfileSection"
 import { formatDayTimeBudget, isSpanishRegion, SPANISH_REGIONS, toDayTimeBudget } from "@ona/shared"
 
 interface Group {
   title: string
+  /** Anchor the /profile rows jump to (PRO-1202: «Cómo cocináis», «Lo que os gusta»). */
+  id?: string
   keys: MemoryKey[]
 }
+
+/** Shown only with a value: their «Añadir» lives in the profile (PRO-201). */
+const ONLY_WITH_VALUE: ReadonlySet<MemoryKey> = new Set<MemoryKey>(["restrictions"])
 
 const GROUPS: Group[] = [
   {
@@ -43,18 +55,21 @@ const GROUPS: Group[] = [
   },
   {
     title: "Hogar",
-    keys: ["household.adults", "household.kids_2_to_10", "region"],
+    keys: ["region"],
   },
   {
-    title: "Restricciones y gustos",
+    title: "Gustos",
+    id: "gustos",
     keys: ["restrictions", "dislikes"],
   },
   {
     title: "Cocina",
+    id: "cocina",
     keys: ["equipment", "cooking_skill", "weekly_budget_eur"],
   },
   {
     title: "Rutina",
+    id: "rutina",
     keys: ["time_available", "meal_times", "cuisine_bias"],
   },
   {
@@ -77,10 +92,8 @@ const LABELS: Partial<Record<MemoryKey, string>> = {
   "physical.height_cm": "Altura (cm)",
   "physical.weight_kg": "Peso (kg)",
   "physical.activity_level": "Actividad",
-  "household.adults": "Adultos en casa",
-  "household.kids_2_to_10": "Niños 2-10 años",
-  restrictions: "Restricciones",
-  dislikes: "Cosas que no le gustan",
+  restrictions: "Restricciones que le has dicho a Mimo",
+  dislikes: "Cosas que no te gustan",
   equipment: "Equipo de cocina",
   cooking_skill: "Nivel de cocinero",
   weekly_budget_eur: "Presupuesto semanal (€)",
@@ -171,8 +184,10 @@ export default function MemoryPage() {
           Lo que <Accent>recuerdo</Accent> de ti
         </>
       }
-      intro="Cada dato que el asistente conoce sobre ti vive aquí. Los que tú confirmaste llevan la etiqueta «Tú»; los que el asistente dedujo en una conversación, «Asistente»."
+      intro="Cada dato que el asistente conoce sobre ti vive aquí. Los que tú confirmaste llevan la etiqueta «Tú»; los que el asistente dedujo en una conversación, «Asistente»; los de tu perfil, «Perfil»."
     >
+      <MemoryProfileSection />
+
       {load.failed ? (
         <SubLoadError onRetry={load.retry} retrying={load.retrying} />
       ) : isLoading ? (
@@ -198,13 +213,15 @@ export default function MemoryPage() {
               // or an "Añadir" row if missing, so a first entry for keys like
               // `prep_habits` can be added from the UI.
               // An empty list counts as missing: «Añadir» instead of a bare «—».
-              const entries = group.keys.map((k) => {
-                const fact = memory?.[k] ?? null
-                const empty = Array.isArray(fact?.value) && (fact.value as unknown[]).length === 0
-                return [k, empty ? null : fact] as const
-              })
+              const entries = group.keys
+                .map((k) => {
+                  const fact = memory?.[k] ?? null
+                  const empty = Array.isArray(fact?.value) && (fact.value as unknown[]).length === 0
+                  return [k, empty ? null : fact] as const
+                })
+                .filter(([k, fact]) => fact != null || !ONLY_WITH_VALUE.has(k))
               return (
-                <section key={group.title}>
+                <section key={group.title} id={group.id} className="scroll-mt-4">
                   <h2 className={SUB_EYEBROW}>{group.title}</h2>
                   <ul className={`${SUB_LIST} mt-3`}>
                     {entries.map(([key, fact]) => {

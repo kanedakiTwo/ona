@@ -1,24 +1,25 @@
 /**
- * The 14-day trial and the paused account (PRO-135, specs/billing.md).
+ * The 14-day trial and the Gratis plan (PRO-135, PRO-385, specs/billing.md).
  *
  * From launch day (`LAUNCH_DATE`, 2026-12-15) a household has 14 days (28
  * with a creator's link, PRO-353: `services/creatorTrial.ts`) with
  * everything from when it was created (beta households: from launch day).
- * After that, without a paid plan, the account is **paused**: it still sees
- * its menu, recipes and list, but can't generate new menus or use Mimo, and
- * it gets no message from Mimo other than the notice to choose a plan.
- * Nothing is deleted. Before launch day nobody is paused, and this module
+ * After that, without a paid plan, it is on **Gratis** (D-158; it was the
+ * paused account): it generates and changes its week and its list on the
+ * web, but has no Mimo, no autopilot, no alerts and no shop orders. Mimo on
+ * WhatsApp answers it once a day with the notice to choose a plan. Nothing
+ * is deleted. Before launch day nobody is on Gratis, and this module
  * doesn't even touch the database.
  *
  * The rule is the pure `accountAccess` in `@ona/shared`; here it is fed from
  * the DB (the user's primary household and its latest subscription).
  */
 import { desc, eq } from 'drizzle-orm'
-import type { NextFunction, Request, Response } from 'express'
+import type { NextFunction, Response } from 'express'
 import {
-  ACCOUNT_PAUSED_MESSAGE,
-  PAID_ACCESS_STATUSES,
+  PLAN_GRATIS_MESSAGE,
   accountAccess,
+  hasPaidAccess,
   type AccountAccess,
   trialDaysFor,
   type SubscriptionStatus,
@@ -32,6 +33,8 @@ import { creatorRefsSql } from './creatorTrial.js'
 export interface AccessFacts {
   householdCreatedAt: Date | null
   latestStatus: SubscriptionStatus | null
+  /** PRO-386: since when that subscription is `past_due` (7 days → no paid access). */
+  pastDueSince?: Date | null
   /** `TRIAL_DAYS`, or `CREATOR_TRIAL_DAYS` when its creator came with a creator's link (PRO-353). */
   trialDays?: number
 }
@@ -51,16 +54,18 @@ export async function loadAccessFacts(userId: string, db: typeof defaultDb = def
     .limit(1)
   if (!u) return null
   let latestStatus: SubscriptionStatus | null = null
+  let pastDueSince: Date | null = null
   if (u.householdId) {
     const [s] = await db
-      .select({ status: subscriptions.status })
+      .select({ status: subscriptions.status, pastDueSince: subscriptions.pastDueSince })
       .from(subscriptions)
       .where(eq(subscriptions.householdId, u.householdId))
       .orderBy(desc(subscriptions.updatedAt))
       .limit(1)
     latestStatus = (s?.status as SubscriptionStatus | undefined) ?? null
+    pastDueSince = s?.pastDueSince ?? null
   }
-  return { householdCreatedAt: u.householdCreatedAt ?? u.userCreatedAt ?? null, latestStatus, trialDays: trialDaysFor(u.creatorRefs) }
+  return { householdCreatedAt: u.householdCreatedAt ?? u.userCreatedAt ?? null, latestStatus, pastDueSince, trialDays: trialDaysFor(u.creatorRefs) }
 }
 
 export async function accessForUser(
@@ -73,42 +78,47 @@ export async function accessForUser(
   const facts = await load(userId)
   return accountAccess({
     householdCreatedAt: facts?.householdCreatedAt ?? null,
-    paid: !!facts?.latestStatus && PAID_ACCESS_STATUSES.includes(facts.latestStatus),
+    // PRO-386: `past_due` for more than 7 days no longer counts as paid.
+    paid: hasPaidAccess(facts?.latestStatus, facts?.pastDueSince, now),
     now,
     trialDays: facts?.trialDays,
   })
 }
 
-/** True when the account is paused (never before launch day). A failed read never pauses anyone. */
-export async function isAccountPaused(
+/**
+ * True when the household is on Gratis (never before launch day). A failed
+ * read never takes anything away from anyone.
+ */
+export async function isOnFreePlan(
   userId: string,
   now: Date = new Date(),
   load: (userId: string) => Promise<AccessFacts | null> = loadAccessFacts,
 ): Promise<boolean> {
   if (isBeta(now)) return false
   try {
-    return (await accessForUser(userId, now, load)).state === 'paused'
+    return (await accessForUser(userId, now, load)).state === 'gratis'
   } catch (err) {
-    console.error('[access] check failed (not pausing):', err)
+    console.error('[access] check failed (not limiting):', err)
     return false
   }
 }
 
 /**
- * Put after authMiddleware on what a paused account can't do: generate a new
- * menu, talk to Mimo. 402 `ACCOUNT_PAUSED`. Admins are exempt. `skip` lets a
- * route keep a harmless variant open (an empty week).
+ * Put after authMiddleware on what Gratis doesn't include (PRO-385, D-158):
+ * Mimo (chat, advisor, voice) and shop orders. 402 `PLAN_GRATIS`. Admins are
+ * exempt. Generating and changing the week is never behind it.
  */
-export function requireActiveAccount(
-  opts: { paused?: (userId: string, now: Date) => Promise<boolean>; now?: () => Date; skip?: (req: Request) => boolean } = {},
+export function requirePaidPlan(
+  opts: { gratis?: (userId: string, now: Date) => Promise<boolean>; now?: () => Date; message?: string } = {},
 ) {
-  const paused = opts.paused ?? ((id, now) => isAccountPaused(id, now))
+  const gratis = opts.gratis ?? ((id, now) => isOnFreePlan(id, now))
   const now = opts.now ?? (() => new Date())
-  return async function activeAccountGuard(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  const message = opts.message ?? PLAN_GRATIS_MESSAGE
+  return async function paidPlanGuard(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     const userId = req.userId
-    if (!userId || req.user?.role === 'admin' || opts.skip?.(req)) return next()
-    if (await paused(userId, now())) {
-      res.status(402).json({ error: ACCOUNT_PAUSED_MESSAGE, code: 'ACCOUNT_PAUSED' })
+    if (!userId || req.user?.role === 'admin') return next()
+    if (await gratis(userId, now())) {
+      res.status(402).json({ error: message, code: 'PLAN_GRATIS' })
       return
     }
     next()

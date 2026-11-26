@@ -18,6 +18,14 @@
  * `POST /menu/generate` waits for it at most `FIRST_MENU_WAIT_MS` (15 s) and,
  * if it takes longer, generates as before.
  *
+ * «Semana tipo» fase 4 (D-182 §4): the same call also returns the habits of
+ * a day and a meal said in that text («pasta los miércoles», «pescado una
+ * semana sí y otra no», «la cena del sábado fuera») as slots of the
+ * household's week type (`week_type`), written with `saveWeekTypeSlots`, the
+ * function behind `PUT /households/me/week-type/:day/:meal`. It returns what
+ * it understood (one row per slot, days of the same thing together) and the
+ * slots as they were, so «Corregir» on «Así lo he entendido» can put them back.
+ *
  * A failure (no key, model error, bad JSON) is logged and leaves the memory
  * and the template as the onboarding left them. The call is
  * billed to the user in `cost_events` (feature `onboarding_analysis`).
@@ -27,16 +35,42 @@ import { applyTemplateChange } from './assistant/appSkills.js'
 import {
   COOKING_STYLE_LABELS,
   COOKING_WEEKDAYS,
+  DISH_TYPES,
+  MEALS,
+  WEEK_TYPE_MAX_OPTIONS,
   householdToDiners,
+  stableSlotJson,
   validateMemoryFactValue,
+  weekTypeOptionLabel,
+  weekTypeSlotAt,
+  weekTypeSlotError,
+  weekTypeSlotSchema,
   type CookingStyle,
+  type Meal,
   type UserMemory,
+  type WeekTypeDays,
+  type WeekTypeOption,
+  type WeekTypeSlot,
   type WeekdayCookingChoice,
 } from '@ona/shared'
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { mergeMemoryFacts, type MemoryFactInput } from './assistant/skills.js'
 import { CLAUDE_MODEL, withThinkingRoom } from '../config/models.js'
+import type { RecipeWithCourse } from './matchableRecipes.js'
+import {
+  MEAL_LABELS,
+  currentWeekStart,
+  daysLabel,
+  editWeekTypeAsPlantilla,
+  loadRecipesFor,
+  loadWeekTypeForUser,
+  nextWeekTypeSlot,
+  optionForDishName,
+  saveWeekTypeSlots,
+  type SlotChange,
+  type WeekTypeSlotRequest,
+} from './weekType.js'
 
 /** Same model as Mimo (ASSISTANT_MODEL in assistant/engine.ts). */
 export const ONBOARDING_ANALYSIS_MODEL = CLAUDE_MODEL
@@ -98,7 +132,15 @@ Claves que puedes usar (y su formato):
 - weekly_budget_eur: número.
 - notes: frases cortas en tercera persona para todo lo útil que no tenga clave ("Come fuera a mediodía entre semana", "Teletrabaja").
 
-Plantilla de comensales (template_changes, aparte de facts): si dice que alguien del hogar no come en casa en una comida ciertos días ("a mediodía mi hijo come en el instituto entre semana", "mi pareja cena fuera los martes"), añade un cambio con days (0 = lunes … 6 = domingo), meal (lunch = comida de mediodía, dinner = cena, breakfast, snack) y away (cuántas personas faltan). Si esa comida no se hace en casa nadie esos días, away igual al total del hogar. Guárdalo también como nota. Solo lo que diga claramente; si no hay nada así, template_changes vacío.
+Plantilla de comensales (template_changes, aparte de facts): si dice que alguien del hogar no come en casa en una comida ciertos días ("a mediodía mi hijo come en el instituto entre semana", "mi pareja cena fuera los martes"), añade un cambio con days (0 = lunes … 6 = domingo), meal (lunch = comida de mediodía, dinner = cena, breakfast, snack) y away (cuántas personas faltan). Si esa comida no la hace en casa nadie del hogar esos días, no va aquí: va en week_type con off. Guárdalo también como nota. Solo lo que diga claramente; si no hay nada así, template_changes vacío.
+
+Semana tipo (week_type, aparte de facts): las costumbres de un día y una comida que cuente con sus palabras ("pasta los miércoles", "pescado una semana sí y otra no", "el domingo por la noche, sándwich mixto", "la cena del sábado fuera"). Una entrada por costumbre:
+- days (0 = lunes … 6 = domingo; "entre semana" = 0 a 4; "el finde" = 5 y 6) y meal (breakfast = desayuno, lunch = comida de mediodía, snack = merienda, dinner = cena o "por la noche").
+- dishes: el plato o los platos, hasta ${WEEK_TYPE_MAX_OPTIONS}. Si es un tipo de plato, con su nombre de esta lista: ${DISH_TYPES.map((t) => t.label).join(', ')}. Si no, el plato con sus palabras ("sándwich mixto").
+- mode: "turns" (por defecto: uno cada semana, por orden, "una semana ceviche y otra carpaccio") o "together" (todos en la misma comida, "pasta y ensalada").
+- every: con un solo plato, cada cuántas semanas (2 = "una semana sí y otra no" o "cada dos semanas"; hasta ${WEEK_TYPE_MAX_OPTIONS}). Sin esto, cada semana.
+- off: true si esa comida no se hace en casa esos días ("la cena del sábado fuera", "los domingos no desayunamos"), sin dishes.
+Si no dice el día o la comida, no va aquí (guárdalo como nota). Un gusto sin día ni comida ("nos encanta la pizza") tampoco. Si no hay nada así, week_type vacío.
 
 Reglas:
 - Guarda solo lo que la persona dice o se deduce claramente. Nada inventado.
@@ -147,6 +189,22 @@ const UPDATE_MEMORY_TOOL: Anthropic.Tool = {
             away: { type: 'integer', minimum: 1, maximum: 20 },
           },
           required: ['days', 'meal', 'away'],
+        },
+      },
+      week_type: {
+        type: 'array',
+        description: 'Costumbres de un día y una comida, para la semana tipo del hogar.',
+        items: {
+          type: 'object',
+          properties: {
+            days: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 6 } },
+            meal: { type: 'string', enum: [...MEALS] },
+            dishes: { type: 'array', items: { type: 'string' }, maxItems: WEEK_TYPE_MAX_OPTIONS },
+            mode: { type: 'string', enum: ['turns', 'together'] },
+            every: { type: 'integer', minimum: 2, maximum: WEEK_TYPE_MAX_OPTIONS },
+            off: { type: 'boolean' },
+          },
+          required: ['days', 'meal'],
         },
       },
     },
@@ -256,6 +314,138 @@ export function applyTemplateChanges(
   return next
 }
 
+// ── «Semana tipo» from the free text (D-182 fase 4) ─────────────────────────
+
+/** One habit as the model says it: a day or days, a meal, and what goes there. */
+export interface WeekTypeHabit {
+  days: number[]
+  meal: Meal
+  /** Dish names as said («pizza», «sándwich mixto»); empty with `off`. */
+  dishes: string[]
+  together: boolean
+  /** «Cada N semanas» (1 = every week), only with one dish. */
+  every: number
+  off: boolean
+}
+
+/** Pure: keep only well-formed habits (one bad habit never loses the rest). */
+export function parseWeekTypeHabits(raw: unknown): WeekTypeHabit[] {
+  const out: WeekTypeHabit[] = []
+  for (const item of Array.isArray(raw) ? raw : []) {
+    if (!item || typeof item !== 'object') continue
+    const { days, meal, dishes, mode, every, off } = item as Record<string, unknown>
+    if (!(MEALS as readonly string[]).includes(String(meal))) continue
+    const d = [...new Set((Array.isArray(days) ? days : []).map(Number))].filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).sort()
+    if (d.length === 0) continue
+    const names = (Array.isArray(dishes) ? dishes : []).map((n) => String(n ?? '').trim().slice(0, 60)).filter(Boolean).slice(0, WEEK_TYPE_MAX_OPTIONS)
+    const isOff = off === true
+    if (!isOff && names.length === 0) continue
+    const n = Number(every)
+    const each = names.length === 1 && Number.isInteger(n) && n >= 2 && n <= WEEK_TYPE_MAX_OPTIONS ? n : 1
+    out.push({
+      days: d,
+      meal: meal as Meal,
+      dishes: isOff ? [] : names,
+      together: !isOff && mode === 'together' && names.length > 1,
+      every: isOff ? 1 : each,
+      off: isOff,
+    })
+  }
+  return out
+}
+
+/**
+ * Pure: the slots the habits write, each one whole (a later habit on the same
+ * slot wins), through the same conversion as Mimo's `set_week_type_slot`
+ * (`nextWeekTypeSlot`); options start their turns `since` this week. A slot
+ * that can't be (the schema, the táper rules) is left out.
+ */
+export function weekTypeHabitChanges(
+  days: WeekTypeDays,
+  habits: readonly WeekTypeHabit[],
+  optionFor: (dish: string) => WeekTypeOption,
+  since: string,
+): SlotChange[] {
+  const changes = new Map<string, SlotChange>()
+  for (const h of habits) {
+    const request: WeekTypeSlotRequest = h.off
+      ? { off: true }
+      : { options: h.dishes.map(optionFor), together: h.together, every: h.every > 1 ? h.every : undefined }
+    for (const d of h.days) {
+      const key = `${d}:${h.meal}`
+      const next = nextWeekTypeSlot(changes.get(key)?.slot ?? weekTypeSlotAt(days, d, h.meal), request)
+      if ('error' in next) continue
+      const slot: WeekTypeSlot = next.options?.length && !h.off ? { ...next, since } : next
+      if (!weekTypeSlotSchema.safeParse(slot).success || weekTypeSlotError(d, h.meal, slot)) continue
+      changes.set(key, { day: d, meal: h.meal, slot })
+    }
+  }
+  return [...changes.values()]
+}
+
+/**
+ * One row of «Así lo he entendido». `icon` is the key of the profile's stroke
+ * icons (`DishTypeIcon`): a `DISH_TYPES` key, a wildcard (`any`, `taper`,
+ * `fixed`, `recipe`), `off` («no hay») or `diners`.
+ */
+export interface UnderstoodRow {
+  icon: string
+  what: string
+  when: string
+}
+
+/** What the sign-up shows, and the slots as they were before (for «Corregir»). */
+export interface UnderstoodWeekType {
+  rows: UnderstoodRow[]
+  undo: SlotChange[]
+}
+
+const capitalise = (s: string) => (s ? s[0].toLocaleUpperCase('es') + s.slice(1) : s)
+
+/** Pure: a slot as one row's icon, what and how often. */
+function describeSlot(slot: WeekTypeSlot, prev: WeekTypeSlot): { icon: string; what: string; freq: string } {
+  if (slot.off) return { icon: 'off', what: 'No hay', freq: '' }
+  const options = slot.options ?? []
+  const real = options.filter((o) => o.kind !== 'any')
+  const forN = slot.diners && slot.diners !== prev.diners ? `, para ${slot.diners}` : ''
+  if (real.length === 0) {
+    return slot.diners && slot.diners !== prev.diners
+      ? { icon: 'diners', what: slot.diners === 1 ? 'Para 1 persona' : `Para ${slot.diners} personas`, freq: '' }
+      : { icon: 'any', what: 'Cualquier receta', freq: '' }
+  }
+  const icon = real[0].kind === 'type' ? real[0].type : real[0].kind
+  const names = real.map(weekTypeOptionLabel)
+  if (slot.together) return { icon, what: names.join(' + ') + forN, freq: 'en la misma comida' }
+  if (real.length === 1) return { icon, what: names[0] + forN, freq: options.length === 1 ? 'cada semana' : `cada ${options.length} semanas` }
+  return { icon, what: names.join(' / ') + forN, freq: 'por turnos, una cada semana' }
+}
+
+/**
+ * Pure: what changed between two week types, as «Así lo he entendido» shows
+ * it (the same thing on several days of a meal, one row) and the slots as
+ * they were.
+ */
+export function understoodWeekType(before: WeekTypeDays, after: WeekTypeDays): UnderstoodWeekType {
+  const undo: SlotChange[] = []
+  const groups = new Map<string, { icon: string; what: string; freq: string; meal: Meal; days: number[] }>()
+  for (let d = 0; d < 7; d++) {
+    for (const m of MEALS) {
+      const prev = weekTypeSlotAt(before, d, m)
+      const next = weekTypeSlotAt(after, d, m)
+      if (stableSlotJson(prev) === stableSlotJson(next)) continue
+      undo.push({ day: d, meal: m, slot: prev })
+      const row = describeSlot(next, prev)
+      const key = `${m}|${row.icon}|${row.what}|${row.freq}`
+      const g = groups.get(key) ?? groups.set(key, { ...row, meal: m, days: [] }).get(key)!
+      g.days.push(d)
+    }
+  }
+  const rows = [...groups.values()]
+    .sort((a, b) => a.days[0] - b.days[0] || MEALS.indexOf(a.meal) - MEALS.indexOf(b.meal))
+    .map((g) => ({ icon: g.icon, what: g.what, when: [capitalise(daysLabel(g.days)), MEAL_LABELS[g.meal], g.freq].filter(Boolean).join(' · ') }))
+  return { rows, undo }
+}
+
 // ── The first menu waits for the analysis (PRO-242) ─────────────────────────
 
 /** How long the first `POST /menu/generate` waits for the analysis. */
@@ -296,41 +486,50 @@ export interface AnalysisDeps {
   create?: CreateFn
   readMemory?: (userId: string) => Promise<UserMemory>
   writeMemory?: (userId: string, facts: Array<{ key: string; value: unknown; confidence: number }>) => Promise<unknown>
-  /** PRO-242: the user's `user_settings.template` blob (null = none). */
-  readTemplate?: (userId: string) => Promise<unknown>
-  writeTemplate?: (userId: string, template: Record<string, unknown>) => Promise<unknown>
+  /** PRO-242: who doesn't eat at home, into the household's week type (D-182). True when something changed. */
+  writeTemplateChanges?: (userId: string, changes: TemplateChange[], householdDiners: number) => Promise<boolean>
+  /** D-182 fase 4: the household's week type (default `loadWeekTypeForUser`). */
+  loadWeekType?: (userId: string) => Promise<{ householdId: string | null; days: WeekTypeDays }>
+  /** D-182 fase 4: write slots (default `saveWeekTypeSlots`, the function behind the PUT route). */
+  saveWeekTypeSlots?: (householdId: string, userId: string, changes: SlotChange[]) => Promise<unknown>
+  /** The recipes a dish name is searched in (default: those the user may be served). */
+  loadRecipes?: (userId: string) => Promise<readonly RecipeWithCourse[]>
+  now?: Date
 }
 
-async function readTemplateFromDb(userId: string): Promise<unknown> {
-  const [{ db }, { userSettings }, { eq }] = await Promise.all([
-    import('../db/connection.js'),
-    import('../db/schema.js'),
-    import('drizzle-orm'),
-  ])
-  const [row] = await db.select({ template: userSettings.template }).from(userSettings).where(eq(userSettings.userId, userId)).limit(1)
-  return row?.template ?? null
+/** What the analysis did: the keys written and, when the week type changed, what it understood. */
+export interface OnboardingAnalysisResult {
+  keys: string[]
+  weekType: UnderstoodWeekType | null
 }
 
-async function writeTemplateToDb(userId: string, template: Record<string, unknown>): Promise<void> {
-  const [{ db }, { userSettings }, { eq }] = await Promise.all([
-    import('../db/connection.js'),
-    import('../db/schema.js'),
-    import('drizzle-orm'),
-  ])
-  const [existing] = await db.select({ id: userSettings.id }).from(userSettings).where(eq(userSettings.userId, userId)).limit(1)
-  if (existing) await db.update(userSettings).set({ template }).where(eq(userSettings.userId, userId))
-  else await db.insert(userSettings).values({ userId, template })
+/**
+ * «Semana tipo» (D-182): who doesn't eat at home lowers the diners of those
+ * slots of the household's week type, as seen through the plantilla.
+ */
+export function awayEdit(changes: TemplateChange[], householdDiners: number) {
+  return <V extends { mealTemplate: Record<string, Record<string, number>> }>(view: V): V => {
+    const next = applyTemplateChanges({ mealTemplate: view.mealTemplate }, changes, householdDiners)
+    return next ? { ...view, mealTemplate: next.mealTemplate as V['mealTemplate'] } : view
+  }
 }
 
-/** Returns the keys written (empty when there was nothing to write or the call failed). */
+/** Only the slots that change are written. False when nothing changed (or there's no household). */
+async function writeChangesToWeekType(userId: string, changes: TemplateChange[], householdDiners: number): Promise<boolean> {
+  const out = await editWeekTypeAsPlantilla(userId, awayEdit(changes, householdDiners), { defaultDiners: householdDiners })
+  return !!out?.changes.length
+}
+
+/** The keys written (empty when there was nothing to write or the call failed) and the week type understood. */
 export async function analyzeOnboardingIntoMemory(
   userId: string,
   answers: OnboardingAnswers,
   deps: AnalysisDeps = {},
-): Promise<string[]> {
+): Promise<OnboardingAnalysisResult> {
+  const none: OnboardingAnalysisResult = { keys: [], weekType: null }
   let create = deps.create
   if (!create) {
-    if (!env.ANTHROPIC_API_KEY) return []
+    if (!env.ANTHROPIC_API_KEY) return none
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
     create = (p) => client.messages.create(p)
   }
@@ -342,7 +541,7 @@ export async function analyzeOnboardingIntoMemory(
   try {
     response = await create({
       model: ONBOARDING_ANALYSIS_MODEL,
-      max_tokens: withThinkingRoom(1024),
+      max_tokens: withThinkingRoom(1536),
       system: ANALYSIS_SYSTEM_PROMPT,
       tools: [UPDATE_MEMORY_TOOL],
       // Forced tool_choice is a 400 on Opus 5.5 (and was on Sonnet 5.5): the
@@ -352,28 +551,63 @@ export async function analyzeOnboardingIntoMemory(
     })
   } catch (err) {
     console.warn('[onboarding-analysis] model call failed:', (err as Error)?.message ?? err)
-    return []
+    return none
   }
   recordAnthropicCost('onboarding_analysis', ONBOARDING_ANALYSIS_MODEL, response.usage, userId)
 
   const block = response.content.find((b) => b.type === 'tool_use')
-  if (!block || block.type !== 'tool_use') return []
-  const input = block.input as { facts?: unknown; template_changes?: unknown }
+  if (!block || block.type !== 'tool_use') return none
+  const input = block.input as { facts?: unknown; template_changes?: unknown; week_type?: unknown }
   const written: string[] = []
 
-  // PRO-242: who doesn't eat at home → the weekly template's diners.
+  // The week type as it was, so «Así lo he entendido» can say what changed and «Corregir» undo it.
   const changes = parseTemplateChanges(input?.template_changes)
+  const habits = parseWeekTypeHabits(input?.week_type)
+  const loadWeekType = deps.loadWeekType ?? ((id: string) => loadWeekTypeForUser(id))
+  let before: { householdId: string | null; days: WeekTypeDays } | null = null
+  if (changes.length > 0 || habits.length > 0) {
+    before = await loadWeekType(userId).catch((err) => {
+      console.warn('[onboarding-analysis] week type not read:', (err as Error)?.message ?? err)
+      return null
+    })
+  }
+
+  // PRO-242: who doesn't eat at home → the weekly template's diners.
   if (changes.length > 0) {
     try {
-      const readTemplate = deps.readTemplate ?? readTemplateFromDb
-      const writeTemplate = deps.writeTemplate ?? writeTemplateToDb
-      const template = applyTemplateChanges(await readTemplate(userId), changes, householdToDiners(answers.adults, answers.kidsCount))
-      if (template) {
-        await writeTemplate(userId, template)
-        written.push('weekly_template')
-      }
+      const write = deps.writeTemplateChanges ?? writeChangesToWeekType
+      if (await write(userId, changes, householdToDiners(answers.adults, answers.kidsCount))) written.push('weekly_template')
     } catch (err) {
       console.warn('[onboarding-analysis] template not saved:', (err as Error)?.message ?? err)
+    }
+  }
+
+  // D-182 fase 4: «pasta los miércoles» → those slots of the household's week type.
+  if (habits.length > 0 && before?.householdId) {
+    try {
+      const householdId = before.householdId
+      const current = written.includes('weekly_template') ? (await loadWeekType(userId)).days : before.days
+      const recipes = habits.some((h) => h.dishes.length > 0)
+        ? await (deps.loadRecipes ?? ((id: string) => loadRecipesFor(id)))(userId)
+        : []
+      const slots = weekTypeHabitChanges(current, habits, (dish) => optionForDishName(dish, recipes), currentWeekStart(deps.now))
+      if (slots.length > 0) {
+        const save = deps.saveWeekTypeSlots ?? ((hid: string, uid: string, c: SlotChange[]) => saveWeekTypeSlots(hid, c, undefined, { track: { userId: uid } }))
+        await save(householdId, userId, slots)
+        written.push('week_type')
+      }
+    } catch (err) {
+      console.warn('[onboarding-analysis] week type not saved:', (err as Error)?.message ?? err)
+    }
+  }
+
+  let weekType: UnderstoodWeekType | null = null
+  if (before && (written.includes('weekly_template') || written.includes('week_type'))) {
+    try {
+      const understood = understoodWeekType(before.days, (await loadWeekType(userId)).days)
+      if (understood.rows.length > 0) weekType = understood
+    } catch (err) {
+      console.warn('[onboarding-analysis] week type not re-read:', (err as Error)?.message ?? err)
     }
   }
 
@@ -383,5 +617,5 @@ export async function analyzeOnboardingIntoMemory(
     await writeMemory(userId, facts)
     written.push(...facts.map((f) => f.key))
   }
-  return written
+  return { keys: written, weekType }
 }

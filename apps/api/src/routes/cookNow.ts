@@ -8,7 +8,6 @@
 import { Router } from 'express'
 import { cookNowChooseSchema, cookNowPhraseSchema, cookNowProposalSchema } from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
-import { requireActiveAccount } from '../services/accountAccess.js'
 import { chooseCookNowRecipe, findCookNowProposal, loadCookNowToday, loadPhraseFacts } from '../services/cookNow/load.js'
 import { cookNowPhrase } from '../services/cookNow/phrase.js'
 import { getPrimaryHouseholdId } from '../services/scopeResolver.js'
@@ -19,7 +18,7 @@ router.use('/cook-now', authMiddleware)
 router.get('/cook-now/today', async (req: AuthRequest, res) => {
   try {
     const t = await loadCookNowToday(req.userId!)
-    res.json({ weekStart: t.weekStart, day: t.day, meal: t.meal, menuId: t.menu?.id ?? null, planned: t.planned, locked: t.locked, slotServings: t.slotServings, targets: t.targets })
+    res.json({ weekStart: t.weekStart, day: t.day, meal: t.meal, menuId: t.menu?.id ?? null, planned: t.planned, slotServings: t.slotServings, targets: t.targets })
   } catch (err) {
     console.error('GET /cook-now/today error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -55,7 +54,7 @@ router.post('/cook-now/phrase', async (req: AuthRequest, res) => {
   }
 })
 
-router.post('/cook-now/choose', requireActiveAccount(), async (req: AuthRequest, res) => {
+router.post('/cook-now/choose', async (req: AuthRequest, res) => {
   const parsed = cookNowChooseSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: 'Elección no válida', issues: parsed.error.issues })

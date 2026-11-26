@@ -16,6 +16,7 @@
  *   POST   /shop-orders/:id/approve     — the user's decisions → confirmation message
  *   POST   /shop-orders/:id/close       — collected / delivered (ticks the list)
  *   POST   /shop-orders/:id/cancel
+ *   POST   /shop-orders/:id/order       — «Pedir» a Red order (the max the household accepted)
  *   POST   /shop-orders/:id/carrefour-click — the user tapped «Hacer este pedido en Carrefour.es» on a súper card (counts the click, 204)
  *   GET    /shop-extension/status          — ¿ve este usuario «Enviar a <cadena>»? (BASKET_EXTENSION_EMAILS) y sus avisos aceptados
  *   POST   /shop-extension/consent         — acepta el aviso de una cadena antes del primer envío (D-154)
@@ -28,9 +29,18 @@
 
 import { Router, type Response } from 'express'
 import { z } from 'zod'
-import { approveShopOrderSchema, basketConsentSchema, basketSendResultSchema, patchShopOrderSchema, shopInputSchema } from '@ona/shared'
+import {
+  PLAN_GRATIS_ORDERS_MESSAGE,
+  approveShopOrderSchema,
+  basketConsentSchema,
+  basketSendResultSchema,
+  patchShopOrderSchema,
+  placeRedOrderSchema,
+  shopInputSchema,
+} from '@ona/shared'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
+import { requirePaidPlan } from '../services/accountAccess.js'
 import { appApiFor } from '../services/assistant/appApi.js'
 import { addDays, madridParts } from '../services/madridTime.js'
 import { basketSentProps, carrefourClickProps, trackEvent } from '../services/usageEvents.js'
@@ -48,6 +58,7 @@ import {
   moveShop,
   patchOrder,
   patchShop,
+  placeRedOrder,
   prepareOrders,
   resolveShortLink,
   saveBasketResult,
@@ -155,7 +166,10 @@ router.delete('/shops/:id', async (req: AuthRequest, res) => {
   }
 })
 
-router.post('/shop-orders/prepare', async (req: AuthRequest, res) => {
+// Shop orders aren't in the Gratis plan (PRO-385, D-158): new orders and reading a reply.
+const paidPlanForOrders = requirePaidPlan({ message: PLAN_GRATIS_ORDERS_MESSAGE })
+
+router.post('/shop-orders/prepare', paidPlanForOrders, async (req: AuthRequest, res) => {
   const parsed = prepareSchema.safeParse(req.body ?? {})
   if (!parsed.success) return badRequest(res, parsed.error.issues)
   try {
@@ -209,7 +223,7 @@ router.post('/shop-orders/:id/sent', withOrder(async (req, res) => {
 }, 'POST /shop-orders/:id/sent'))
 
 // Reading the shop's reply is a paid model call → monthly AI spend cap.
-router.post('/shop-orders/:id/quote', requireSpendCapacity(), withOrder(async (req, res) => {
+router.post('/shop-orders/:id/quote', paidPlanForOrders, requireSpendCapacity(), withOrder(async (req, res) => {
   const parsed = quoteSchema.safeParse(req.body)
   if (!parsed.success) return badRequest(res, parsed.error.issues)
   res.json(await submitQuote(req.userId!, String(req.params.id), parsed.data.text))
@@ -230,6 +244,12 @@ router.post('/shop-orders/:id/close', withOrder(async (req, res) => {
 router.post('/shop-orders/:id/cancel', withOrder(async (req, res) => {
   res.json(await cancelOrder(req.userId!, String(req.params.id)))
 }, 'POST /shop-orders/:id/cancel'))
+
+router.post('/shop-orders/:id/order', withOrder(async (req, res) => {
+  const parsed = placeRedOrderSchema.safeParse(req.body ?? {})
+  if (!parsed.success) return badRequest(res, parsed.error.issues)
+  res.json(await placeRedOrder(req.userId!, String(req.params.id), parsed.data))
+}, 'POST /shop-orders/:id/order'))
 
 // PRO-84: demand test for ordering the súper card on carrefour.es. Counts the
 // click only (`carrefour_click`, props.items = lines); no affiliation.

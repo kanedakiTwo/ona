@@ -1,5 +1,7 @@
 # Mimoia — Project Guide for Claude
 
+**Con Miguel, siempre en español de España**: cada respuesta, cada pregunta y cada resumen, aunque este fichero, el código o los commits estén en inglés. **Y que se entienda de un vistazo:** pocos identificadores (PRO-, D-, E-…); si hace falta uno, con lo que es en palabras al lado («la tarea del aviso del piloto, PRO-382»). Lo mismo en los informes y en lo que lee en el móvil (D-191, auditoría del 18-nov: P-9 y M-2).
+
 ## Read this first
 
 **Before starting any work in this project, read the specs to understand the system.**
@@ -122,6 +124,7 @@ The brand is **Mimoia** and its assistant is **Mimo** (`BRAND_NAME` / `ASSISTANT
 
 ## Working principles
 
+- **If you see over-engineering, simplify** (Miguel, 2026-11-11, D-183). Build the least that solves the real problem; rare cases go to «out of this version»; from a review, apply only what prevents a real failure (losing data, breaking production, allergies, money). Say in one line what you dropped.
 - **Specs document what exists**, not aspirational features. If the code disagrees with a spec, fix the spec or the code — never ignore the divergence.
 - **Update specs when you change behavior** (see "Specs are a living document" above).
 - **Prefer the editorial design system** (`@theme` tokens in `globals.css`) for new UI: cream `#FAF6EE`, ink `#1A1612`, terracotta `#C65D38`, forest `#2D6A4F`, Fraunces + Cormorant + Inter.

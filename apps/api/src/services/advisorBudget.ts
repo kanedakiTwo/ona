@@ -16,6 +16,8 @@ import { eq, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { users } from '../db/schema.js'
 import { env } from '../config/env.js'
+import { capOverrideEur } from './capOverrides.js'
+import { householdMimoCapEur } from './householdMimoCap.js'
 import { ACTIVE_PRICES } from '../config/pricing.js'
 import { attributeCostToUser, currentCostChannel, recordCost } from './costLedger.js'
 import { CLAUDE_MODEL } from '../config/models.js'
@@ -29,7 +31,8 @@ export const ADVISOR_PRICE_MODEL = CLAUDE_MODEL
  * The assistant model's list price, USD per million tokens, read from the
  * shared price table (config/pricing.ts): Sonnet 5.5 is $2.00 input / $10.00
  * output; prompt-cache writes bill at 1.25× the input rate (5-minute
- * ephemeral, which `engine.ts` uses) and cache reads at 0.1×. A
+ * ephemeral: each household's context and history), 2× with the 1-hour TTL
+ * (the fixed block, PRO-393), and cache reads at 0.1× (0.05× on Opus 5.5). A
  * `COST_PRICE_OVERRIDES` entry moves both the budget and the ledger, so they
  * never disagree.
  */
@@ -38,6 +41,7 @@ export const ASSISTANT_USD_PER_MTOK = {
   input: MODEL_PRICE.inputPerMTok!,
   output: MODEL_PRICE.outputPerMTok!,
   cacheWrite: MODEL_PRICE.cacheWritePerMTok!,
+  cacheWrite1h: MODEL_PRICE.cacheWrite1hPerMTok ?? 2 * MODEL_PRICE.inputPerMTok!,
   cacheRead: MODEL_PRICE.cacheReadPerMTok!,
 } as const
 
@@ -45,14 +49,24 @@ export const ASSISTANT_USD_PER_MTOK = {
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
+  /** Every cache write, both TTLs. */
   cacheWriteTokens: number
+  /** The part of `cacheWriteTokens` written with the 1-hour TTL (Mimo's fixed block, PRO-393). */
+  cacheWrite1hTokens?: number
   cacheReadTokens: number
+}
+
+/** One Mimo turn (PRO-393): its tokens plus how many model calls and tools it took. */
+export interface TurnUsage extends TokenUsage {
+  rounds?: number
+  toolCalls?: number
 }
 
 export const EMPTY_USAGE: TokenUsage = {
   inputTokens: 0,
   outputTokens: 0,
   cacheWriteTokens: 0,
+  cacheWrite1hTokens: 0,
   cacheReadTokens: 0,
 }
 
@@ -67,6 +81,8 @@ export function addAnthropicUsage(
     output_tokens?: number
     cache_creation_input_tokens?: number | null
     cache_read_input_tokens?: number | null
+    /** Split of `cache_creation_input_tokens` by TTL. */
+    cache_creation?: { ephemeral_1h_input_tokens?: number | null } | null
   } | null
   | undefined,
 ): TokenUsage {
@@ -75,16 +91,19 @@ export function addAnthropicUsage(
     inputTokens: acc.inputTokens + (usage.input_tokens ?? 0),
     outputTokens: acc.outputTokens + (usage.output_tokens ?? 0),
     cacheWriteTokens: acc.cacheWriteTokens + (usage.cache_creation_input_tokens ?? 0),
+    cacheWrite1hTokens: (acc.cacheWrite1hTokens ?? 0) + (usage.cache_creation?.ephemeral_1h_input_tokens ?? 0),
     cacheReadTokens: acc.cacheReadTokens + (usage.cache_read_input_tokens ?? 0),
   }
 }
 
-/** Pure: cost of a usage block in USD (Haiku 4.5 list price). */
+/** Pure: cost of a usage block in USD (the assistant model's list price). */
 export function usageCostUsd(usage: TokenUsage): number {
+  const write1h = Math.min(usage.cacheWrite1hTokens ?? 0, usage.cacheWriteTokens)
   return (
     (usage.inputTokens * ASSISTANT_USD_PER_MTOK.input +
       usage.outputTokens * ASSISTANT_USD_PER_MTOK.output +
-      usage.cacheWriteTokens * ASSISTANT_USD_PER_MTOK.cacheWrite +
+      (usage.cacheWriteTokens - write1h) * ASSISTANT_USD_PER_MTOK.cacheWrite +
+      write1h * ASSISTANT_USD_PER_MTOK.cacheWrite1h +
       usage.cacheReadTokens * ASSISTANT_USD_PER_MTOK.cacheRead) /
     1_000_000
   )
@@ -100,9 +119,34 @@ export function currentMonthKey(now: Date = new Date()): string {
   return now.toISOString().slice(0, 7)
 }
 
-/** The configured monthly budget expressed in micro-euros. */
-export function budgetMicros(): number {
-  return Math.round(env.ADVISOR_MONTHLY_BUDGET_EUR * 1_000_000)
+/** The monthly budget in micro-euros: the user's own cap if they have one (capOverrides.ts), else the configured one. */
+export function budgetMicros(userId?: string): number {
+  return Math.round((capOverrideEur(userId) ?? env.ADVISOR_MONTHLY_BUDGET_EUR) * 1_000_000)
+}
+
+/**
+ * The monthly budget in micro-euros with the household's own cap (PRO-1290,
+ * householdMimoCap.ts): the person's cap, else their household's, else the
+ * configured one.
+ */
+export async function budgetMicrosFor(userId: string, db: Db = defaultDb): Promise<number> {
+  const own = capOverrideEur(userId) ?? (await householdMimoCapEur(userId, db))
+  return Math.round((own ?? env.ADVISOR_MONTHLY_BUDGET_EUR) * 1_000_000)
+}
+
+/** 18-nov: the share of the month's cap at which Mimo says it's running low. */
+export const BUDGET_WARNING_SHARE = 0.8
+/** The line added, once a month, to the reply that crosses it (no euros: the reply doesn't show them). */
+export const BUDGET_WARNING_LINE = 'Te queda poco de Mimo este mes; se renueva el día 1.'
+
+/**
+ * Pure: this turn (`addedMicros`) takes the month's spend from under 80 % of
+ * the cap to 80 % or more. The spend only grows within a month, so it is
+ * true once a month at most, with no state to keep.
+ */
+export function crossesBudgetWarning(spentBeforeMicros: number, addedMicros: number, budgetMicros: number): boolean {
+  const line = budgetMicros * BUDGET_WARNING_SHARE
+  return budgetMicros > 0 && addedMicros > 0 && spentBeforeMicros < line && spentBeforeMicros + addedMicros >= line
 }
 
 /**
@@ -142,13 +186,14 @@ export async function checkAdvisorBudget(
   db: Db = defaultDb,
 ): Promise<{ exceeded: boolean; spentMicros: number; budgetMicros: number }> {
   attributeCostToUser(userId)
-  const limit = budgetMicros()
+  const limit = await budgetMicrosFor(userId, db)
   const spentMicros = await getMonthlySpendMicros(userId, db)
   return { exceeded: spentMicros >= limit, spentMicros, budgetMicros: limit }
 }
 
 /**
- * Add one turn's cost to the user's monthly total. Atomic increment-or-reset:
+ * Add one turn's cost to the user's monthly total (returns the micro-euros
+ * added; 0 when nothing was). Atomic increment-or-reset:
  * if the stored month key is the current month we add to it, otherwise we
  * start a fresh month at this turn's cost. No-op when the turn cost rounds to
  * zero (e.g. a fully cache-read turn on a tiny prompt).
@@ -164,13 +209,18 @@ export function chatFeatureFor(channel: string | null): 'assistant_chat' | 'what
 
 export async function recordAdvisorUsage(
   userId: string,
-  usage: TokenUsage,
+  usage: TurnUsage,
   db: Db = defaultDb,
   feature: 'assistant_chat' | 'whatsapp_chat' | 'telegram_chat' = chatFeatureFor(currentCostChannel()),
-): Promise<void> {
+  opts: { countsTowardBudget?: boolean } = {},
+): Promise<number> {
+  // «Mimo remoto» (PRO-1102): the office answered the turn, nothing was paid.
+  if (env.MIMO_REMOTO) return 0
   recordCost({ feature, provider: 'anthropic', model: ADVISOR_PRICE_MODEL, units: { ...usage }, userId })
+  // 18-nov: the WhatsApp sign-up and its first menu are in the ledger, not in the cap.
+  if (opts.countsTowardBudget === false) return 0
   const micros = usageCostMicros(usage, env.ADVISOR_EUR_PER_USD)
-  if (micros <= 0) return
+  if (micros <= 0) return 0
   const monthKey = currentMonthKey()
   await db.execute(sql`
     UPDATE users SET
@@ -181,4 +231,5 @@ export async function recordAdvisorUsage(
       advisor_spend_month_key = ${monthKey}
     WHERE id = ${userId}::uuid
   `)
+  return micros
 }

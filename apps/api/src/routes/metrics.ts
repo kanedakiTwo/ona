@@ -2,8 +2,11 @@ import { Router } from 'express'
 import { metricsAuth, viaMetricsToken } from '../middleware/metricsAuth.js'
 import { loadBusinessMetrics } from '../services/businessMetrics.js'
 import { loadUsageReport } from '../services/usageReport.js'
+import { loadMenuWaitReport } from '../services/menuWaitReport.js'
+import { loadMimoCacheWeekly } from '../services/mimoTurnCost.js'
 import { loadCapHits } from '../services/capHits.js'
 import { loadApiSaldo } from '../services/apiSaldo.js'
+import { loadDraftRecipes } from '../services/draftRecipes.js'
 import { loadFeatureUsageReport } from '../services/featureUsageReport.js'
 import { loadAssistantFlags } from '../services/assistantFlags.js'
 import { basketGapsForToken, basketSendsForToken, loadBasketGaps, loadBasketSends } from '../services/basketExtension.js'
@@ -15,10 +18,12 @@ import { flagsForAgents } from '../services/agentView.js'
  *   - GET /admin/metrics?weeks=8[&includeInternal=1] — weekly business metrics
  *     and cost per active household (specs/metrics.md), plus `capHits`: who
  *     reached a spend cap this Madrid month (PRO-1090, services/capHits.ts),
- *     and `apiSaldo`: since when Anthropic has no credit (PRO-1101, services/apiSaldo.ts);
+ *     `apiSaldo`: since when Anthropic has no credit (PRO-1101, services/apiSaldo.ts),
+ *     and `recipes`: drafts waiting for Miguel, by batch (PRO-1119, services/draftRecipes.ts);
  *   - GET /admin/usage?days=28[&includeInternal=1] — product analytics from
  *     `usage_events`: counts per day and event, active households, activation
- *     funnel (specs/metrics.md "Usage events");
+ *     funnel (specs/metrics.md "Usage events"), and `mimoCache`: Mimo's cache
+ *     tokens written and read per turn by week (PRO-1291, services/mimoTurnCost.ts);
  *   - GET /admin/assistant-reviews/flags?days=7 — anonymised conversation flags
  *     (health talk, health claims, unverified "hecho", errors) plus the daily
  *     reviewer's findings (specs/whatsapp.md); with the token, categories and
@@ -49,12 +54,13 @@ const flag = (raw: unknown) => raw === '1' || raw === 'true'
 router.get('/admin/metrics', metricsAuth, async (req, res) => {
   try {
     const weeks = intParam(req.query.weeks, 8, 1, 52)
-    const [metrics, capHits, apiSaldo] = await Promise.all([
+    const [metrics, capHits, apiSaldo, recipes] = await Promise.all([
       loadBusinessMetrics({ weeks, includeInternal: flag(req.query.includeInternal) }),
       loadCapHits(),
       loadApiSaldo(),
+      loadDraftRecipes(),
     ])
-    res.json({ ...metrics, capHits, apiSaldo })
+    res.json({ ...metrics, capHits, apiSaldo, recipes })
   } catch (err: any) {
     console.error('[metrics] failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })
@@ -64,7 +70,14 @@ router.get('/admin/metrics', metricsAuth, async (req, res) => {
 router.get('/admin/usage', metricsAuth, async (req, res) => {
   try {
     const days = intParam(req.query.days, 28, 1, 180)
-    res.json(await loadUsageReport({ days, includeInternal: flag(req.query.includeInternal) }))
+    const includeInternal = flag(req.query.includeInternal)
+    // PRO-1298: the menu's wait, by week (its own file: services/menuWaitReport.ts).
+    const [report, menuWait, mimoCache] = await Promise.all([
+      loadUsageReport({ days, includeInternal }),
+      loadMenuWaitReport({ includeInternal }),
+      loadMimoCacheWeekly(days),
+    ])
+    res.json({ ...report, menuWait, mimoCache })
   } catch (err: any) {
     console.error('[usage] report failed:', err?.message ?? err)
     res.status(500).json({ error: 'Internal server error' })

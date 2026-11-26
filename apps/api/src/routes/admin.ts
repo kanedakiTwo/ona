@@ -74,11 +74,22 @@ import {
   ALLERGEN_TAGS,
 } from '../services/nutrition/allergens.js'
 import { createUsdaClient } from '../services/nutrition/usdaClient.js'
+import { fetchBedcaNutrition } from '../services/nutrition/bedcaClient.js'
+import { lacksNutrition } from '../services/nutrition/aggregate.js'
+import { recomputeRecipesUsing } from '../services/nutrition/recomputeRecipes.js'
+import { invalidateRecipeCatalogCache } from '../services/recipePersistence.js'
 import { diff, record, type AdminAction } from '../services/auditLog.js'
 import { mintToken } from '../services/passwordReset.js'
 import { reviewDay } from '../services/whatsapp/reviewer.js'
 import { madridParts } from '../services/madridTime.js'
 import { CONTAINS_TAGS, compoundIngredientsWithoutTags } from '../services/compoundIngredients.js'
+import {
+  allergenTagsChanged,
+  findRecipeAllergenMismatches,
+  recomputeRecipeAllergens,
+  recordRecipeAllergenChanges,
+} from '../services/nutrition/recipeAllergenSync.js'
+import { recheckMenusForRecipe } from '../services/menuRecipeRecheck.js'
 
 const router = Router()
 
@@ -240,8 +251,20 @@ router.get(
         }
       })
 
+      // PRO-1118: recipes whose stored allergens differ from their
+      // ingredients' union. Catalogue recipes by name; household ones only
+      // as a count (as above).
+      const mismatches = await findRecipeAllergenMismatches(db)
+      const catalogMismatches = mismatches.filter((r) => r.authorId == null)
+      const allergenMismatch = {
+        total: mismatches.length,
+        householdRecipes: mismatches.length - catalogMismatches.length,
+        recipes: catalogMismatches.map((r) => ({ id: r.id, name: r.name, stored: r.stored, expected: r.expected })),
+      }
+
       res.json({
         sesameMissing,
+        allergenMismatch,
         missingFdcId,
         missingDensity,
         missingUnitWeight,
@@ -479,14 +502,21 @@ router.patch(
           tx,
         )
 
-        return after
+        // PRO-1118: the recipes that use it carry the new union, one audit line each.
+        const recipeChanges = allergenTagsChanged(before.allergenTags, after.allergenTags)
+          ? await recomputeRecipeAllergens(tx, id)
+          : []
+        await recordRecipeAllergenChanges(tx, adminId, id, recipeChanges)
+
+        return { after, recipeChanges }
       })
 
       if (!updated) {
         res.status(404).json({ error: 'Ingredient not found' })
         return
       }
-      res.json(updated)
+      for (const c of updated.recipeChanges) recheckMenusForRecipe(c.recipeId)
+      res.json(updated.after)
     } catch (err) {
       console.error('PATCH /ingredients/:id error:', err)
       res.status(500).json({ error: 'Internal server error' })
@@ -494,13 +524,57 @@ router.patch(
   },
 )
 
-// ─── PATCH /ingredients/:id/remap ──────────────────────────────
-// Re-map an existing ingredient to a USDA fdcId and refresh per-100 g nutrition.
-// Body: { fdcId: number }. Used by the "Re-mapear a USDA" action on the dashboard.
+// ─── GET /admin/ingredients/missing-nutrition ─────────────────
+// PRO-1125: read-only list of the ingredients with no nutrition yet (a
+// household's «Añadir», a stub), with the recipes that use them. Cocina fills
+// them at night with `scripts/ingredientNutrition.ts`.
 
-const remapBodySchema = z.object({
-  fdcId: z.number().int().positive(),
-})
+router.get(
+  '/admin/ingredients/missing-nutrition',
+  authMiddleware,
+  requireAdmin,
+  async (_req: AuthRequest, res) => {
+    try {
+      const all = await db.select().from(ingredients)
+      const missing = all.filter(lacksNutrition)
+      const uses = missing.length
+        ? await db
+            .select({ ingredientId: recipeIngredients.ingredientId, recipeId: recipes.id, authorId: recipes.authorId })
+            .from(recipeIngredients)
+            .innerJoin(recipes, eq(recipes.id, recipeIngredients.recipeId))
+            .where(inArray(recipeIngredients.ingredientId, missing.map((r) => r.id)))
+        : []
+      res.json({
+        ingredients: missing
+          .map((row) => {
+            const mine = uses.filter((u) => u.ingredientId === row.id)
+            return {
+              id: row.id,
+              name: row.name,
+              aisle: row.aisle,
+              createdAt: row.createdAt,
+              catalogRecipes: new Set(mine.filter((u) => u.authorId == null).map((u) => u.recipeId)).size,
+              householdRecipes: new Set(mine.filter((u) => u.authorId != null).map((u) => u.recipeId)).size,
+            }
+          })
+          .sort((a, b) => b.catalogRecipes + b.householdRecipes - (a.catalogRecipes + a.householdRecipes) || a.name.localeCompare(b.name, 'es')),
+      })
+    } catch (err) {
+      console.error('admin/ingredients/missing-nutrition error:', err)
+      res.status(500).json({ error: 'Internal server error' })
+    }
+  },
+)
+
+// ─── PATCH /ingredients/:id/remap ──────────────────────────────
+// Re-map an existing ingredient to a USDA fdcId or a BEDCA id, refresh its
+// per-100 g nutrition and recompute the recipes that use it (PRO-1125).
+// Body: { fdcId } | { bedcaId }. Used by the «Re-mapear» action on the dashboard.
+
+const remapBodySchema = z.union([
+  z.object({ fdcId: z.number().int().positive() }),
+  z.object({ bedcaId: z.string().min(1).max(50) }),
+])
 
 router.patch(
   '/ingredients/:id/remap',
@@ -528,20 +602,25 @@ router.patch(
         return
       }
 
-      const client = createUsdaClient()
-      const profile = await client.fetchByFdcId(parsed.data.fdcId)
+      // BEDCA rows keep `fdc_id` null: their values say they have nutrition.
+      const body = parsed.data
+      const source =
+        'fdcId' in body
+          ? { fdcId: body.fdcId, per100g: (await createUsdaClient().fetchByFdcId(body.fdcId)).per100g }
+          : { fdcId: null, per100g: await fetchBedcaNutrition(body.bedcaId) }
+      const per100g = source.per100g
 
       const updated = await db.transaction(async (tx) => {
         const [after] = await tx
           .update(ingredients)
           .set({
-            fdcId: parsed.data.fdcId,
-            calories: profile.per100g.kcal,
-            protein: profile.per100g.proteinG,
-            carbs: profile.per100g.carbsG,
-            fat: profile.per100g.fatG,
-            fiber: profile.per100g.fiberG,
-            salt: profile.per100g.saltG,
+            fdcId: source.fdcId,
+            calories: per100g.kcal,
+            protein: per100g.proteinG,
+            carbs: per100g.carbsG,
+            fat: per100g.fatG,
+            fiber: per100g.fiberG,
+            salt: per100g.saltG,
             updatedAt: new Date(),
           })
           .where(eq(ingredients.id, id))
@@ -572,7 +651,7 @@ router.patch(
             action: 'ingredient.remap',
             targetType: 'ingredient',
             targetId: id,
-            payload: { before: beforeSnap, after: afterSnap },
+            payload: { before: beforeSnap, after: afterSnap, ...('bedcaId' in body ? { bedcaId: body.bedcaId } : {}) },
           },
           tx,
         )
@@ -580,7 +659,10 @@ router.patch(
         return after
       })
 
-      res.json(updated)
+      // PRO-1125: the recipes that use it pick up the new values now.
+      invalidateRecipeCatalogCache()
+      const recomputed = await recomputeRecipesUsing(db, [id])
+      res.json({ ...updated, recipesRecomputed: recomputed.length })
     } catch (err) {
       console.error('PATCH /ingredients/:id/remap error:', err)
       const status = (err as { status?: number })?.status === 429 ? 429 : 500

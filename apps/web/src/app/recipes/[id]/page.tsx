@@ -36,6 +36,7 @@ import { AddToMenuSheet } from "@/components/recipes/detail/AddToMenuSheet"
 import { RecipeHeroPhoto } from "@/components/recipes/detail/RecipeHeroPhoto"
 import { haptic } from "@/lib/pwa/haptics"
 import { share } from "@/lib/pwa/share"
+import { trackUsage } from "@/lib/usageEvents"
 import {
   BookmarkPlus,
   CalendarPlus,
@@ -53,18 +54,18 @@ import Link from "next/link"
 import {
   allergenLabel,
   householdToDinersOrNull,
-  minutesLabel,
   publicTagsOf,
   recipeEyebrow,
-  recipeTotalMinutes,
   timelineString,
 } from "@/lib/recipeView"
 import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
-import { BRAND_NAME, recipeSharePayload } from "@ona/shared"
+import { BRAND_NAME, advancePrepLabel, normalizeReferralCode, recipeSharePayload, workTimeLabel } from "@ona/shared"
 import { ApiError } from "@/lib/api"
 import { loginHrefFor } from "@/lib/routeAccess"
 import { recipeBackTarget } from "@/lib/menuReturn"
 import { RecipeWaitlistCta } from "@/components/recipes/RecipeWaitlistCta"
+import { useReferralLink } from "@/components/referrals/InviteHouseholdButton"
+import { rememberSignupAttribution } from "@/lib/signupAttribution"
 
 /**
  * Recipe detail — "D · Luz y foto" (2026-10-08).
@@ -101,6 +102,17 @@ export default function RecipeDetailPage() {
   // PublicNavbar on top, so the photo, sticky tabs and sticky hero start
   // below it, and a waitlist block closes the page (specs/recipes.md).
   const publicChrome = !authLoading && !user
+  // PRO-1016 (D-132): a share carries the household's invitation. Signed in,
+  // our own code goes into the shared link; signed out, a link that came with
+  // `?invita=<code>` is remembered for the sign-up and shown at the foot.
+  const referral = useReferralLink(!!user)
+  const [invitedBy, setInvitedBy] = useState<string | null>(null)
+  useEffect(() => {
+    const code = normalizeReferralCode(new URLSearchParams(window.location.search).get("invita"))
+    // Only a household's share is remembered: a plain visit keeps attribution as before.
+    if (code) rememberSignupAttribution()
+    setInvitedBy(code)
+  }, [])
 
   const [servings, setServings] = useState<number | null>(null)
   // Once we know the recipe's authored servings, the scaler "seeds" itself.
@@ -253,8 +265,11 @@ export default function RecipeDetailPage() {
     haptic.light()
     // "Pásalo": catalogue recipes share this very page's link (it opens
     // without an account, with the waitlist block); private ones go as text
-    // + a link to Mimoia.
-    await share(recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : ""))
+    // + a link to Mimoia. Either way with this household's invitation.
+    const shared = await share(
+      recipeSharePayload(recipe, typeof window !== "undefined" ? window.location.origin : "", referral.data?.code),
+    )
+    if (shared.success) trackUsage("content_shared", { what: "receta" })
   }
 
   const stepCount = recipe.steps?.length ?? 0
@@ -321,10 +336,18 @@ export default function RecipeDetailPage() {
   const stepsBlock = (
     <>
       {timeLine && (
-        <p className="mb-5 flex items-center gap-1.5 text-[13px] text-[#4A4239]">
+        <p className={`${recipe.advancePrep?.length ? "mb-1.5" : "mb-5"} flex items-center gap-1.5 text-[13px] text-[#4A4239]`}>
           <Clock size={14} className="text-[#7A7066]" aria-hidden />
           {timeLine}
         </p>
+      )}
+      {/* PRO-402: what goes the day before (a soak, a marinade) is not in the time above. */}
+      {recipe.advancePrep && recipe.advancePrep.length > 0 && (
+        <ul className="mb-5 flex flex-col gap-0.5 text-[13px] text-[#4A4239]" data-testid="recipe-advance-prep">
+          {recipe.advancePrep.map((p) => (
+            <li key={`${p.hoursBefore}-${p.text}`}>{advancePrepLabel(p)}</li>
+          ))}
+        </ul>
       )}
       {stepCount > 0 ? (
         <StepsSection
@@ -334,6 +357,21 @@ export default function RecipeDetailPage() {
         />
       ) : (
         <EmptyLine>Esta receta aún no tiene pasos.</EmptyLine>
+      )}
+      {/* D-1028: the slower, better version, after the last step. Only with text. */}
+      {recipe.moreTime?.trim() && (
+        <section className="mt-8 border-t border-[#DDD6C5] pt-5" data-testid="recipe-more-time" aria-label="Y si tienes más tiempo…">
+          <h3 className="font-display mb-2 text-[20px] font-semibold! leading-tight text-[#1A1612]">Y si tienes más tiempo…</h3>
+          <div className="space-y-2 text-[15px] leading-relaxed text-[#1A1612]">
+            {recipe.moreTime
+              .split(/\n{2,}/)
+              .map((p) => p.trim())
+              .filter(Boolean)
+              .map((p, i) => (
+                <p key={i}>{p}</p>
+              ))}
+          </div>
+        </section>
       )}
     </>
   )
@@ -580,7 +618,7 @@ export default function RecipeDetailPage() {
 
           <DesktopSection title="Notas">{notesBlock}</DesktopSection>
 
-          {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-6" />}
+          {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} inviteCode={invitedBy} className="mt-6" />}
         </motion.div>
       </div>
     )
@@ -685,7 +723,7 @@ export default function RecipeDetailPage() {
         {hasNutrition && panel("nutricion", "Nutrición", nutritionBlock)}
         {panel("notas", "Notas", notesBlock)}
 
-        {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} className="mt-12" />}
+        {publicChrome && <RecipeWaitlistCta recipeName={recipe.name} inviteCode={invitedBy} className="mt-12" />}
       </motion.div>
 
       <RecipeActionBar
@@ -714,7 +752,8 @@ function RecipeHeader({
     { ...recipe, tags },
     { withTimeAndDifficulty: !isDesktop },
   )
-  const total = minutesLabel(recipeTotalMinutes(recipe))
+  // D-1028: «25 min de trabajo · 2 h en total», the cook's time first.
+  const total = workTimeLabel(recipe)
   const difficulty = recipe.difficulty ? DIFFICULTY_LABELS[recipe.difficulty] : ""
   const kcal = recipe.nutritionIncomplete ? undefined : recipe.nutritionPerServing?.kcal
   const metaParts = [
@@ -758,6 +797,21 @@ function RecipeHeader({
           ) : (
             recipe.sourceCredit
           )}
+        </p>
+      )}
+      {recipe.bases && recipe.bases.length > 0 && (
+        // PRO-373: bases cooked another day (sofrito, verduras asadas…).
+        <p className="text-[15px] leading-snug text-[#4A4239]" data-testid="recipe-bases">
+          Usa:{" "}
+          {recipe.bases.map((b, i) => (
+            <span key={b.id}>
+              {i > 0 && ", "}
+              <Link href={`/recipes/${b.id}`} className="underline decoration-[#C65D38] underline-offset-2 hover:text-[#C65D38]">
+                {b.name}
+              </Link>{" "}
+              ({formatBaseServings(b.servings)})
+            </span>
+          ))}
         </p>
       )}
       {isDesktop && metaParts.length > 0 && (
@@ -893,6 +947,11 @@ function DesktopSection({
 
 function EmptyLine({ children }: { children: ReactNode }) {
   return <p className="py-4 text-[14px] italic text-[#7A7066]">{children}</p>
+}
+
+/** «2 raciones», «1 ración», «1,5 raciones» (PRO-373). */
+function formatBaseServings(n: number): string {
+  return `${(Math.round(n * 10) / 10).toLocaleString("es-ES")} ${n === 1 ? "ración" : "raciones"}`
 }
 
 /**

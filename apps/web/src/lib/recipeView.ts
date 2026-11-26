@@ -4,8 +4,8 @@
  * (scaling, lint, nutrition) lives in the API layer.
  */
 
-import { householdToDiners } from "@ona/shared"
-import type { Recipe, RecipeIngredient, Unit, HouseholdSize, Meal, Difficulty } from "@ona/shared"
+import { householdToDiners, workTimeLabel } from "@ona/shared"
+import type { RecipeIngredient, Unit, HouseholdSize, Meal, Difficulty } from "@ona/shared"
 import { DIFFICULTY_LABELS, MEAL_LABELS } from "./labels"
 
 // ─── Tag visibility ────────────────────────────────────────────────
@@ -99,6 +99,7 @@ export function recipeEyebrow(
     totalTime?: number | null
     prepTime?: number | null
     cookTime?: number | null
+    activeTime?: number | null
     difficulty?: string | null
   },
   opts: { withTimeAndDifficulty: boolean },
@@ -109,7 +110,8 @@ export function recipeEyebrow(
     category ? category.charAt(0).toUpperCase() + category.slice(1) : "",
   ]
   if (opts.withTimeAndDifficulty) {
-    parts.push(minutesLabel(recipeTotalMinutes(r)))
+    // D-1028: «25 min de trabajo · 2 h en total», the cook's time first.
+    parts.push(workTimeLabel(r))
     parts.push(r.difficulty ? DIFFICULTY_LABELS[r.difficulty as Difficulty] ?? "" : "")
   }
   return parts.filter(Boolean).join(" · ")

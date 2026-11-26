@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   index,
   check,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { UNITS, type MenuFit, type NutritionPerServing } from '@ona/shared'
@@ -76,6 +77,11 @@ export const users = pgTable('users', {
    * 2026-11-07): stamped when it goes at the end of a reply, so it never repeats.
    */
   leftoversQuestionAt: timestamp('leftovers_question_at', { withTimezone: true }),
+  /**
+   * The Sean Ellis survey (PRO-334, beta): stamped when Mimo asks it on
+   * WhatsApp, the /menu card is closed or it is answered, so it never repeats.
+   */
+  seanEllisAt: timestamp('sean_ellis_at', { withTimezone: true }),
   // Authorization
   role: text('role').notNull().default('user'),
   // Suspension (admin gate). NULL = active.
@@ -175,6 +181,9 @@ export const users = pgTable('users', {
   check('users_role_check', sql.raw("role IN ('user','admin')")),
   uniqueIndex('uq_users_referral_code').on(table.referralCode),
   index('idx_users_suspended').on(table.suspendedAt),
+  // PRO-1271: one account per email whatever its capitals (an admin email with
+  // another capital used to be a different account that the login made admin).
+  uniqueIndex('uq_users_email_lower').on(sql`lower(${table.email})`),
 ])
 
 // ─── 1b. user_memories ──────────────────────────────────────
@@ -300,6 +309,12 @@ export const recipes = pgTable('recipes', {
   seasonFit: jsonb('season_fit'),
 
   equipment: text('equipment').array().default([]),
+  /**
+   * «Semana tipo» (D-182): the dish types of the recipe (`DISH_TYPES` keys:
+   * pizza, legumbres, pescado…), set by `dishTypesOf` on save and import and
+   * filled on boot for rows still null (`dishTypes.ts`).
+   */
+  dishTypes: text('dish_types').array(),
   /** Auto-aggregated from ingredients on save */
   allergens: text('allergens').array().default([]),
 
@@ -307,6 +322,12 @@ export const recipes = pgTable('recipes', {
   tips: text('tips'),
   substitutions: text('substitutions'),
   storage: text('storage'),
+  /**
+   * D-1028: «Y si tienes más tiempo…» — how the quick version gets better
+   * with more time (the slow sofrito, the dried pulse soaked overnight…).
+   * Public, shown at the end of the ficha. Null = no section.
+   */
+  moreTime: text('more_time'),
   /**
    * PRO-372: «Se puede congelar» / «No se congela» and «Aguanta N días en
    * nevera» seals on the ficha. Null = no data yet (no seal). Filled by
@@ -475,6 +496,22 @@ export const recipeSteps = pgTable('recipe_steps', {
 }, (table) => [
   index('idx_recipe_steps_recipe').on(table.recipeId),
   uniqueIndex('uq_recipe_step_order').on(table.recipeId, table.index),
+])
+
+// ─── 6b. recipe_bases (PRO-373) ─────────────────────────────
+// A dish that uses a base cooked another day (sofrito, legumbre aliñada,
+// verduras asadas…): `servings_used` servings of the base for one batch of the
+// dish (its `servings`). Deleting the dish drops the link; a base in use can't
+// be deleted. The shopping list adds the base's ingredients through it.
+export const recipeBases = pgTable('recipe_bases', {
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  baseRecipeId: uuid('base_recipe_id').notNull().references(() => recipes.id, { onDelete: 'restrict' }),
+  servingsUsed: real('servings_used').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.recipeId, table.baseRecipeId] }),
+  index('idx_recipe_bases_base').on(table.baseRecipeId),
+  check('recipe_bases_servings_check', sql.raw('servings_used > 0')),
+  check('recipe_bases_not_self_check', sql.raw('recipe_id <> base_recipe_id')),
 ])
 
 // ─── 7. user_favorites ──────────────────────────────────────
@@ -675,6 +712,23 @@ export const households = pgTable('households', {
   trialEndingEmailAt: timestamp('trial_ending_email_at', { withTimezone: true }),
   /** PRO-136: when the day-7 founder-price offer went out by email / WhatsApp (once). */
   founderOfferAt: timestamp('founder_offer_at', { withTimezone: true }),
+  /**
+   * PRO-1301: "HH:MM" (Madrid) for the morning menu and the dinner question,
+   * chosen in Perfil → Avisos or with Mimo. Null = the time it always had
+   * (breakfast time; two hours after dinner).
+   */
+  dailyBriefTime: text('daily_brief_time'),
+  dinnerCheckinTime: text('dinner_checkin_time'),
+  /** Red de tiendas: the household's postal code (one per household), asked on /compra only when needed. */
+  postalCode: text('postal_code'),
+  /** Red de tiendas: kinds the household keeps at its súper ({ fruteria: 'super' }), so it is asked once. */
+  redChoices: jsonb('red_choices').notNull().default({}),
+  /**
+   * PRO-1290: this household's own monthly Mimo cap in euros, set by an admin
+   * (`PUT /admin/households/:id/mimo-cap`, up to 3× its plan's). Null = the
+   * plan's. Applies to every member (services/householdMimoCap.ts).
+   */
+  mimoCapEur: real('mimo_cap_eur'),
 }, (t) => [
   index('idx_households_owner').on(t.ownerId),
 ])
@@ -707,6 +761,17 @@ export const cookOfDay = pgTable('cook_of_day', {
   assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex('uq_cook_of_day').on(t.householdId, t.day)])
+
+// «Semana tipo» (D-182): what the household usually eats each day, one row
+// per household. `slots` is `WeekTypeDays` (@ona/shared types/weekType.ts):
+// 7 days × meal → slot. Written one slot at a time (PUT
+// /households/me/week-type/:day/:meal), read by the menu generator.
+export const householdWeekTypes = pgTable('household_week_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }).unique(),
+  slots: jsonb('slots').notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 // ─── 18. household_invites ──────────────────────────────────
 // One-time tokens the owner generates and shares manually (mirrors the
@@ -1339,6 +1404,77 @@ export const capHits = pgTable('cap_hits', {
   check('cap_hits_channel_check', sql.raw("channel IN ('app','whatsapp')")),
 ])
 
+// ─── «Mimo remoto» en staging (PRO-1102, D-157) ─────────────────────
+// With MIMO_REMOTO=1 each round Mimo would send to Anthropic waits here for
+// the office to answer it (services/assistant/mimoRemoto.ts). Never used in
+// production: the API refuses to boot there with the mode on.
+export const mimoTurnosRemotos = pgTable('mimo_turnos_remotos', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  creado: timestamp('creado', { withTimezone: true }).notNull().defaultNow(),
+  /** 'pendiente' | 'cogido' | 'respondido' | 'caducado'. */
+  estado: text('estado').notNull().default('pendiente'),
+  /** The Messages request as it would go to Anthropic: model, system, messages, tools… */
+  peticion: jsonb('peticion').notNull(),
+  /** `{ content, stop_reason }` in the Messages API format, once answered. */
+  respuesta: jsonb('respuesta'),
+}, (t) => [
+  index('idx_mimo_turnos_remotos_estado').on(t.estado, t.creado),
+  check('mimo_turnos_remotos_estado_check', sql.raw("estado IN ('pendiente','cogido','respondido','caducado')")),
+])
+
+// ─── Red de tiendas v2 (D-165) ───────────────────────────────────────
+
+/**
+ * Red de tiendas v2 (D-165; specs/red-tiendas.md):
+ * Mimoia's shops. A household gets a copy in `household_shops` (origin `red`)
+ * when Mimoia assigns one, and its own shop is linked (`red_shop_id`) when it
+ * joins the Red. No column ranks shops by what they leave: assigning never
+ * depends on it (constitución §7).
+ */
+export const redShops = pgTable('red_shops', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  /** fruteria | carniceria | pescaderia */
+  kind: text('kind').notNull(),
+  /** The shop's own postal code (5 digits). */
+  postalCode: text('postal_code').notNull(),
+  address: text('address'),
+  /** Digits with country code (34…). Orders go here; a household's own shop with this number is linked. */
+  whatsapp: text('whatsapp').notNull(),
+  /** Postal codes it delivers to; empty = pickup only. */
+  deliveryPostalCodes: text('delivery_postal_codes').array().notNull().default([]),
+  deliveryMinEur: real('delivery_min_eur'),
+  deliveryFeeEur: real('delivery_fee_eur'),
+  /** { [ingredientId]: { pricePerKg, at } }, common to all its households (written from tramo 1b). */
+  priceMemory: jsonb('price_memory').notNull().default({}),
+  notes: text('notes'),
+  /** activa | pausada | baja */
+  status: text('status').notNull().default('activa'),
+  /** Made by scripts/redTestShops.ts: never a real shop. */
+  isTest: boolean('is_test').notNull().default(false),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_red_shops_kind_status').on(t.kind, t.status),
+  uniqueIndex('uq_red_shops_whatsapp').on(t.whatsapp),
+  check('red_shops_kind_check', sql.raw("kind IN ('fruteria','carniceria','pescaderia')")),
+  check('red_shops_status_check', sql.raw("status IN ('activa','pausada','baja')")),
+])
+
+/** The Red's numbers, one row (id = 1). Starting values in the migration; editable in Admin from tramo 2. */
+export const redSettings = pgTable('red_settings', {
+  id: smallint('id').primaryKey().default(1),
+  discountPct: real('discount_pct').notNull().default(5),
+  commissionPct: real('commission_pct').notNull().default(5),
+  commissionVatIncluded: boolean('commission_vat_included').notNull().default(true),
+  marginKnownPct: real('margin_known_pct').notNull().default(15),
+  marginReferencePct: real('margin_reference_pct').notNull().default(30),
+  marginWildFishExtraPct: real('margin_wild_fish_extra_pct').notNull().default(10),
+  termsVersion: text('terms_version').notNull().default('v2-prueba'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [check('red_settings_single_row', sql.raw('id = 1'))])
+
 // ─── "Compra en mis tiendas" (specs/shop-orders.md) ──────────────────
 //
 // The household's own shops (frutería, carnicería, pescadería, súper) and
@@ -1371,10 +1507,18 @@ export const householdShops = pgTable('household_shops', {
   deliveryMinEur: real('delivery_min_eur'),
   deliveryFeeEur: real('delivery_fee_eur'),
   position: integer('position').notNull().default(0),
+  /** Red de tiendas: the Red shop this row is (a copy) or joined (the household's own shop). */
+  redShopId: uuid('red_shop_id').references(() => redShops.id, { onDelete: 'set null' }),
+  /** propia | red — `red` = Mimoia assigned it from the Red. */
+  origin: text('origin').notNull().default('propia'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_household_shops_household').on(t.householdId),
+  index('idx_household_shops_red').on(t.redShopId),
+  // At most one Red copy per household and kind: two concurrent «Preparar» can't make two.
+  uniqueIndex('uq_household_shops_red_copy').on(t.householdId, t.kind).where(sql`origin = 'red'`),
+  check('household_shops_origin_check', sql.raw("origin IN ('propia','red')")),
 ])
 
 export const shopOrders = pgTable('shop_orders', {
@@ -1384,7 +1528,11 @@ export const shopOrders = pgTable('shop_orders', {
   shopId: uuid('shop_id').references(() => householdShops.id, { onDelete: 'set null' }),
   /** The shop as it was when the order was drafted (name, kind, channel, contact). */
   shopSnapshot: jsonb('shop_snapshot').notNull(),
-  /** draft | sent | quoted | approved | closed | cancelled */
+  /**
+   * draft | sent | quoted | approved | closed | cancelled; Red orders (red_shop_id set) also
+   * ordered | accepted | preparing | ready | payment_pending | charged | delivered | rejected | incident
+   * (SHOP_ORDER_STATUSES in @ona/shared).
+   */
   status: text('status').notNull().default('draft'),
   /** Unguessable id for the public short link /c/:token → wa.me. */
   token: text('token').notNull(),
@@ -1403,6 +1551,14 @@ export const shopOrders = pgTable('shop_orders', {
   finalTotalEur: real('final_total_eur'),
   /** Último envío a la extensión del navegador (StoredBasketResult); null si nunca. */
   extensionResult: jsonb('extension_result'),
+  /** Red de tiendas: the Red shop this order goes to; null = the household's own channel (wa.me…). */
+  redShopId: uuid('red_shop_id').references(() => redShops.id, { onDelete: 'set null' }),
+  /** RedSettings the order was drafted with (checked again at «Pedir»). */
+  redTerms: jsonb('red_terms'),
+  /** «Como mucho» the household raised (null = computed) and, once ordered, the one it accepted. */
+  maxEur: real('max_eur'),
+  orderedAt: timestamp('ordered_at', { withTimezone: true }),
+  orderedByUserId: uuid('ordered_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),
@@ -1412,6 +1568,8 @@ export const shopOrders = pgTable('shop_orders', {
 }, (t) => [
   uniqueIndex('uq_shop_orders_token').on(t.token),
   index('idx_shop_orders_household_status').on(t.householdId, t.status),
+  index('idx_shop_orders_red_shop').on(t.redShopId),
+  index('idx_shop_orders_ordered_by').on(t.orderedByUserId),
 ])
 
 // «Enviar a <cadena>» (specs/shop-orders.md, D-154): el aviso que aceptó cada
@@ -1722,6 +1880,12 @@ export const subscriptions = pgTable('subscriptions', {
   founderPrice: boolean('founder_price').notNull().default(false),
   /** PRO-136: when the legal notice «15 días antes del primer cobro» went out (once; never written by the webhook). */
   chargeNoticeAt: timestamp('charge_notice_at', { withTimezone: true }),
+  /** PRO-386: Stripe's `cancellation_details.reason` (cancellation_requested, payment_failed, payment_disputed). */
+  cancelReason: text('cancel_reason'),
+  /** PRO-386: the category picked in Stripe's portal (too_expensive, unused, missing_features…). The free comment is never kept (D-094). */
+  cancelFeedback: text('cancel_feedback'),
+  /** PRO-386: since when it is `past_due` (ours: set on the first `past_due`, cleared on any other status). 7 days → no paid access. */
+  pastDueSince: timestamp('past_due_since', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -1729,6 +1893,24 @@ export const subscriptions = pgTable('subscriptions', {
   index('idx_subscriptions_household').on(t.householdId),
   check('subscriptions_plan_check', sql.raw("plan IN ('esencial','plus')")),
   check('subscriptions_period_check', sql.raw("period IN ('mensual','anual')")),
+])
+
+// ─── Failed payments (PRO-386, specs/billing.md) ────────────
+// One row per Stripe invoice whose payment failed (`invoice.payment_failed`):
+// the claim that makes the notice go once per invoice, and what the growth
+// report counts as «impagos».
+export const paymentFailures = pgTable('payment_failures', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  stripeInvoiceId: text('stripe_invoice_id').notNull(),
+  stripeSubscriptionId: text('stripe_subscription_id').notNull(),
+  householdId: uuid('household_id').references(() => households.id, { onDelete: 'cascade' }),
+  /** 'whatsapp' | 'email', once the notice went out; null while it hasn't. */
+  noticeChannel: text('notice_channel'),
+  noticeAt: timestamp('notice_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_payment_failures_invoice').on(t.stripeInvoiceId),
+  index('idx_payment_failures_created').on(t.createdAt),
 ])
 
 // ─── Beta price survey (specs/billing.md) ───────────────────
@@ -1761,6 +1943,8 @@ export const userFeedback = pgTable('user_feedback', {
   page: text('page'),
   /** What it answers, when it answers one of Mimo's questions: 'sobras' (PRO-285). */
   tag: text('tag'),
+  /** The option picked, for a question with options: 'muy' | 'algo' | 'nada' | 'ya_no' (tag 'sean_ellis', PRO-334). */
+  answer: text('answer'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_user_feedback_created').on(t.createdAt),
@@ -1795,6 +1979,24 @@ export const whatsappQuestionSends = pgTable('whatsapp_question_sends', {
 }, (t) => [
   uniqueIndex('uq_whatsapp_question_send').on(t.questionId, t.householdId),
   index('idx_whatsapp_question_sends_user').on(t.userId),
+])
+
+// ─── Pregunta por correo (PRO-1197, specs/admin-dashboard.md) ──
+// The one email Miguel sends from Admin to the households that left the
+// beta (approval 2026-11-11). One row per household and question, claimed
+// before the send: never twice, a failed one is not retried.
+export const emailQuestionSends = pgTable('email_question_sends', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** Which email (`EMAIL_QUESTION_CAMPAIGN`). */
+  question: text('question').notNull(),
+  householdId: uuid('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 'sending' | 'sent' | 'failed' */
+  status: text('status').notNull().default('sending'),
+  errorMessage: text('error_message'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('uq_email_question_send').on(t.question, t.householdId),
 ])
 
 // ─── «Afina tu menú» (specs/taste.md, PRO-146) ──────────────

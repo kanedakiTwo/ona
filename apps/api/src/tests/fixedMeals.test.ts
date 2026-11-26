@@ -1,12 +1,13 @@
 /**
  * PRO-218: comidas fijas. The shopping list adds the week's amounts, the
- * generator leaves the meal alone, and Mimo's tools save it.
+ * generator leaves the meal alone, and Mimo's tools save it — since D-182 as
+ * «algo fijo sin receta» in the household's «semana tipo».
  */
 import { describe, expect, it, vi } from 'vitest'
-import { fixedMealsFromTemplate, fixedNoteText, type DayMenu, type FixedMeal } from '@ona/shared'
+import { fixedMealsFromTemplate, fixedNoteText, fullWeekTypeDays, plantillaEdits, plantillaFromWeekType, type DayMenu, type FixedMeal, type LockedSlots, type WeekTypeDays } from '@ona/shared'
 import { fixedLinesToItems, splitFixedLines, sumFixedItems, aggregateScaledRows, type CatalogRow } from '../services/shoppingList.js'
-import { buildRandomMenu, templateWithoutFixed, withFixedMeals, defaultTemplate } from '../services/menuGenerator.js'
-import { withFixedMeal } from '../services/fixedMealsStore.js'
+import { buildRandomMenu } from '../services/menuGenerator.js'
+import { planWeekType } from '../services/weekTypePlan.js'
 import type { RecipeWithCourse } from '../services/matchableRecipes.js'
 
 const BREAKFAST: FixedMeal = {
@@ -32,10 +33,24 @@ const pool: RecipeWithCourse[] = Array.from({ length: 20 }, (_, i) => ({
   ingredients: [{ ingredientId: `i${i}`, ingredientName: 'cebolla', quantity: 100, unit: 'g', allergenTags: [] }],
 }))
 
-const withBreakfast = defaultTemplate().map((d) => ({ ...d, breakfast: true }))
+const WEEK = '2026-11-09'
+
+/** The week type with a fixed breakfast, as the profile's «Comidas fijas» saves it. */
+function withFixed(fixed: FixedMeal[], diners?: number): WeekTypeDays {
+  const days = fullWeekTypeDays()
+  const before = plantillaFromWeekType(days, 2)
+  for (const e of plantillaEdits(days, before, { ...before, fixedMeals: fixed }, WEEK)) days[e.day][e.meal] = { ...e.slot, ...(diners ? { diners } : {}) }
+  return days
+}
+
+/** The generator's draw on a week type (what generateMenu does, without the DB). */
+function generate(days: WeekTypeDays, opts: { locked?: LockedSlots; existing?: DayMenu[]; skipped?: Set<number> } = {}) {
+  const plan = planWeekType(days, WEEK, { recipes: pool, restrictions: [] })
+  return buildRandomMenu(plan.template, pool, 'autumn', [], new Set(), opts.locked ?? {}, opts.existing, undefined, opts.skipped, undefined, undefined, undefined, plan.mealDiners, plan.dishCounts, undefined, undefined, undefined, undefined, plan.specs).days
+}
 
 describe('the shopping list', () => {
-  const week = withFixedMeals(Array.from({ length: 7 }, () => ({}) as DayMenu), [BREAKFAST])
+  const week = generate(withFixed([BREAKFAST]))
 
   it('a 7-day fixed breakfast for 1 with 1 yogur, 40 g of cereales and 2 galletas adds 7 yogures, 280 g of cereales and 14 galletas', () => {
     expect(sumFixedItems(week, 1)).toEqual([
@@ -77,12 +92,7 @@ describe('the shopping list', () => {
 
 describe('the generator', () => {
   it('never picks a recipe for a fixed meal and puts «Fijo: …» there', () => {
-    const template = templateWithoutFixed(withBreakfast, [BREAKFAST])
-    expect(template.every((d) => !d.breakfast && d.lunch && d.dinner)).toBe(true)
-    const { days } = buildRandomMenu(template, pool, 'autumn', [], new Set(), {})
-    expect(days.every((d) => !d.breakfast)).toBe(true)
-    const final = withFixedMeals(days, [BREAKFAST])
-    for (const d of final) {
+    for (const d of generate(withFixed([BREAKFAST]))) {
       expect(d.breakfast?.dishes).toEqual([{ kind: 'note', text: 'Fijo: Yogur con cereales', fixed: { items: BREAKFAST.items } }])
       expect(d.lunch?.dishes[0].kind).toBe('recipe')
     }
@@ -92,58 +102,54 @@ describe('the generator', () => {
     const weekdays: FixedMeal = { ...BREAKFAST, days: ['lunes', 'martes'] }
     const existing: DayMenu[] = Array.from({ length: 7 }, () => ({}))
     existing[1] = { breakfast: { dishes: [{ kind: 'note', text: 'Churros' }] } }
-    const out = withFixedMeals(Array.from({ length: 7 }, () => ({}) as DayMenu), [weekdays], {
-      lockedSlots: { '1': { breakfast: true } },
-      existingDays: existing,
-      skippedDays: new Set([0]),
-    })
+    const out = generate(withFixed([weekdays]), { locked: { '1': { breakfast: true } }, existing, skipped: new Set([0]) })
     expect(out[0].breakfast).toBeUndefined() // sin cocinar
     expect(out[1].breakfast?.dishes[0]).toEqual({ kind: 'note', text: 'Churros' }) // locked
     expect(out[2].breakfast).toBeUndefined() // not its day
-    expect(templateWithoutFixed(withBreakfast, [weekdays])[2].breakfast).toBe(true)
   })
 
-  it('takes the plantilla’s diners', () => {
-    const diners = Array.from({ length: 7 }, () => ({ breakfast: 2 }) as any)
-    expect(withFixedMeals([{}], [BREAKFAST], { mealDiners: diners })[0].breakfast?.servings).toBe(2)
+  it('takes the slot’s diners', () => {
+    expect(generate(withFixed([BREAKFAST], 2))[0].breakfast?.servings).toBe(2)
   })
 })
 
 describe('storage', () => {
-  it('reads only well-formed fixed meals from the template blob', () => {
+  it('reads only well-formed fixed meals from the old template blob (its migration)', () => {
     expect(fixedMealsFromTemplate({ fixedMeals: [BREAKFAST, { meal: 'breakfast', days: ['lunes'], label: 'x', items: [{ name: 'a', quantity: 1, unit: 'u' }] }, { meal: 'cena', days: [], label: '', items: [] }] })).toEqual([BREAKFAST])
     expect(fixedMealsFromTemplate([{ lunch: true }])).toEqual([])
     expect(fixedNoteText(BREAKFAST)).toBe('Fijo: Yogur con cereales')
   })
 
-  it('one per meal: setting replaces, null removes', () => {
+  it('the week type gives back the same fixed meal; one per meal', () => {
     const dinner: FixedMeal = { ...BREAKFAST, meal: 'dinner', label: 'Fruta' }
-    expect(withFixedMeal([BREAKFAST], 'dinner', dinner)).toEqual([BREAKFAST, dinner])
-    expect(withFixedMeal([BREAKFAST, dinner], 'breakfast', null)).toEqual([dinner])
+    expect(plantillaFromWeekType(withFixed([BREAKFAST, dinner]), 2).fixedMeals).toEqual([BREAKFAST, dinner])
+    expect(plantillaFromWeekType(withFixed([dinner]), 2).fixedMeals).toEqual([dinner])
   })
 })
 
 describe('Mimo', () => {
-  it('set_fixed_meal validates and saves; remove takes it away', async () => {
-    const calls: any[] = []
-    vi.doMock('../services/fixedMealsStore.js', () => ({
-      getFixedMeals: vi.fn(async () => []),
-      saveFixedMeal: vi.fn(async (userId: string, meal: string, next: unknown) => {
-        calls.push({ userId, meal, next })
-        return []
+  it('set_fixed_meal validates and saves into the week type; remove takes it away', async () => {
+    const views: any[] = []
+    let current = plantillaFromWeekType(fullWeekTypeDays(), 2)
+    vi.doMock('../services/weekType.js', () => ({
+      loadWeekTypeForUser: vi.fn(async () => ({ householdId: 'h1', days: fullWeekTypeDays() })),
+      editWeekTypeAsPlantilla: vi.fn(async (_userId: string, edit: (v: any) => any) => {
+        current = edit(current)
+        views.push(current)
+        return { changes: [], days: [] }
       }),
     }))
     const { fixedMealSkills } = await import('../services/assistant/fixedMealSkills.js')
     const set = fixedMealSkills.find((s) => s.name === 'set_fixed_meal')!
     const ctx = { userId: 'u1', db: {} } as any
     const ok = await set.handler({ meal: 'breakfast', label: 'Yogur con cereales', items: BREAKFAST.items }, ctx)
-    expect(calls[0]).toEqual({ userId: 'u1', meal: 'breakfast', next: BREAKFAST })
+    expect(views[0].fixedMeals).toEqual([BREAKFAST])
     expect(ok.summary).toContain('Fijo: Yogur con cereales')
     const bad = await set.handler({ meal: 'breakfast', label: '', items: [] }, ctx)
     expect(bad.summary).toMatch(/No he cambiado nada/)
-    expect(calls).toHaveLength(1)
+    expect(views).toHaveLength(1)
     await set.handler({ meal: 'breakfast', remove: true }, ctx)
-    expect(calls[1]).toEqual({ userId: 'u1', meal: 'breakfast', next: null })
-    vi.doUnmock('../services/fixedMealsStore.js')
+    expect(views[1].fixedMeals).toEqual([])
+    vi.doUnmock('../services/weekType.js')
   })
 })

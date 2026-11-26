@@ -4,8 +4,33 @@
  * names. No imports, so the API's vitest can test them.
  */
 
-export type ClientUsageEvent = "onboarding_step" | "screen_viewed" | "recipe_viewed" | "taste_tuning" | "push_opened"
-export type UsageScreen = "menu" | "lista" | "compra" | "receta" | "recetas" | "perfil" | "despensa" | "avisos" | "casa"
+export type ClientUsageEvent =
+  | "onboarding_step"
+  | "screen_viewed"
+  | "recipe_viewed"
+  | "taste_tuning"
+  | "push_opened"
+  | "content_shared"
+  | "week_printed"
+  | "handsfree_started"
+  | "menu_sheet_action"
+export type UsageScreen =
+  | "menu"
+  | "cocinar"
+  | "lista"
+  | "compra"
+  | "receta"
+  | "recetas"
+  | "perfil"
+  | "despensa"
+  | "avisos"
+  | "casa"
+  | "ficha"
+  | "afinar"
+  | "historial"
+  | "imprimir"
+  | "recetarios"
+  | "tiendas"
 export type RecipeViewFrom = "menu" | "catalogo" | "mimo" | "lista" | "otro"
 export type OnboardingStep = "afina" | "canal" | "hogar" | "quien_compra" | "invitar" | "frecuencia" | "cocina" | "tiempo" | "dieta" | "prioridad"
 
@@ -17,12 +42,13 @@ export function onboardingStepKey(step: number): OnboardingStep | null {
   return NUMBERED_STEPS[step - 1] ?? null
 }
 
-const RECIPE_DETAIL = /^\/recipes\/(?!new\/?$)[^/]+\/?$/
+const RECIPE_DETAIL = /^\/recipes\/(?!(?:new|mias|recetarios)\/?$)[^/]+\/?$/
 
 /** Pure: the screen a path is, or null (public pages, cook mode, forms…). */
 export function screenOfPath(path: string | null | undefined): UsageScreen | null {
   const p = (path ?? "").replace(/\/+$/, "") || "/"
   if (p === "/menu") return "menu"
+  if (p === "/cocinar") return "cocinar"
   if (p === "/shopping") return "lista"
   if (p === "/compra") return "compra"
   if (p === "/recipes") return "recetas"
@@ -31,6 +57,13 @@ export function screenOfPath(path: string | null | undefined): UsageScreen | nul
   if (p === "/profile/pantry") return "despensa"
   if (p === "/profile/avisos") return "avisos"
   if (p === "/profile/casa") return "casa"
+  // PRO-1024 (trucos 5).
+  if (p === "/profile/ficha") return "ficha"
+  if (p === "/afinar") return "afinar"
+  if (p === "/menu/history") return "historial"
+  if (p === "/menu/imprimir") return "imprimir"
+  if (p === "/recipes/recetarios" || p === "/profile/cookbooks" || /^\/cookbooks\/[^/]+$/.test(p)) return "recetarios"
+  if (p === "/compra/tiendas") return "tiendas"
   return null
 }
 
@@ -38,7 +71,7 @@ export function screenOfPath(path: string | null | undefined): UsageScreen | nul
 export function recipeFromPath(prev: string | null | undefined): RecipeViewFrom {
   const p = prev ?? ""
   if (p.startsWith("/menu")) return "menu"
-  if (p === "/recipes" || p.startsWith("/recipes?") || p.startsWith("/cookbooks") || p.startsWith("/profile/cookbooks")) return "catalogo"
+  if (p === "/recipes" || p.startsWith("/recipes?") || p.startsWith("/cookbooks") || p.startsWith("/profile/cookbooks") || p === "/recipes/recetarios" || p === "/recipes/mias") return "catalogo"
   if (p.startsWith("/shopping")) return "lista"
   return "otro"
 }

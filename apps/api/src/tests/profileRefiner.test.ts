@@ -238,6 +238,15 @@ describe('planRefinement — «Tu ficha» (PRO-317): the pause and what the read
     expect(plan.ops.map((o) => o.kind)).toEqual(['add'])
   })
 
+  it('a fixed dish with its day and meal is never written by the refiner (the semana tipo is the household’s until phase 3, D-182)', () => {
+    const plan = planRefinement(ctx(), refsOf(ctx()), out({ facts: [
+      fact({ type: 'fixed_dish', valueJson: JSON.stringify({ dish: 'pizza', days: ['viernes'], meal: 'dinner' }) }),
+      fact({ type: 'fixed_dish', valueJson: JSON.stringify({ dish: 'paella' }) }),
+    ] }))
+    expect(plan.discarded).toEqual([{ reason: 'week_type', op: 'add', type: 'fixed_dish' }])
+    expect(plan.ops.filter((o) => o.kind === 'add').map((o) => o.kind === 'add' && o.value)).toEqual([{ dish: 'paella' }])
+  })
+
   it('what the reader forgot comes back as a question, not as a fact', () => {
     const forgotten = [{ subjectUserId: null, subjectPersonId: null, type: 'fixed_dish' as const, value: { dish: 'pizza', days: ['viernes'], meal: 'dinner' } }]
     const plan = planRefinement(ctx({ forgotten }), refsOf(ctx()), out({ facts: [

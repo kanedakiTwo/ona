@@ -3,19 +3,18 @@
 /**
  * Building blocks of the recipe forms (`/recipes/new`, `/recipes/[id]/edit`)
  * in the "D · Luz y foto" skin (PRO-42): paper section cards with Fraunces
- * titles, #E8E2D3 bordered 44 px inputs, ink/paper choice pills, dashed
- * ingredient rows like the recipe detail's and a sticky ink "save" pill.
+ * titles, #E8E2D3 bordered 44 px inputs, ink/paper choice pills and a sticky
+ * ink "save" pill. The ingredients and steps boxes are in RecipeTextFields.
  *
  * Presentation only — every piece takes its state and handlers from the page,
  * so the form payload (and `recipeFormContract.test.ts`) is untouched.
  */
 import { useEffect, useRef, type ReactNode } from "react"
 import Link from "next/link"
-import { ChevronLeft, Plus, Trash2 } from "lucide-react"
-import { RECIPE_UNIT_LABELS, type Ingredient, type Unit } from "@ona/shared"
+import { ChevronLeft, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { humanizeLintKey } from "@/lib/recipeView"
-import { IngredientAutocomplete } from "@/components/recipes/IngredientAutocomplete"
+import { FieldLabel, FieldMark, type FieldMarkProps } from "@/components/FieldLabel"
 
 /** Fraunces at text sizes, semibold — the `/menu` and `/recipes` title cut. */
 export const FORM_TITLE = "font-serif-text font-[650] text-ink"
@@ -85,6 +84,7 @@ export function FormCard({
   children,
   className,
   labelledBy,
+  mark,
 }: {
   title: ReactNode
   description?: ReactNode
@@ -93,15 +93,27 @@ export function FormCard({
   children: ReactNode
   className?: string
   labelledBy?: string
+  /**
+   * When the card itself is one field (a list of ingredient rows, of steps,
+   * a photo), its title carries the mark and stands as the label of the
+   * unlabelled controls inside (PRO-1103).
+   */
+  mark?: FieldMarkProps
 }) {
   return (
     <section
       aria-labelledby={labelledBy}
+      data-field-group={mark ? "" : undefined}
       className={cn("rounded-[20px] border border-border-soft bg-paper p-4 sm:p-5 lg:p-6", className)}
     >
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id={labelledBy} className={cn(FORM_TITLE, "text-[20px] leading-tight lg:text-[22px]")}>
+        <h2
+          id={labelledBy}
+          data-field-group-label={mark ? "" : undefined}
+          className={cn(FORM_TITLE, "text-[20px] leading-tight lg:text-[22px]")}
+        >
           {title}
+          {mark && <FieldMark {...mark} />}
         </h2>
         {action}
       </div>
@@ -111,7 +123,10 @@ export function FormCard({
   )
 }
 
-/** One field inside a card: label + control (+ hint / error). */
+/**
+ * One field inside a card: label + control (+ hint / error). The label always
+ * carries its mark, `required` or `optional` (PRO-1103).
+ */
 export function Field({
   label,
   htmlFor,
@@ -119,6 +134,9 @@ export function Field({
   error,
   children,
   className,
+  required,
+  optional,
+  plural,
 }: {
   label: ReactNode
   htmlFor?: string
@@ -126,15 +144,18 @@ export function Field({
   error?: ReactNode
   children: ReactNode
   className?: string
-}) {
+} & FieldMarkProps) {
+  const mark = (required ? { required } : { optional, plural }) as FieldMarkProps
   return (
     <div className={className}>
       {htmlFor ? (
-        <label htmlFor={htmlFor} className={LABEL}>
+        <FieldLabel htmlFor={htmlFor} className={LABEL} {...mark}>
           {label}
-        </label>
+        </FieldLabel>
       ) : (
-        <div className={LABEL}>{label}</div>
+        <FieldLabel as="div" className={LABEL} {...mark}>
+          {label}
+        </FieldLabel>
       )}
       {hint && <p className={cn(HINT, "mt-1")}>{hint}</p>}
       <div className="mt-2">{children}</div>
@@ -193,126 +214,6 @@ export function AddRowButton({ onClick, children }: { onClick: () => void; child
 /** 44 px icon button used for the per-row trash. */
 export const ICON_BUTTON =
   "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-cream-deep hover:text-terracotta-deep disabled:opacity-30 disabled:hover:bg-transparent"
-
-/**
- * The editable body of one ingredient row, laid out like the detail's dashed
- * rows: name (autocomplete) + trash on the first line, then quantity (mono),
- * unit and the "opc" toggle. The sortable list adds the grip handle.
- */
-export function IngredientRowFields({
-  selected,
-  onSelect,
-  placeholder,
-  hasError,
-  defaultText,
-  quantity,
-  onQuantity,
-  unit,
-  units,
-  onUnit,
-  optional,
-  onToggleOptional,
-  note,
-  onNote,
-  onRemove,
-  removable,
-  hint,
-}: {
-  selected: Ingredient | null
-  onSelect: (ing: Ingredient) => void
-  placeholder: string
-  hasError: boolean
-  defaultText?: string
-  quantity: number | ""
-  onQuantity: (value: string) => void
-  unit: string
-  units: string[]
-  onUnit: (value: string) => void
-  optional: boolean
-  onToggleOptional: () => void
-  /** Optional note on the line («en lomos», «picada», PRO-109). */
-  note?: string
-  onNote?: (value: string) => void
-  onRemove: () => void
-  removable: boolean
-  hint?: string | null
-}) {
-  const label = selected?.name ?? defaultText ?? ""
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1">
-        <IngredientAutocomplete
-          value={selected}
-          onSelect={onSelect}
-          placeholder={placeholder}
-          hasError={hasError}
-          defaultText={defaultText}
-        />
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={!removable}
-          className={ICON_BUTTON}
-          aria-label="Quitar ingrediente"
-        >
-          <Trash2 size={17} />
-        </button>
-      </div>
-      <div className="flex items-center gap-2 pr-12">
-        <input
-          type="number"
-          value={quantity === "" ? "" : quantity}
-          onChange={(e) => onQuantity(e.target.value)}
-          placeholder="Cant."
-          aria-label={label ? `Cantidad de ${label}` : "Cantidad"}
-          min={0}
-          step="any"
-          className={fieldClass(false, "w-24 font-mono text-[15px] lg:text-[14px]")}
-        />
-        <select
-          value={unit}
-          onChange={(e) => onUnit(e.target.value)}
-          aria-label={label ? `Unidad de ${label}` : "Unidad"}
-          className={fieldClass(false, "w-24 px-2.5")}
-        >
-          {units.map((u) => (
-            <option key={u} value={u}>
-              {RECIPE_UNIT_LABELS[u as Unit] ?? u}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={onToggleOptional}
-          aria-pressed={optional}
-          title={optional ? "Quitar marca opcional" : "Marcar como opcional"}
-          className={cn(
-            "relative inline-flex h-9 items-center rounded-full px-3 text-[11px] uppercase tracking-[0.1em] transition-colors before:absolute before:inset-x-0 before:-inset-y-1",
-            optional
-              ? "bg-cream-deep font-semibold text-ink"
-              : "border border-dashed border-border text-ink-muted hover:border-ink hover:text-ink",
-          )}
-        >
-          opc
-        </button>
-      </div>
-      {onNote && (
-        <div className="pr-12">
-        <input
-          type="text"
-          value={note ?? ""}
-          onChange={(e) => onNote(e.target.value)}
-          placeholder="Nota (opcional): en lomos, picada…"
-          aria-label={label ? `Nota de ${label}` : "Nota del ingrediente"}
-          maxLength={200}
-          className={fieldClass(false, "text-[14px]")}
-        />
-        </div>
-      )}
-      {hint && <p className="text-[12px] italic text-terracotta-deep">{hint}</p>}
-    </div>
-  )
-}
 
 /**
  * Error / lint summary above the save bar. Scrolls itself into view when it

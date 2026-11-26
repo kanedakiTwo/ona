@@ -5,7 +5,7 @@
  * notice 15 days before the first charge (once, on the right day).
  */
 import { describe, expect, it } from 'vitest'
-import { PLANS, euros, founderPriceAmounts } from '@ona/shared'
+import { PAID_PLANS, euros, founderPriceAmounts } from '@ona/shared'
 import type { EmailMessage, EmailResult } from '../services/email.js'
 import {
   founderOfferEmail,
@@ -81,10 +81,10 @@ describe('founder-price offer', () => {
 
   it('the founder price carries its amounts, read from PLANS (PRO-204, Legal)', () => {
     const amounts = founderPriceAmounts()
-    for (const p of PLANS) {
+    for (const p of PAID_PLANS) {
       expect(amounts).toContain(`${p.name}, ${euros(p.prices.mensual.cents)} al mes o ${euros(p.prices.anual.cents)} al año`)
     }
-    expect(amounts).toBe('Esencial, 4,99 € al mes o 49,99 € al año; Plus, 8,99 € al mes o 59,99 € al año')
+    expect(amounts).toBe('Esencial, 4,99 € al mes o 49,99 € al año; Plus, 9,99 € al mes o 99,99 € al año')
     const copy = { access: { trialLastDay: '2027-01-24' }, firstCharge: new Date('2027-02-02T11:00:00Z') }
     expect(founderOfferShort(copy)).toContain(`para siempre (${amounts}): no te sube`)
   })
@@ -227,7 +227,7 @@ describe('legal notice 15 days before the first charge', () => {
     expect(m.text).toContain('El cobro y el recibo los hace Link, de Stripe, que te vende la suscripción de Mimoia; en tu extracto aparecerá «LINK.COM* MIMOIA».')
     expect(cancelUrl('https://mimoia.com/')).toBe('https://mimoia.com/profile/suscripcion?cancelar=1')
     const anual = chargeNoticeEmail({ ...candidate, plan: 'plus', period: 'anual', founderPrice: false, chargeAt, publicUrl: 'https://mimoia.com' })
-    expect(anual.text).toContain('59,99 €')
+    expect(anual.text).toContain('99,99 €')
     expect(anual.text).toContain('cada año')
     expect(anual.text).not.toContain('precio de fundador')
   })

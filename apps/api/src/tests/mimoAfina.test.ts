@@ -41,9 +41,8 @@ describe('the notice names the screen the web shows today (part 4)', () => {
   })
 
   it('every step of the path is on screen with that name', () => {
-    // Perfil → «Tu ficha» (the card on top of the profile hub)
-    expect(web('app/profile/page.tsx')).toContain('<FichaHubCard />')
-    expect(web('components/ficha/FichaHubCard.tsx')).toMatch(/href="\/profile\/ficha"[\s\S]*>Tu ficha</)
+    // Perfil → «Tu ficha» (the link in the strip under the household's name, PRO-1202)
+    expect(web('app/profile/page.tsx')).toMatch(/href="\/profile\/ficha"[^>]*>\s*Tu ficha/)
     // → «Editar mis datos uno a uno» (/profile/memoria)
     expect(web('app/profile/ficha/page.tsx')).toMatch(/href="\/profile\/memoria"[^>]*>\s*Editar mis datos uno a uno/)
     // → the «Afina tu menú» section, with «Olvidar» on every verdict

@@ -2,33 +2,43 @@ import Anthropic from '@anthropic-ai/sdk'
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm'
 import { env } from '../../config/env.js'
 import { db } from '../../db/connection.js'
-import { assistantReviews, users, whatsappLinks, whatsappMessages } from '../../db/schema.js'
+import { assistantReviews, chatMessages, users, whatsappLinks, whatsappMessages } from '../../db/schema.js'
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { isWhatsAppConfigured } from './config.js'
 import { sendProactive } from './outbound.js'
 import { recordAnthropicCost } from '../costLedger.js'
 import { detectFlags, replyFlags } from '../assistantFlags.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+import { annotateFindings, formatMemory, MEMORY_DAYS, priorFindings, type ReviewChannel, type StructuredFields } from '../reviewFindings.js'
 
 /**
- * Conversation reviewer agent. Once a day (07:00 Madrid, from the scheduler
- * tick) it reads yesterday's WhatsApp conversations, computes objective
+ * Conversation reviewer agent. Once a day (01:00 Madrid, from the scheduler
+ * tick) it reads yesterday's conversations with Mimo — WhatsApp
+ * (`whatsapp_messages`) and the app (`chat_messages`) —, computes objective
  * signals (slow turns, failures, engine corrective rounds, frustration cues,
  * closing questions), and asks Claude to judge every turn against Mimoia's
- * product rules. The report is stored in `assistant_reviews`, exposed at
- * GET /admin/assistant-reviews, and summarised over WhatsApp to the review
- * recipients (WHATSAPP_REVIEW_EMAILS, else ADMIN_EMAILS).
+ * product rules, with its own findings of the last 14 days as memory. The
+ * report is stored in `assistant_reviews` and exposed at
+ * GET /admin/assistant-reviews; the structured part of each finding (key,
+ * pattern, where, one fix, its test — no user data, D-189) reaches the HQ
+ * agents through GET /admin/assistant-reviews/flags. The WhatsApp summary to
+ * the review recipients only goes out on a manual run with `notify`.
  *
  * Findings are for the developers: what to change in the prompt, a skill, or
  * which capability is missing. The reviewer never changes user data.
  */
 
 export const REVIEW_MODEL = CLAUDE_MODEL
-/** Run after 07:00 Madrid, before the 09:00 morning brief. */
-export const REVIEW_HOUR = 7
+/**
+ * Run after 01:00 Madrid (D-189): done before the HQ data snapshot of the
+ * night (`data/mimo`), so the agents read yesterday's review the same night.
+ */
+export const REVIEW_HOUR = 1
 export const SLOW_TURN_MS = 20_000
 
 export interface ReviewRow {
+  /** Where the turn happened; WhatsApp when absent. App rows come from `chat_messages` (`appTurnRows`). */
+  channel?: ReviewChannel
   phone: string
   userId: string | null
   username: string | null
@@ -72,6 +82,8 @@ export interface ReviewStats {
   /** PRO-156: messages Mimo sent by itself written from their guide / sent as the fixed text instead. */
   guidedWritten: number
   guidedFallback: number
+  /** Of `turns`, the ones in the app (Mimo's chat on the web), from `chat_messages`. */
+  appTurns: number
 }
 
 /** Pure: counts of objective signals for the day. */
@@ -92,6 +104,7 @@ export function computeStats(rows: readonly ReviewRow[]): ReviewStats {
     sendFailures: rows.filter((r) => r.direction === 'out' && r.status === 'failed').length,
     guidedWritten: rows.filter((r) => r.direction === 'out' && r.meta?.guided === 'guide').length,
     guidedFallback: rows.filter((r) => r.direction === 'out' && r.meta?.guided === 'fallback').length,
+    appTurns: inbound.filter((r) => r.channel === 'app').length,
     ...detectorCounts(rows),
   }
 }
@@ -118,7 +131,7 @@ const hhmm = (d: Date) => {
 export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
   const byUser = new Map<string, ReviewRow[]>()
   for (const r of rows) {
-    const key = r.userId ?? `tel:${r.phone.slice(-3)}`
+    const key = `${r.channel ?? 'whatsapp'}:${r.userId ?? `tel:${r.phone.slice(-3)}`}`
     byUser.set(key, [...(byUser.get(key) ?? []), r])
   }
   const out: string[] = []
@@ -126,7 +139,8 @@ export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
   for (const convo of byUser.values()) {
     n += 1
     const label = convo.find((r) => r.username)?.username ?? `usuario ${n}`
-    const lines = [`=== Conversación ${n} (${label}) ===`]
+    const canal = convo[0].channel === 'app' ? 'app' : 'whatsapp'
+    const lines = [`=== Conversación ${n} (${label}) · canal ${canal} ===`]
     let turnMeta: ReviewRow['meta'] = null
     let answered = true
     for (const r of [...convo].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
@@ -173,7 +187,14 @@ export function buildTranscripts(rows: readonly ReviewRow[]): string[] {
   return out
 }
 
-export interface ReviewFinding {
+/**
+ * One finding. The first seven fields are the text for Admin (they can quote
+ * the conversation); the structured ones (D-189) are written without user data
+ * and are what the HQ agents read: `clave`, `patron`, `donde`, `arreglo`,
+ * `prueba`, `tipo` from the model, `dias` and `regresion` computed from the
+ * earlier reviews (`annotateFindings`).
+ */
+export interface ReviewFinding extends Partial<StructuredFields> {
   severity: 'alta' | 'media' | 'baja'
   category: string
   when: string
@@ -182,6 +203,8 @@ export interface ReviewFinding {
   expected: string
   suggestedFix: string
 }
+
+const STRUCTURED_REQUIRED = ['canal', 'clave', 'patron', 'donde', 'arreglo', 'prueba', 'tipo'] as const
 
 export const REVIEW_SCHEMA = {
   type: 'object',
@@ -194,7 +217,7 @@ export const REVIEW_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['severity', 'category', 'when', 'userMessage', 'whatHappened', 'expected', 'suggestedFix'],
+        required: ['severity', 'category', 'when', 'userMessage', 'whatHappened', 'expected', 'suggestedFix', ...STRUCTURED_REQUIRED],
         properties: {
           severity: { type: 'string', enum: ['alta', 'media', 'baja'] },
           category: {
@@ -222,6 +245,13 @@ export const REVIEW_SCHEMA = {
           whatHappened: { type: 'string' },
           expected: { type: 'string' },
           suggestedFix: { type: 'string' },
+          canal: { type: 'string', enum: ['whatsapp', 'app'] },
+          clave: { type: 'string' },
+          patron: { type: 'string' },
+          donde: { type: 'string' },
+          arreglo: { type: 'string' },
+          prueba: { type: 'string' },
+          tipo: { type: 'string', enum: ['arreglo', 'decision'] },
         },
       },
     },
@@ -229,7 +259,7 @@ export const REVIEW_SCHEMA = {
 } as const
 
 export function reviewerSystemPrompt(toolNames: string[]): string {
-  return `Eres el revisor de calidad de Mimoia, una app de menús semanales cuyo asistente, Mimo, también funciona por WhatsApp. Revisas las conversaciones de un dia entre usuarios y Mimo (MIMO en la transcripcion) para encontrar lo que hay que corregir en el producto. Antes de octubre de 2026 el asistente y la app tenian otro nombre: que un mensaje antiguo lo use no es un hallazgo.
+  return `Eres el revisor de calidad de Mimoia, una app de menús semanales cuyo asistente, Mimo, funciona por WhatsApp y dentro de la app. Revisas las conversaciones de un dia entre usuarios y Mimo (MIMO en la transcripcion) para encontrar lo que hay que corregir en el producto. Cada conversacion dice su canal: "whatsapp" o "app" (el chat de Mimo en la web: alli no hay avisos ni plantillas, y la pagina en la que estaba el usuario no sale en la transcripcion). Antes de octubre de 2026 el asistente y la app tenian otro nombre: que un mensaje antiguo lo use no es un hallazgo.
 
 Reglas del producto (contra ellas evaluas cada turno):
 1. Resolutivo: hace TODO lo que pide el mensaje en el mismo turno. Si pidio varias cosas, todas.
@@ -246,7 +276,23 @@ Debajo de algunas respuestas veras "⚑ señales automaticas": las ponen detecto
 
 Herramientas que Mimo tiene disponibles: ${toolNames.join(', ')}.
 
-Para cada problema REAL crea un hallazgo con una correccion concreta y accionable (que cambiar en las instrucciones, en una herramienta, o que herramienta/funcion falta). Severidad alta = el usuario se queda sin lo que pidio o recibe informacion falsa; media = friccion clara; baja = pulido. No inventes problemas ni repitas el mismo dos veces: si todo fue bien, findings vacio. "summary": 2-3 frases en español sobre como fue el dia. Todo en español.`
+Reglas de la empresa (no propongas lo contrario):
+- Modelo: Mimo y todo el producto van como minimo en Opus 5.5 (D-070). Nunca propongas un modelo mas barato (Haiku, Sonnet) como arreglo.
+- El tope de gasto de cada hogar es una decision de negocio de Miguel: si un hogar lo toca, no propongas subirlo, bajarlo ni quitarlo como arreglo; si crees que hay que cambiarlo, es "tipo": "decision".
+- Por WhatsApp, fuera de las 24 h desde el ultimo mensaje del usuario, Meta solo deja enviar plantillas aprobadas: los avisos salen por plantilla y sus botones llegan como texto. Que un aviso fuera de 24 h no lleve botones o use el texto de la plantilla no es un hallazgo.
+
+Para cada problema REAL crea un hallazgo. Severidad alta = el usuario se queda sin lo que pidio o recibe informacion falsa; media = friccion clara; baja = pulido. No inventes problemas ni repitas el mismo dos veces en el dia: si todo fue bien, findings vacio. "summary": 2-3 frases en español sobre como fue el dia. Todo en español.
+
+Cada hallazgo tiene dos partes:
+- Para Admin (pueden citar la conversacion): "when" (hora), "userMessage", "whatHappened", "expected", "suggestedFix".
+- Para los agentes que convierten el hallazgo en una tarea, SIN NINGUN DATO DE USUARIOS: sin nombres, sin citas ni comillas, sin telefonos, correos ni enlaces, sin datos de salud o alergias de nadie, sin platos o frases que identifiquen a un hogar. Describe lo que hace Mimo, no a la persona:
+  - "canal": "whatsapp" o "app", el de la conversacion.
+  - "clave": etiqueta estable en minusculas, sin tildes, con puntos y guiones bajos (p. ej. "checkin.varias_preguntas", "menu.cambio_no_pedido", "herramienta.swap_meal.dia_equivocado"). Si el problema esta en tu memoria (abajo, en el mensaje), usa EXACTAMENTE su clave; si es nuevo, crea una que sirva para reconocerlo otro dia.
+  - "patron": una frase sobre lo que hace Mimo mal, en general (p. ej. "Mimo hace dos preguntas seguidas en el aviso de la cena").
+  - "donde": donde se arregla, uno de: "prompt", "guia_aviso:<tipo de aviso>" (p. ej. "guia_aviso:dinner_checkin"), "herramienta:<nombre de la herramienta>", "generador" (el que hace los menus), "webhook", "plantilla", "tope", "otro".
+  - "arreglo": UN solo arreglo concreto, el que recomiendas (no varias alternativas ni "o bien").
+  - "prueba": el test que fallaria si el problema vuelve (p. ej. "un test del prompt de WhatsApp que compruebe que el aviso de la cena lleva una sola pregunta").
+  - "tipo": "arreglo" si se puede hacer sin preguntar a nadie; "decision" si necesita que Miguel decida algo de negocio (precio, tope, plantillas, un cambio de reglas); entonces "arreglo" es la opcion que recomiendas.`
 }
 
 let client: Anthropic | null = null
@@ -273,10 +319,57 @@ export const claudeReviewer: ReviewerLLM = async (system, transcript) => {
   return { summary: String(parsed.summary ?? ''), findings: Array.isArray(parsed.findings) ? parsed.findings : [] }
 }
 
+export interface AppChatRow {
+  userId: string
+  username: string | null
+  role: string
+  body: string
+  meta: { tools?: string[]; corrections?: string[]; toolTrace?: import('../assistant/types.js').ToolTrace[]; ms?: number } | null
+  createdAt: Date
+}
+
+/**
+ * Pure: the app's chat rows (`chat_messages`, user + assistant per turn) in the
+ * reviewer's shape. What Mimo did is on the assistant row there; here it goes
+ * on the user's row, as WhatsApp keeps it. Only answered turns are stored.
+ */
+export function appTurnRows(rows: readonly AppChatRow[]): ReviewRow[] {
+  const sorted = [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+  const out: ReviewRow[] = []
+  const openTurn = new Map<string, ReviewRow>()
+  for (const r of sorted) {
+    const base = { channel: 'app' as const, phone: `app:${r.userId}`, userId: r.userId, username: r.username, body: r.body, errorMessage: null, createdAt: r.createdAt }
+    if (r.role === 'user') {
+      const row: ReviewRow = { ...base, direction: 'in', kind: 'text', status: 'processed', meta: null }
+      openTurn.set(r.userId, row)
+      out.push(row)
+    } else {
+      const turn = openTurn.get(r.userId)
+      if (turn && r.meta) turn.meta = { tools: r.meta.tools ?? [], corrections: r.meta.corrections, toolTrace: r.meta.toolTrace, ms: r.meta.ms }
+      openTurn.delete(r.userId)
+      out.push({ ...base, direction: 'out', kind: 'reply', status: 'sent', meta: null })
+    }
+  }
+  return out
+}
+
 async function loadDayRows(day: string): Promise<ReviewRow[]> {
   const from = madridMidnightUtc(day)
   const to = madridMidnightUtc(addDays(day, 1))
-  return db
+  const app = (await db
+    .select({
+      userId: chatMessages.userId,
+      username: users.username,
+      role: chatMessages.role,
+      body: chatMessages.body,
+      meta: chatMessages.meta,
+      createdAt: chatMessages.createdAt,
+    })
+    .from(chatMessages)
+    .leftJoin(users, eq(users.id, chatMessages.userId))
+    .where(and(gte(chatMessages.createdAt, from), lt(chatMessages.createdAt, to)))
+    .orderBy(asc(chatMessages.createdAt))) as AppChatRow[]
+  const whatsapp = (await db
     .select({
       phone: whatsappMessages.phone,
       userId: whatsappMessages.userId,
@@ -292,7 +385,16 @@ async function loadDayRows(day: string): Promise<ReviewRow[]> {
     .from(whatsappMessages)
     .leftJoin(users, eq(users.id, whatsappMessages.userId))
     .where(and(gte(whatsappMessages.createdAt, from), lt(whatsappMessages.createdAt, to)))
-    .orderBy(asc(whatsappMessages.createdAt)) as Promise<ReviewRow[]>
+    .orderBy(asc(whatsappMessages.createdAt))) as ReviewRow[]
+  return [...whatsapp, ...appTurnRows(app)]
+}
+
+/** The keyed findings of the MEMORY_DAYS before `day` (the reviewer's memory). */
+async function loadPriorReviews(day: string): Promise<Array<{ day: string; findings: unknown }>> {
+  return db
+    .select({ day: assistantReviews.day, findings: assistantReviews.findings })
+    .from(assistantReviews)
+    .where(and(gte(assistantReviews.day, addDays(day, -MEMORY_DAYS)), lt(assistantReviews.day, day), eq(assistantReviews.status, 'ok')))
 }
 
 const SEVERITY_ORDER: Record<string, number> = { alta: 0, media: 1, baja: 2 }
@@ -322,35 +424,63 @@ export interface ReviewResult {
   error?: string
 }
 
+export interface ReviewDeps {
+  loadRows: (day: string) => Promise<ReviewRow[]>
+  loadPrior: (day: string) => Promise<Array<{ day: string; findings: unknown }>>
+  toolNames: () => Promise<string[]>
+  save: (day: string, result: ReviewResult) => Promise<void>
+}
+
+const defaultDeps: ReviewDeps = {
+  loadRows: loadDayRows,
+  loadPrior: loadPriorReviews,
+  // Lazy: skills.ts → notificationScheduler → reviewer would be a cycle.
+  toolNames: async () => (await import('../assistant/skills.js')).skills.map((s) => s.name),
+  save: async (day, result) => {
+    await db.delete(assistantReviews).where(eq(assistantReviews.day, day))
+    await db.insert(assistantReviews).values({
+      day,
+      status: result.status,
+      stats: result.stats as unknown as Record<string, number>,
+      findings: (result.findings ?? []) as unknown[],
+      summary: result.summary ?? null,
+      model: result.status === 'ok' ? REVIEW_MODEL : null,
+      errorMessage: result.error ?? null,
+    })
+  },
+}
+
+/**
+ * Pure: the model's message — the day's signals, the reviewer's memory (keys
+ * and patterns of the MEMORY_DAYS before) and the transcripts.
+ */
+export function buildReviewInput(day: string, stats: ReviewStats, rows: readonly ReviewRow[], prior: ReadonlyArray<{ day: string; findings: unknown }>): string {
+  return [`Día ${day}. Señales: ${JSON.stringify(stats)}`, formatMemory(priorFindings(prior), day), buildTranscripts(rows).join('\n\n')].join('\n\n')
+}
+
 /** Review one Madrid day and store the report (replaces an existing one for that day). */
-export async function reviewDay(day: string, llm: ReviewerLLM = claudeReviewer, opts: { notify?: boolean } = {}): Promise<ReviewResult> {
-  const rows = await loadDayRows(day)
+export async function reviewDay(
+  day: string,
+  llm: ReviewerLLM = claudeReviewer,
+  opts: { notify?: boolean } = {},
+  deps: ReviewDeps = defaultDeps,
+): Promise<ReviewResult> {
+  const rows = await deps.loadRows(day)
   const stats = computeStats(rows)
   let result: ReviewResult
   if (stats.turns === 0) {
     result = { day, status: 'empty', stats, summary: 'Sin conversaciones ese día.', findings: [] }
   } else {
     try {
-      const transcript = buildTranscripts(rows).join('\n\n')
-      const header = `Día ${day}. Señales: ${JSON.stringify(stats)}\n\n`
-      // Lazy: skills.ts → notificationScheduler → reviewer would be a cycle.
-      const { skills } = await import('../assistant/skills.js')
-      const review = await llm(reviewerSystemPrompt(skills.map((s) => s.name)), header + transcript)
-      result = { day, status: 'ok', stats, summary: review.summary, findings: review.findings }
+      const prior = await deps.loadPrior(day)
+      const review = await llm(reviewerSystemPrompt(await deps.toolNames()), buildReviewInput(day, stats, rows, prior))
+      const findings = annotateFindings(review.findings as unknown as Array<ReviewFinding & Record<string, unknown>>, priorFindings(prior), day)
+      result = { day, status: 'ok', stats, summary: review.summary, findings }
     } catch (err: any) {
       result = { day, status: 'failed', stats, error: String(err?.message ?? err).slice(0, 500) }
     }
   }
-  await db.delete(assistantReviews).where(eq(assistantReviews.day, day))
-  await db.insert(assistantReviews).values({
-    day,
-    status: result.status,
-    stats: stats as unknown as Record<string, number>,
-    findings: (result.findings ?? []) as unknown[],
-    summary: result.summary ?? null,
-    model: result.status === 'ok' ? REVIEW_MODEL : null,
-    errorMessage: result.error ?? null,
-  })
+  await deps.save(day, result)
   if (result.status === 'ok' && opts.notify !== false) await notifyRecipients(day, stats, result.summary ?? '', result.findings ?? [])
   return result
 }
@@ -381,7 +511,11 @@ async function notifyRecipients(day: string, stats: ReviewStats, summary: string
   }
 }
 
-/** Called from the scheduler tick: review yesterday once, after 07:00 Madrid. */
+/**
+ * Called from the scheduler tick: review yesterday once, after 01:00 Madrid.
+ * No WhatsApp summary at that hour (Miguel wants no messages before 08:00):
+ * the findings reach HQ through the flags route (D-189).
+ */
 export async function runDailyReviewIfDue(now: Date = new Date()): Promise<ReviewResult | null> {
   if (!env.ANTHROPIC_API_KEY) return null
   const p = madridParts(now)
@@ -389,5 +523,5 @@ export async function runDailyReviewIfDue(now: Date = new Date()): Promise<Revie
   const day = addDays(p.isoDate, -1)
   const [existing] = await db.select({ id: assistantReviews.id }).from(assistantReviews).where(eq(assistantReviews.day, day)).limit(1)
   if (existing) return null
-  return reviewDay(day)
+  return reviewDay(day, claudeReviewer, { notify: false })
 }

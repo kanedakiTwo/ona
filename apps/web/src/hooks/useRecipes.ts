@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tansta
 import { z } from "zod"
 import { api } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
+import { isOffline } from "@/lib/pwa/network"
 import { createRecipeSchema } from "@ona/shared"
 import type { ExtractedRecipe, Ingredient, Recipe, SeasonalProduceCount } from "@ona/shared"
 
@@ -9,10 +10,11 @@ export type CreateRecipeInput = z.infer<typeof createRecipeSchema>
 
 import { buildQueryString, type RecipeFilters } from "@/lib/recipeQuery"
 
-export function useRecipes(filters?: RecipeFilters, opts?: { keepPrevious?: boolean }) {
+export function useRecipes(filters?: RecipeFilters, opts?: { keepPrevious?: boolean; enabled?: boolean }) {
   return useQuery<Recipe[]>({
     queryKey: ["recipes", filters],
     queryFn: () => api.get(`/recipes${buildQueryString(filters)}`),
+    enabled: opts?.enabled ?? true,
     // Search-as-you-type: keep the last list on screen while the next loads.
     ...(opts?.keepPrevious ? { placeholderData: keepPreviousData } : {}),
   })
@@ -164,7 +166,7 @@ export function useToggleFavorite() {
     mutationFn: async (params: { userId: string; recipeId: string }) => {
       const url = `/user/${params.userId}/recipes/${params.recipeId}/favorite`
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,

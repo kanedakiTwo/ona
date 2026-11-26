@@ -25,8 +25,9 @@ import {
 import { INGREDIENT_RANGES, globalCeiling, type QuantityRange } from './recipeLint.ranges.js'
 import { shoppabilityIssues } from './recipeShoppability.js'
 import { cookingMediumFactor } from './nutrition/cookingMedium.js'
-import { noteStartsWithNumber } from '@ona/shared'
+import { EVERYDAY_WORK_MINUTES, noteStartsWithNumber, recipeActiveMinutes } from '@ona/shared'
 import { DIET_CATEGORY_LABEL, nameHasTerm, unlistedDietMentions } from './stepDietMentions.js'
+import { isDayBeforeWait } from './recipeWaitTime.js'
 
 // ─── Public types ────────────────────────────────────────────────
 
@@ -62,6 +63,12 @@ export interface RecipeInput {
   servings?: number | null
   prepTime?: number | null
   cookTime?: number | null
+  /** D-1028: hands-on minutes (else `prepTime`) for LONG_WORK_NO_MORE_TIME. */
+  activeTime?: number | null
+  /** D-1028: «Y si tienes más tiempo…». */
+  moreTime?: string | null
+  /** `weekends_only` recipes are for a calm day: no LONG_WORK_NO_MORE_TIME. */
+  frequency?: string | null
   difficulty?: Difficulty
   meals?: Meal[]
   seasons?: Season[]
@@ -87,6 +94,8 @@ export interface LintOptions {
   ingredientCatalog: CatalogIngredient[]
   /** When true, suppresses QUANTITY_OUT_OF_RANGE errors. Other rules are unaffected. */
   force?: boolean
+  /** D-1028: a catalogue recipe (no author): Cocina's identity checks apply (warnings only). */
+  catalog?: boolean
 }
 
 export interface LintIssue {
@@ -261,6 +270,12 @@ function stepMentionsIngredient(
   cat: CatalogIndex['rows'][number],
 ): boolean {
   if (cat.normName.length === 0) return false
+  // «Salpimentar» names salt and pepper at once, and «sazonar» the salt (24-nov:
+  // a home recipe with «Salpimentar al gusto» got «"sal" no se menciona en
+  // ningún paso» and the same for its pepper).
+  const seasoned = cat.nameTokens[0]
+  if ((seasoned === 'sal' || seasoned === 'pimienta') && textTokens.some((t) => t.startsWith('salpim'))) return true
+  if (seasoned === 'sal' && textTokens.some((t) => t.startsWith('sazon'))) return true
   // Full-name substring at word boundaries (cheap and precise; avoids "sal"
   // matching inside "saltea")
   if (cat.nameTokens.length >= 2 && containsWholePhrase(fullNormalizedText, cat.normName)) return true
@@ -636,7 +651,7 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     const listedNames = ingredients
       .map(ing => catalog.byId.get(ing.ingredientId)?.name)
       .filter((n): n is string => !!n)
-    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames)) {
+    for (const m of unlistedDietMentions(steps.map(s => s.text ?? ''), listedNames, recipe.name)) {
       const path = `steps[${m.step}].text`
       const already = errors.some(e =>
         e.code === 'STEP_INGREDIENT_NOT_LISTED' && e.path === path &&
@@ -690,6 +705,9 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
   if (recipe.servings && recipe.servings >= 1) {
     ingredients.forEach((ing, i) => {
       if (!ML_OR_G.has(ing.unit)) return
+      // No amount given («mantequilla al gusto» comes in as 0 g): nothing to
+      // measure against the range (24-nov: «0 g por ración, fuera del rango razonable»).
+      if (!(ing.quantity > 0)) return
       const cat = catalog.byId.get(ing.ingredientId)
       // Frying/confit fat: the range applies to what is eaten, not to the pan,
       // and only its ceiling (a small fry absorbs less than the usual minimum).
@@ -725,14 +743,17 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     })
   })
 
-  // 9. TIME_INCONSISTENT
+  // 9. TIME_INCONSISTENT — a wait of the day before (soak, marinade…) is
+  // not part of prep+cook (PRO-402), so it doesn't count in the sum.
   if (
     recipe.prepTime != null &&
     recipe.cookTime != null &&
     steps.length > 0 &&
     steps.every(s => s.durationMin != null)
   ) {
-    const sum = steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    const sum = steps
+      .filter(s => !isDayBeforeWait({ text: s.text ?? '', durationMin: s.durationMin, technique: s.technique }))
+      .reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
     const budget = recipe.prepTime + recipe.cookTime
     if (sum > budget * 1.2) {
       errors.push({
@@ -832,6 +853,20 @@ export function lintRecipe(recipe: RecipeInput, opts: LintOptions): LintResult {
     named.map(({ ing, cat }) => ({ name: cat.name, quantity: ing.quantity, unit: ing.unit, note: ing.note, optional: ing.optional })),
   )) {
     warnings.push({ code: issue.code, message: issue.message, path: `ingredients[${named[issue.index].i}]` })
+  }
+
+  // LONG_WORK_NO_MORE_TIME (D-1028, catalogue only, never blocks): an
+  // everyday lunch or dinner that asks for more than 30 min of work needs its
+  // quick version, with the long one told in «Y si tienes más tiempo…».
+  if (opts.catalog && recipe.frequency !== 'weekends_only' && (recipe.meals ?? []).some((m) => m === 'lunch' || m === 'dinner')) {
+    const work = recipeActiveMinutes({ activeTime: recipe.activeTime, prepTime: recipe.prepTime })
+    if (work != null && work > EVERYDAY_WORK_MINUTES && !recipe.moreTime?.trim()) {
+      warnings.push({
+        code: 'LONG_WORK_NO_MORE_TIME',
+        message: `Pide ${work} min de trabajo y no tiene «Y si tienes más tiempo…». Si es de diario, haz su versión rápida (${EVERYDAY_WORK_MINUTES} min de trabajo como mucho) y cuenta ahí la larga.`,
+        path: 'moreTime',
+      })
+    }
   }
 
   // NO_EQUIPMENT

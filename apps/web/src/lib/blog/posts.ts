@@ -12,7 +12,9 @@ import { isValidSlug, parseArticle, parseMarkdown, type Block, type BlogFrontMat
  * at another folder (the e2e job uses `e2e/fixtures/blog`, which holds one
  * published and one unpublished fixture), so the suite can read a published
  * article without publishing anything real. It is ignored when
- * NODE_ENV=production (`next build` / the deployed server).
+ * NODE_ENV=production (`next build` / the deployed server), unless
+ * E2E_WEB_BUILD=1: the e2e job runs against a build (PRO-398,
+ * scripts/boot-built-web.sh). Neither variable exists in a deploy.
  */
 
 export interface BlogPost extends BlogFrontMatter {
@@ -24,7 +26,8 @@ export interface BlogArticle extends BlogPost {
 }
 
 export function blogContentDir(): string {
-  const override = process.env.NODE_ENV !== "production" ? process.env.BLOG_CONTENT_DIR : undefined
+  const testBuild = process.env.NODE_ENV !== "production" || process.env.E2E_WEB_BUILD === "1"
+  const override = testBuild ? process.env.BLOG_CONTENT_DIR : undefined
   if (override) return isAbsolute(override) ? override : resolve(process.cwd(), override)
   return join(process.cwd(), "content", "blog")
 }

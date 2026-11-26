@@ -2,7 +2,8 @@
  * PRO-04 "Añadir al menú" from the recipe detail (apps/web/src/lib/addToMenu.ts):
  * the sheet lists the 7 days × comida/cena of this week. A missing slot is
  * added (POST), an existing one — empty or with a dish — is replaced (PUT
- * with recipeId), a locked one can't be touched.
+ * with recipeId), a locked one too (PRO-1175: the lock only keeps a meal
+ * when the week is redone).
  */
 import { describe, expect, it } from 'vitest'
 import type { Menu } from '@ona/shared'
@@ -28,7 +29,7 @@ describe('addToMenuSlots', () => {
     expect(slots[0]).toMatchObject({ day: 0, meal: 'lunch', action: 'replace', current: 'Lentejas' })
     expect(slots[1]).toMatchObject({ day: 0, meal: 'dinner', action: 'add', current: null })
     expect(slots[2]).toMatchObject({ day: 1, meal: 'lunch', action: 'replace', current: null })
-    expect(slots[3]).toMatchObject({ day: 1, meal: 'dinner', action: 'locked', current: 'Tortilla' })
+    expect(slots[3]).toMatchObject({ day: 1, meal: 'dinner', action: 'replace', current: 'Tortilla' })
   })
 
   it('marks a slot that already holds this recipe', () => {

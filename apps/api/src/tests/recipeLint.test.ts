@@ -365,6 +365,51 @@ describe('lintRecipe — errors', () => {
     expect(orphan!.message).toContain('ajo')
   })
 
+  // 24-nov, a handwritten «Rösti de patatas» imported from a photo: «Salpimentar
+  // al gusto» is the step that uses the salt and the pepper, and «mantequilla al
+  // gusto» has no amount to be out of range.
+  it('«salpimentar» mentions the salt and the pepper; «sazonar», the salt', () => {
+    const catalog: CatalogIngredient[] = [...CATALOG, { id: 'cat-pimienta', name: 'pimienta negra', fdcId: 1010, density: null }]
+    const recipe = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-pollo', quantity: 300, unit: 'g' },
+        { id: 'row-2', ingredientId: 'cat-sal', quantity: 2, unit: 'g' },
+        { id: 'row-3', ingredientId: 'cat-pimienta', quantity: 1, unit: 'g' },
+      ],
+      steps: [
+        { index: 0, text: 'Trocea el pollo.', durationMin: 5 },
+        { index: 1, text: 'Salpimentar al gusto y dorar.', durationMin: 10 },
+      ],
+    })
+    expect(lintRecipe(recipe, { ingredientCatalog: catalog }).errors.filter((e) => e.code === 'ORPHAN_INGREDIENT')).toEqual([])
+    const sazona = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-pollo', quantity: 300, unit: 'g' },
+        { id: 'row-2', ingredientId: 'cat-sal', quantity: 2, unit: 'g' },
+        { id: 'row-3', ingredientId: 'cat-pimienta', quantity: 1, unit: 'g' },
+      ],
+      steps: [{ index: 0, text: 'Sazona el pollo y dóralo.', durationMin: 10 }],
+    })
+    const orphans = lintRecipe(sazona, { ingredientCatalog: catalog }).errors.filter((e) => e.code === 'ORPHAN_INGREDIENT')
+    expect(orphans.map((e) => e.message).join(' ')).toContain('pimienta')
+    expect(orphans.map((e) => e.message).join(' ')).not.toContain('"sal"')
+  })
+
+  it('QUANTITY_OUT_OF_RANGE says nothing about an ingredient with no amount («al gusto», 0 g)', () => {
+    const recipe = makeRecipe({
+      ingredients: [
+        { id: 'row-1', ingredientId: 'cat-pollo', quantity: 300, unit: 'g' },
+        { id: 'row-2', ingredientId: 'cat-arroz', quantity: 160, unit: 'g' },
+        { id: 'row-3', ingredientId: 'cat-aceite', quantity: 0, unit: 'g' },
+      ],
+      steps: [
+        { index: 0, text: 'Dora el pollo con el aceite de oliva.', durationMin: 10 },
+        { index: 1, text: 'Añade el arroz.', durationMin: 15 },
+      ],
+    })
+    expect(lintRecipe(recipe, opts).errors.filter((e) => e.code === 'QUANTITY_OUT_OF_RANGE')).toEqual([])
+  })
+
   it('ORPHAN_INGREDIENT exempts optional ingredients', () => {
     const recipe = makeRecipe({
       ingredients: [
@@ -486,6 +531,21 @@ describe('lintRecipe — errors', () => {
       steps: [
         { index: 0, text: 'Trocea el pollo y la cebolla.', durationMin: 15, ingredientRefs: ['row-1', 'row-3'] },
         { index: 1, text: 'Añade el arroz.', durationMin: 20, ingredientRefs: ['row-2'] },
+      ],
+    })
+    const result = lintRecipe(recipe, opts)
+    expect(result.errors.some(e => e.code === 'TIME_INCONSISTENT')).toBe(false)
+  })
+
+  it('TIME_INCONSISTENT leaves out a soak of the day before (PRO-402)', () => {
+    // prep+cook = 30, steps = 720 of soaking + 30 → only the 30 count
+    const recipe = makeRecipe({
+      prepTime: 10,
+      cookTime: 20,
+      steps: [
+        { index: 0, text: 'Pon el arroz en remojo con agua fría.', durationMin: 720, ingredientRefs: ['row-2'] },
+        { index: 1, text: 'Trocea el pollo y la cebolla.', durationMin: 10, ingredientRefs: ['row-1', 'row-3'] },
+        { index: 2, text: 'Añade el arroz.', durationMin: 20, ingredientRefs: ['row-2'] },
       ],
     })
     const result = lintRecipe(recipe, opts)
@@ -652,5 +712,25 @@ describe('lintRecipe — performance', () => {
     // Don't assert on result.ok (we only care about timing here)
     expect(result).toBeDefined()
     expect(elapsed).toBeLessThan(50)
+  })
+})
+
+describe('LONG_WORK_NO_MORE_TIME (D-1028)', () => {
+  const has = (r: Partial<RecipeInput>, o: LintOptions = { ...opts, catalog: true }) =>
+    lintRecipe(makeRecipe(r), o).warnings.some((w) => w.code === 'LONG_WORK_NO_MORE_TIME')
+
+  it('a catalogue lunch or dinner of more than 30 min of work without «Y si tienes más tiempo…» gets the warning, never an error', () => {
+    expect(has({ activeTime: 45 })).toBe(true)
+    expect(has({ activeTime: null, prepTime: 40 })).toBe(true)
+    const result = lintRecipe(makeRecipe({ activeTime: 45 }), { ...opts, catalog: true })
+    expect(result.errors.some((e) => e.code === 'LONG_WORK_NO_MORE_TIME')).toBe(false)
+    expect(result.warnings.find((w) => w.code === 'LONG_WORK_NO_MORE_TIME')?.message).toMatch(/Pide 45 min de trabajo y no tiene «Y si tienes más tiempo…»/)
+  })
+  it('no warning: 30 min or less, with the section, a weekend dish, breakfast, or a household\'s own recipe', () => {
+    expect(has({ activeTime: 30, prepTime: 40 })).toBe(false)
+    expect(has({ activeTime: 45, moreTime: 'Con el sofrito a fuego lento 40 min.' })).toBe(false)
+    expect(has({ activeTime: 45, frequency: 'weekends_only' })).toBe(false)
+    expect(has({ activeTime: 45, meals: ['breakfast'] })).toBe(false)
+    expect(has({ activeTime: 45 }, opts)).toBe(false)
   })
 })

@@ -1,0 +1,110 @@
+PRO-403: .github/README.md and the comments of ci.yml up to date with how code is published (docs/deploy.md).
+The HQ agents can't push .github/ (the office's filter keeps it out), so this goes as a patch.
+Apply from the repo root: git apply docs/workflows/pro-403-ci-docs.patch
+
+diff --git a/.github/README.md b/.github/README.md
+index 7b34d41..e8593e2 100644
+--- a/.github/README.md
++++ b/.github/README.md
+@@ -1,56 +1,34 @@
+ # CI / CD
+ 
+-Two pieces wire Mimoia's pre-merge gate and post-deploy verification.
++One workflow is the gate for every change; publishing is done by the Mimoia HQ office, not by GitHub. The whole path (branch → CI → staging → production) is in [`docs/deploy.md`](../docs/deploy.md).
+ 
+ ## 1. The workflow — `.github/workflows/ci.yml`
+ 
+-One file, four jobs (chained with `needs:`):
++Runs on every pull request and every push to `master` and `claude/**` (the branches the HQ agents prepare), except docs-only changes (`paths-ignore`: `specs/`, `docs/`, `CLAUDE.md`, READMEs, `plans/`, `reports/`). On branches a newer push cancels the older run; on `master` runs queue.
+ 
+-| Job | Trigger | What it does |
++| Job (check name) | When | What it does |
+ |---|---|---|
+-| `test` | every PR + push to master | Type-checks API + Web, runs the full Vitest unit suite (~260 tests, 3 s) |
+-| `smoke` | every PR + push to master, after `test` | Boots a Postgres 15 service container, pushes the Drizzle schema, starts the API in the background, registers a throwaway user, then runs every `*.smoke.ts` file with the resulting `SMOKE_USER_TOKEN` |
+-| `e2e` | every PR + push to master, after `test` | Same Postgres container + boots the API + boots Next dev on :3001, then runs Playwright (Chromium, mobile-only, 5 golden flows). Uploads the HTML report as an artifact on failure |
+-| `post-deploy-smoke` | push to master only, after `test` + `smoke` + `e2e` | Polls Railway until the new build is live (up to 5 min), asserts the API auth middleware, login route, and web landing/login pages return the expected HTTP code |
++| `test` (`Lint + tests`) | always | Schema drift check (`schema.ts` vs the committed migrations), type-checks API + Web, runs the API Vitest suite (some 400 test files, a few minutes) |
++| `smoke` (`Route smoke (Postgres + API)`) | after `test` | Postgres 15 service container, applies the real migrations (`db:migrate`, the same production runs on deploy) and the seed, boots the API, registers a throwaway user and runs every `*.smoke.ts` with its token; fails if a smoke test skipped unexpectedly |
++| `e2e-shard` (`E2E (Playwright) N/6`) | after `test` | Six shards, each with its own Postgres (migrations + seed), API and web, run the Playwright specs (Chromium, mobile; around 190 spec files) with `--shard=N/6`. The report is uploaded as an artifact |
++| `e2e` (`E2E (Playwright)`) | after the shards | One check, green only when every shard passed |
++| `post-deploy-smoke` (`Production smoke`) | push to `master` only | `scripts/smoke-remote.sh` against production: read-only liveness checks (the API, the auth gate, the web pages). Nothing deploys on push, so it is a canary, not proof that this commit is live |
+ 
+-If `post-deploy-smoke` fails, the workflow turns red — Railway has already deployed but at least the team is notified.
++Failures come out as annotations (file, line and message), which the HQ office reads without a token.
+ 
+-**Local equivalents**:
+-- `pnpm --filter @ona/api smoke` — runs the smoke layer against a `docker-compose.test.yml` Postgres
+-- `pnpm --filter @ona/web e2e` — runs Playwright against a fresh Postgres + API + Web stack (also via `docker-compose.test.yml`). First run needs `pnpm --filter @ona/web e2e:install` to download Chromium
++**Local equivalents** (both need Docker, for their own Postgres):
++- `pnpm --filter @ona/api smoke` — the route smoke (`apps/api/scripts/test-smoke.sh`)
++- `pnpm --filter @ona/web e2e` — Playwright against a fresh Postgres + API + web. First run needs `pnpm --filter @ona/web e2e:install` to download Chromium
+ 
+-Both require Docker Desktop running.
++## 2. Branch protection
+ 
+-## 2. Branch protection (GitHub UI step)
++On GitHub, `master` requires the status checks **`Lint + tests`**, **`Route smoke (Postgres + API)`** and **`E2E (Playwright)`**. Code reaches `master` only by publishing from the office, which runs CI again on the branch merged with the latest `master` before moving it.
+ 
+-Workflows alone don't block merges. After landing this branch, configure on GitHub:
+-
+-**Settings → Branches → Add rule → `master`**
+-
+-Enable:
+-- ✅ Require a pull request before merging
+-  - Require approvals: at least 1 (or 0 for solo)
+-  - Dismiss stale approvals on push
+-- ✅ Require status checks to pass before merging
+-  - Require branches to be up to date before merging
+-  - Status checks: **`Lint + tests`**, **`Route smoke (Postgres + API)`**, and **`E2E (Playwright)`**
+-- ✅ Do not allow bypassing the above settings
+-
+-Once enabled, anyone (including admins, with the last checkbox) is forced to:
+-1. Open a PR
+-2. Wait for `test` to go green
+-3. Merge
+-
+-`post-deploy-smoke` is informational — it can't block a merge that already happened, but it surfaces deploy regressions on the master branch's check status within ~6 minutes of the merge.
+-
+-## 3. Secrets to set on the repository
++## 3. Repository secrets
+ 
+ **Settings → Secrets and variables → Actions → Repository secrets**:
+ 
+-- `USDA_API_KEY` (optional) — required only for the `usdaClient.smoke.ts` test that hits live USDA. Without it, those 3 tests skip gracefully.
+-
+-The other env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DATABASE_URL`, `JWT_SECRET`) live on Railway, not here. CI does **not** need them — unit tests don't hit external services or the DB.
+-
+-## 4. Adding tests later
++- `USDA_FDC_API_KEY` (optional) — only for `usdaClient.smoke.ts`, which hits live USDA. Without it those tests skip.
++- `PROD_CATALOG_DATABASE_URL` and `STAGING_DATABASE_URL` — for `sync-staging-catalog.yml` (see `docs/deploy.md` → Staging).
+ 
+-When new tests come online (Tier 4 web tests, Tier 5 Playwright), add their commands as new steps in the `test` job. Playwright will likely warrant its own job because it needs a running app + a longer timeout.
++The app's own secrets (`ANTHROPIC_API_KEY`, `JWT_SECRET`, …) live on Railway, not here: CI doesn't need them.
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 8337099..e75cfe1 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -393,9 +393,9 @@ jobs:
+   # Read-only checks against the live Railway services: GETs plus one
+   # POST /login with bogus credentials (rejected; nothing is written).
+   #
+-  # Deploys are manual (scripts/deploy.sh → `railway up`); there is no
+-  # GitHub→Railway hook, so this job does NOT prove the pushed commit is
+-  # what's running. It proves prod is up, the auth gate is live, and both
++  # Nothing deploys on push (no GitHub→Railway hook): the HQ office
++  # publishes (docs/deploy.md), so this job does NOT prove the pushed
++  # commit is what's running. It proves prod is up, the auth gate is live, and both
+   # services answer — a canary, not a deploy verification.
+   post-deploy-smoke:
+     name: Production smoke
+@@ -410,7 +410,7 @@ jobs:
+ 
+     steps:
+       - uses: actions/checkout@v4
+-      # Same checks the nightly Taller runs against staging and production
+-      # (docs/deploy.md → Staging). Retries absorb a cold start.
++      # Same checks the office's publishing queue runs against staging and
++      # production (docs/deploy.md). Retries absorb a cold start.
+       - name: Production smoke (scripts/smoke-remote.sh)
+         run: scripts/smoke-remote.sh "$API_URL" "$WEB_URL"

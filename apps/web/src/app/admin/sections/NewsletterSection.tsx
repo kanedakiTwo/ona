@@ -5,8 +5,8 @@
  *
  * Marketing leaves its recommendation for the issue; Miguel starts from it,
  * corrects the letter and saves it as the template. The template takes
- * `{nombre}`, `{receta}` and `{porque}`, filled in for each person when the
- * email is composed. Then: a preview with 2–3 real people (admins only),
+ * `{nombre}`, `{receta}`, `{porque}` and `{numeros}` (PRO-1199), filled in
+ * for each person when the email is composed. Then: a preview with 2–3 real people (admins only),
  * «Enviarme la prueba» to his own admin account's email, and «Programar» for
  * Friday 9:00 — only with the proof of the template saved that week.
  * Spec: specs/newsletter.md → «Editor en Admin».
@@ -61,7 +61,7 @@ const NOT_READY_LABEL: Record<NotReady, string> = {
 const LETTER_FIELDS = ["preface", "headline", "intro", "signoff"] as const
 type LetterField = (typeof LETTER_FIELDS)[number]
 
-const PLACEHOLDERS = ["{nombre}", "{receta}", "{porque}"]
+const PLACEHOLDERS = ["{nombre}", "{receta}", "{porque}", "{numeros}"]
 
 interface Form {
   subject: string
@@ -297,8 +297,10 @@ export function NewsletterSection() {
             <h2 className="text-[12px] font-semibold uppercase tracking-[0.1em] text-ink-muted">Tu carta</h2>
             <p className="text-[12px] text-ink-muted">
               Huecos para cada persona: <span className="font-mono">{"{nombre}"}</span> (si no lo sabemos, se quita con su coma),{" "}
-              <span className="font-mono">{"{receta}"}</span> (la que le hemos elegido) y <span className="font-mono">{"{porque}"}</span> (por qué
-              se la hemos elegido, con lo que sabemos de su casa, nunca de su salud).
+              <span className="font-mono">{"{receta}"}</span> (la que le hemos elegido), <span className="font-mono">{"{porque}"}</span> (por qué
+              se la hemos elegido, con lo que sabemos de su casa, nunca de su salud) y <span className="font-mono">{"{numeros}"}</span> (su semana
+              con Mimoia en una frase; si no hay nada, se quita). Sin <span className="font-mono">{"{numeros}"}</span>, las cuentas lo ven en
+              un bloque «Tu semana con Mimoia» tras la receta.
             </p>
             {field("subject", "Asunto")}
             {field("preheader", "Preheader (lo que se ve tras el asunto)")}

@@ -65,6 +65,12 @@ export default function TerminosPage() {
             Revisa siempre las etiquetas: Mimoia no puede garantizar que una receta o un producto estén libres
             de alérgenos o trazas.
           </p>
+          <p data-testid="terms-nutritionist-diet">
+            Si le mandas a Mimo la dieta que te ha dado tu nutricionista, Mimo apunta en tu ficha lo que puede
+            tener en cuenta en tus menús y te dice lo que no. Mimo no revisa, cambia ni valora esa dieta, y no
+            sustituye a tu nutricionista: cualquier duda sobre ella, coméntala con él o con ella. Comprueba lo que
+            Mimo ha apuntado.
+          </p>
 
           <h2 className="text-h3 mt-10 text-[#1A1A1A]">7. Propiedad intelectual</h2>
           <p>

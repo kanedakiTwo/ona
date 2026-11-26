@@ -42,7 +42,8 @@ import { slotWithDishes } from '../menuDishes.js'
 import { addDays, madridParts, madridWeekStart } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { appSkills, bestMatch, dishNoteText, markEatenAsNote, PANTRY_BATCH_MAX, pantryBatchSummary, pantryNameOk, searchWords, toBuyable } from './appSkills.js'
-import { setHaveAtHome } from '../shoppingItemState.js'
+import { setHaveAtHome, type ConvertQty } from '../shoppingItemState.js'
+import { syncPantryForLine } from '../shoppingPantrySync.js'
 import { convert as convertUnits } from '../shoppingList.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT, type NewRecipeParam } from './dishRecipe.js'
 import { shopOrderSkills } from './shopOrderSkills.js'
@@ -2194,7 +2195,8 @@ interface StockState {
 async function markOneInStock(params: StockParams, ctx: SkillContext, state: StockState): Promise<SkillResult> {
   const { userId, db } = ctx
   const { list, items, pantry } = state
-  const item = list ? findShoppingItem(items, params.ingredient) : null
+  // A menu line before a manual one with the same name (PRO-1265: «arroz» twice in «Ya en casa»).
+  const item = list ? (findShoppingItem(items.filter((i) => i?.kind !== 'manual'), params.ingredient) ?? findShoppingItem(items, params.ingredient)) : null
   const pantryHit = findPantryRow(pantry, params.ingredient)
   const current = item ? Boolean(item.inStock) : Boolean(pantryHit)
   const next = params.inStock != null ? !!params.inStock : !current
@@ -2235,7 +2237,9 @@ async function markOneInStock(params: StockParams, ctx: SkillContext, state: Sto
   }
 
   let touched = false
-  if (item) {
+  // A manual line never goes «en casa» by itself (PRO-1265): «tengo tamari»
+  // goes to the pantry; the household's own line stays as they left it.
+  if (item && !(next && item.kind === 'manual')) {
     item.inStock = next
     await state.saveList()
     touched = true
@@ -2246,6 +2250,23 @@ async function markOneInStock(params: StockParams, ctx: SkillContext, state: Sto
     ? await storePantryAmount(ctx, pantryHit, String(item?.name ?? params.ingredient), params, location, pantry)
     : null
   if (stored) touched = true
+  // Without one, a menu line's amount: «Ya en casa» is what the pantry holds (PRO-1265).
+  if (!stored && next && item?.ingredientId && item.kind !== 'manual' && item.kind !== 'staple') {
+    const [ing] = await db
+      .select({ density: ingredients.density, unitWeight: ingredients.unitWeight })
+      .from(ingredients)
+      .where(eq(ingredients.id, item.ingredientId))
+      .limit(1)
+    const convert: ConvertQty = (_id, q, from, to) => convertUnits(q, from, to, ing?.density, ing?.unitWeight)
+    await syncPantryForLine(userId, item, true, { convert, location, db })
+    touched = true
+    if (location && pantryHit && (pantryHit as { location?: string }).location !== location) await patchPantryForUser(userId, pantryHit.id, { location }, db)
+    return {
+      data: { name: item.name, inStock: true },
+      summary: `${item.name} marcado como en casa${location && location !== 'despensa' ? ` (${location})` : ''}.`,
+      uiHint: 'confirmation',
+    }
+  }
   if (!stored && next && pantryHit && location && (pantryHit as { location?: string }).location !== location) {
     await patchPantryForUser(userId, pantryHit.id, { location }, db)
     touched = true

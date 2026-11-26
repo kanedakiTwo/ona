@@ -128,6 +128,26 @@ describe('mark_in_stock', () => {
     expect(pimiento).toMatchObject({ haveQuantity: 150 })
     expect(r.summary).toContain('quedan 450 g por comprar')
   })
+
+  // PRO-1265: «Tamari (salsa de soja sin gluten) 1 u · MANUAL» went to «Ya en casa» by itself.
+  it('"tengo tamari" leaves a manual line as it was and writes the pantry', async () => {
+    const tamari = { id: 'm-1', ingredientId: null, kind: 'manual', name: 'Tamari (salsa de soja sin gluten)', quantity: 1, unit: 'u', inStock: false }
+    const r = await get('mark_in_stock').handler({ ingredient: 'tamari', inStock: true }, ctx(makeDb([{ id: 'sl-1', items: [tamari] }])))
+    expect(tamari.inStock).toBe(false)
+    expect(addPantryForUser).toHaveBeenCalledWith('u-1', { name: 'Tamari (salsa de soja sin gluten)' }, expect.anything())
+    expect(r.summary).toContain('marcado como en casa')
+  })
+
+  // PRO-1265: arroz twice in «Ya en casa» (the menu's and a manual one), and «Ya en casa» is what the pantry holds.
+  it('"tengo arroz" marks the menu line, not the manual one, and the pantry gets the line\'s amount', async () => {
+    const manual = { id: 'm-1', ingredientId: null, kind: 'manual', name: 'Arroz', quantity: 1, unit: 'u', inStock: false }
+    const menu = { id: 'menu:arr:g', ingredientId: 'arr', kind: 'menu', name: 'Arroz', quantity: 300, unit: 'g', inStock: false }
+    const r = await get('mark_in_stock').handler({ ingredient: 'arroz', inStock: true }, ctx(makeDb([{ id: 'sl-1', items: [manual, menu] }], undefined, [{ density: null, unitWeight: null }])))
+    expect(menu.inStock).toBe(true)
+    expect(manual.inStock).toBe(false)
+    expect(addPantryForUser).toHaveBeenCalledWith('u-1', { name: 'Arroz', quantity: 300, unit: 'g', location: undefined, ingredientId: 'arr' }, expect.anything())
+    expect(r.summary).toBe('Arroz marcado como en casa.')
+  })
 })
 
 // PRO-1294: «tengo en la nevera…» with twenty things was twenty calls; now one, with the list written once.

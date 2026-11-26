@@ -95,6 +95,8 @@ export const USAGE_EVENTS = [
   'menu_sheet_action',
   // PRO-1292: a message to Mimo the code answered without the model (`props.kind`: ver_menu · paso_cocina · ver_lista, PRO-1302).
   'mimo_code_reply',
+  // 2026-11-26: a diet from a nutritionist or doctor sent to Mimo (`props.kind`: pdf · photo; chatAttachment.ts).
+  'mimo_diet_document',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 

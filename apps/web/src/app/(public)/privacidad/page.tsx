@@ -27,7 +27,7 @@ export default function PrivacidadPage() {
         <h1 className="font-display text-4xl text-[#1A1612] md:text-5xl">Política de privacidad</h1>
 
         <div className="mt-8 space-y-5 text-[15px] leading-relaxed text-[#4A4239]">
-          <p className="text-sm text-[#7A7066]">Última actualización: 24 de noviembre de 2026</p>
+          <p className="text-sm text-[#7A7066]">Última actualización: 26 de noviembre de 2026</p>
 
           <H2>1. Quién trata tus datos</H2>
           <p data-testid="privacy-controller">
@@ -53,7 +53,14 @@ export default function PrivacidadPage() {
                 permiso, la tenemos en cuenta en tus menús durante un máximo de 30 días, solo con lo que escribiste y
                 sin pasarla a tu ficha; si nos pides que no la guardemos, dejamos de hacerlo. Si nos das las alergias de
                 alguien de tu casa que no usa Mimoia, nos confirmas que eres su madre, padre o tutor (si tiene menos de
-                14 años) o que esa persona está de acuerdo.
+                14 años) o que esa persona está de acuerdo.{" "}
+                <span data-testid="privacy-nutritionist-diet">
+                  Si le mandas a Mimo la dieta que te ha dado tu nutricionista (una foto o un PDF), la lee una sola vez
+                  para apuntar en tu ficha, con ese mismo permiso, los alimentos que evitar, las alergias, las
+                  intolerancias o la dieta (como sin gluten) que pueda tener en cuenta en tus menús, y te dice qué ha
+                  apuntado. No guardamos el documento, ni el motivo de la dieta, ni otros datos que aparezcan en él, como
+                  el peso o la medicación.
+                </span>
               </span>
             </li>
             <li><strong>Tu uso de Mimoia:</strong> menús, lista de la compra, despensa, recetas propias y fotos que subas.</li>
@@ -141,7 +148,7 @@ export default function PrivacidadPage() {
           <H2>5. Con quién los compartimos</H2>
           <p>Solo con los proveedores que hacen funcionar Mimoia, que tratan los datos por cuenta nuestra:</p>
           <ul className="ml-5 list-disc space-y-2">
-            <li><strong>Anthropic</strong> (modelos Claude): el asistente, la lectura de recetas desde enlaces y fotos, y las estimaciones nutricionales.</li>
+            <li><strong>Anthropic</strong> (modelos Claude): el asistente, la lectura de recetas desde enlaces y fotos, la lectura de la dieta de tu nutricionista si se la mandas a Mimo, y las estimaciones nutricionales.</li>
             <li data-testid="privacy-processor-groq"><strong>Groq</strong> (empresa de EE. UU.): pasa a texto lo que le dices a Mimo con la voz y las notas de voz de WhatsApp. Solo recibe el audio. No entrena con esos datos ni los guarda, salvo registros de hasta 30 días para la fiabilidad del servicio y la prevención de abusos.</li>
             <li data-testid="privacy-processor-openai"><strong>OpenAI</strong>: si Groq no está disponible, pasa a texto lo que le dices a Mimo con la voz y las notas de voz de WhatsApp; y, si AiKit no está disponible, genera las imágenes de recetas (solo recibe el nombre y los ingredientes de la receta).</li>
             <li><strong>ElevenLabs</strong>: la voz de Mimo cuando lee sus respuestas en voz alta (solo recibe el texto de la respuesta).</li>

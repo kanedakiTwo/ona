@@ -1,30 +1,31 @@
 import { env } from '../../config/env.js'
 import { claimOptInReoffer, markOptInDeclined } from './optInOffer.js'
 import { db } from '../../db/connection.js'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
-import { menuLogs, menus, recipes, users } from '../../db/schema.js'
-import { resolveScope, scopeWhere } from '../scopeResolver.js'
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import { menus, recipes, users } from '../../db/schema.js'
+import { getPrimaryHouseholdId, resolveScope, scopeWhere } from '../scopeResolver.js'
 import { weekMenuCaption, weekMenuDigest, type WeekMenuInput, type WeekReplyOptions, type WeekView } from '../menuText.js'
 import { weekMenuImage } from '../weekImage/index.js'
 import { madridParts } from '../madridTime.js'
 import { generatedWeeksOf } from '../menuWeek.js'
 import { SchoolMenuFileError, isHeicUpload, isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
-import { getPrimaryHouseholdId } from '../scopeResolver.js'
 import { currentCostChannel, runWithCostUser } from '../costLedger.js'
-import { recordCapHit, type CapHitInput } from '../capHits.js'
-import type { SchoolLunch } from '@ona/shared'
+import { capHitThisMonth, recordCapHit } from '../capHits.js'
+import { madeWithMimoLine, type SchoolLunch } from '@ona/shared'
+import { ensureReferralCode } from '../accountReferrals.js'
 import { getMemoryForUser } from '../userMemoryStore.js'
 import { regionFromMemory } from '../menuHolidays.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
+import { listCodeReply, menuCodeReply, recognizeCodeIntent } from '../assistant/codeReply.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
 import { isSttConfigured, transcribeAudio } from '../stt.js'
 import { importRecipeFromImage, setRecipeSourceUrl } from '../recipeImport.js'
 import { isUserAllowed } from './config.js'
-import { isAccountPaused } from '../accountAccess.js'
+import { isOnFreePlan } from '../accountAccess.js'
 import * as store from './store.js'
 import * as client from './client.js'
-import { writeGuided } from './outbound.js'
+import { languageForPhone, recordDinnerCheckinAnswer, saveOptOutReason, setAvisoKind, writeGuided } from './outbound.js'
 import type { InboundDeps } from './inbound.js'
 import { fillRecipeNames } from '../menuNames.js'
 import type { InboundMessage } from './webhookParser.js'
@@ -48,7 +49,13 @@ async function loadWeekMenu(userId: string, menuId: string | null): Promise<Week
 
 /** Options for the week text and caption: the view, and for a generated week its rank. */
 async function weekReplyOptions(userId: string, view: WeekView): Promise<WeekReplyOptions> {
-  const opts: WeekReplyOptions = { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL, view }
+  // PRO-1016 (D-132): the week ends with the household's invitation, so a
+  // forwarded week brings another home. No code → the week goes out without it.
+  const inviteCode = await ensureReferralCode(userId, db).catch((err) => {
+    console.warn('[whatsapp] referral code unavailable (no «Hecho con Mimo» line):', err?.message ?? err)
+    return null
+  })
+  const opts: WeekReplyOptions = { today: madridParts(new Date()).isoDate, webUrl: env.WEB_PUBLIC_URL, view, inviteCode }
   if (view !== 'generated') return opts
   try {
     // PRO-226: the holiday line needs the household's region and time limits.
@@ -98,26 +105,44 @@ export function buildInboundDeps(): InboundDeps {
     chat: (userId, message, history, opts) => chat(userId, message, history, db, opts),
     // The chat's own € budget AND the monthly cap on all paid AI work
     // (spendCap.ts), both before any paid step. Admins are exempt from the cap.
-    // PRO-1090: the first hit of the month leaves a cap_hits row (WhatsApp
-    // only: Telegram shares these deps and isn't one of its channels).
+    // PRO-1302: `told` = this month's notice already went (its cap_hits row,
+    // PRO-1090), written by `noteCap` when the notice goes out. WhatsApp only:
+    // Telegram shares these deps, isn't one of its channels and keeps its
+    // notice on every message (`told` absent).
     checkBudget: async (userId) => {
       const telegram = currentCostChannel() === 'telegram'
-      const note = async (hit: Omit<CapHitInput, 'userId' | 'channel'>) =>
-        telegram ? false : recordCapHit({ ...hit, userId, channel: 'whatsapp' })
+      const told = async () => (telegram ? undefined : capHitThisMonth(userId))
       const advisor = await checkAdvisorBudget(userId, db)
-      if (advisor.exceeded) {
-        await note({ cap: 'asistente', spentEur: advisor.spentMicros / 1_000_000, capEur: advisor.budgetMicros / 1_000_000 })
-        return advisor
-      }
+      if (advisor.exceeded) return { ...advisor, cap: 'asistente' as const, told: await told() }
       const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
       if (row?.role === 'admin') return advisor
       const cap = await spendCapStatus(userId)
       if (!cap.exceeded) return advisor
-      await note({ cap: 'ia', spentEur: cap.spentEur, capEur: cap.capEur })
-      return { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) }
+      return { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000), spentMicros: Math.round(cap.spentEur * 1_000_000), cap: 'ia' as const, told: await told() }
     },
-    recordUsage: (userId, usage) => recordAdvisorUsage(userId, usage, db),
-    isPaused: (userId) => isAccountPaused(userId),
+    noteCap: async (userId, hit) =>
+      currentCostChannel() === 'telegram'
+        ? false
+        : recordCapHit({ userId, cap: hit.cap, spentEur: hit.spentMicros / 1_000_000, capEur: hit.budgetMicros / 1_000_000, channel: 'whatsapp' }),
+    recordUsage: (userId, usage, opts) => recordAdvisorUsage(userId, usage, db, undefined, opts),
+    // PRO-1292: the menu read by the code, with the same tools as Mimo;
+    // PRO-1302: and the shopping list.
+    codeReply: async (userId, text) => {
+      const intent = recognizeCodeIntent(text)
+      if (intent?.kind === 'ver_lista') {
+        const response = await listCodeReply({ userId, db, channel: 'whatsapp' })
+        return response ? { kind: intent.kind, response } : null
+      }
+      if (intent?.kind !== 'ver_menu') return null
+      const response = await menuCodeReply(intent, { userId, db, channel: 'whatsapp' })
+      return response ? { kind: intent.kind, response } : null
+    },
+    // 18-nov: a tapped «¿hiciste la cena?» button, recorded without the model.
+    recordDinnerCheckin: (userId, answer, checkinAt) => recordDinnerCheckinAnswer(userId, answer, checkinAt),
+    language: languageForPhone,
+    setAvisoKind,
+    saveOptOutReason,
+    isPaused: (userId) => isOnFreePlan(userId),
     // The week the turn generated or read (or the user's latest), read back
     // after the whole turn, scoped to the caller's household like every menu read.
     menuDigest: async (userId, menuId, view) => {
@@ -132,7 +157,8 @@ export function buildInboundDeps(): InboundDeps {
       if (!menu) return null
       const opts = await weekReplyOptions(userId, view)
       const t0 = Date.now()
-      const jpeg = await weekMenuImage(menu, { today: opts.today, webUrl: env.WEB_PUBLIC_URL, photoUrls: recipePhotoUrls })
+      const madeWith = opts.inviteCode ? madeWithMimoLine(env.WEB_PUBLIC_URL, opts.inviteCode) : null
+      const jpeg = await weekMenuImage(menu, { today: opts.today, webUrl: env.WEB_PUBLIC_URL, madeWith, photoUrls: recipePhotoUrls })
       if (!jpeg) return null
       console.log(`[whatsapp] week image drawn in ${Date.now() - t0} ms (${Math.round(jpeg.length / 1024)} KB)`)
       return { jpeg, caption: weekMenuCaption(menu, opts) }
@@ -160,6 +186,7 @@ export function initialInboundBody(msg: InboundMessage): string | null {
     case 'document':
       return msg.text ? `[pdf] ${msg.text}` : '[pdf]'
     default:
+      if (msg.rawType === 'reaction') return msg.text ? `[reacción ${msg.text}]` : '[reacción quitada]'
       return `[${msg.rawType}]`
   }
 }

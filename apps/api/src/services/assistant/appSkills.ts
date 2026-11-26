@@ -13,18 +13,23 @@ import {
   inviteHouseholdShareText,
   isAlertKind,
   isReligiousDiet,
+  householdToDiners,
+  plantillaEdits,
+  plantillaFromWeekType,
   prettyName,
   whatsappShareHref,
   type AlertKind,
+  type PlantillaView,
+  type WeekTypeDays,
   type AlertsOverview,
   type ShoppingItem,
 } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
-import { madridParts, madridWeekStart } from '../madridTime.js'
+import { addDays, madridParts, madridWeekStart, mondayOf } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
-import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY } from '../healthConsent.js'
+import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, WHATSAPP_HEALTH_DATA_REPLY, saidAllergyReply } from '../healthConsent.js'
 import { createDishRecipe, NEW_RECIPE_PROP, NOTE_THEN_RECIPE_HINT } from './dishRecipe.js'
 import { repeatNote } from './weekRepeats.js'
 import { PROACTIVE_KINDS, PROACTIVE_LABELS, type ProactiveKind } from '../whatsapp/proactive.js'
@@ -102,6 +107,8 @@ export function bestMatch<T>(items: readonly T[], query: string, nameOf: (t: T) 
     if (!n) continue
     let score = 0
     if (n === q) score = 100
+    // «tomates cherry» is «Tomate cherry», not «Tomate» (PRO-1039).
+    else if (sameWords(productWords(n), q.split(' '))) score = 95
     else if (n.startsWith(q)) score = 85
     else if (n.includes(q)) score = 70
     else if (q.includes(n)) score = 55
@@ -139,7 +146,12 @@ const changed = (t: MenuDay, meal?: string, extra: Record<string, unknown> = {})
 interface MenuDoc {
   id: string
   days: Array<Record<string, { dishes?: Array<{ kind: string; recipeId?: string; recipeName?: string; text?: string }>; servings?: number | null } | undefined>>
+  skippedDays?: number[] | null
 }
+
+/** PRO-349: a dish on a «sin cocinar» day reactivates it (the route does it); the summary says so. */
+const reactivatedNote = (menu: MenuDoc, t: MenuDay) =>
+  menu.skippedDays?.includes(t.dayIndex) ? ` El ${t.label} estaba marcado sin cocinar: ya vuelve a estar activo.` : ''
 
 /** The menu of the week starting `weekStart` (default: this Madrid week). */
 async function loadMenu(ctx: SkillContext, weekStart: string = madridWeekStart()): Promise<MenuDoc | null> {
@@ -216,7 +228,7 @@ const dayMealProps = {
 const setMealNote: SkillDefinition = {
   name: 'set_meal_note',
   description:
-    'Pone una nota libre en una comida del menu en lugar de (o junto a) los platos, cuando el usuario pide apuntar algo ("apunta que el jueves viene la abuela"). Por defecto sustituye los platos de esa comida por la nota. Si no comen en casa ("el viernes no comemos en casa", "cenamos fuera", "comemos en casa de Paqui") no la uses: clear_meal quita esa comida y set_day_skipped el dia entero.',
+    'Pone una nota libre en una comida del menu en lugar de (o junto a) los platos, cuando el usuario pide apuntar algo ("apunta que el jueves viene la abuela") o cuenta lo que improvisan para hoy en casa en vez de lo del menu ("esta noche pedimos pizza"; si ya lo han comido, mark_meal_eaten con dish): sin crear receta. Por defecto sustituye los platos de esa comida por la nota. Si no comen en casa ("el viernes no comemos en casa", "cenamos fuera", "comemos en casa de Paqui") no la uses: clear_meal quita esa comida y set_day_skipped el dia entero.',
   parameters: {
     type: 'object',
     properties: {
@@ -234,14 +246,50 @@ const setMealNote: SkillDefinition = {
     const menu = await loadMenu(ctx, t.weekStart)
     if (!menu) return NO_MENU(t.weekStart)
     const path = slotPath(menu.id, t.dayIndex, p.meal)
-    const had = (menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []).length > 0
+    const dishes = menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []
+    const had = dishes.length > 0
     if (!p.keepDishes && had) await api(ctx)('DELETE', path)
     await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: String(p.text).slice(0, 120) })
+    // PRO-1293: name what it took off, so Mimo can offer it on another day.
+    const names = dishes.map((d) => d.recipeName ?? d.text).filter(Boolean).map((n) => `"${n}"`).join(', ')
     return menuDone(
-      `Hecho: ${where(t, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ' (he quitado los platos que había)' : ''}.`,
+      `Hecho: ${where(t, p.meal)} queda como "${p.text}"${!p.keepDishes && had ? ` (he quitado ${names || 'los platos que había'})` : ''}.${reactivatedNote(menu, t)}`,
       changed(t, p.meal, { menuId: menu.id, note: String(p.text).slice(0, 120) }),
     )
   },
+}
+
+/**
+ * PRO-1293: «al final cenamos tortilla» — the meal is marked eaten with what
+ * they said as a note (no recipe is created). The dishes it replaces were not
+ * made: the summary names them so Mimo can offer another day for them.
+ */
+export async function markEatenAsNote(
+  ctx: SkillContext,
+  p: { day?: unknown; dayIndex?: unknown; meal: string; dish: string },
+): Promise<SkillResult> {
+  const t = target(p.day, p.dayIndex, undefined)
+  if (isMenuDayError(t)) return text(t.error)
+  const bad = mealError(p.meal)
+  if (bad) return text(bad)
+  const menu = await loadMenu(ctx, t.weekStart)
+  if (!menu) return NO_MENU(t.weekStart)
+  const note = dishNoteText(p.dish)
+  const path = slotPath(menu.id, t.dayIndex, p.meal)
+  const dishes = menu.days[t.dayIndex]?.[p.meal]?.dishes ?? []
+  const replaced = dishes
+    .map((d) => d.recipeName ?? d.text ?? '')
+    .filter((n) => n && normalize(n) !== normalize(note))
+  if (dishes.length > 0) await api(ctx)('DELETE', path)
+  await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
+  await api(ctx)('PATCH', path, { eaten: true })
+  const notMade = replaced.length
+    ? ` Lo que habia en el menu (${replaced.map((n) => `"${n}"`).join(', ')}) no se ha hecho: ofrece, en una sola pregunta, ponerlo otro dia.`
+    : ''
+  return menuDone(
+    `Hecho: ${where(t, p.meal)} queda como "${note}", marcada como comida.${notMade}${reactivatedNote(menu, t)}`,
+    changed(t, p.meal, { menuId: menu.id, note, eaten: true, replaced }),
+  )
 }
 
 const clearMeal: SkillDefinition = {
@@ -309,7 +357,7 @@ const addDish: SkillDefinition = {
     const path = slotPath(menu.id, t.dayIndex, p.meal)
     if (!p.recipeId && !p.recipeName) {
       await api(ctx)('POST', `${path}/dish/random`)
-      return menuDone(`Hecho: he añadido un plato aleatorio a ${where(t, p.meal)}.`, changed(t, p.meal))
+      return menuDone(`Hecho: he añadido un plato aleatorio a ${where(t, p.meal)}.${reactivatedNote(menu, t)}`, changed(t, p.meal))
     }
     const recipe = p.recipeId ? { id: p.recipeId, name: p.recipeName ?? 'la receta' } : await findRecipe(ctx, p.recipeName)
     if (!p.recipeId && (!recipe || ('approximate' in recipe && recipe.approximate))) {
@@ -322,7 +370,7 @@ const addDish: SkillDefinition = {
         if (notePos >= 0) await api(ctx)('DELETE', `${path}/dish/${notePos}`)
         await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: created.id })
         return menuDone(
-          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })}`,
+          `Hecho: "${created.name}" no estaba en sus recetas ni en el catalogo; la he creado como receta del hogar (raciones e ingredientes estimados; se puede revisar en la app) y la he añadido a ${where(t, p.meal)}. Sus ingredientes ya salen en la lista de la compra.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: created.id, name: created.name })}`,
           changed(t, p.meal, { recipeId: created.id, recipeName: created.name }),
         )
       }
@@ -330,14 +378,14 @@ const addDish: SkillDefinition = {
       await api(ctx)('POST', `${path}/dish`, { kind: 'note', text: note })
       const closest = recipe ? ` Lo mas parecido que si hay es "${recipe.name}".` : ''
       return menuDone(
-        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
+        `Hecho: he añadido "${note}" a ${where(t, p.meal)} como nota, porque no esta en sus recetas ni en el catalogo.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { name: note })}${closest} ${NOTE_THEN_RECIPE_HINT}${recipe ? ` Si prefiere "${recipe.name}", ofrecele cambiar la nota por esa receta.` : ''}`,
         changed(t, p.meal, { note }),
       )
     }
     if (!recipe) return text(`No encontre la receta "${p.recipeId}"; no he añadido nada.`)
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id })
     return menuDone(
-      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })}`,
+      `Hecho: he añadido "${recipe.name}" a ${where(t, p.meal)}.${reactivatedNote(menu, t)}${repeatNote(menu.days, t.weekStart, t.dayIndex, p.meal, { recipeId: recipe.id, name: recipe.name })}`,
       changed(t, p.meal, { recipeId: recipe.id, recipeName: recipe.name }),
     )
   },
@@ -463,7 +511,7 @@ const moveMeal: SkillDefinition = {
  * «Vetar esta receta» on the web (PRO-72). Each appearance from today on (all
  * of them for a future week) is regenerated by the matcher, which already
  * skips the vetoed recipe; a táper of it follows its source as sobras of the
- * new dish. Left as they are: locked meals, freezer tápers, leftovers of a
+ * new dish (a locked meal too, PRO-1175). Left as they are: freezer tápers, leftovers of a
  * dish already cooked, and meals with no other recipe that fits. Before, it
  * only blocked the recipe for regenerations and Mimo said «vetado de toda la
  * semana» while it stayed on the menu (reviewer, 2026-10-10).
@@ -519,7 +567,6 @@ async function replaceBannedDishes(
 ): Promise<{ changes: { date: string; dayIndex: number; meal: string; label: string; recipeName: string; leftover?: boolean }[]; kept: string[] }> {
   const thisWeek = madridWeekStart()
   const firstDay = weekStart === thisWeek ? madridParts(new Date()).weekday : weekStart < thisWeek ? 7 : 0
-  const locked = ((menu as { locked?: Record<string, Record<string, boolean>> }).locked ?? {}) as Record<string, Record<string, boolean>>
   const changes: { date: string; dayIndex: number; meal: string; label: string; recipeName: string; leftover?: boolean }[] = []
   const kept: string[] = []
   const replaced = new Map<string, string>() // `${day}|${meal}` of a regenerated source → its new recipe name
@@ -556,7 +603,7 @@ async function replaceBannedDishes(
       if (dish.variant === 'freezer') { kept.push(`${label(d, meal)} (es un taper del congelador)`); continue }
       if (dish.variant === 'fridge') { kept.push(`${label(d, meal)} (es un taper de la nevera)`); continue }
       if (dish.variant === 'cooked') { kept.push(`${label(d, meal)} (son sobras de otro dia)`); continue }
-      if (locked[String(d)]?.[meal]) { kept.push(`${label(d, meal)} (esta fijada)`); continue }
+      // A locked meal is changed too (PRO-1175): the lock only keeps it when the week is redone.
       const name = await regenerate(d, meal, pos)
       if (!name) { kept.push(`${label(d, meal)} (no hay otra receta que encaje)`); continue }
       replaced.set(`${d}|${meal}`, name)
@@ -571,7 +618,7 @@ async function replaceBannedDishes(
       const src = dish.leftoverOf
       const newSource = src ? replaced.get(`${src.day}|${src.meal}`) : undefined
       if (!src || !newSource) { kept.push(`${label(d, meal)} (son sobras ya cocinadas)`); continue }
-      if (dishes.length === 1 && !locked[String(d)]?.[meal]) {
+      if (dishes.length === 1) {
         await api(ctx)('DELETE', slotPath(menu.id, d, meal))
         await api(ctx)('POST', `/menu/${menu.id}/day/${d}/leftover`, { sourceDay: src.day, sourceMeal: src.meal, targetMeal: meal })
         if (typeof servings === 'number') await api(ctx)('PATCH', slotPath(menu.id, d, meal), { servings })
@@ -708,7 +755,7 @@ const addFreezerDish: SkillDefinition = {
         ? 'No hay una receta que se llame igual, asi que va como nota.'
         : 'No esta en sus recetas ni en el catalogo, asi que va como nota.'
       return menuDone(
-        `Hecho: ${where(t, p.meal)} queda como "${note}"${removed}; no suma nada a la compra. ${why}`,
+        `Hecho: ${where(t, p.meal)} queda como "${note}"${removed}; no suma nada a la compra. ${why}${reactivatedNote(menu, t)}`,
         changed(t, p.meal, { menuId: menu.id, note }),
       )
     }
@@ -717,7 +764,7 @@ const addFreezerDish: SkillDefinition = {
     await api(ctx)('POST', `${path}/dish`, { kind: 'recipe', recipeId: recipe.id, variant })
     const approx = 'approximate' in recipe && recipe.approximate ? ` Es la receta mas parecida a "${p.recipeName}" que hay.` : ''
     return menuDone(
-      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${PLACE_LABEL[variant]}${removed}; no suma nada a la lista de la compra.${approx}`,
+      `Hecho: ${where(t, p.meal)} es "${recipe.name}", ${PLACE_LABEL[variant]}${removed}; no suma nada a la lista de la compra.${approx}${reactivatedNote(menu, t)}`,
       changed(t, p.meal, { menuId: menu.id, recipeId: recipe.id, recipeName: recipe.name, variant }),
     )
   },
@@ -726,7 +773,7 @@ const addFreezerDish: SkillDefinition = {
 // ─── Shopping list ───────────────────────────────────────────────
 
 type ListItem = Pick<ShoppingItem, 'id' | 'name'> &
-  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText'>>
+  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'weeks'>>
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.
@@ -752,6 +799,10 @@ export function itemLabel(i: ListItem): string {
 function sameWord(a: string, b: string): boolean {
   return a === b || `${a}s` === b || `${b}s` === a || `${a}es` === b || `${b}es` === a
 }
+/** Same words in the same order, singular or plural. */
+function sameWords(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((w, i) => sameWord(w, b[i]))
+}
 function productWords(name: string): string[] {
   const words = normalize(name).split(' ')
   return words.filter((w) => !(STOPWORDS.has(w) && words.length > 1))
@@ -776,37 +827,136 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
   return prefixHit
 }
 
+/** Words of a line name that tell products apart: «sin» and «con» count («caldo de pollo sin sal»). */
+const LINE_FILLER = new Set([...STOPWORDS].filter((w) => w !== 'sin' && w !== 'con'))
+function lineWords(name: string): string[] {
+  const words = normalize(name).split(' ')
+  return words.filter((w) => !(LINE_FILLER.has(w) && words.length > 1))
+}
+
+/**
+ * The one line of the list the household means (PRO-1050), for the tools
+ * that change or remove it by its id: the same name first; otherwise the
+ * only line whose name has every word asked («los cherry» → «Tomate
+ * cherry»). Never a line whose name is only part of what was asked: «caldo
+ * de pollo» is not «Pollo». Before, bestMatch dropped «de» and «sin» and took
+ * «Pollo» for «caldo de pollo sin sal» (Marta y Jorge, 2026-10-25 → 11-17).
+ * Several lines with those words → `ambiguous`, to ask which.
+ */
+export function findListLine<T extends Pick<ListItem, 'name'>>(
+  items: readonly T[],
+  query: string,
+): { line: T } | { ambiguous: T[] } | null {
+  const q = lineWords(query)
+  if (q.length === 0 || !q[0]) return null
+  const full = normalize(query)
+  const exact = items.find((i) => normalize(i.name) === full)
+  if (exact) return { line: exact }
+  const has = (words: string[], w: string) => words.some((x) => sameWord(x, w))
+  const same = items.find((i) => {
+    const n = lineWords(i.name)
+    return n.length === q.length && n.every((w, k) => sameWord(w, q[k]))
+  })
+  if (same) return { line: same }
+  const wider = items.filter((i) => {
+    const n = lineWords(i.name)
+    return q.every((w) => has(n, w))
+  })
+  if (wider.length === 1) return { line: wider[0] }
+  if (wider.length > 1) return { ambiguous: wider }
+  return null
+}
+
+/** «Hay varias: Leche entera, Leche de coco. ¿Cuál?» */
+export const whichLine = (asked: string, lines: Array<Pick<ListItem, 'name'>>) =>
+  `Hay varias líneas con "${asked}": ${lines.slice(0, 6).map((l) => capitalize(prettyName(l.name))).join(', ')}. ¿Cuál?`
+
+const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+/** Monday `YYYY-MM-DD` of the week of an ISO date. */
+const mondayOfDate = (iso: string) => mondayOf(iso, (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7)
+/** «Esta semana», «La que viene» or «Semana del 7 dic», as /shopping labels a line (lineWeekLabel). */
+function weekName(monday: string, thisMonday: string): string {
+  if (monday === thisMonday) return 'Esta semana'
+  if (monday === addDays(thisMonday, 7)) return 'La que viene'
+  const [, m, d] = monday.split('-').map(Number)
+  return `Semana del ${d} ${MONTHS_SHORT[m - 1]}`
+}
+/** The weeks (Mondays) a menu line is for, from its `weeks` (PRO-270); none for manual lines and staples. */
+const lineWeeks = (i: ListItem): string[] =>
+  Object.entries(i.weeks ?? {})
+    .filter(([, q]) => q > 0)
+    .map(([w]) => w)
+    .sort()
+
+/**
+ * What get_shopping_list tells Mimo (PRO-1039): the same list /shopping shows,
+ * every pending line (manual ones too: a cap of 60 left «Pan de barra ·
+ * MANUAL» out), each under the week it's for, a line of both weeks with what
+ * each one asks («44 huevos» were 19 + 25), and the names of what is bought
+ * or at home. With `week`, only that week's lines and amounts, like the
+ * «Esta semana» / «La que viene» chips (plus the lines that have no week).
+ */
+export function shoppingListSummary(items: readonly ListItem[], today: string, week?: 'esta' | 'que_viene'): string {
+  if (items.length === 0) return 'La lista de la compra está vacía: no hay menú para estos días ni nada apuntado a mano.'
+  const thisMonday = mondayOfDate(today)
+  const wanted = week === 'esta' ? thisMonday : week === 'que_viene' ? addDays(thisMonday, 7) : null
+  const names = (list: ListItem[]) => list.map((i) => prettyName(i.name)).join(', ')
+  const bought = items.filter((i) => i.checked)
+  const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped)
+  const skipped = items.filter((i) => i.skipped)
+  const extra = [
+    bought.length ? `Ya comprado (${bought.length}): ${names(bought)}.` : '',
+    atHome.length ? `En casa (${atHome.length}): ${names(atHome)}.` : '',
+    skipped.length ? `Quitado de esta compra: ${names(skipped)}.` : '',
+  ].filter(Boolean).join(' ')
+  let missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
+  if (wanted) missing = missing.filter((i) => lineWeeks(i).length === 0 || lineWeeks(i).includes(wanted))
+  const scope = wanted ? ` para ${weekName(wanted, thisMonday).toLowerCase()}` : ''
+  if (missing.length === 0) return `${wanted ? `No te falta nada${scope}.` : 'Ya lo tienes todo.'} ${extra}`.trim()
+
+  // Weeks in order, then the lines of both weeks, then the ones without a week.
+  const groups = new Map<string, { order: string; labels: string[] }>()
+  const put = (group: string, label: string, order = group) => {
+    const g = groups.get(group) ?? { order, labels: [] }
+    groups.set(group, { ...g, labels: [...g.labels, label] })
+  }
+  for (const i of missing) {
+    const ws = lineWeeks(i)
+    const amount = (w: string) => (i.unit ? formatQty(i.weeks![w], i.unit) : String(i.weeks![w]))
+    if (ws.length === 0) put('A mano o básicos (sin semana)', itemLabel(i), '9')
+    else if (wanted) put(weekName(wanted, thisMonday), ws.length > 1 ? `${prettyName(i.name)} (${amount(wanted)}; la línea de /shopping junta las dos semanas: ${itemLabel(i)})` : itemLabel(i), wanted)
+    else if (ws.length === 1) put(weekName(ws[0], thisMonday), itemLabel(i), ws[0])
+    else put('Para las dos semanas', `${itemLabel(i)} [${ws.map((w) => `${amount(w)} ${weekName(w, thisMonday).toLowerCase()}`).join(', ')}]`, '8')
+  }
+  const head = `Te faltan ${missing.length} cosas${scope}`
+  const sorted = [...groups].sort(([, a], [, b]) => a.order.localeCompare(b.order))
+  const body =
+    sorted.length === 1 && !wanted
+      ? `${head}: ${sorted[0][1].labels.join(', ')}.`
+      : `${head}. ${sorted.map(([g, { labels }]) => `${g}: ${labels.join(', ')}.`).join(' ')}`
+  return `${body} ${extra}`.trim()
+}
+
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:
-    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista".',
-  parameters: { type: 'object', properties: {}, required: [] },
-  async handler(_p, ctx) {
+    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar, cada cosa con su semana ("Esta semana", "La que viene", o las dos con lo de cada una), y los nombres de lo ya comprado y de lo que hay en casa. Con week, solo lo de esa semana (como los atajos de /shopping). Usala para "que me falta", "que tengo que comprar", "lee la lista", "que he comprado ya", "hazme la lista de la compra", "mandame la lista".',
+  parameters: {
+    type: 'object',
+    properties: {
+      week: { type: 'string', enum: ['esta', 'que_viene'], description: 'Solo si pregunta por una semana: "esta" o "que_viene". Sin week, las dos.' },
+    },
+    required: [],
+  },
+  async handler(p, ctx) {
     const list = await currentList(ctx)
     const items = list.items ?? []
     const data = { listId: list.id, items }
-    if (items.length === 0) {
-      return { data, summary: 'La lista de la compra está vacía: no hay menú para estos días ni nada apuntado a mano.', uiHint: 'shopping_list' }
-    }
-    const missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
-    const bought = items.filter((i) => i.checked).length
-    const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped).length
-    const skipped = items.filter((i) => i.skipped).map((i) => prettyName(i.name))
-    const extra = [
-      bought ? `Ya comprado: ${bought}.` : '',
-      atHome ? `En casa: ${atHome}.` : '',
-      skipped.length ? `Quitado de esta compra: ${skipped.join(', ')}.` : '',
-    ].filter(Boolean).join(' ')
-    if (missing.length === 0) {
-      return { data, summary: `Ya lo tienes todo. ${extra}`.trim(), uiHint: 'shopping_list' }
-    }
-    const shown = missing.slice(0, 60).map(itemLabel)
-    const more = missing.length > shown.length ? ` y ${missing.length - shown.length} más` : ''
-    return {
-      data,
-      summary: `Te faltan ${missing.length} cosas: ${shown.join(', ')}${more}. ${extra}`.trim(),
-      uiHint: 'shopping_list',
-    }
+    const week = p?.week === 'esta' || p?.week === 'que_viene' ? p.week : undefined
+    const summary = shoppingListSummary(items, madridParts(new Date()).isoDate, week)
+    // PRO-380: Mimo handing out the whole list counts like «Mandar la lista» (a resolved week).
+    if (summary.startsWith('Te faltan')) await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
+    return { data, summary, uiHint: 'shopping_list' }
   },
 }
 
@@ -903,13 +1053,19 @@ const removeShoppingItems: SkillDefinition = {
     const removed: string[] = []
     const missing: string[] = []
     const staples: string[] = []
+    const which: string[] = []
     let items = [...(list.items ?? [])].filter((i) => !i.skipped)
     for (const name of p.names ?? []) {
-      const hit = bestMatch(items, name, (i) => i.name)
-      if (!hit) {
+      const found = findListLine(items, String(name ?? ''))
+      if (!found) {
         missing.push(name)
         continue
       }
+      if ('ambiguous' in found) {
+        which.push(whichLine(name, found.ambiguous))
+        continue
+      }
+      const hit = found.line
       items = items.filter((i) => i.id !== hit.id)
       if (hit.kind === 'staple') {
         staples.push(prettyName(hit.name))
@@ -924,6 +1080,7 @@ const removeShoppingItems: SkillDefinition = {
     if (removed.length) parts.push(`Quitado de la lista: ${removed.join(', ')}.`)
     if (staples.length) parts.push(`${staples.join(', ')} ${staples.length === 1 ? 'es uno de tus básicos' : 'son de tus básicos'}: si quieres, lo pauso (manage_staples).`)
     if (missing.length) parts.push(`No estaban en la lista: ${missing.join(', ')}.`)
+    parts.push(...which)
     return { data: null, summary: parts.join(' '), uiHint: 'shopping_list' }
   },
 }
@@ -940,8 +1097,10 @@ const changeShoppingItemAmount: SkillDefinition = {
   },
   async handler(p, ctx) {
     const list = await currentList(ctx)
-    const hit = bestMatch(list.items ?? [], String(p.name ?? ''), (i) => i.name)
-    if (!hit) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    const found = findListLine(list.items ?? [], String(p.name ?? ''))
+    if (!found) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    if ('ambiguous' in found) return text(whichLine(String(p.name), found.ambiguous))
+    const hit = found.line
     const name = prettyName(hit.name)
     const b = toBuyable(p.quantity, p.unit)
     if (hit.kind === 'staple') return text(`${name} es uno de tus básicos: su cantidad se cambia en tus básicos (manage_staples).`)
@@ -1017,51 +1176,137 @@ interface PantryRow { id: string; name: string; quantity: number; unit: string; 
 
 // Reading the pantry is get_pantry_stock (skills.ts): pantry + list flags in one answer.
 
+/** PRO-1294: how many products one update_pantry / mark_in_stock call takes. */
+export const PANTRY_BATCH_MAX = 100
+
+/** PRO-1294: a name worth writing down (a voice note can leave «eh» or «…»). */
+export const pantryNameOk = (name: unknown): boolean =>
+  typeof name === 'string' && (normalize(name).match(/[a-zñ]/g) ?? []).length >= 2
+
+/**
+ * PRO-1294: the reply to a list of products — how many went in, where, and
+ * the doubts («no he reconocido X e Y»), never one line per product nor a
+ * technical error. The list is the household's dictation, so the reply stays short.
+ */
+export function pantryBatchSummary(done: { location?: string; removed?: boolean }[], doubts: string[]): string {
+  const added = done.filter((d) => !d.removed)
+  const removed = done.length - added.length
+  const where = (['nevera', 'congelador'] as const)
+    .map((l) => [l, added.filter((d) => d.location === l).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([l, n]) => `${n} en ${l === 'nevera' ? 'la nevera' : 'el congelador'}`)
+  const parts: string[] = []
+  if (added.length) parts.push(`${added.length} ${added.length === 1 ? 'producto apuntado' : 'productos apuntados'} en la despensa${where.length ? ` (${where.join(', ')})` : ''}`)
+  if (removed) parts.push(`${removed} ${removed === 1 ? 'quitado' : 'quitados'}`)
+  const quoted = doubts.map((d) => `"${d}"`)
+  const doubtLine = quoted.length
+    ? `Dudas: no he reconocido ${quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(', ')} y ${quoted[quoted.length - 1]}`}; pregúntale qué es${quoted.length === 1 ? '' : ' cada uno'}, como una duda, sin hablar de fallos.`
+    : ''
+  if (!parts.length) return `No he apuntado nada. ${doubtLine}`.trim()
+  return `Hecho: ${parts.join(' y ')}.${doubtLine ? ` ${doubtLine}` : ''} Resúmeselo en una línea, sin recitar la lista.`
+}
+
+const PANTRY_LOCATIONS = ['nevera', 'congelador', 'despensa']
+
+type PantryChange = { action?: string; name?: string; quantity?: number; unit?: string; expiresAt?: string; location?: string }
+
+/** One product of update_pantry against the rows read once; keeps `rows` up to date for the next one. */
+async function applyPantryChange(p: PantryChange, rows: PantryRow[], ctx: SkillContext): Promise<{ ok: boolean; line: string; location?: string; removed?: boolean }> {
+  const name = String(p.name ?? '').trim()
+  const hit = bestMatch(rows, name, (r) => r.name)
+  const b = toBuyable(p.quantity, p.unit)
+  const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
+  // PRO-228: where it is; a move restarts its date in the new place.
+  const location = p.location && PANTRY_LOCATIONS.includes(p.location) ? p.location : undefined
+  if (p.action === 'remove') {
+    if (!hit) return { ok: false, line: `"${name}" no estaba en la despensa.` }
+    await api(ctx)('DELETE', `/pantry/${hit.id}`)
+    if (rows.includes(hit)) rows.splice(rows.indexOf(hit), 1)
+    return { ok: true, removed: true, line: `Hecho: "${hit.name}" fuera de la despensa.` }
+  }
+  if (hit && (p.action === 'set' || p.action === 'add')) {
+    const quantity = b.quantity == null ? undefined : p.action === 'add' && hit.unit === b.unit ? hit.quantity + b.quantity : b.quantity
+    const patch = {
+      ...(quantity != null ? { quantity } : {}),
+      ...(b.unit ? { unit: b.unit } : {}),
+      ...(exp ? { expiresAt: exp } : {}),
+      ...(location ? { location } : {}),
+    }
+    if (Object.keys(patch).length) await api(ctx)('PATCH', `/pantry/${hit.id}`, patch)
+    if (quantity != null) hit.quantity = quantity
+    if (b.unit) hit.unit = b.unit
+    return { ok: true, location, line: `Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.` }
+  }
+  const created = await api(ctx)<PantryRow | undefined>('POST', '/pantry', {
+    name: String(b.suffix ? `${name} (${b.suffix})` : name).slice(0, 80),
+    ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
+    ...(exp ? { expiresAt: exp } : {}),
+    ...(location ? { location } : {}),
+  })
+  // Two «leche» in one dictation go to one row.
+  if (created?.id && created.name) rows.push(created)
+  return { ok: true, location, line: `Hecho: "${name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.` }
+}
+
 const updatePantry: SkillDefinition = {
   name: 'update_pantry',
   description:
-    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio.',
+    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio. Varios productos ("tengo en la nevera leche, huevos, yogures…", la despensa dictada) van en UNA sola llamada con items (hasta 100), nunca una llamada por producto; cada item hereda action y location si no los lleva. Devuelve cuantos ha apuntado y las dudas: lo que no ha reconocido se lo preguntas al usuario.',
   parameters: {
     type: 'object',
     properties: {
       action: { type: 'string', enum: ['add', 'set', 'remove'] },
-      name: { type: 'string' },
+      name: { type: 'string', description: 'Un solo producto; para varios, items' },
       quantity: { type: 'number' },
       unit: { type: 'string' },
       expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
       location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+      items: {
+        type: 'array',
+        maxItems: PANTRY_BATCH_MAX,
+        description: 'Varios productos en una llamada',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            action: { type: 'string', enum: ['add', 'set', 'remove'] },
+            quantity: { type: 'number' },
+            unit: { type: 'string' },
+            expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
+            location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+          },
+          required: ['name'],
+        },
+      },
     },
-    required: ['action', 'name'],
+    required: ['action'],
   },
   async handler(p, ctx) {
     const rows = await api(ctx)<PantryRow[]>('GET', '/pantry')
-    const hit = bestMatch(rows, p.name, (r) => r.name)
-    const b = toBuyable(p.quantity, p.unit)
-    const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
-    // PRO-228: where it is; a move restarts its date in the new place.
-    const location = ['nevera', 'congelador', 'despensa'].includes(p.location) ? (p.location as string) : undefined
-    if (p.action === 'remove') {
-      if (!hit) return text(`"${p.name}" no estaba en la despensa.`)
-      await api(ctx)('DELETE', `/pantry/${hit.id}`)
-      return text(`Hecho: "${hit.name}" fuera de la despensa.`)
+    if (!Array.isArray(p.items) || p.items.length === 0) {
+      if (!pantryNameOk(p.name)) return text('Falta el nombre del producto; no he cambiado nada.')
+      return text((await applyPantryChange(p, rows, ctx)).line)
     }
-    if (hit && (p.action === 'set' || p.action === 'add')) {
-      const quantity = b.quantity == null ? undefined : p.action === 'add' && hit.unit === b.unit ? hit.quantity + b.quantity : b.quantity
-      await api(ctx)('PATCH', `/pantry/${hit.id}`, {
-        ...(quantity != null ? { quantity } : {}),
-        ...(b.unit ? { unit: b.unit } : {}),
-        ...(exp ? { expiresAt: exp } : {}),
-        ...(location ? { location } : {}),
-      })
-      return text(`Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.`)
+    // PRO-1294: the whole dictation in one call; a product it can't place is a doubt, not an error.
+    const done: { location?: string; removed?: boolean }[] = []
+    const doubts: string[] = []
+    for (const raw of (p.items as PantryChange[]).slice(0, PANTRY_BATCH_MAX)) {
+      const item = { action: p.action, location: p.location, ...raw }
+      const name = String(item.name ?? '').trim()
+      if (!pantryNameOk(name)) {
+        if (name) doubts.push(name.slice(0, 40))
+        continue
+      }
+      try {
+        const r = await applyPantryChange(item, rows, ctx)
+        if (r.ok) done.push(r)
+        else doubts.push(name.slice(0, 40))
+      } catch (err) {
+        console.warn('[update_pantry] item failed:', name, (err as Error)?.message ?? err)
+        doubts.push(name.slice(0, 40))
+      }
     }
-    await api(ctx)('POST', '/pantry', {
-      name: String(b.suffix ? `${p.name} (${b.suffix})` : p.name).slice(0, 80),
-      ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
-      ...(exp ? { expiresAt: exp } : {}),
-      ...(location ? { location } : {}),
-    })
-    return text(`Hecho: "${p.name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.`)
+    return text(pantryBatchSummary(done, doubts), { added: done.filter((d) => !d.removed).length, removed: done.filter((d) => d.removed).length, doubts })
   },
 }
 
@@ -1324,9 +1569,11 @@ const updateProfile: SkillDefinition = {
       const health = ['sex', 'age', 'weight', 'height', 'activityLevel'].some((k) => p[k] != null) ||
         !!p.addRestrictions?.length || !!p.removeRestrictions?.length
       if (health) {
-        if (!p.priority) return text(WHATSAPP_HEALTH_DATA_REPLY)
+        // PRO-1041: an allergy said here goes to the web link, already marked.
+        const reply = p.addRestrictions?.length ? saidAllergyReply(p.addRestrictions, 'whatsapp') : WHATSAPP_HEALTH_DATA_REPLY
+        if (!p.priority) return text(reply)
         await api(ctx)('PUT', `/user/${ctx.userId}`, { priority: p.priority })
-        return text(`Hecho: perfil actualizado (priority: ${p.priority}). ${WHATSAPP_HEALTH_DATA_REPLY}`)
+        return text(`Hecho: perfil actualizado (priority: ${p.priority}). ${reply}`)
       }
     }
     const body: Record<string, unknown> = {}
@@ -1349,7 +1596,7 @@ const updateProfile: SkillDefinition = {
       const consent = await api(ctx)<{ active?: boolean; version?: string | null }>('GET', `/user/${ctx.userId}/health-consent`)
       if (!consent?.active) {
         for (const k of health) delete body[k]
-        if (Object.keys(body).length === 0) return text(HEALTH_CONSENT_SKILL_REPLY)
+        if (Object.keys(body).length === 0) return text(p.addRestrictions?.length ? saidAllergyReply(p.addRestrictions, ctx.channel) : HEALTH_CONSENT_SKILL_REPLY)
       } else if (Array.isArray(body.restrictions) && !consentCoversReligiousDiet(consent.version)) {
         // «halal» under a v1 consent: the current text first, in the profile (Legal, E-19).
         const kept = (body.restrictions as string[]).filter((r) => !isReligiousDiet(r))
@@ -1388,7 +1635,7 @@ export function applyTemplateChange(
 const updateWeeklyTemplate: SkillDefinition = {
   name: 'update_weekly_template',
   description:
-    'Cambia la plantilla semanal fija del perfil (afecta a los proximos menus): cuantos comensales hay en una comida ciertos dias (diners; 0 = esa comida no se planifica, ej. "entre semana no comemos en casa") y/o cuantos platos lleva esa comida (dishes 1-3, ej. "quiero primero y segundo en la comida").',
+    'Cambia en la semana tipo del hogar los comensales de una comida en varios dias a la vez (diners; 0 = esa comida no se planifica, ej. "entre semana no comemos en casa") y/o cuantos platos lleva esa comida (dishes 1-3, ej. "quiero primero y segundo en la comida"). Afecta a los proximos menus. Para lo que se come un dia y una comida (un plato, un tipo, turnos, "cada dos semanas") o para quitar una comida de un dia ("quita el desayuno del domingo"), usa set_week_type_slot.',
   parameters: {
     type: 'object',
     properties: {
@@ -1403,9 +1650,15 @@ const updateWeeklyTemplate: SkillDefinition = {
     if (!MEALS.includes(p.meal)) return text('meal debe ser breakfast, lunch, snack o dinner.')
     if (p.diners === undefined && p.dishes === undefined) return text('Dime comensales (diners) o numero de platos (dishes).')
     const days: number[] = Array.isArray(p.days) && p.days.length ? p.days.filter((d: number) => d >= 0 && d <= 6) : [0, 1, 2, 3, 4, 5, 6]
-    const settings = await api(ctx)<{ template?: Record<string, any> } | null>('GET', `/user/${ctx.userId}/settings`).catch(() => null)
-    const template = applyTemplateChange(settings?.template, { days, meal: p.meal, diners: p.diners, dishes: p.dishes })
-    await api(ctx)('PUT', `/user/${ctx.userId}/settings`, { template })
+    // «Semana tipo» (D-182): the household's usual week, only the slots that change.
+    const weekType = await api(ctx)<{ days: WeekTypeDays }>('GET', '/households/me/week-type')
+    // A slot without its own diners is for the whole household (not a fixed 2).
+    const me = await api(ctx)<{ adults?: number; kidsCount?: number }>('GET', `/user/${ctx.userId}`).catch(() => null)
+    const before = plantillaFromWeekType(weekType.days, householdToDiners(me?.adults ?? 2, me?.kidsCount ?? 0))
+    const after = { ...before, ...applyTemplateChange(before, { days, meal: p.meal, diners: p.diners, dishes: p.dishes }) } as PlantillaView
+    for (const e of plantillaEdits(weekType.days, before, after, madridWeekStart())) {
+      await api(ctx)('PUT', `/households/me/week-type/${e.day}/${e.meal}`, e.slot)
+    }
     const dayLabel = days.length === 7 ? 'todos los dias' : days.map((d) => DAY_NAMES[d]).join(', ')
     const parts = [
       p.diners !== undefined ? (p.diners === 0 ? `sin ${MEAL_ES[p.meal]} (${dayLabel})` : `${p.diners} comensales en la ${MEAL_ES[p.meal]} (${dayLabel})`) : null,
@@ -1457,7 +1710,7 @@ const shareInviteLink: SkillDefinition = {
 const setWhatsappNotifications: SkillDefinition = {
   name: 'set_whatsapp_notifications',
   description:
-    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana con el menú del día: apagado salvo que lo pida, p. ej. "mándame el menú cada mañana"), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana". Cambia lo mismo que Perfil → Avisos; para ver por donde llega cada aviso usa get_alerts.',
+    'Activa o desactiva los avisos que Mimo manda por WhatsApp sin que el usuario escriba. kind: all (todos), daily_brief (resumen de la mañana con el menú del día: apagado salvo que lo pida, p. ej. "mándame el menú cada mañana"), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra). Ej: "no me mandes el resumen de la mañana". Cambia lo mismo que Perfil → Ajustes → Avisos; para ver por donde llega cada aviso usa get_alerts.',
   parameters: {
     type: 'object',
     properties: {
@@ -1482,7 +1735,7 @@ const setWhatsappNotifications: SkillDefinition = {
 
 /** The «Avisos» list as Mimo reads it (PRO-237): one line per kind. */
 export function describeAlerts(o: AlertsOverview): string {
-  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', off: 'no llega' }
+  const where: Record<string, string> = { whatsapp: 'por WhatsApp', push: 'como notificación del móvil', email: 'por correo', app: 'en su menú de la app', off: 'no llega' }
   const lines = o.kinds.map((k) => {
     if (!k.on) return `- ${k.title} (${k.kind}): apagado`
     const tail = k.channel === 'off' ? `no llega${k.note ? ` (${k.note})` : ''}` : `${where[k.channel]}${k.fallback ? ' (si WhatsApp falla, notificación del móvil)' : ''}`
@@ -1490,13 +1743,17 @@ export function describeAlerts(o: AlertsOverview): string {
   })
   const wa = o.whatsapp.linked ? (o.whatsapp.notify ? 'WhatsApp conectado con avisos.' : 'WhatsApp conectado, avisos apagados.') : 'WhatsApp sin conectar.'
   const push = o.push.subscribed ? 'Notificaciones del móvil activadas.' : 'Notificaciones del móvil sin activar.'
-  return `${wa} ${push}\n${lines.join('\n')}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Avisos.`
+  // PRO-1301: the two times the household can change (set_alert_time).
+  const times = o.times
+    ? `\nHoras (se cambian con set_alert_time): menu del dia a las ${o.times.daily_brief.time}${o.times.daily_brief.custom ? '' : ' (la de siempre)'}; "¿hiciste la cena?" a las ${o.times.dinner_checkin.time}${o.times.dinner_checkin.custom ? '' : ' (la de siempre)'}.`
+    : ''
+  return `${wa} ${push}\n${lines.join('\n')}${times}\nPor correo solo llega lo de la cuenta (bienvenida, contraseña, invitaciones, la prueba y el aviso antes del primer cobro) y, si lo pidió, el menú de los viernes. Todo esto se ve y se cambia en Perfil → Ajustes → Avisos.`
 }
 
 const getAlerts: SkillDefinition = {
   name: 'get_alerts',
   description:
-    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
+    'Lista los avisos de Mimo (menu del dia, empezar a cocinar, congelador/remojo, "¿hiciste la cena?", compra, la semana hecha cada jueves, domingo, repaso del congelador), si estan encendidos y por donde llegan (WhatsApp, notificacion del movil, en el menu de la app o no llegan). Usala cuando pregunte "¿que avisos tengo?", "¿por donde me avisas?".',
   parameters: { type: 'object', properties: {}, required: [] },
   async handler(_p, ctx) {
     const o = await api(ctx)<AlertsOverview>('GET', '/notifications/prefs')
@@ -1507,7 +1764,7 @@ const getAlerts: SkillDefinition = {
 const setAlerts: SkillDefinition = {
   name: 'set_alerts',
   description:
-    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
+    'Enciende o apaga avisos de Mimo, igual que el interruptor de Perfil → Ajustes → Avisos (en todos los canales). kind: all (todos), daily_brief (menu del dia por la mañana), weekly_nudge (propuesta de menu del domingo), prep_alerts (descongelar, remojo…), cooking_reminder (empezar a cocinar), dinner_checkin ("¿hiciste la cena?"), shopping_reminder (recordatorio de la compra), weekly_autoplan (los jueves Mimo deja lista la semana proxima; "no me hagas la semana tu" lo apaga, y entonces vuelve la pregunta del domingo), freezer_review (repaso del congelador, una vez al mes). El menu del dia esta apagado salvo que lo pida ("mandame el menu cada mañana"); kind=all encendido no lo enciende. Ej: "no me mandes el resumen de la mañana". Con kind=all y WhatsApp conectado tambien cambia "Avisos por WhatsApp".',
   parameters: {
     type: 'object',
     properties: {
@@ -1526,7 +1783,7 @@ const setAlerts: SkillDefinition = {
     const what = p.kind === 'all' ? 'todos los avisos' : ALERT_LABELS[p.kind as AlertKind].title
     const row = o.kinds.find((k) => k.kind === kinds[0])
     const caveat = enabled && row && row.channel === 'off' && row.note ? ` Ojo: ahora no te llegaria: ${row.note}` : ''
-    return text(`Hecho: ${what} ${enabled ? 'encendido' : 'apagado'}.${caveat} Se ve en Perfil → Avisos.`)
+    return text(`Hecho: ${what} ${enabled ? 'encendido' : 'apagado'}.${caveat} Se ve en Perfil → Ajustes → Avisos.`)
   },
 }
 
@@ -1589,6 +1846,41 @@ const leaveFeedback: SkillDefinition = {
   },
 }
 
+/**
+ * The Sean Ellis survey (PRO-334, specs/feedback.md; D-051): when the user
+ * answers «si mañana Mimoia dejara de existir, ¿cómo te sentirías?» talking
+ * to Mimo (web chat, voice, WhatsApp), the same `POST /sean-ellis` as the
+ * /menu card. Once per person; only whoever was asked.
+ */
+const answerSeanEllis: SkillDefinition = {
+  name: 'answer_sean_ellis',
+  description:
+    'Guarda la respuesta a la encuesta de Mimoia "si mañana Mimoia dejara de existir, ¿como te sentirias?" (la tarjeta del menu o la pregunta de Mimo por WhatsApp). Usala solo cuando el usuario conteste a esa pregunta: muy decepcionado/a = muy, algo = algo, nada (no le resulta tan util) = nada, ya no la uso = ya_no. Si da un motivo, va en why con sus palabras. No la uses para otras opiniones (eso es leave_feedback).',
+  parameters: {
+    type: 'object',
+    properties: {
+      answer: { type: 'string', enum: ['muy', 'algo', 'nada', 'ya_no'], description: 'Su respuesta.' },
+      why: { type: 'string', description: 'El porque, con sus palabras (opcional).' },
+    },
+    required: ['answer'],
+  },
+  async handler(p, ctx) {
+    const why = typeof p.why === 'string' ? p.why.trim().slice(0, 2000) : ''
+    const channel = ctx.channel === 'whatsapp' ? 'whatsapp' : 'chat'
+    try {
+      const r = await api(ctx)<{ saved: boolean }>('POST', '/sean-ellis', { answer: p.answer, channel, ...(why ? { why } : {}) })
+      if (!r.saved) return text('Ya estaba guardada su respuesta a esta encuesta: no se cuenta dos veces. Dale las gracias en una linea y sigue.')
+      return text('Hecho: respuesta guardada para el equipo. Dale las gracias en una linea y sigue.')
+    } catch (err) {
+      if (err instanceof AppApiError && err.status === 409) {
+        return text('No guardada: a este usuario no se le ha hecho esta encuesta. Si quiere contarnos algo, usa leave_feedback.')
+      }
+      if (err instanceof AppApiError && err.status === 400) return text('Falta la respuesta: preguntale cual de las cuatro opciones encaja.')
+      throw err
+    }
+  },
+}
+
 export const appSkills: SkillDefinition[] = [
   setMealNote,
   clearMeal,
@@ -1621,5 +1913,6 @@ export const appSkills: SkillDefinition[] = [
   getAlerts,
   setAlerts,
   leaveFeedback,
+  answerSeanEllis,
   setCookToday,
 ]

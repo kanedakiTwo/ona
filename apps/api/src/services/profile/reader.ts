@@ -12,18 +12,25 @@
  * - `fichaMenuConstraints(ficha)`: lo que el menú respeta como filtro fijo —
  *   equipo que no hay («sin horno hasta nuevo aviso»), disgustos de todo el
  *   hogar, afinidades muy negativas con un ingrediente y si alguien quiere
- *   proteína en cada plato (`protein_minimum`).
+ *   proteína en cada plato (`protein_minimum`); las reglas del menú
+ *   (`menu_rule`: «arroz como mucho 1 vez a la semana», «cenas ligeras») y
+ *   las que se guardaron como nota antes (`rulesFromNotes`, 2026-11-19). Los
+ *   platos fijos con día y comida (`fixed_dish`) viven desde D-182 en la
+ *   semana tipo del hogar.
  *
  * `user_memories` sigue siendo lo que Mimo escribe; la ficha se suma a lo
  * que lee. Ver specs/household-profile.md → «Quién lee la ficha».
  */
 import { and, eq } from 'drizzle-orm'
-import { isHealthProfileFactType } from '@ona/shared'
+import { COOKING_WEEKDAYS, isHealthProfileFactType, NEW_PROFILE_FACT_VALUE_SCHEMAS, type Meal } from '@ona/shared'
 import { db as defaultDb } from '../../db/connection.js'
 import { householdPersons, householdProfiles, profileFacts, users } from '../../db/schema.js'
 import { madridParts } from '../madridTime.js'
 import { mentionsHealth, stripHealthFromWhatsAppText } from './healthText.js'
 import { normaliseEquipment } from '../recipeMatcher.js'
+import { cookingSkillOf, cuisineBiasOf, mergeCuisineBias, type CookingSkill, type MenuTastes } from '../menuTastes.js'
+import { hasBabyAtHome } from '../undercookedRecipes.js'
+import { mergeLimits, rulesFromNotes, type LightMeal, type WeeklyLimit } from '../menuRules.js'
 
 type Db = typeof defaultDb
 
@@ -123,6 +130,7 @@ export function describeFact(f: Pick<ReadableFact, 'type' | 'value' | 'validUnti
     case 'prep_habits': text = list(f.value) ? `Hábitos: ${list(f.value)}` : null; break
     case 'nutrition_principles': text = list(f.value) ? `Principios propios: ${list(f.value)}` : null; break
     case 'protein_minimum': text = 'Proteína en cada plato: al menos 80 g de carne, pescado o huevo por ración, también en los entrantes y en los platos de arroz, legumbre o pasta'; break
+    case 'menu_rule': text = v.rule === 'max_per_week' && v.target ? `Regla del menú: ${v.target}, como mucho ${v.times} ${Number(v.times) === 1 ? 'vez' : 'veces'} a la semana` : v.rule === 'light' ? `Regla del menú: ${v.meal === 'lunch' ? 'comidas' : 'cenas'} ligeras` : null; break
     case 'cooking_skill': text = `Nivel de cocina: ${({ easy: 'fácil', medium: 'medio', advanced: 'avanzado' } as Record<string, string>)[String(f.value)] ?? String(f.value)}`; break
     case 'weekly_budget_eur': text = `Presupuesto semanal: ${f.value} €`; break
     case 'household.adults': text = `Adultos en casa: ${f.value}`; break
@@ -185,6 +193,38 @@ export interface FichaMenuConstraints {
    * dishes too (the menu is the household's, so one person is enough).
    */
   strictProteinMinimum: boolean
+  /** Every member's `cuisine_bias`, as the household's (`mergeCuisineBias`, PRO-1201). */
+  cuisineBias: Record<string, number>
+  /** `cooking_skill` of the member who generates, else the household's (PRO-1201). */
+  cookingSkill: CookingSkill | null
+  /** Someone aged 0 to 2 lives here (PRO-1181: no runny yolk nor pink mince). */
+  babyAtHome: boolean
+  /** «Arroz como mucho un día a la semana» (`menu_rule`, and the notes, `rulesFromNotes`). */
+  weeklyLimits: WeeklyLimit[]
+  /** «Cenas ligeras»: those meals only get light dishes (`isLightDish`). */
+  lightMeals: LightMeal[]
+  /** `effort` facts: the time a day and a meal allow, for «Cambiar» without a dish. */
+  efforts: Array<{ days: number[]; meal: Meal; totalMinutes: number }>
+}
+
+export interface FichaFixedDish {
+  dish: string
+  days: number[]
+  meal: Meal
+}
+
+/**
+ * Pure: a `fixed_dish` value with its days and meal, or null. Since the
+ * «semana tipo» (D-182) the menu no longer reads these facts: the migration
+ * (`weekType.ts`) and the writers turn them into week type slots.
+ */
+export function fixedDishOf(value: unknown): FichaFixedDish | null {
+  const parsed = NEW_PROFILE_FACT_VALUE_SCHEMAS.fixed_dish.safeParse(value)
+  if (!parsed.success || !parsed.data.days?.length || !parsed.data.meal) return null
+  const days = [...new Set((parsed.data.days as string[]).map((d) => (COOKING_WEEKDAYS as readonly string[]).indexOf(d)))]
+    .filter((i) => i >= 0)
+    .sort((a, b) => a - b)
+  return days.length ? { dish: parsed.data.dish, days, meal: parsed.data.meal } : null
 }
 
 /** Every equipment word a temporary situation can mention, with its canonical name. */
@@ -215,14 +255,48 @@ export function equipmentMissingIn(text: string): string[] {
   return out
 }
 
-/** Pure: the menu's fixed filters from the ficha (health types are never read here: restrictions keep their own path). */
-export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuConstraints {
-  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false }
+/**
+ * Pure: the menu's fixed filters from the ficha (health types are never read
+ * here: restrictions keep their own path). `forUserId`: who generates, whose
+ * cooking level counts.
+ */
+export function fichaMenuConstraints(ficha: HouseholdFicha | null, forUserId?: string): FichaMenuConstraints {
+  const out: FichaMenuConstraints = { unavailableEquipment: [], equipment: null, dislikes: [], strictProteinMinimum: false, cuisineBias: {}, cookingSkill: null, babyAtHome: false, weeklyLimits: [], lightMeals: [], efforts: [] }
   if (!ficha) return out
+  out.babyAtHome = hasBabyAtHome(ficha.persons)
+  let householdSkill: CookingSkill | null = null
   const addDislike = (s: string) => {
     const t = s.trim().toLowerCase()
     if (t && !out.dislikes.includes(t)) out.dislikes.push(t)
   }
+  // What was saved as text (notes, principles, a style affinity): read with fixed patterns.
+  const texts: string[] = []
+  for (const f of ficha.facts) {
+    if (f.type === 'menu_rule') {
+      const v = f.value as { rule?: string; target?: unknown; times?: unknown; meal?: unknown }
+      if (v?.rule === 'max_per_week' && typeof v.target === 'string') out.weeklyLimits = mergeLimits(out.weeklyLimits, [{ target: v.target, times: Number(v.times) }])
+      else if (v?.rule === 'light' && (v.meal === 'lunch' || v.meal === 'dinner') && !out.lightMeals.includes(v.meal)) out.lightMeals.push(v.meal)
+      continue
+    }
+    if ((f.type === 'notes' || f.type === 'nutrition_principles') && Array.isArray(f.value)) {
+      for (const x of f.value as unknown[]) if (typeof x === 'string') texts.push(x)
+      continue
+    }
+    if (f.type === 'effort') {
+      const v = f.value as { days?: unknown; meal?: unknown; totalMinutes?: unknown }
+      const days = Array.isArray(v?.days) ? (v.days as string[]).map((d) => (COOKING_WEEKDAYS as readonly string[]).indexOf(d)).filter((i) => i >= 0) : []
+      if (days.length && typeof v.meal === 'string' && Number(v.totalMinutes) > 0) out.efforts.push({ days, meal: v.meal as Meal, totalMinutes: Number(v.totalMinutes) })
+      continue
+    }
+    if (f.type === 'affinity') {
+      const v = f.value as { kind?: string; target?: string; score?: number }
+      if (v?.kind === 'style' && typeof v.target === 'string') texts.push(Number(v.score) <= -2 ? `sin ${v.target}` : Number(v.score) >= 1 ? v.target : '')
+    }
+  }
+  const fromNotes = rulesFromNotes(texts)
+  for (const a of fromNotes.avoid) addDislike(a)
+  out.weeklyLimits = mergeLimits(out.weeklyLimits, fromNotes.weeklyLimits)
+  for (const m of fromNotes.lightMeals) if (!out.lightMeals.includes(m)) out.lightMeals.push(m)
   for (const f of ficha.facts) {
     if (f.type === 'temporary_situation') {
       const d = (f.value as { description?: unknown })?.description
@@ -236,8 +310,15 @@ export function fichaMenuConstraints(ficha: HouseholdFicha | null): FichaMenuCon
     } else if (f.type === 'affinity') {
       const v = f.value as { kind?: string; target?: string; score?: number }
       if (v?.kind === 'ingredient' && typeof v.target === 'string' && Number(v.score) <= -2) addDislike(v.target)
+    } else if (f.type === 'cuisine_bias') {
+      out.cuisineBias = mergeCuisineBias(out.cuisineBias, cuisineBiasOf(f.value))
+    } else if (f.type === 'cooking_skill') {
+      const skill = cookingSkillOf(f.value)
+      if (skill && forUserId && f.subjectUserId === forUserId) out.cookingSkill = skill
+      else if (skill && !f.subjectUserId && !f.subjectPersonId) householdSkill = skill
     }
   }
+  out.cookingSkill ??= householdSkill
   return out
 }
 
@@ -245,25 +326,45 @@ export interface MenuFilters {
   dislikes: string[]
   availableEquipment: Set<string> | undefined
   unavailableEquipment: Set<string> | undefined
+  /** PRO-1201: cuisines and cooking level, weights of the draw (`MatcherOptions.tastes`). */
+  tastes: MenuTastes
+  /** The ficha's and the notes' weekly limits («arroz como mucho 1 vez a la semana»). */
+  weeklyLimits: WeeklyLimit[]
+  /** Meals that only get light dishes («cenas ligeras»). */
+  lightMeals: LightMeal[]
+  /** `effort` facts (day indexes 0–6, meal, total minutes). */
+  efforts: FichaMenuConstraints['efforts']
 }
 
 /**
  * Pure: today's memory filters with the ficha on top. Dislikes are joined;
  * the equipment list is the memory's, else the ficha's; what the ficha says
  * is missing right now is taken out of it and also goes as an exclusion,
- * so it holds even for a household without an equipment list.
+ * so it holds even for a household without an equipment list. Tastes
+ * (PRO-1201, `memoryTastes`): cuisines joined with every member's; the
+ * memory's cooking level, else the ficha's.
  */
-export function withFichaFilters(base: { dislikes: string[]; availableEquipment: Set<string> | undefined }, c: FichaMenuConstraints): MenuFilters {
+export function withFichaFilters(base: { dislikes: string[]; availableEquipment: Set<string> | undefined; tastes?: MenuTastes; notes?: readonly unknown[] }, c: FichaMenuConstraints): MenuFilters {
   const dislikes = [...base.dislikes]
-  for (const d of c.dislikes) if (!dislikes.some((x) => x.trim().toLowerCase() === d)) dislikes.push(d)
+  // The memory's own notes (2026-11-19): what Mimo saved there as text before `menu_rule`.
+  const fromNotes = rulesFromNotes((base.notes ?? []).filter((x): x is string => typeof x === 'string'))
+  for (const d of [...c.dislikes, ...fromNotes.avoid]) if (!dislikes.some((x) => x.trim().toLowerCase() === d)) dislikes.push(d)
+  const weeklyLimits = mergeLimits(c.weeklyLimits ?? [], fromNotes.weeklyLimits)
+  const lightMeals = [...new Set([...(c.lightMeals ?? []), ...fromNotes.lightMeals])]
   const missing = new Set(c.unavailableEquipment.map(normaliseEquipment))
   let available = base.availableEquipment ?? (c.equipment ? new Set(c.equipment) : undefined)
   if (available && missing.size) available = new Set([...available].filter((e) => !missing.has(e)))
-  return { dislikes, availableEquipment: available, unavailableEquipment: missing.size ? missing : undefined }
+  const cuisineBias = mergeCuisineBias(base.tastes?.cuisineBias, c.cuisineBias ?? {})
+  const cookingSkill = base.tastes?.cookingSkill ?? c.cookingSkill ?? undefined
+  const tastes: MenuTastes = {
+    ...(Object.keys(cuisineBias).length ? { cuisineBias } : {}),
+    ...(cookingSkill ? { cookingSkill } : {}),
+  }
+  return { dislikes, availableEquipment: available, unavailableEquipment: missing.size ? missing : undefined, tastes, weeklyLimits, lightMeals, efforts: c.efforts ?? [] }
 }
 
 /** The ficha's filters for a user's menu; nothing (no-op) on any error. */
 export async function loadFichaMenuConstraints(userId: string, opts: { db?: Db; now?: Date } = {}): Promise<FichaMenuConstraints> {
   const ficha = await loadHouseholdFicha(userId, opts).catch(() => null)
-  return fichaMenuConstraints(ficha)
+  return fichaMenuConstraints(ficha, userId)
 }

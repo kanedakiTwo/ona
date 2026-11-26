@@ -23,6 +23,7 @@ vi.mock('../services/menuGenerator.js', () => ({
 }))
 vi.mock('../services/recipeMatcher.js', () => ({
   findRecipeForSlot: vi.fn(() => ({ id: 'r-new', name: 'Receta nueva' })),
+  normaliseEquipment: (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim(),
 }))
 vi.mock('../services/calorieCalculator.js', () => ({
   calculateMenuCaloriesFromDB: vi.fn(async () => 12345),
@@ -62,10 +63,38 @@ vi.mock('../services/householdAllergies.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/householdAllergies.js')>()),
   withHouseholdRestrictions: vi.fn(async (own: readonly string[]) => [...own]),
 }))
+// PRO-1041: the person's recent messages (their reads are tested in saidAllergies.smoke.ts) — none here.
+vi.mock('../services/saidRestrictions.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/saidRestrictions.js')>()),
+  loadRecentUserTexts: vi.fn(async () => [] as string[]),
+}))
 // PRO-155: the menu evaluator is a Haiku call — off by default here, one test turns it on.
 vi.mock('../services/menuFit.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/menuFit.js')>()),
   evaluateAndSaveMenuFit: vi.fn(async () => null),
+}))
+// The ficha (its own reads are tested in profileReader.test.ts): none here.
+vi.mock('../services/profile/reader.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../services/profile/reader.js')>()
+  return { ...orig, loadFichaMenuConstraints: vi.fn(async () => orig.fichaMenuConstraints(null)) }
+})
+// «Cambiar» without a dish (2026-11-19): the app's slot pick, whose DB reads
+// and rules are tested in menuSlotPick.test.ts; here only what swap_meal passes it.
+vi.mock('../services/menuSlotPick.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/menuSlotPick.js')>()),
+  loadSlotPickContext: vi.fn(async () => ({ restrictions: [] })),
+  slotPickOptions: vi.fn(async (_c: unknown, _m: unknown, _d: number, meal: string) => ({ pool: [], preferred: [], options: { meal, restrictions: [] } })),
+}))
+// «Semana tipo» (D-182): no slot asks for a dish type in these weeks.
+vi.mock('../services/weekType.js', () => ({
+  weekTypeDishTypeAt: vi.fn(async () => null),
+  poolOfDishType: (pool: unknown[]) => pool,
+  fromWeekTypeOf: () => ({}),
+}))
+// PRO-1071: the household's notes (their DB read is tested in householdRecipeNotes.smoke.ts) — none unless a test says so.
+vi.mock('../services/assistant/householdRecipeNotes.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/assistant/householdRecipeNotes.js')>()),
+  loadHouseholdRecipeNotes: vi.fn(async () => new Map()),
 }))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
@@ -118,6 +147,19 @@ function makeDb(...responses: any[]) {
 
 const ctx = (db: any, userId = 'u-1') => ({ userId, db })
 
+/** makeDb that also keeps what each `.set(…)` wrote (PRO-349: `skippedDays` next to `days`). */
+function recordingDb(sets: any[], ...responses: any[]) {
+  const inner = makeDb(...responses)
+  const node: any = new Proxy({}, {
+    get(_, prop) {
+      if (prop === 'then') return inner.then
+      if (prop === 'set') return (values: any) => { sets.push(values); return node }
+      return () => node
+    },
+  })
+  return node
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -140,10 +182,10 @@ describe('get_todays_menu', () => {
 
   it('returns the day matching the dayIndex param, reading dishes[]', async () => {
     const menu = { id: 'm-1', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
-    const db = makeDb([menu])
+    const db = makeDb([menu], /* diners */ [], /* recipe times */ [])
     const r = await skill.handler({ dayIndex: 2 }, ctx(db))
     expect(r.summary).toContain('miércoles')
-    expect(r.summary).toContain('comida: Plato 2')
+    expect(r.summary).toContain('comida · 2 raciones: Plato 2')
     expect(r.data?.dayIndex).toBe(2)
   })
 
@@ -164,10 +206,10 @@ describe('get_todays_menu', () => {
     }
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-14T10:00:00Z'))
-    const db = makeDb([{ id: 'm-1', days: [day] }])
+    const db = makeDb([{ id: 'm-1', days: [day] }], /* diners */ [], /* recipe times */ [])
     const r = await skill.handler({ dayIndex: 0 }, ctx(db)).finally(() => vi.useRealTimers())
     expect(r.summary).toBe(
-      'Menu del lunes 12 de octubre: comida: Lentejas estofadas + Ensalada verde, cena: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
+      'Menu del lunes 12 de octubre: comida · 2 raciones: Lentejas estofadas + Ensalada verde; cena · 2 raciones: Cenamos en casa de Paqui + Crema de calabaza (sobras)',
     )
   })
 
@@ -178,11 +220,11 @@ describe('get_todays_menu', () => {
 
   it('falls back to today when dayIndex is omitted', async () => {
     const menu = { id: 'm-1', days: Array.from({ length: 7 }, (_, i) => dishDay(i)) }
-    const db = makeDb([menu])
+    const db = makeDb([menu], /* diners */ [], /* recipe times */ [])
     const r = await skill.handler({}, ctx(db))
     // Without overriding Date, just check shape — any of the 7 day names.
     expect(r.summary).toMatch(/lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo/)
-    expect(r.summary).toContain('comida: Plato')
+    expect(r.summary).toContain('comida · 2 raciones: Plato')
   })
 })
 
@@ -219,13 +261,13 @@ describe('menu tools cite the app\'s servings and minutes (PRO-183)', () => {
       { ingredientName: 'pechuga de pollo', quantity: 300, unit: 'g' },
       { ingredientName: 'limón', quantity: 1, unit: 'u' },
     ]
-    const r = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha', servings: 4 }, ctx(makeDb([recipe], ings, [])))
+    const r = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha', servings: 4 }, ctx(makeDb(/* menu */ [], [recipe], ings, [])))
     expect(r.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo; cantidades para 4 raciones, la receta base es para 2)')
     expect(r.summary).toContain('pechuga de pollo: 600g')
     expect(r.summary).toContain('limón: 2u')
     expect(r.data).toMatchObject({ servings: 4, baseServings: 2, totalTime: 25 })
     // Without servings: the recipe's own amounts.
-    const base = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha' }, ctx(makeDb([recipe], ings, [])))
+    const base = await get('get_recipe_details').handler({ recipeName: 'pollo a la plancha' }, ctx(makeDb(/* menu */ [], [recipe], ings, [])))
     expect(base.summary).toContain('Pollo a la plancha (25 min en total, 10 de trabajo, 2 raciones)')
     expect(base.summary).toContain('pechuga de pollo: 300g')
   })
@@ -283,17 +325,33 @@ describe('get_weekly_menu', () => {
       { dinner: { dishes: [{ kind: 'note', text: 'Cenamos fuera' }] } },
       {}, {}, {}, {},
     ]
-    const db = makeDb([{ id: 'm-7', days, skippedDays: [1] }])
+    const db = makeDb([{ id: 'm-7', days, skippedDays: [1] }], /* diners */ [], /* recipe times */ [])
     const r = await at(() => skill.handler({}, ctx(db)))
     expect(r.uiHint).toBe('menu')
     expect(r.data).toMatchObject({ menuId: 'm-7', weekStart: '2026-10-12', skippedDays: [1] })
     expect(r.summary).toBe(
-      'Menu de la semana del lunes 12 de octubre:\nlunes 12 de octubre: comida: Lentejas\nmartes 13 de octubre: sin cocinar\nmiércoles 14 de octubre: cena: Cenamos fuera',
+      'Menu de la semana del lunes 12 de octubre:\nlunes 12 de octubre: comida · 2 raciones: Lentejas\nmartes 13 de octubre: sin cocinar\nmiércoles 14 de octubre: cena: Cenamos fuera',
     )
   })
 
+  // PRO-1039: Carmen heard the week without the curry of Friday (only the
+  // first dish of each meal) and Laura «la que viene todavía no tiene menú»
+  // with it planned.
+  it('names every dish of a meal and adds next week when it has a menu', async () => {
+    const days = [{}, {}, {}, {}, { dinner: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Arroz blanco' }, { kind: 'recipe', recipeId: 'b', recipeName: 'Curry de berenjena' }] } }, {}, {}]
+    const next = [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'c', recipeName: 'Paella' }, { kind: 'note', text: 'Ensalada' }] } }, {}, {}, {}, {}, {}, {}]
+    const db = makeDb([{ id: 'm-7', days, skippedDays: [] }], [], [], [{ id: 'm-8', days: next, skippedDays: [] }], [], [])
+    const r = await at(() => skill.handler({}, ctx(db)))
+    expect(r.summary).toBe(
+      'Menu de la semana del lunes 12 de octubre:\nviernes 16 de octubre: cena · 2 raciones: Arroz blanco + Curry de berenjena' +
+        '\n\nLa semana que viene (del lunes 19 de octubre) ya tiene menu:\nlunes 19 de octubre: comida · 2 raciones: Paella + Ensalada',
+    )
+    // The picture on WhatsApp stays this week's.
+    expect(r.data).toMatchObject({ menuId: 'm-7', weekStart: '2026-10-12' })
+  })
+
   it('nextWeek reads next week', async () => {
-    const db = makeDb([{ id: 'm-8', days: [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Paella' }] } }], skippedDays: [] }])
+    const db = makeDb([{ id: 'm-8', days: [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Paella' }] } }], skippedDays: [] }], /* diners */ [], /* recipe times */ [])
     const r = await at(() => skill.handler({ nextWeek: true }, ctx(db)))
     expect(r.data).toMatchObject({ menuId: 'm-8', weekStart: '2026-10-19' })
   })
@@ -314,7 +372,7 @@ describe('get_recipe_details', () => {
   const skill = get('get_recipe_details')
 
   it('returns "no encontrado" when no match', async () => {
-    const db = makeDb(/* exact match */ [], /* word-by-word */ [])
+    const db = makeDb(/* menu */ [], /* exact match */ [], /* word-by-word */ [])
     const r = await skill.handler({ recipeName: 'cochinillo segoviano' }, ctx(db))
     expect(r.summary).toContain('No he encontrado')
   })
@@ -329,7 +387,7 @@ describe('get_recipe_details', () => {
       { index: 0, text: 'Sofríe la cebolla.', durationMin: 5 },
       { index: 1, text: 'Añade las lentejas y cubre de agua.', durationMin: 25 },
     ]
-    const db = makeDb([{ ...recipe, servings: 4, tips: 'Mejor de un día para otro.', sourceUrl: 'https://youtu.be/abc' }], ingredients, steps)
+    const db = makeDb(/* menu */ [], [{ ...recipe, servings: 4, tips: 'Mejor de un día para otro.', sourceUrl: 'https://youtu.be/abc' }], ingredients, steps)
     const r = await skill.handler({ recipeName: 'lentejas' }, ctx(db))
     expect(r.uiHint).toBe('recipe')
     expect(r.summary).toContain('Lentejas con verduras')
@@ -351,18 +409,77 @@ describe('get_recipe_details', () => {
       { ingredientName: 'lentejas', quantity: 300, unit: 'g' },
       { ingredientName: 'chorizo oreado', quantity: 150, unit: 'g' },
     ]
-    const coeliac = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb([recipe], ings, [], [{ restrictions: ['Sin gluten'] }])))
+    const coeliac = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb(/* menu */ [], [recipe], ings, [], [{ restrictions: ['Sin gluten'] }])))
     expect(coeliac.summary).toContain('Elige embutido sin gluten')
     expect(coeliac.data?.dietNotices).toEqual(['Elige embutido sin gluten'])
-    const other = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb([recipe], ings, [], [{ restrictions: ['vegetariano'] }])))
+    const other = await skill.handler({ recipeName: 'lentejas con chorizo' }, ctx(makeDb(/* menu */ [], [recipe], ings, [], [{ restrictions: ['vegetariano'] }])))
     expect(other.summary).not.toContain('sin gluten')
     expect(other.data?.dietNotices).toEqual([])
   })
 
   it('says so when a recipe has no saved steps', async () => {
-    const db = makeDb([{ id: 'r-2', name: 'Ensalada', prepTime: 10 }], [], [])
+    const db = makeDb(/* menu */ [], [{ id: 'r-2', name: 'Ensalada', prepTime: 10 }], [], [])
     const r = await skill.handler({ recipeName: 'ensalada' }, ctx(db))
     expect(r.summary).toContain('no tiene pasos guardados')
+  })
+
+  // PRO-349 (Carmen y Antonio, 2026-10-22): «¿la receta de hoy lleva pan?»
+  // was answered from «Garbanzos con espinacas y huevo», not the menu's.
+  describe('«la receta de hoy» is the one on the menu (PRO-349)', () => {
+    const at = <T,>(fn: () => Promise<T>) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-10-22T10:00:00Z')) // Thursday
+      return fn().finally(() => vi.useRealTimers())
+    }
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    days[3] = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-menu', recipeName: 'Espinacas con garbanzos a la sevillana' }] } }
+    const menuRecipe = { id: 'r-menu', name: 'Espinacas con garbanzos a la sevillana', prepTime: 40, servings: 4 }
+    const ings = [
+      { ingredientName: 'garbanzos cocidos', quantity: 400, unit: 'g' },
+      { ingredientName: 'pan del día anterior', quantity: 60, unit: 'g' },
+    ]
+
+    it('with day and meal it reads the recipe on the menu that day', async () => {
+      const r = await at(() => skill.handler({ day: 'hoy', meal: 'lunch' }, ctx(makeDb([{ id: 'm-1', days }], [menuRecipe], ings, []))))
+      expect(r.summary).toContain('Es la receta del menu (comida del jueves 22 de octubre).')
+      expect(r.summary).toContain('pan del día anterior')
+      expect(r.data).toMatchObject({ id: 'r-menu' })
+    })
+
+    it('by a similar name, the menu recipe wins over another one in the catalogue', async () => {
+      const r = await at(() => skill.handler({ recipeName: 'garbanzos con espinacas' }, ctx(makeDb([{ id: 'm-1', days }], [menuRecipe], ings, []))))
+      expect(r.data).toMatchObject({ id: 'r-menu', name: 'Espinacas con garbanzos a la sevillana' })
+      expect(r.summary).toContain('Es la receta del menu (comida del jueves 22 de octubre).')
+    })
+
+    it('a meal with no recipe on the menu: says so and reads no other one', async () => {
+      const r = await at(() => skill.handler({ day: 'hoy', meal: 'dinner' }, ctx(makeDb([{ id: 'm-1', days }]))))
+      expect(r.data).toBeNull()
+      expect(r.summary).toBe('En el menu, la cena del jueves 22 de octubre no tiene ninguna receta; no he mirado otra. Si pregunta por una receta concreta, preguntale cual.')
+    })
+  })
+})
+
+// ─── 2b. edit_recipe (PRO-349) ────────────────────────────────────────────
+
+describe('edit_recipe', () => {
+  const skill = get('edit_recipe')
+
+  // Laura, 2026-10-22: «quita el cilantro del butter chicken» (a catalogue
+  // recipe on her menu) got «Hecho» while the recipe stayed as it was.
+  it('a catalogue recipe on the menu: found, and says it changed nothing', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    days[3] = { dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-bc', recipeName: 'Butter chicken' }] } }
+    const db = makeDb([{ id: 'r-bc', name: 'Butter chicken', authorId: null }], [{ id: 'm-1', days }])
+    const r = await skill.handler({ recipeName: 'butter chicken', notes: 'sin cilantro' }, ctx(db))
+    expect(r.summary).toMatch(/^No he cambiado nada: "Butter chicken" es una receta del catálogo/)
+    const { toolMadeChange } = await import('../services/assistant/claims.js')
+    expect(toolMadeChange('edit_recipe', r.summary, false)).toBe(false)
+  })
+
+  it('nothing with that name: «no he cambiado nada», never «no es tuya»', async () => {
+    const r = await skill.handler({ recipeName: 'cochinillo' }, ctx(makeDb([], [])))
+    expect(r.summary).toBe('No he encontrado ninguna receta que se llame "cochinillo"; no he cambiado nada.')
   })
 })
 
@@ -405,8 +522,8 @@ describe('suggest_recipes', () => {
       seasons: ['summer'],
       prepTime: 20,
     }))
-    // queries: user restrictions → visible recipes → menu owner (audit options) → their ingredients → step counts
-    const db = makeDb([{ restrictions: [] }], recipes, [], [], [])
+    // queries: user restrictions → visible recipes → their ingredients → step counts (the ficha is mocked)
+    const db = makeDb([{ restrictions: [] }], recipes, [], [])
     const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
     expect(r.uiHint).toBe('recipe')
     expect(r.data).toBeTruthy()
@@ -428,11 +545,71 @@ describe('suggest_recipes', () => {
       { recipeId: 'r-pollo', ingredientId: 'i1', ingredientName: 'pollo entero', quantity: 1, unit: 'u', allergenTags: [] },
       { recipeId: 'r-crema', ingredientId: 'i2', ingredientName: 'calabaza', quantity: 500, unit: 'g', allergenTags: [] },
     ]
-    const db = makeDb([{ restrictions: ['sin gluten', 'vegetariano'] }], rows, /* menu owner */ [], ingredientRows, /* step counts */ [])
+    // The ficha is mocked here (no read for the audit's options).
+    const db = makeDb([{ restrictions: ['sin gluten', 'vegetariano'] }], rows, ingredientRows, /* step counts */ [])
     const r = await skill.handler({ mealType: 'dinner' }, ctx(db))
     expect(r.summary).toContain('Crema de calabaza')
     expect(r.summary).not.toContain('Espaguetis')
     expect(r.summary).not.toContain('Pollo')
+  })
+})
+
+// ─── 5b. PRO-1071: Mimo reads the household's notes ─────────────────────
+// Carmen y Antonio (2026-10-28 to 2026-11-18): «Una pizca de comino al final.»
+// on their «Lentejas guisadas» (saved twice) and Mimo said there was no note,
+// made one up from the recipe's tips, or «el texto de la nota no me aparece».
+
+describe('the recipe tools read the household\'s note (PRO-1071)', () => {
+  const own = { id: 'r-own', name: 'Lentejas guisadas', authorId: 'u-1', servings: 4, prepTime: 10, tips: 'Añadir el hueso de pollo y cocer 40-45 minutos.' }
+  const other = { id: 'r-salmon', name: 'Lentejas con salmón', authorId: 'u-1', servings: 2, prepTime: 20 }
+  const catalogue = { id: 'r-cat', name: 'Lentejas guisadas con verduras', authorId: null, servings: 4, prepTime: 40 }
+  const ings = [{ ingredientName: 'lentejas', quantity: 300, unit: 'g' }]
+  const withNote = async () => {
+    const { loadHouseholdRecipeNotes } = await import('../services/assistant/householdRecipeNotes.js')
+    vi.mocked(loadHouseholdRecipeNotes).mockImplementationOnce(async (_u: string, ids: readonly string[]) => {
+      const m = new Map()
+      if (ids.includes('r-own')) m.set('r-own', { notes: 'Una pizca de comino al final.', substitutions: 'Si no hay merluza, vale la pescadilla.' })
+      return m
+    })
+  }
+
+  it('get_recipe_details says the note word for word, apart from the tips, and whose recipe it is', async () => {
+    await withNote()
+    const r = await get('get_recipe_details').handler({ recipeName: 'lentejas guisadas' }, ctx(makeDb(/* menu */ [], [catalogue, other, own], ings, [])))
+    expect(r.data?.id).toBe('r-own')
+    expect(r.summary).toContain('Es una receta del hogar')
+    expect(r.summary).toContain('Nota del hogar en esta receta (citala tal cual, entre comillas): «Una pizca de comino al final.»')
+    expect(r.summary).toContain('Sustituciones apuntadas por el hogar en esta receta: «Si no hay merluza, vale la pescadilla.»')
+    expect(r.summary).toContain('Trucos de la receta (vienen con la receta, no son la nota del hogar): Añadir el hueso de pollo')
+    expect(r.data?.householdNote).toEqual({ notes: 'Una pizca de comino al final.', substitutions: 'Si no hay merluza, vale la pescadilla.' })
+  })
+
+  it('get_recipe_details says there is no note when there is none (never another recipe\'s)', async () => {
+    await withNote()
+    const r = await get('get_recipe_details').handler({ recipeName: 'lentejas con salmón' }, ctx(makeDb(/* menu */ [], [other], ings, [])))
+    expect(r.summary).toContain('Nota del hogar en esta receta: ninguna.')
+    expect(r.summary).not.toContain('comino')
+  })
+
+  it('get_recipe_details calls a catalogue recipe the catalogue\'s', async () => {
+    const r = await get('get_recipe_details').handler({ recipeName: 'lentejas guisadas con verduras' }, ctx(makeDb(/* menu */ [], [catalogue], ings, [])))
+    expect(r.summary).toContain('Es una receta del catalogo de Mimoia.')
+  })
+
+  it('search_recipes puts their recipe first, with its note', async () => {
+    await withNote()
+    const rows = [catalogue, other, own].map(({ id, name, authorId }) => ({ id, name, authorId, meals: [], seasons: [], prepTime: 20 }))
+    const r = await get('search_recipes').handler({ query: 'lentejas guisadas' }, ctx(makeDb(rows)))
+    expect(r.summary).toMatch(/^Encontradas 3 receta\(s\): Lentejas guisadas \(suya; nota del hogar: «Una pizca de comino al final\.»; sustituciones del hogar: «Si no hay merluza, vale la pescadilla\.»\), /)
+    expect(r.summary).toContain('Lentejas con salmón (suya)')
+  })
+
+  it('recipe_variation reads the same recipe and its note', async () => {
+    await withNote()
+    const r = await get('recipe_variation').handler({ recipeName: 'lentejas guisadas', ingredientToReplace: 'comino' }, ctx(makeDb([other, catalogue, own], ings)))
+    expect(r.data?.recipeName).toBe('Lentejas guisadas')
+    expect(r.summary).toContain('Receta Lentejas guisadas (suya).')
+    expect(r.summary).toContain('«Una pizca de comino al final.»')
   })
 })
 
@@ -471,6 +648,24 @@ describe('generate_weekly_menu', () => {
     const r = await skill.handler({}, ctx(db))
     expect(r.uiHint).toBe('menu')
     expect(r.summary).toContain('Menu generado')
+  })
+
+  it('PRO-1041: «soy celíaca» without the consent — the generator runs with it (this menu only) and Mimo gets the marked link', async () => {
+    const { generateMenu } = await import('../services/menuGenerator.js')
+    const { menuOnlyRestrictions } = await import('../services/menuOnlyRestrictions.js')
+    const inserted = { id: 'm-new', days: [{}, {}, {}, {}, {}, {}, {}] }
+    let during: readonly string[] = []
+    vi.mocked(generateMenu).mockImplementationOnce(async () => {
+      during = menuOnlyRestrictions()
+      return { days: inserted.days, warnings: [] }
+    })
+    // previous week → the saved restrictions (none) → generator → insert menu → insert log
+    const r = await skill.handler({ restrictions_said: ['celiaca'] }, ctx(makeDb([], [{ restrictions: [] }], [inserted], [{ id: 'log-1' }])))
+    expect(during).toEqual(['sin gluten'])
+    expect(menuOnlyRestrictions()).toEqual([])
+    expect(r.summary).toContain('Menu generado')
+    expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
+    expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
   })
 
   it('hands Mimo how close the week came to their tastes (PRO-155), and nothing when the evaluator fails', async () => {
@@ -560,47 +755,39 @@ describe('swap_meal', () => {
       id: 'm-1',
       days: Array.from({ length: 7 }, () => ({ lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
-    // queries: select menu, select user(restrictions), select favorites,
-    // loadRecipesWithIngredients → select recipes, menu owner (audit
-    // options), select riRows, step counts, then update menu. The candidate is the user's own recipe, so
-    // the catalogue quality gate (PRO-73) doesn't apply to it.
-    const db = makeDb(
-      [menu],                                       // select menu
-      [{ restrictions: [] }],                       // select user restrictions
-      [],                                           // select favorites
-      [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['lunch'], seasons: [], tags: [] }],   // recipes
-      [],                                           // menu owner (audit options)
-      [],                                           // recipe ingredients
-      [],                                           // step counts
-      [{ ...menu, days: [...menu.days] }],          // returning updated
-    )
+    // queries: select menu, then update menu (the pick's own reads are menuSlotPick's).
+    const db = makeDb([menu], [{ ...menu, days: [...menu.days] }])
     const r = await skill.handler({ dayIndex: 0, meal: 'lunch' }, ctx(db))
     expect(r.summary).toContain('Cambiado')
   })
 
-  // PRO-305 (Seguridad): the auto-pick reads every member's allergies, not only the caller's.
-  it('auto-picks with the restrictions of everyone in the household', async () => {
-    const { withHouseholdRestrictions } = await import('../services/householdAllergies.js')
+  // PRO-305 + 2026-11-19: the auto-pick is the app's «Cambiar» (everyone's
+  // allergies, the ficha, the week), with the week as it is.
+  it('auto-picks with the app’s slot pick and the whole week', async () => {
+    const { loadSlotPickContext, slotPickOptions } = await import('../services/menuSlotPick.js')
     const { findRecipeForSlot } = await import('../services/recipeMatcher.js')
-    vi.mocked(withHouseholdRestrictions).mockImplementationOnce(async (own) => [...own, 'marisco'])
     const menu = {
       id: 'm-1',
       days: Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })),
     }
-    const db = makeDb(
-      [menu],
-      [{ restrictions: ['sin gluten'] }],
-      [],
-      [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['dinner'], seasons: [], tags: [] }],
-      [],
-      [],
-      [],
-      [{ ...menu, days: [...menu.days] }],
-    )
+    vi.mocked(loadSlotPickContext).mockImplementationOnce(async () => ({ restrictions: ['sin gluten', 'marisco'] }) as any)
+    vi.mocked(slotPickOptions).mockImplementationOnce(async (c: any) => ({ pool: [], preferred: [], options: { meal: 'dinner', restrictions: c.restrictions } }) as any)
     vi.mocked(findRecipeForSlot).mockClear()
-    await skill.handler({ dayIndex: 0, meal: 'dinner' }, ctx(db))
-    expect(vi.mocked(withHouseholdRestrictions).mock.calls.at(-1)?.[0]).toEqual(['sin gluten'])
+    await skill.handler({ dayIndex: 0, meal: 'dinner' }, ctx(makeDb([menu], [{ ...menu, days: [...menu.days] }])))
+    expect(vi.mocked(loadSlotPickContext).mock.calls.at(-1)?.[1]).toBe('u-1')
+    const call = vi.mocked(slotPickOptions).mock.calls.at(-1)!
+    expect(call.slice(2, 4)).toEqual([0, 'dinner'])
+    expect(call[5]).toBe(menu.days)
     expect(vi.mocked(findRecipeForSlot).mock.calls.at(-1)?.[1].restrictions).toEqual(['sin gluten', 'marisco'])
+  })
+
+  it('says so when nothing fits, and changes nothing', async () => {
+    const { findRecipeForSlot } = await import('../services/recipeMatcher.js')
+    vi.mocked(findRecipeForSlot).mockReturnValue(undefined as any)
+    const menu = { id: 'm-1', days: Array.from({ length: 7 }, () => ({ dinner: { dishes: [{ kind: 'recipe', recipeId: 'r-old', recipeName: 'Antiguo' }] } })) }
+    const r = await skill.handler({ dayIndex: 1, meal: 'dinner' }, ctx(makeDb([menu]))).finally(() => vi.mocked(findRecipeForSlot).mockReturnValue({ id: 'r-new', name: 'Receta nueva' } as any))
+    expect(r.summary).toMatch(/^No he cambiado nada: no hay ninguna receta que encaje/)
+    expect(menu.days[1].dinner.dishes[0].recipeId).toBe('r-old')
   })
 
   // PRO-238 (Familia Ruiz, 2026-10-18): «pollo empanado» on Tuesday 20 while
@@ -626,6 +813,31 @@ describe('swap_meal', () => {
     expect(r.summary).not.toContain('Ojo')
   })
 
+  // PRO-349 (Dani y Sara, 2026-10-22): «arroz de limpieza» on a skipped
+  // Saturday: the list counted it and the day still said «sin cocinar».
+  it('a dish on a «sin cocinar» day reactivates it, and the summary says so', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T10:00:00Z')) // Monday
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    const menu = { id: 'm-1', days, skippedDays: [3, 5] }
+    const sets: any[] = []
+    const db = recordingDb(sets, [menu], [{ id: 'r-ar', name: 'Arroz de limpieza', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ day: 'el sábado', meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(db)).finally(() => vi.useRealTimers())
+    expect(sets.at(-1)).toMatchObject({ skippedDays: [3] })
+    expect(r.summary).toContain('He puesto "Arroz de limpieza" en la comida del sábado 24 de octubre.')
+    expect(r.summary).toContain('El sábado 24 de octubre estaba marcado sin cocinar: ya vuelve a estar activo.')
+  })
+
+  it('a day that was not skipped: skippedDays stays as it was and nothing is said', async () => {
+    const days: any[] = Array.from({ length: 7 }, () => ({}))
+    const menu = { id: 'm-1', days, skippedDays: [3] }
+    const sets: any[] = []
+    const db = recordingDb(sets, [menu], [{ id: 'r-ar', name: 'Arroz de limpieza', authorId: 'u-1' }], [{ restrictions: [] }], [{ ...menu, days: [...days] }])
+    const r = await skill.handler({ dayIndex: 1, meal: 'lunch', recipeName: 'arroz de limpieza' }, ctx(db))
+    expect(sets.at(-1)).toMatchObject({ skippedDays: [3] })
+    expect(r.summary).not.toContain('sin cocinar')
+  })
+
   // PRO-102 (Familia Ruiz, 2026-10-14): «4 RACIONES · Solo hoy: 4» became
   // «5 RACIONES · Alitas de pollo al horno» after a swap with Mimo.
   describe('the slot keeps its «Solo hoy» diners', () => {
@@ -636,16 +848,7 @@ describe('swap_meal', () => {
 
     it('when the system picks the new dish', async () => {
       const menu = menuWithServings()
-      const db = makeDb(
-        [menu],
-        [{ restrictions: [] }],
-        [],
-        [{ id: 'r-1', name: 'Plato', authorId: 'u-1', meals: ['lunch'], seasons: [], tags: [] }],
-        [], // menu owner (audit options)
-        [],
-        [],
-        [{ ...menu, days: [...menu.days] }],
-      )
+      const db = makeDb([menu], [{ ...menu, days: [...menu.days] }])
       await skill.handler({ dayIndex: 3, meal: 'lunch' }, ctx(db))
       expect(menu.days[3].lunch).toEqual({ servings: 4, dishes: [{ kind: 'recipe', recipeId: 'r-new', recipeName: 'Receta nueva' }] })
     })
@@ -1424,7 +1627,12 @@ describe('skill export coverage', () => {
     // seven ficha tools (PRO-319, fichaMimo.test.ts).
     // and 91 with list_taste_verdicts + forget_taste_verdicts (PRO-297, mimoAfina.test.ts).
     // and 92 with get_recipe_of_the_day (PRO-1099, recipeOfTheDay.test.ts).
-    expect(skills.length).toBe(92)
+    // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
+    // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
+    // and 96 with set_alert_time (PRO-1301, alertTimes.test.ts).
+    // and 97 with set_batch_day (PRO-1046, batchDay.test.ts).
+    // and 98 with check_menu_for_baby (PRO-1035, mimoBabyWeek.test.ts).
+    expect(skills.length).toBe(98)
   })
 
   it('every skill has a unique name', () => {

@@ -119,8 +119,10 @@ export function isUniqueViolation(err: unknown): boolean {
  * from the name and zero nutrition. Returns null only if the DB write
  * itself fails.
  */
-async function autoCreateMissingIngredient(
+export async function autoCreateMissingIngredient(
   rawName: string,
+  /** `translate: false` (PRO-1115, the recipe form): no Claude call for the USDA descriptions. */
+  opts: { translate?: boolean } = {},
 ): Promise<{ id: string; name: string; warning?: string } | null> {
   const trimmed = rawName.trim()
   if (!trimmed) return null
@@ -130,7 +132,7 @@ async function autoCreateMissingIngredient(
   let warning: string | undefined
 
   try {
-    const suggestion = await suggestIngredient(trimmed, { limit: 3 })
+    const suggestion = await suggestIngredient(trimmed, { limit: 3, translate: opts.translate })
     const top = pickNutritionCandidate(suggestion.candidates)
     if (top) {
       bestFdcId = top.fdcId

@@ -58,6 +58,8 @@ export interface MessageGuide {
   maxChars: number
   /** Must end by asking something (the buttons answer it). */
   asks?: boolean
+  /** At most one «?» (18-nov: the check-in asked two or three things at once). */
+  oneQuestion?: boolean
 }
 
 export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
@@ -69,21 +71,22 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
     maxChars: 900,
   },
   cooking_reminder: {
-    purpose: 'Avisar de que toca empezar a cocinar la cena para cenar a su hora.',
-    mustCarry: 'El nombre exacto del plato, la hora de la cena y los minutos que lleva.',
+    purpose: 'Avisar de que toca empezar a cocinar la cena (un plato largo) para cenar a su hora. Los botones responden «Lo hago» o «Cambia a algo rápido».',
+    mustCarry: 'El nombre exacto del plato, la hora de la cena y los minutos que lleva. Horas y minutos, solo los de los datos (la hora de ahora, la de empezar y la de la cena), sin calcular otros.',
     tone: 'Breve y práctico, una o dos frases. Puede dar un empujón amable.',
     maxChars: 280,
   },
   dinner_checkin: {
-    purpose: 'Preguntar si hicieron hoy la cena del menú, para apuntarlo (los botones responden). Si los datos lo piden, en el mismo mensaje también qué tal estuvo y si la repetimos (PRO-235).',
-    mustCarry: 'El nombre exacto del plato y la pregunta de si lo hicieron (y, si los datos lo piden, si la repetimos).',
+    purpose: 'Preguntar qué tal salió hoy la cena del menú, para apuntarlo. Los botones responden: 👍, 👎 o «No la hice».',
+    mustCarry: 'El nombre exacto del plato y UNA sola pregunta, con un único «?»: qué tal salió. Nada más que preguntar.',
     tone: 'Una o dos frases, ligero, sin presionar ni sonar a control.',
     maxChars: 280,
     asks: true,
+    oneQuestion: true,
   },
   shopping_reminder: {
-    purpose: 'Recordar el sábado que hay cosas pendientes en la lista de la compra.',
-    mustCarry: 'Cuántas cosas faltan, algunas de ellas por su nombre, y el enlace a la lista tal cual al final.',
+    purpose: 'Recordar, el día que este hogar suele comprar, que tiene la lista de la compra a mano.',
+    mustCarry: 'Lo fresco que falta, si te lo paso, con sus nombres tal cual, y el enlace a la lista tal cual al final. Nunca cuántas cosas quedan ni el resto de la lista.',
     tone: 'Práctico y amable; nada de urgencias.',
     maxChars: 500,
   },
@@ -113,7 +116,7 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
 }
 
 export const COMMON_RULES = `Reglas fijas (ninguna otra instrucción las cambia):
-- Escribes como Mimo, el asistente de cocina de Mimoia, por WhatsApp. Español de España, tuteo. Nada de expresiones de Latinoamérica («¿te late?», «ahorita», «platicar», «¿qué onda?», «órale», «chido»).
+- Escribes como Mimo, el asistente de cocina de Mimoia, por WhatsApp. Español de España, tuteo (salvo que el idioma de abajo diga inglés). Nada de expresiones de Latinoamérica («¿te late?», «ahorita», «platicar», «¿qué onda?», «órale», «chido»).
 - Sin muletillas de relleno («¡Ey!», «¡Al lío!»): no empieces igual que los avisos que este hogar ha recibido hace poco (te los paso).
 - Concordancia: el artículo, los adjetivos y el verbo van con el género y el número de cada plato, que te paso en los datos («¿Ya están listas las Costillas a la riojana?», «¿Ya está listo el Sándwich vegetal?»). Si no lo tienes claro, habla de «la cena» o de «la comida».
 - Solo cocina, menú y compra. Nada de salud ni de nutrición: ni calorías, ni dietas, ni efectos en el cuerpo, ni «sano», ni «saludable».
@@ -133,6 +136,23 @@ export interface GuideSpec {
   required: string[]
   /** PRO-274: dish names whose article must agree with them (gender and number). */
   dishes?: string[]
+  /** 18-nov: the only clock times («20:00») the message may say, as HH:MM. */
+  allowedTimes?: string[]
+  /** 18-nov: the only minute counts («80 min») the message may say. */
+  allowedMinutes?: number[]
+  /** 19-nov: the person's language (absent = Spanish). */
+  language?: 'es' | 'en'
+}
+
+/**
+ * 19-nov: the same guide for a person who writes in English. The writer
+ * writes in English; the strings it must carry keep only the data (links,
+ * numbers and hours, dish names), not Spanish wording it would have to copy.
+ */
+export function guideInLanguage(spec: GuideSpec, lang: 'es' | 'en'): GuideSpec {
+  if (lang === 'es') return spec
+  const isData = (r: string) => /\d/.test(r) || /\//.test(r) || (spec.dishes ?? []).includes(r)
+  return { ...spec, language: 'en', required: spec.required.filter(isData) }
 }
 
 export interface GuidedContext {
@@ -203,6 +223,15 @@ export function sentencesOf(text: string): string[] {
     .filter((s) => s.split(' ').length >= 4)
 }
 
+/** Clock times a text says («20:00», «8:05», «20.30», «20h30»), as HH:MM. Links aside. */
+export function clockTimesOf(text: string): string[] {
+  return [...text.replace(URL_RE, ' ').matchAll(/\b([01]?\d|2[0-3])[:.h]([0-5]\d)\b/g)].map((m) => `${m[1].padStart(2, '0')}:${m[2]}`)
+}
+/** Minute counts a text says («80 min», «unos 45 minutos»). */
+export function minuteCountsOf(text: string): number[] {
+  return [...text.matchAll(/(\d+)\s*(?:min\b|mins\b|minutos?\b)/gi)].map((m) => Number(m[1]))
+}
+
 /**
  * Pure: is a written message safe to send in place of the fixed text?
  * `fallback` is today's fixed text: its links are the only ones allowed and
@@ -233,7 +262,12 @@ export function validateGuided(
   const allowed = new Set([...(fallback.match(URL_RE) ?? []), ...spec.required.flatMap((r) => r.match(URL_RE) ?? [])].map(trimUrl))
   for (const u of t.match(URL_RE) ?? []) if (!allowed.has(trimUrl(u))) return { ok: false, reason: 'unknown_link' }
   if (guide.asks && !t.includes('?')) return { ok: false, reason: 'no_question' }
+  if (guide.oneQuestion && (t.match(/\?/g) ?? []).length > 1) return { ok: false, reason: 'too_many_questions' }
+  if (spec.allowedTimes && clockTimesOf(t).some((h) => !spec.allowedTimes!.includes(h))) return { ok: false, reason: 'wrong_time' }
+  if (spec.allowedMinutes && minuteCountsOf(t).some((m) => !spec.allowedMinutes!.includes(m))) return { ok: false, reason: 'wrong_minutes' }
   if (/^["«“]|["»”]$/.test(t)) return { ok: false, reason: 'quoted' }
+  // 19-nov: «quedan 139 cosas» — the shopping reminder never counts what is left.
+  if (spec.kind === 'shopping_reminder' && /\b\d+\s+(?:cosas|productos|art[ií]culos|items|things)\b/i.test(t)) return { ok: false, reason: 'count' }
   const seen = new Set(previous.flatMap(sentencesOf))
   if (sentencesOf(t).some((s) => seen.has(s))) return { ok: false, reason: 'repeats' }
   if (lastAvisos.length > 0 && openingOf(t) && openingOf(t) === openingOf(lastAvisos[0])) return { ok: false, reason: 'same_opening' }
@@ -243,15 +277,19 @@ export function validateGuided(
 
 // ─── Prompt (pure) ──────────────────────────────────────────────
 
-export function guidedSystemPrompt(kind: GuidedKind): string {
+export function guidedSystemPrompt(kind: GuidedKind, language: 'es' | 'en' = 'es'): string {
   const g = MESSAGE_GUIDES[kind]
+  const lang =
+    language === 'en'
+      ? '\n- Idioma: esta persona escribe en inglés. Escribe el mensaje en inglés natural (los datos te llegan en español: tradúcelos), con los nombres de los platos y los enlaces tal cual.'
+      : ''
   return `Escribes un mensaje de WhatsApp que Mimo manda por su cuenta a un hogar. No es una plantilla: es una guía. Escríbelo cada vez con palabras nuevas.
 
 Guía de este mensaje:
 - Para qué sirve: ${g.purpose}
 - Tiene que llevar sí o sí: ${g.mustCarry}
 - Tono: ${g.tone}
-- Largo máximo: ${g.maxChars} caracteres.${g.asks ? '\n- Termina con la pregunta (los botones de debajo la responden).' : ''}
+- Largo máximo: ${g.maxChars} caracteres.${g.asks ? '\n- Termina con la pregunta (los botones de debajo la responden).' : ''}${lang}
 
 ${COMMON_RULES}`
 }
@@ -333,7 +371,7 @@ export async function composeGuided(spec: GuideSpec, fallback: string, deps: Gui
   try {
     if (await deps.overBudget()) return { text: fallback, source: 'fallback', reason: 'over_budget' }
     const ctx = await deps.context()
-    const res = await withTimeout(writer(guidedSystemPrompt(spec.kind), guidedUserPrompt(spec, ctx, fallback)), deps.timeoutMs ?? GUIDED_TIMEOUT_MS)
+    const res = await withTimeout(writer(guidedSystemPrompt(spec.kind, spec.language), guidedUserPrompt(spec, ctx, fallback)), deps.timeoutMs ?? GUIDED_TIMEOUT_MS)
     recordAnthropicCost('whatsapp_guided', GUIDED_MODEL, res.usage, deps.userId)
     const text = (res.text ?? '').trim()
     const check = validateGuided(text, spec, fallback, ctx.previous, ctx.lastAvisos ?? [])

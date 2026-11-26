@@ -9,7 +9,7 @@ Household-shared named recipe collections. The lightweight equivalent of Paprika
 - Any household member can create a cookbook with a **name** (≤ 60 chars), optional **description** (≤ 280 chars), and optional **emoji** (≤ 8 chars, ZWJ sequences OK).
 - Add a recipe to any number of cookbooks at once. Removing a recipe from a cookbook never deletes the recipe itself.
 - Rename / re-emoji / re-describe an existing cookbook. Delete a cookbook (recipes stay; only the grouping disappears).
-- Browse cookbooks at `/profile/cookbooks` → list with cover emoji + recipe counts.
+- Browse cookbooks at `/recipes/recetarios` (from «Recetarios» in the Recetas tab, PRO-1202; `/profile/cookbooks` redirects there) → list with cover emoji + recipe counts.
 - Drill into `/cookbooks/[id]` to see the recipes inside as the `/recipes` photo cards (2-col masonry, 4 columns at `lg+`), each with a "Quitar del recetario" button over the photo. **Editar recetario** (inline editor) and **Borrar recetario** live in the "···" sheet ("Opciones del recetario") next to the title.
 - From any recipe detail page, the "Añadir a recetario" button (top of the Notas tab / section) opens a bottom-sheet picker: tap an existing cookbook to toggle membership, or create a new one on the spot.
 
@@ -65,10 +65,10 @@ All routes are auth-only + household-scoped. Any household member can read or wr
 - `useCookbooks()`, `useCookbook(id)`, `useCookbooksForRecipe(recipeId)` — queries
 - `useCreateCookbook()`, `usePatchCookbook()`, `useDeleteCookbook()` — mutations
 - `useAddRecipeToCookbook()`, `useRemoveRecipeFromCookbook()` — join mutations
-- `/profile/cookbooks` — list page with inline "Nuevo recetario" form
+- `/recipes/recetarios` — list page with inline "Nuevo recetario" form, «‹ Recetas»
 - `/cookbooks/[id]` — detail page ("D · Luz y foto", PRO-43): compact header + "···" `MenuSheet` (Editar recetario → inline rename / emoji / description editor; Borrar recetario, with confirm) + `CatalogGrid` (via its `renderAction` slot) with a per-recipe remove button
 - `<AddToCookbookButton />` — pill + bottom-sheet picker on the recipe detail page
-- Entry button on `/profile` → "Mis recetarios"
+- Entry link «Recetarios» («N recetarios») on `/recipes`, next to «Mis recetas» (PRO-1202; it was on `/profile`)
 
 ## Constraints
 
@@ -91,8 +91,8 @@ All routes are auth-only + household-scoped. Any household member can read or wr
 - `apps/api/src/routes/cookbooks.ts`
 - `apps/api/src/tests/cookbooksValidate.test.ts`
 - `apps/web/src/hooks/useCookbooks.ts`
-- `apps/web/src/app/profile/cookbooks/page.tsx`
+- `apps/web/src/app/recipes/recetarios/page.tsx` (and `apps/web/src/app/profile/cookbooks/page.tsx`, the redirect)
 - `apps/web/src/app/cookbooks/[id]/page.tsx`
 - `apps/web/src/components/recipes/AddToCookbookButton.tsx`
 - `apps/web/src/app/recipes/[id]/page.tsx` (wired into the Notas tab / section)
-- `apps/web/src/app/profile/page.tsx` (link button)
+- `apps/web/src/components/recipes/YourRecipesLinks.tsx` (the link on `/recipes`)

@@ -2,6 +2,7 @@ import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveJwtSecret } from './jwtSecret.js'
+import { resolveMimoRemoto } from './mimoRemoto.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Load .env from monorepo root
@@ -21,6 +22,14 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '90d',
   PORT: parseInt(process.env.API_PORT || '8000', 10),
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+  /**
+   * «Mimo remoto» (PRO-1102, D-157), staging only: Mimo's rounds wait in
+   * `mimo_turnos_remotos` for the office to answer them instead of going to
+   * Anthropic. Throws (no boot) when on in production. The office's routes
+   * (`/agent/mimo-remoto/…`) take MIMO_REMOTO_TOKEN as a Bearer token.
+   */
+  MIMO_REMOTO: resolveMimoRemoto(),
+  MIMO_REMOTO_TOKEN: (process.env.MIMO_REMOTO_TOKEN || '').trim(),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   /**
    * Mimo's voice (D-023): replies read aloud in the companion, instead of the
@@ -67,7 +76,9 @@ export const env = {
   // …and, when the vision check turns that photo down, the second try with this model
   // (target: about 1 photo in 5). Empty: the second try repeats the first model.
   AIKIT_IMAGE_RETRY_MODEL: process.env.AIKIT_IMAGE_RETRY_MODEL ?? 'nano-banana-pro',
-  OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+  // The OpenAI reserve (only when AiKit fails). PRO-1149: gpt-image-1 was switched off on 2026-10-23;
+  // gpt-image-2 is the model AiKit serves (D-117). Test: recipeImageAikit.test.ts (retired models).
+  OPENAI_IMAGE_MODEL: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2',
   /**
    * Where generated recipe images are written.
    *   - prod (Railway): mount the volume at `/data` and set this to
@@ -95,10 +106,10 @@ export const env = {
    * Per-user monthly spend cap for the text advisor (the `/assistant/:userId/chat`
    * Claude calls), in euros. Resets implicitly on month change. When a user has
    * already spent at least this much in the current month, the chat endpoint
-   * returns 429 `ADVISOR_BUDGET_EXCEEDED` until the month rolls over. Default €5.
+   * returns 429 `ADVISOR_BUDGET_EXCEEDED` until the month rolls over. Default €6.
    */
   ADVISOR_MONTHLY_BUDGET_EUR: parseFloat(
-    process.env.ADVISOR_MONTHLY_BUDGET_EUR || '5',
+    process.env.ADVISOR_MONTHLY_BUDGET_EUR || '6',
   ),
   /**
    * Per-user monthly cap on ALL paid AI work (chat, WhatsApp, voice,
@@ -108,6 +119,12 @@ export const env = {
    * Admins are exempt. 0 disables the cap. Default €10.
    */
   USER_MONTHLY_SPEND_CAP_EUR: parseFloat(process.env.USER_MONTHLY_SPEND_CAP_EUR || '10'),
+  /**
+   * Per-person caps (Miguel, 2026-11-23): `<userId>:<euros>` pairs separated by
+   * commas, e.g. `0f5c…:20`. For those users the number replaces BOTH monthly
+   * caps above (Mimo's and all paid AI). Malformed pairs are ignored. Empty by default.
+   */
+  USER_CAP_OVERRIDES_EUR: process.env.USER_CAP_OVERRIDES_EUR || '',
   /**
    * EUR per USD used to convert Anthropic's USD list price into the euro budget
    * above. The token rates live in `advisorBudget.ts` (Haiku 4.5 list price);
@@ -130,6 +147,21 @@ export const env = {
    * Empty → token auth disabled (admin JWT still works).
    */
   METRICS_READ_TOKEN: process.env.METRICS_READ_TOKEN || '',
+  /**
+   * Write token for the two routes Cocina (the office) uses to mark catalogue
+   * ingredients as essential/secondary (routes/ingredientRoles.ts, header
+   * `x-cocina-token`, specs/cook-now.md). Grants those two routes only.
+   * Empty → token auth disabled (admin JWT still works).
+   */
+  COCINA_WRITE_TOKEN: process.env.COCINA_WRITE_TOKEN || '',
+  /**
+   * Write token for Marketing's newsletter recommendation, and only that:
+   * `PUT /admin/newsletter/drafts/:issueId/recommendation` (header
+   * `x-newsletter-token`, middleware/newsletterAuth.ts, PRO-1198). Never the
+   * template, the proof or the schedule.
+   * Empty → token auth disabled (admin JWT still works).
+   */
+  NEWSLETTER_RECOMMENDATION_TOKEN: process.env.NEWSLETTER_RECOMMENDATION_TOKEN || '',
   /**
    * Extra `?ref=` labels the read token may name in GET /admin/waitlist
    * (`sources.bySource`), for campaign links that live outside the code:
@@ -230,6 +262,15 @@ export const env = {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
   /**
+   * Emails (o `@dominio`) que tienen la Red de tiendas v2 (specs/red-tiendas.md,
+   * D-165). Vacía = nadie: hasta que estén los cinco
+   * tramos, solo cuentas de prueba.
+   */
+  RED_TIENDAS_EMAILS: (process.env.RED_TIENDAS_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+  /**
    * Optional approved utility template (one `{{1}}` body variable) used for
    * proactive messages outside Meta's 24 h customer-service window. Without
    * it, proactive messages only go out while the window is open.
@@ -279,23 +320,16 @@ export const env = {
   TELEGRAM_BOT_USERNAME: (process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, ''),
   /**
    * Speech-to-text (WhatsApp voice notes, Mimo's voice in the app, the voice
-   * onboarding) is a chain: Groq → AiKit → OpenAI, the first one configured
+   * onboarding) is a chain: Groq → OpenAI, the first one configured
    * first; when it fails or hears nothing, the next one tries (services/stt.ts).
    *
    * Groq: Whisper through its OpenAI-compatible API. Free plan with no card
    * (about 2,000 requests and 8 h of audio a day; the org's Limits page in
    * console.groq.com says the exact figures); list price $0.04 / hour of audio.
-   * Without the key the chain starts at AiKit.
+   * Without the key the chain starts at OpenAI.
    */
   GROQ_API_KEY: process.env.GROQ_API_KEY || '',
   GROQ_TRANSCRIBE_MODEL: process.env.GROQ_TRANSCRIBE_MODEL || 'whisper-large-v3-turbo',
-  /**
-   * AiKit's chat model used as the transcription reserve (same AIKIT_API_KEY as
-   * the images). Gemini hears the audio well but, given only background noise,
-   * writes a plausible sentence nobody said: reserve only. Empty string turns
-   * AiKit off for transcription (images are unaffected).
-   */
-  AIKIT_TRANSCRIBE_MODEL: process.env.AIKIT_TRANSCRIBE_MODEL ?? 'google/gemini-3.8-flash',
   /**
    * OpenAI speech-to-text model, last in the chain above. Full gpt-4o-transcribe
    * (≈$0.006/min): the mini model mis-heard short Spanish notes as Galician.

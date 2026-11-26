@@ -30,6 +30,12 @@ export type NutritionPerServing = z.infer<typeof nutritionPerServingSchema>
 
 // ─── Recipe ingredient (one row per ingredient on a recipe) ───
 const recipeIngredientWriteSchema = z.object({
+  /**
+   * PRO-1259: the row's id from the GET, sent back by an edit so the row
+   * (and the steps that point at it through `ingredientRefs`) keeps it.
+   * Absent = a new row; the server mints one.
+   */
+  id: z.string().uuid().optional(),
   ingredientId: z.string().uuid(),
   /**
    * Optional sub-grouping within the recipe (e.g. "Para la masa").
@@ -93,6 +99,13 @@ export interface RecipeShoppingIssue {
   message: string
   /** The recipe_ingredients row it's about. */
   rowId: string
+}
+
+/** PRO-373: a base the recipe uses and how many of its servings. */
+export interface RecipeBaseUse {
+  id: string
+  name: string
+  servings: number
 }
 
 export interface Recipe {
@@ -176,6 +189,12 @@ export interface Recipe {
    * «<libro>»». Sent by GET /recipes/:id; null when there is nothing to credit.
    */
   sourceCredit?: string | null
+  /**
+   * PRO-373: the bases this recipe uses («Usa: Sofrito (2 raciones)»), from
+   * `recipe_bases`, with the base's id for the link. Sent by GET /recipes/:id;
+   * absent when it uses none.
+   */
+  bases?: RecipeBaseUse[]
 
   ingredients: RecipeIngredient[]
   steps: RecipeStep[]
@@ -238,9 +257,10 @@ export const createRecipeSchema = z.object({
   servingsConfidence: z.enum(['explicit', 'estimated']).default('explicit'),
   yieldText: z.string().optional(),
 
-  prepTime: z.number().int().min(0).optional(),
-  cookTime: z.number().int().min(0).optional(),
-  activeTime: z.number().int().min(0).optional(),
+  // Null clears the time on an edit; absent keeps what the recipe had (PRO-1259).
+  prepTime: z.number().int().min(0).nullable().optional(),
+  cookTime: z.number().int().min(0).nullable().optional(),
+  activeTime: z.number().int().min(0).nullable().optional(),
 
   difficulty: z.enum(DIFFICULTIES).default('medium'),
 
@@ -268,7 +288,7 @@ export const createRecipeSchema = z.object({
 
   course: courseSchema.optional(),
 
-  ingredients: z.array(recipeIngredientWriteSchema).min(1),
+  ingredients: z.array(recipeIngredientWriteSchema).min(1, 'Añade al menos un ingrediente de la lista'),
   steps: z.array(recipeStepSchema).default([]),
 })
 

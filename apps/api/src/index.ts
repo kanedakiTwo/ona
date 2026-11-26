@@ -27,6 +27,7 @@ import unitsRouter from './routes/units.js'
 import memoryRoutes from './routes/memory.js'
 import householdRoutes, { publicHouseholdRouter } from './routes/households.js'
 import cookLogRoutes from './routes/cookLogs.js'
+import cookNowRoutes from './routes/cookNow.js'
 import staplesRoutes from './routes/staples.js'
 import pushRoutes from './routes/push.js'
 import notificationRoutes from './routes/notifications.js'
@@ -37,7 +38,10 @@ import recipePhotosRoutes from './routes/recipePhotos.js'
 import whatsappRoutes, { whatsappWebhookRouter } from './routes/whatsapp.js'
 import telegramRoutes from './routes/telegram.js'
 import metricsRoutes from './routes/metrics.js'
+import mimoRemotoRoutes from './routes/mimoRemoto.js'
+import ingredientRoleRoutes from './routes/ingredientRoles.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
+import redRoutes from './routes/red.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
 import newsletterRoutes from './routes/newsletter.js'
@@ -46,13 +50,16 @@ import usageRoutes from './routes/usage.js'
 import inviteCampaignRoutes from './routes/inviteCampaigns.js'
 import billingRoutes, { billingWebhookRouter } from './routes/billing.js'
 import priceSurveyRoutes from './routes/priceSurvey.js'
+import seanEllisRoutes from './routes/seanEllis.js'
 import feedbackRoutes from './routes/feedback.js'
 import whatsappQuestionRoutes from './routes/whatsappQuestion.js'
+import emailQuestionRoutes from './routes/emailQuestion.js'
 import tasteRoutes from './routes/taste.js'
 import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
+import adminHouseholdsRoutes from './routes/adminHouseholds.js'
 import catalogCollectionsRoutes from './routes/catalogCollections.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
@@ -103,6 +110,8 @@ app.use(clientErrorsRouter)
 // the global 100 KB body limit, so its import routes read their own body (2 MB)
 // after the admin check. Per-route auth, no catch-all.
 app.use(catalogReviewRoutes)
+// PRO-1290: a household's Mimo cap. Per-route auth, no catch-all.
+app.use(adminHouseholdsRoutes)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 // Logs shopping-list item mutations (2xx) for the business metrics'
@@ -162,9 +171,11 @@ app.use(emailSinkRoutes)
 // Per-route authMiddleware (no catch-all), before userRoutes.
 app.use(billingRoutes)
 app.use(priceSurveyRoutes)
+app.use(seanEllisRoutes)
 app.use(feedbackRoutes)
 // «Pregunta única por WhatsApp» (PRO-1091): per-route admin auth.
 app.use(whatsappQuestionRoutes)
+app.use(emailQuestionRoutes)
 // «Afina tu menú» (PRO-146): per-route auth.
 app.use(tasteRoutes)
 app.use(noticesRoutes)
@@ -199,10 +210,14 @@ app.use(telegramRoutes)
 // GET /admin/metrics accepts `x-metrics-token` instead of a JWT, so it must
 // be mounted before the catch-all `router.use(authMiddleware)` routers below.
 app.use(metricsRoutes)
+// Same reason: the ingredient-role routes accept `x-cocina-token` (specs/cook-now.md).
+app.use(ingredientRoleRoutes)
 // Same reason: GET /admin/errors also accepts `x-metrics-token`.
 app.use(appErrorsRoutes)
 // Same reason: GET /admin/waitlist accepts `x-metrics-token` (invite is admin JWT only).
 app.use(adminWaitlistRouter)
+// «Mimo remoto» (PRO-1102): own Bearer token, 404 unless MIMO_REMOTO=1 (staging).
+app.use(mimoRemotoRoutes)
 app.use(inviteCampaignRoutes)
 app.use(userRoutes)
 app.use(menuRoutes)
@@ -216,12 +231,14 @@ app.use('/', unitsRouter)
 app.use(memoryRoutes)
 app.use(householdRoutes)
 app.use(cookLogRoutes)
+app.use(cookNowRoutes)
 app.use(staplesRoutes)
 app.use(recipeNotesRoutes)
 app.use(pantryRoutes)
 app.use(cookbooksRoutes)
 app.use(recipePhotosRoutes)
 app.use(shopOrdersRoutes)
+app.use(redRoutes)
 
 // Error handler — captureServerErrors records the error, then hands it to
 // errorHandler unchanged.

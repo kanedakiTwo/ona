@@ -22,9 +22,12 @@ const MIN_USEFUL_DESCRIPTION_CHARS = 200
  * to a 422 with a friendly Spanish message.
  */
 export class NoExtractableContentError extends Error {
-  constructor(message: string) {
+  /** PRO-1301: `private` = the video gave nothing at all (private, deleted); `no_text` = no captions nor recipe text. */
+  reason: 'private' | 'no_text'
+  constructor(message: string, reason: 'private' | 'no_text' = 'no_text') {
     super(message)
     this.name = 'NoExtractableContentError'
+    this.reason = reason
   }
 }
 
@@ -140,6 +143,10 @@ export function buildYouTubePromptInput(input: YouTubePromptInput): string {
   const description = input.description?.trim() ?? ''
 
   if (transcript.length === 0 && description.length < MIN_USEFUL_DESCRIPTION_CHARS) {
+    // Not even a title: YouTube didn't show the video (private, deleted, region).
+    if (!input.title?.trim() && description.length === 0) {
+      throw new NoExtractableContentError('Este vídeo es privado o no está disponible.', 'private')
+    }
     throw new NoExtractableContentError(
       'Este vídeo no tiene subtítulos disponibles ni una descripción con la receta.',
     )

@@ -28,7 +28,7 @@ Talk to **Mimo** from Telegram: the same assistant as in the app and on WhatsApp
 1. `POST /telegram/webhook`: **404** while the channel is off; **401** unless `X-Telegram-Bot-Api-Secret-Token` equals `TELEGRAM_WEBHOOK_SECRET` (compared in constant time); otherwise a fast **200** and the turn runs after it, one at a time per chat in arrival order.
 2. Only messages from a person in a **private chat** count: groups, channels, other bots, edited messages and button callbacks are dropped. Messages older than 2 hours (a webhook backlog) are dropped, like on WhatsApp.
 3. A connected chat's `update_id` is claimed before anything else: a retried or older update is dropped.
-4. Gates in this order, before any paid work: paused account (trial over, PRO-135: only the notice to choose a plan), the monthly € budget of the assistant and the monthly spend cap (same `checkBudget` as WhatsApp: «Has alcanzado tu límite mensual…»).
+4. Gates in this order, before any paid work: the Gratis plan (trial over, PRO-385: only «En el plan Gratis, Mimo descansa…» with the link to choose a plan), the monthly € budget of the assistant and the monthly spend cap (same `checkBudget` as WhatsApp: «Has alcanzado tu límite mensual…»).
 5. Mimo sees the last 12 h of this chat (at most 40 entries kept, with the ⟦hecho: …⟧ line of each turn's tools), built by WhatsApp's `buildChatHistory`.
 6. Errors: «Vaya, algo ha fallado. Inténtalo de nuevo en un momento.»
 

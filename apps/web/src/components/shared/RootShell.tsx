@@ -16,6 +16,7 @@ import { SwipeNavigator } from "@/components/pwa/SwipeNavigator"
 import MimoProvider from "@/components/mimo/MimoProvider"
 import { FeedbackButton } from "@/components/feedback/FeedbackButton"
 import { rememberPath } from "@/lib/navHistory"
+import { stashMarkedFromLocation } from "@/lib/markedRestrictions"
 
 /** Empty cream page while the session resolves or a redirect is on its way: never the wrong page for a frame. */
 function Blank() {
@@ -26,6 +27,8 @@ function Blank() {
 function ToLogin() {
   const router = useRouter()
   useEffect(() => {
+    // PRO-1041: Mimo's allergies link marks them after `#`, which `next` doesn't carry.
+    stashMarkedFromLocation()
     router.replace(loginHrefFor(`${window.location.pathname}${window.location.search}`))
   }, [router])
   return <Blank />

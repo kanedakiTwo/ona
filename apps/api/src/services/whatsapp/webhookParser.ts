@@ -7,6 +7,8 @@
  * answer 200 or Meta retries the batch forever.
  */
 
+import { splitButtonId } from './answerTarget.js'
+
 export type InboundKind = 'text' | 'audio' | 'image' | 'document' | 'interactive' | 'unsupported'
 
 export interface InboundMessage {
@@ -17,13 +19,19 @@ export interface InboundMessage {
   timestamp: number
   profileName: string | null
   kind: InboundKind
-  /** text body · image caption · tapped button/list title. */
+  /** text body · image caption · tapped button/list title · the emoji of a reaction. */
   text: string | null
   /** Media id for audio/image (download via Graph `/{media-id}`). */
   mediaId: string | null
   mimeType: string | null
-  /** Id of the tapped reply button / list row (interactive only). */
+  /** Id of the tapped reply button / list row (interactive only), without its question's ref. */
   replyId: string | null
+  /**
+   * PRO-1295: the question the tapped button belongs to — the ref the client
+   * added to its id when it went out (`answerTarget.ts`). Null for buttons
+   * sent before 24-nov and for template buttons.
+   */
+  replyRef?: string | null
   /** Raw Meta type, kept for logging unsupported kinds. */
   rawType: string
 }
@@ -96,8 +104,13 @@ function parseMessage(m: any, contacts: any[]): InboundMessage | null {
     case 'interactive': {
       const reply = m.interactive?.button_reply ?? m.interactive?.list_reply
       if (!reply || typeof reply.title !== 'string') return base
-      return { ...base, kind: 'interactive', text: reply.title, replyId: reply.id ?? null }
+      const { base: replyId, ref: replyRef } = splitButtonId(typeof reply.id === 'string' ? reply.id : null)
+      return { ...base, kind: 'interactive', text: reply.title, replyId, replyRef }
     }
+    case 'reaction':
+      // An emoji reaction to one of our messages (empty emoji = reaction removed).
+      // Stays 'unsupported' for every flow; processInbound drops it silently.
+      return { ...base, text: typeof m.reaction?.emoji === 'string' ? m.reaction.emoji : null }
     case 'button':
       // Quick-reply button on a template message.
       if (typeof m.button?.text !== 'string') return base

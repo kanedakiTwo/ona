@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * PRO-271 (Seguridad): above «Generar mi menú» in a blank week, a clear but
+ * PRO-271 (Seguridad): above «Llenar con mi semana tipo» in a blank week, a clear but
  * non-blocking warning when someone in the household hasn't said their
  * allergies and diet (`GET /households/me/allergies`). «No ha contestado» is
  * not «contestó que ninguna»: whoever answered «ninguna» (consent with

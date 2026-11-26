@@ -4,17 +4,24 @@
  * voice notes, recipe photos and the chat round-trip.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { processInbound, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
+import { enqueueInbound, processInbound, isEmojiOnly, isCourtesyOnly, awaitsAnswer, COPY, ackTextForTools, photoIntent, withoutMenuReadyLines, WEEK_IMAGE_ALT, type InboundDeps } from '../services/whatsapp/inbound.js'
 import { weekMenuCaption, weekMenuDigest } from '../services/menuText.js'
 import { buildChatHistory } from '../services/whatsapp/history.js'
 import type { InboundMessage } from '../services/whatsapp/webhookParser.js'
 import type { LinkWithUser } from '../services/whatsapp/store.js'
 import type { HistoryRow } from '../services/whatsapp/history.js'
 import type { OutboundMessage } from '../services/whatsapp/render.js'
-import { EMPTY_USAGE } from '../services/advisorBudget.js'
+import { BUDGET_WARNING_LINE, EMPTY_USAGE } from '../services/advisorBudget.js'
+import { appSkills } from '../services/assistant/appSkills.js'
+import type { AppApi } from '../services/assistant/appApi.js'
 import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
 import Anthropic from '@anthropic-ai/sdk'
 import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
+import { captionWithoutInvite, signupCaption, signupWords } from '../services/whatsapp/signupReply.js'
+import { COALESCE_WINDOW_MS } from '../services/whatsapp/coalesce.js'
+import { checkinReplyIdOfEmoji } from '../services/whatsapp/checkinButtons.js'
+import { listCodeReply, menuCodeReply, recognizeCodeIntent, type RunSkill } from '../services/assistant/codeReply.js'
+import { capNoticeWhatsApp } from '../services/capNotice.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -54,7 +61,7 @@ function setup(overrides: {
   history?: HistoryRow[]
   recentLinkHint?: boolean
   allowed?: boolean
-  chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[] }
+  chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[]; survey?: string }
   menuDigest?: InboundDeps['menuDigest']
   menuImage?: InboundDeps['menuImage']
   /** Only picture messages fail (e.g. the media upload). */
@@ -67,6 +74,12 @@ function setup(overrides: {
   supportEmail?: string
   guided?: InboundDeps['guided']
   paused?: boolean
+  /** Mimo's spend so far this month (checkBudget) and what the turn adds (recordUsage). */
+  spentMicros?: number
+  addedMicros?: number
+  recordDinnerCheckin?: InboundDeps['recordDinnerCheckin']
+  /** Any other dep (19-nov: language, setAvisoKind, saveOptOutReason). */
+  extra?: Partial<InboundDeps>
 } = {}) {
   const sent: OutboundMessage[] = []
   const outbound: { kind: string; body: string; status: string; meta?: unknown }[] = []
@@ -76,9 +89,13 @@ function setup(overrides: {
     ...(overrides.chatReply ?? { message: 'Hoy toca crema de calabaza.', uiHint: 'menu' }),
     usage: EMPTY_USAGE,
   }))
-  const recordUsage = vi.fn(async () => {})
+  const recordUsage = vi.fn(async (_u: string, _usage: unknown, _opts?: { countsTowardBudget?: boolean }) => overrides.addedMicros ?? 0)
   const setNotify = vi.fn(async () => true)
-  const checkBudget = vi.fn(async () => ({ exceeded: overrides.budgetExceeded ?? false, budgetMicros: 5_000_000 }))
+  const checkBudget = vi.fn(async () => ({
+    exceeded: overrides.budgetExceeded ?? false,
+    budgetMicros: 5_000_000,
+    ...(overrides.spentMicros !== undefined ? { spentMicros: overrides.spentMicros } : {}),
+  }))
 
   const deps: InboundDeps = {
     webUrl: WEB,
@@ -122,7 +139,9 @@ function setup(overrides: {
     menuDigest: overrides.menuDigest,
     menuImage: overrides.menuImage,
     guided: overrides.guided,
+    recordDinnerCheckin: overrides.recordDinnerCheckin,
     ...(overrides.paused !== undefined ? { isPaused: async () => overrides.paused! } : {}),
+    ...overrides.extra,
   }
   return { deps, sent, outbound, inboundUpdates, chat, recordUsage, historyUserIds, setNotify, checkBudget }
 }
@@ -153,17 +172,19 @@ describe('processInbound — unlinked numbers', () => {
     expect(t.sent).toEqual([{ type: 'text', text: COPY.badCode }])
   })
 
-  it("the first message of the WhatsApp sign-up (Miguel's text, 2026-10-15): AI disclosure, voice notes, two questions", () => {
+  it("the first message of the WhatsApp sign-up (Miguel's text, 2026-10-15): AI disclosure, voice notes, the four questions (19-nov)", () => {
     const m = COPY.linkedOnboarding('Ana')
     // AI Act art. 50: AI, can be wrong, not a health professional.
     expect(m).toMatch(/asistente de inteligencia artificial \(IA\)/)
     expect(m).toMatch(/puedo equivocarme y no sustituyo a un profesional sanitario/)
     expect(m).toMatch(/Puedes escribirme o mandarme notas de voz/)
-    expect(m).toMatch(/\*1\.\* ¿Cuántos sois en casa\?/)
-    // 2026-11-03: the web's «¿Cómo cocináis en casa?», not how often.
-    expect(m).toMatch(/\*2\.\* ¿Cómo cocináis en casa: cada día, unos días y aprovecháis para otros, batch cooking/)
-    // PRO-245 / D-064: no favourite dishes in the first message (Mimo asks later, only without «Me apetece»).
-    expect(m).not.toMatch(/platos/)
+    expect(m).toMatch(/solo necesito saber cuatro cosas/)
+    expect(m).toMatch(/\*1\.\* ¿Quiénes sois en casa\?/)
+    expect(m).toMatch(/\*2\.\* ¿Qué comidas cocináis en casa a la semana\? Por ejemplo: «6 cenas y 1 comida»/)
+    expect(m).toMatch(/\*3\.\* Tres platos que hacéis a menudo/)
+    expect(m).toMatch(/\*4\.\* ¿Hay algo que no entre en casa\?/)
+    // Health data never through WhatsApp (PRO-24): the fourth asks tastes, not allergies.
+    expect(m).not.toMatch(/alergi/)
   })
 
   it('the opt-in question says it can be changed just by asking (Mimo has the tool)', () => {
@@ -206,17 +227,25 @@ describe('processInbound — unlinked numbers', () => {
 })
 
 describe('processInbound — gates', () => {
-  it('a paused account (PRO-135) gets only the notice to choose a plan: no Mimo, no budget check', async () => {
+  it('the Gratis plan (PRO-385) gets only the notice to choose a plan: no Mimo, no budget check', async () => {
     const t = setup({ paused: true })
     await processInbound(msg(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.paused(`${WEB}/profile/suscripcion`) }])
-    expect(t.outbound[0]).toMatchObject({ kind: 'paused' })
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.gratis(`${WEB}/profile/suscripcion`) }])
+    expect(t.outbound[0]).toMatchObject({ kind: 'gratis' })
     expect(t.chat).not.toHaveBeenCalled()
     expect(t.checkBudget).not.toHaveBeenCalled()
-    expect(COPY.paused('x')).toMatch(/No se ha borrado nada/)
+    expect(COPY.gratis('x')).toBe('En el plan Gratis, Mimo descansa. Con Esencial vuelve a haceros la semana él solo.\n\nElige tu plan aquí:\nx')
   })
 
-  it('an account that is not paused talks to Mimo as always', async () => {
+  it('the Gratis notice goes once a day: a second message the same day gets nothing', async () => {
+    const t = setup({ paused: true, recentLinkHint: true })
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([])
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', errorMessage: 'plan-gratis' })
+  })
+
+  it('an account that is not on Gratis talks to Mimo as always', async () => {
     const t = setup({ paused: false })
     await processInbound(msg(), t.deps)
     expect(t.chat).toHaveBeenCalledOnce()
@@ -239,7 +268,7 @@ describe('processInbound — gates', () => {
   it('stops at the monthly budget without calling the model', async () => {
     const t = setup({ budgetExceeded: true })
     await processInbound(msg(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.budget('5') }])
+    expect(t.sent).toEqual([{ type: 'text', text: capNoticeWhatsApp(5, WEB) }])
     expect(t.chat).not.toHaveBeenCalled()
   })
 
@@ -359,6 +388,31 @@ describe('processInbound — chat round-trip', () => {
     const t = setup({ sendFails: true })
     await expect(processInbound(msg(), t.deps)).resolves.toBeUndefined()
     expect(t.outbound[0]).toMatchObject({ kind: 'reply', status: 'failed' })
+  })
+
+  it('never answers an emoji reaction (Miguel, 2026-11-18): no reply, no chat, kept as ignored', async () => {
+    const t = setup()
+    await processInbound(msg({ kind: 'unsupported', text: '❤️', rawType: 'reaction' }), t.deps)
+    expect(t.sent).toEqual([])
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.inboundUpdates).toEqual([{ status: 'ignored', userId: 'user-1', errorMessage: 'emoji' }])
+  })
+
+  it('never answers a message that is only emoji, but does answer text with an emoji', async () => {
+    for (const text of ['👍', '👍🏻', '❤️❤️', ' 😂😂 ', '🙏🏻!']) {
+      const t = setup()
+      await processInbound(msg({ text }), t.deps)
+      expect(t.sent, text).toEqual([])
+      expect(t.chat, text).not.toHaveBeenCalled()
+    }
+    const t = setup()
+    await processInbound(msg({ text: 'Ok, añade leche 👍' }), t.deps)
+    expect(t.chat).toHaveBeenCalled()
+  })
+
+  it('isEmojiOnly: emoji with no letter or digit', () => {
+    expect(['👍', '👌🏽', '❤️', '🎉🎉', '👨‍👩‍👧'].every(isEmojiOnly)).toBe(true)
+    expect(['', ' ', '?', 'ok', 'Ok 👍', '2 🍕', '1', '#', 'sí 🙂'].some(isEmojiOnly)).toBe(false)
   })
 
   it('answers unsupported message types politely', async () => {
@@ -855,7 +909,9 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     })
     await processInbound(msg({ text: 'genera el menú' }), t.deps)
     expect(t.sent.map((m) => m.type)).toEqual(['image', 'buttons'])
-    expect(t.sent[0].text).toBe(CAPTION)
+    // 19-nov: one question at a time — no «¿Cambio algo?» under the picture when Mimo asks.
+    expect(t.sent[0].text).toBe(captionWithoutInvite(CAPTION))
+    expect(t.sent[0].text).not.toContain('¿Cambio algo?')
     expect(t.sent[1].text).toBe('¿Te preparo la lista de la compra?')
     expect(t.sent.map((m) => m.text).join('\n')).not.toContain('Ver menú')
   })
@@ -923,17 +979,57 @@ describe('processInbound — the generated week goes out as ONE picture with a s
     expect(t.outbound[0].body).toBe(`⟦imagen enviada: ${WEEK_IMAGE_ALT}⟧\n${VIEW_CAPTION}`)
   })
 
-  it('the first menu of the WhatsApp sign-up is a picture too, then the health link and the opt-in', async () => {
+  it('19-nov: the sign-up ends in ONE message — the picture, one line, one question at most; the health link and the opt-in come later', async () => {
     const t = setup({
       link: { ...LINK, onboardingDone: false },
-      chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'], data: { id: 'menu-1', days: [] } },
+      chatReply: {
+        message: 'Con las recetas que tengo no he conseguido acercarme mucho a lo que os gusta. Te he puesto el salmón al horno con patatas el jueves. ¿Os gusta el pescado? ¿Qué soléis cenar un martes normal?',
+        toolsUsed: ['complete_onboarding'],
+        data: { id: 'menu-1', days: [] },
+      },
       menuDigest: async () => MENU_TEXT,
       menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
     })
-    await processInbound(msg({ text: 'Lentejas, tortilla y pescado al horno' }), t.deps)
-    expect(t.sent.map((m) => m.type)).toEqual(['image', 'text', 'buttons'])
-    expect(t.sent[0].text).toBe(CAPTION)
-    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
+    await processInbound(msg({ text: 'Salmón al horno con patatas' }), t.deps)
+    expect(t.sent.map((m) => m.type)).toEqual(['image'])
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
+    const text = t.sent[0].text!
+    expect(text).toBe(`Te he puesto el salmón al horno con patatas el jueves. ¿Qué soléis cenar un martes normal?\n\n${signupCaption(CAPTION, true)}`)
+    expect(text).not.toMatch(/acercarme|se parece poco|gen[eé]ric|acertaré menos/)
+    expect((text.match(/\?/g) ?? []).length).toBe(1)
+    expect(text).not.toContain('¿Cambio algo?')
+    expect(text).not.toContain(COPY.optInPrompt)
+  })
+
+  it('PRO-1041: an allergy told in the sign-up — the link to save it on the web stays in that one message (the «?» of a link is not a question)', async () => {
+    const ALLERGY_LINK = 'https://mimoia.com/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten'
+    const t = setup({
+      link: { ...LINK, onboardingDone: false },
+      chatReply: {
+        message: `Te he puesto el salmón al horno con patatas el jueves. Por WhatsApp no guardo datos de salud: guarda lo del gluten aquí, ya va marcado: ${ALLERGY_LINK}\n¿Os gusta el pescado? ¿Qué soléis cenar un martes normal?`,
+        toolsUsed: ['complete_onboarding'],
+        data: { id: 'menu-1', days: [] },
+      },
+      menuDigest: async () => MENU_TEXT,
+      menuImage: async () => ({ jpeg: JPEG, caption: CAPTION }),
+    })
+    await processInbound(msg({ text: 'Soy celíaca. Somos dos y cocinamos todas las cenas' }), t.deps)
+    expect(t.sent.map((m) => m.type)).toEqual(['image'])
+    const text = t.sent[0].text!
+    expect(text).toContain(ALLERGY_LINK)
+    // Still one question at most: the last one.
+    expect(text).not.toContain('¿Os gusta el pescado?')
+    expect(text).toContain('¿Qué soléis cenar un martes normal?')
+  })
+
+  it('PRO-1041: signupWords keeps a sentence whose only «?» is inside a link, wherever the question is', () => {
+    const link = 'https://mimoia.com/profile/casa/alergias?next=%2Fmenu#marcar=marisco'
+    expect(signupWords(`Ya tenéis el menú. Guárdalo aquí: ${link}\n¿Qué soléis cenar un martes normal?`)).toBe(
+      `Ya tenéis el menú. Guárdalo aquí: ${link} ¿Qué soléis cenar un martes normal?`,
+    )
+    expect(signupWords(`Ya tenéis el menú. ¿Qué soléis cenar un martes normal? Guárdalo aquí: ${link}`)).toBe(
+      `Ya tenéis el menú. ¿Qué soléis cenar un martes normal? Guárdalo aquí: ${link}`,
+    )
   })
 })
 
@@ -946,7 +1042,7 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     expect(t.sent).toEqual([{ type: 'text', text: COPY.linkedOnboarding('Miguel') }])
     // Miguel's wording (2026-10-15) keeps the disclosure's three parts (AI Act art. 50).
     expect(t.sent[0].text).toMatch(/asistente de inteligencia artificial \(IA\)[\s\S]*puedo equivocarme y no sustituyo a un profesional sanitario/)
-    expect(t.sent[0].text).toMatch(/¿Cuántos sois en casa\?/)
+    expect(t.sent[0].text).toMatch(/¿Quiénes sois en casa\?/)
     expect(t.outbound.map((o) => o.kind)).toEqual(['onboarding'])
     expect(t.chat).not.toHaveBeenCalled()
   })
@@ -968,19 +1064,16 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
     expect(done.chat).toHaveBeenCalledWith('user-1', '¿Qué ceno hoy?', [], expect.objectContaining({ onboarding: false }))
   })
 
-  it('complete_onboarding → the first menu in the chat, the web link for health data, then the opt-in', async () => {
+  it('complete_onboarding → the first menu in the chat, and nothing else in that second (19-nov: health link and opt-in later)', async () => {
     const t = setup({
       link: NEW_LINK,
       chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'], data: { id: 'menu-1', days: [] } },
       menuDigest: async (_userId, menuId) => (menuId === 'menu-1' ? 'Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas' : null),
     })
     await processInbound(msg({ text: 'Lentejas, tortilla y pescado al horno' }), t.deps)
-    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'system', 'optin_prompt'])
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
     // The digest alone: the model's "Hecho: - Tu primer menú…" isn't stacked on top (2026-10-15).
-    expect(t.sent[0].text).toBe(`Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas`)
-    expect(t.sent[1]).toEqual({ type: 'text', text: COPY.healthOnWeb(`${WEB}/profile`) })
-    expect(t.sent[1].text).toMatch(/no me dejan guardar datos de salud/)
-    expect(t.sent[2]).toMatchObject({ type: 'buttons', text: COPY.optInPrompt })
+    expect(t.sent).toEqual([{ type: 'text', text: `Listo: tu menú hasta el domingo 🍽️\n\n*Martes 6 · hoy*\n☀️ Lentejas` }])
   })
 
   // PRO-07: the sign-up ends with three suggestions, once, after the opt-in answer.
@@ -1049,15 +1142,14 @@ describe('processInbound — WhatsApp-first sign-up (2026-10-10)', () => {
       expect(t.outbound.map((o) => o.kind)).toEqual(['optin'])
     })
 
-    it('not before the opt-in question (complete_onboarding turn ends with the question)', async () => {
+    it('not with the first menu (19-nov: the opt-in question comes ~10 min later, signupFollowUps.ts)', async () => {
       const t = setup({
         link: NEW_LINK,
         chatReply: { message: 'Hecho:\n- Tu primer menú de la semana listo', toolsUsed: ['complete_onboarding'] },
         outboundKinds: new Map([['onboarding', at(600_000)]]),
       })
       await processInbound(msg({ text: 'Lentejas y tortilla' }), t.deps)
-      expect(t.outbound.map((o) => o.kind)).not.toContain('first_steps')
-      expect(t.outbound.at(-1)?.kind).toBe('optin_prompt')
+      expect(t.outbound.map((o) => o.kind)).toEqual(['reply'])
     })
   })
 
@@ -1154,5 +1246,484 @@ describe('processInbound — late answer to «¿hiciste la cena?» (PRO-250)', (
     const t = setup({ history: [checkin] })
     await processInbound(msg({ text: 'Sí, la hice' }), t.deps)
     expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('Sí, la hice')
+  })
+})
+
+describe('processInbound — the shopping list the tool really returns (18-nov)', () => {
+  it('get_shopping_list → its own data ({ listId, items }) → the list under the reply', async () => {
+    // The real tool, fed by a fake app API: what the engine puts in `data`.
+    const api: AppApi = async (method, path) =>
+      (method === 'GET' && path === '/shopping-list'
+        ? {
+            id: 'L1',
+            items: [
+              { id: 'a', ingredientId: 'i1', name: 'Cebolla', quantity: 300, unit: 'g', aisle: 'produce', checked: false, inStock: false },
+              { id: 'b', ingredientId: 'i2', name: 'Leche', quantity: 1, unit: 'u', aisle: 'lacteos', checked: true, inStock: false },
+            ],
+          }
+        : {}) as any
+    const tool = appSkills.find((sk) => sk.name === 'get_shopping_list')!
+    const result = await tool.handler({}, { userId: 'user-1', db: null, api, channel: 'whatsapp' } as any)
+    expect(result.data).toMatchObject({ listId: 'L1' })
+    const t = setup({ chatReply: { message: 'Aquí la tienes:', uiHint: result.uiHint, data: result.data, toolsUsed: ['get_shopping_list'] } })
+    await processInbound(msg({ text: 'mándame la lista de la compra' }), t.deps)
+    const text = t.sent.map((m) => m.text).join('\n')
+    expect(text).toContain('*Tu lista de la compra* · 1 cosa')
+    expect(text).toContain('*Frutas y verduras:* Cebolla (300 g)')
+    expect(text).not.toContain('Leche')
+  })
+})
+
+describe('processInbound — «¿hiciste la cena?» buttons, no model (18-nov)', () => {
+  const sentAt = new Date(NOW.getTime() - 60 * 60 * 1000)
+  const tap = (replyId: string, text: string) => msg({ kind: 'interactive', text, replyId, rawType: 'interactive' })
+
+  it('«Sí, ¡a repetir!» is recorded on the check-in day with a fixed line, even with the cap used up', async () => {
+    const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+    const t = setup({ budgetExceeded: true, outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin })
+    await processInbound(tap('checkin:yes:5', 'Sí, ¡a repetir!'), t.deps)
+    expect(recordDinnerCheckin).toHaveBeenCalledWith('user-1', { cooked: true, rating: 5 }, sentAt)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([{ type: 'text', text: 'Apuntada la cena: *Merluza en salsa*, y que es para repetir.' }])
+    expect(t.outbound.at(-1)).toMatchObject({ kind: 'reply' })
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: 'Sí, ¡a repetir!', meta: { tools: ['log_cooked', 'update_recipe_notes'] } })
+  })
+
+  it('«Sí, estuvo bien», «Sí, hecho» and «No» get their own fixed line', async () => {
+    const cases: Array<[string, string, object, string]> = [
+      ['checkin:yes:3', 'Sí, estuvo bien', { cooked: true, rating: 3 }, 'Apuntada la cena: *Merluza en salsa*, y que estuvo bien.'],
+      ['checkin:yes', 'Sí, hecho', { cooked: true, rating: null }, 'Apuntada la cena: *Merluza en salsa*.'],
+      ['checkin:no', 'No', { cooked: false, rating: null }, 'Vale, no la apunto.'],
+    ]
+    for (const [id, title, answer, line] of cases) {
+      const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+      const t = setup({ outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin })
+      await processInbound(tap(id, title), t.deps)
+      expect(recordDinnerCheckin, id).toHaveBeenCalledWith('user-1', answer, sentAt)
+      expect(t.chat, id).not.toHaveBeenCalled()
+      expect(t.sent, id).toEqual([{ type: 'text', text: line }])
+    }
+  })
+
+  it('a typed 👍🏻 / 👎🏽 right after the check-in counts as the button (reviewer 20-nov: it was dropped as a lone emoji)', async () => {
+    const checkinRow: HistoryRow = { direction: 'out', kind: 'dinner_checkin', body: '¿Qué tal ha salido hoy la cena?\n⟦botones: 👍 | 👎 | No la hice⟧', status: 'sent', createdAt: sentAt }
+    const cases: Array<[string, object, string]> = [
+      ['👍🏻', { cooked: true, rating: 4 }, 'Apuntada la cena: *Merluza en salsa*, y que os gustó.'],
+      ['👍👍 ', { cooked: true, rating: 4 }, 'Apuntada la cena: *Merluza en salsa*, y que os gustó.'],
+      ['👎🏽', { cooked: true, rating: 1 }, 'Apuntada la cena: *Merluza en salsa*. No la vuelvo a poner sola en el menú.'],
+    ]
+    for (const [text, answer, line] of cases) {
+      const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+      const t = setup({ history: [checkinRow], outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin })
+      await processInbound(msg({ text }), t.deps)
+      expect(recordDinnerCheckin, text).toHaveBeenCalledWith('user-1', answer, sentAt)
+      expect(t.chat, text).not.toHaveBeenCalled()
+      expect(t.sent, text).toEqual([{ type: 'text', text: line }])
+      expect(t.inboundUpdates.at(-1), text).toMatchObject({ status: 'processed', meta: { tools: ['log_cooked', 'update_recipe_notes'] } })
+    }
+  })
+
+  it('a typed 👍 that is not answering the check-in stays silent; a reaction never answers', async () => {
+    const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+    const checkinRow: HistoryRow = { direction: 'out', kind: 'dinner_checkin', body: '¿Qué tal la cena?', status: 'sent', createdAt: sentAt }
+    // The household already answered and Mimo replied since (more than 30 min ago).
+    const answered = setup({
+      history: [
+        checkinRow,
+        { direction: 'in', body: 'Riquísima', status: 'processed', createdAt: new Date(sentAt.getTime() + 60_000) },
+        { direction: 'out', kind: 'reply', body: 'Apuntada.', status: 'sent', createdAt: new Date(sentAt.getTime() + 120_000) },
+      ],
+      outboundKinds: new Map([['dinner_checkin', sentAt]]),
+      recordDinnerCheckin,
+    })
+    await processInbound(msg({ text: '👍🏻' }), answered.deps)
+    const reaction = setup({ history: [checkinRow], outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin })
+    await processInbound(msg({ kind: 'unsupported', text: '👍', rawType: 'reaction' }), reaction.deps)
+    for (const t of [answered, reaction]) {
+      expect(t.sent).toEqual([])
+      expect(t.chat).not.toHaveBeenCalled()
+      expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'ignored', errorMessage: 'emoji' })
+    }
+    expect(recordDinnerCheckin).not.toHaveBeenCalled()
+  })
+
+  it('another emoji right after Mimo asked something goes to Mimo, like a «vale»', async () => {
+    const t = setup({ history: [{ direction: 'out', kind: 'reply', body: '¿Te cambio la cena del jueves por merluza?', status: 'sent', createdAt: new Date(NOW.getTime() - 5 * 60_000) }] })
+    await processInbound(msg({ text: '❤️' }), t.deps)
+    expect(t.chat).toHaveBeenCalled()
+  })
+
+  it('checkinReplyIdOfEmoji: 👍 / 👎 with any skin tone, repeated or with «!»; nothing else', () => {
+    expect(['👍', '👍🏻', '👍🏿!', '👍 👍', '👍️'].map(checkinReplyIdOfEmoji)).toEqual(Array(5).fill('checkin:up'))
+    expect(['👎', '👎🏼'].map(checkinReplyIdOfEmoji)).toEqual(['checkin:down', 'checkin:down'])
+    expect(['', '❤️', '👍👎', 'ok 👍', '👌', null].map(checkinReplyIdOfEmoji)).toEqual(Array(6).fill(null))
+  })
+
+  it('no check-in in the last 30 h, or nothing to record that day → Mimo answers as before', async () => {
+    const none = setup({ recordDinnerCheckin: vi.fn(async () => ({ name: 'x' })) })
+    await processInbound(tap('checkin:yes', 'Sí, hecho'), none.deps)
+    expect(none.chat).toHaveBeenCalled()
+    const empty = setup({ outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin: vi.fn(async () => null) })
+    await processInbound(tap('checkin:yes', 'Sí, hecho'), empty.deps)
+    expect(empty.chat).toHaveBeenCalled()
+  })
+})
+
+describe('processInbound — the avisos of 19-nov', () => {
+  const tap = (replyId: string, text: string) => msg({ kind: 'interactive', text, replyId, rawType: 'interactive' })
+
+  it('«Lo hago» under «hora de cocinar»: a fixed line, no model, even with the cap used up', async () => {
+    const t = setup({ budgetExceeded: true })
+    await processInbound(tap('cooking:ok', 'Lo hago'), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([{ type: 'text', text: '¡Genial! Que salga rica la cena.' }])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: 'Lo hago' })
+  })
+
+  it('«Cambia a algo rápido» reaches Mimo as a clear request to swap tonight’s dinner', async () => {
+    const t = setup()
+    await processInbound(tap('cooking:swap', 'Cambia a algo rápido'), t.deps)
+    expect(t.chat).toHaveBeenCalledTimes(1)
+    expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('Cámbiame la cena de hoy por algo rápido')
+  })
+
+  it('«¿Te sigo avisando?» (PRO-1303, one for every aviso): «No» switches them off, «Sí» keeps them; no model', async () => {
+    const setAvisoKind = vi.fn(async () => {})
+    const no = setup({ budgetExceeded: true, extra: { setAvisoKind } })
+    await processInbound(tap('avisos:no:todos', 'No'), no.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'todos', false)
+    expect(no.chat).not.toHaveBeenCalled()
+    expect(no.sent[0].text).toContain('no te mando más esos avisos')
+    const yes = setup({ extra: { setAvisoKind } })
+    await processInbound(tap('avisos:si:todos', 'Sí'), yes.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'todos', true)
+    expect(yes.sent).toEqual([{ type: 'text', text: 'Hecho, te sigo avisando.' }])
+    // A question of one kind sent before PRO-1303 still gets its answer.
+    const old = setup({ extra: { setAvisoKind } })
+    await processInbound(tap('avisos:si:dinner_checkin', 'Sí'), old.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'dinner_checkin', true)
+  })
+
+  it('BAJA: the first time it also asks why, with three buttons; the answer is an opinion, no model', async () => {
+    const saveOptOutReason = vi.fn(async () => {})
+    const first = setup({ extra: { saveOptOutReason } })
+    await processInbound(msg({ text: 'BAJA' }), first.deps)
+    expect(first.setNotify).toHaveBeenCalledWith('user-1', false)
+    expect(first.sent).toHaveLength(1)
+    const m = first.sent[0]
+    expect(m.type).toBe('buttons')
+    expect(m.text).toContain(COPY.stopped)
+    expect(m.type === 'buttons' && m.buttons.map((b) => b.title)).toEqual(['Demasiados mensajes', 'No me sirven', 'Otra cosa'])
+    expect(first.outbound[0]).toMatchObject({ kind: 'optout' })
+
+    const again = setup({ extra: { saveOptOutReason }, outboundKinds: new Map([['optout', new Date(NOW.getTime() - 86_400_000)]]) })
+    await processInbound(msg({ text: 'BAJA' }), again.deps)
+    expect(again.sent).toEqual([{ type: 'text', text: COPY.stopped }])
+
+    const answer = setup({ budgetExceeded: true, extra: { saveOptOutReason } })
+    await processInbound(tap('baja:demasiados', 'Demasiados mensajes'), answer.deps)
+    expect(saveOptOutReason).toHaveBeenCalledWith('user-1', 'demasiados', 'Demasiados mensajes')
+    expect(answer.chat).not.toHaveBeenCalled()
+    expect(answer.sent).toEqual([{ type: 'text', text: 'Gracias, lo apunto.' }])
+  })
+
+  it('a survey goes as a message of its own after the reply, never under the reply’s buttons', async () => {
+    const t = setup({ chatReply: { message: '¿Te cambio la cena? [[opciones: Sí | No]]', survey: 'Una cosa rápida, si te apetece: ¿cómo te sentirías?' } })
+    await processInbound(msg({ text: 'qué cenamos' }), t.deps)
+    expect(t.sent).toHaveLength(2)
+    expect(t.sent[0].type).toBe('buttons')
+    expect(t.sent[0].text).not.toContain('Una cosa rápida')
+    expect(t.sent[1]).toEqual({ type: 'text', text: 'Una cosa rápida, si te apetece: ¿cómo te sentirías?' })
+    expect(t.outbound.map((o) => o.kind)).toEqual(['reply', 'survey'])
+  })
+
+  it('in English for a household that writes in English', async () => {
+    const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+    const sentAt = new Date(NOW.getTime() - 60 * 60 * 1000)
+    const t = setup({ outboundKinds: new Map([['dinner_checkin', sentAt]]), recordDinnerCheckin, extra: { language: async () => 'en' } })
+    await processInbound(tap('checkin:up', '👍'), t.deps)
+    expect(recordDinnerCheckin).toHaveBeenCalledWith('user-1', { cooked: true, rating: 4 }, sentAt)
+    expect(t.sent).toEqual([{ type: 'text', text: 'Noted: *Merluza en salsa*, and that you liked it.' }])
+  })
+})
+
+describe('processInbound — thanks and acknowledgements, no model (18-nov)', () => {
+  const minsAgo = (m: number) => new Date(NOW.getTime() - m * 60 * 1000)
+  const out = (body: string, at: Date, kind = 'reply'): HistoryRow => ({ direction: 'out', kind, body, status: 'sent', createdAt: at })
+
+  it('isCourtesyOnly: thanks / acks in any mix, with emoji or punctuation', () => {
+    for (const t of ['gracias', 'Muchas gracias!!', 'vale', 'Ok', 'OK 👍', 'genial', 'Perfecto, gracias 🙏', 'muy bien', 'Vale, muchas gracias Mimo', 'graciass', 'de acuerdo', 'Mil gracias.']) {
+      expect(isCourtesyOnly(t), t).toBe(true)
+    }
+    for (const t of ['', '👍', 'sí', 'No', 'No, gracias', 'vale, añade leche', 'gracias, ¿y mañana qué toca?', 'muy', 'ok cambia el jueves', 'gracias por nada no']) {
+      expect(isCourtesyOnly(t), t).toBe(false)
+    }
+  })
+
+  it('a «gracias» with no question pending: no reply, no model, kept as ignored', async () => {
+    const t = setup({ history: [out('Hecho:\n- Jueves 15, cena: Merluza', minsAgo(5))] })
+    await processInbound(msg({ text: 'Gracias! 🙏' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([])
+    expect(t.inboundUpdates).toEqual([{ status: 'ignored', userId: 'user-1', errorMessage: 'courtesy' }])
+  })
+
+  it('«vale» right after Mimo asked something, or with its buttons waiting, goes to Mimo', async () => {
+    const asked = setup({ history: [out('¿Te cambio la cena del jueves por merluza?', minsAgo(10))] })
+    await processInbound(msg({ text: 'vale' }), asked.deps)
+    expect(asked.chat).toHaveBeenCalled()
+    const buttons = setup({ history: [out('Te propongo esto.\n⟦botones: Sí | No⟧', minsAgo(10), 'dinner_checkin')] })
+    await processInbound(msg({ text: 'ok' }), buttons.deps)
+    expect(buttons.chat).toHaveBeenCalled()
+  })
+
+  it('a question older than 30 min does not count', () => {
+    expect(awaitsAnswer([out('¿Te lo apunto?', minsAgo(45))], NOW)).toBe(false)
+    expect(awaitsAnswer([out('¿Te lo apunto?', minsAgo(20)), out('Un momento, me pongo con ello…', minsAgo(19), 'ack')], NOW)).toBe(true)
+    expect(awaitsAnswer([], NOW)).toBe(false)
+  })
+})
+
+describe('processInbound — Mimo\'s monthly cap (18-nov)', () => {
+  it('the WhatsApp sign-up (and its first menu) does not count toward the cap; later turns do', async () => {
+    const signup = setup({ link: { ...LINK, onboardingDone: false }, chatReply: { message: 'Listo', toolsUsed: ['complete_onboarding'] } })
+    await processInbound(msg({ text: 'somos 3' }), signup.deps)
+    expect(signup.recordUsage).toHaveBeenCalledWith('user-1', EMPTY_USAGE, { countsTowardBudget: false })
+    const later = setup()
+    await processInbound(msg(), later.deps)
+    expect(later.recordUsage).toHaveBeenCalledWith('user-1', EMPTY_USAGE, { countsTowardBudget: true })
+  })
+
+  it('the turn that crosses 80 % of the cap carries the notice once; the others do not', async () => {
+    const crossing = setup({ spentMicros: 3_900_000, addedMicros: 200_000 })
+    await processInbound(msg(), crossing.deps)
+    expect(crossing.sent.at(-1)?.text.endsWith(BUDGET_WARNING_LINE)).toBe(true)
+    for (const [spent, added] of [[4_100_000, 200_000], [1_000_000, 200_000]]) {
+      const t = setup({ spentMicros: spent, addedMicros: added })
+      await processInbound(msg(), t.deps)
+      expect(t.sent.map((m) => m.text).join('\n')).not.toContain(BUDGET_WARNING_LINE)
+    }
+  })
+})
+
+describe('enqueueInbound — texts sent one after another are one turn (19-nov)', () => {
+  it('«2 adultos» and «Casi a diario» 3 s apart → ONE turn to Mimo, in order; the first is kept out of history (merged)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const t = setup({ link: { ...LINK, onboardingDone: false } })
+      const a = enqueueInbound(msg({ wamid: 'w1', text: '2 adultos' }), t.deps)
+      await vi.advanceTimersByTimeAsync(3_000)
+      const b = enqueueInbound(msg({ wamid: 'w2', text: 'Casi a diario' }), t.deps)
+      await vi.advanceTimersByTimeAsync(COALESCE_WINDOW_MS)
+      await Promise.all([a, b])
+      expect(t.chat).toHaveBeenCalledTimes(1)
+      expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('2 adultos\nCasi a diario')
+      expect(t.inboundUpdates[0]).toMatchObject({ status: 'ignored', errorMessage: 'merged' })
+      expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: '2 adultos\nCasi a diario' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a button or BAJA is never joined: the waiting text goes first as its own turn, then it alone', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const t = setup()
+      const a = enqueueInbound(msg({ wamid: 'w3', text: 'y el jueves pescado' }), t.deps)
+      const b = enqueueInbound(msg({ wamid: 'w4', kind: 'interactive', text: 'Sí', rawType: 'interactive' }), t.deps)
+      const c = enqueueInbound(msg({ wamid: 'w5', text: 'BAJA' }), t.deps)
+      await vi.advanceTimersByTimeAsync(COALESCE_WINDOW_MS)
+      await Promise.all([a, b, c])
+      expect(t.chat.mock.calls.map((call) => (call as unknown[])[1])).toEqual(['y el jueves pescado', 'Sí'])
+      expect(t.setNotify).toHaveBeenCalledWith('user-1', false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('processInbound — PRO-1292: el menú lo lee el código, sin modelo', () => {
+  const recipe = (name: string) => ({ kind: 'recipe', recipeId: `r-${name}`, recipeName: name })
+  const DAY = { lunch: { dishes: [recipe('Lentejas')] }, dinner: { dishes: [recipe('Pollo al horno')] } }
+  const JPEG = Buffer.from('jpeg')
+  // The real recognizer and reply; only the menu tools are fakes.
+  const codeReply = (runSkill: RunSkill): InboundDeps['codeReply'] => async (userId, text) => {
+    const intent = recognizeCodeIntent(text)
+    if (intent?.kind !== 'ver_menu') return null
+    const response = await menuCodeReply(intent, { userId, db: {} }, { runSkill, now: NOW })
+    return response ? { kind: intent.kind, response } : null
+  }
+  const daySkill: RunSkill = async () => ({
+    data: { date: '2026-10-06', weekStart: '2026-10-05', menuId: 'm-1', day: DAY },
+    summary: 'Menu del martes 6 de octubre: comida: Lentejas; cena: Pollo al horno',
+    uiHint: 'menu',
+  })
+
+  it('«¿Qué hay hoy?»: una línea por comida, sin enlaces, sin modelo ni coste, y el rastro para ⟦hecho: …⟧', async () => {
+    const t = setup({ extra: { codeReply: codeReply(daySkill) } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    // No model turn → nothing metered: no chat row in cost_events, nothing toward the monthly cap.
+    expect(t.recordUsage).not.toHaveBeenCalled()
+    expect(t.checkBudget).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([{ type: 'text', text: 'Hoy, martes 6:\n- Comida: Lentejas\n- Cena: Pollo al horno' }])
+    const update = t.inboundUpdates.at(-1)!
+    expect(update).toMatchObject({ status: 'processed', body: '¿Qué hay hoy?', meta: { tools: ['get_todays_menu'], codeReply: 'ver_menu' } })
+    const history = buildChatHistory(
+      [
+        { direction: 'in', body: '¿Qué hay hoy?', status: 'processed', createdAt: new Date(NOW.getTime() - 2000), meta: update.meta },
+        { direction: 'out', kind: 'reply', body: t.outbound[0].body, status: 'sent', createdAt: new Date(NOW.getTime() - 1000) },
+      ],
+      NOW,
+    )
+    expect(history[1].content).toBe(
+      '⟦hecho: get_todays_menu {"day":"hoy"} → Menu del martes 6 de octubre: comida: Lentejas; cena: Pollo al horno⟧\nHoy, martes 6:\n- Comida: Lentejas\n- Cena: Pollo al horno',
+    )
+  })
+
+  it('también con el tope del mes agotado (no gasta)', async () => {
+    const t = setup({ budgetExceeded: true, extra: { codeReply: codeReply(daySkill) } })
+    await processInbound(msg({ text: 'qué cenamos hoy' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: 'Hoy, martes 6:\n- Cena: Pollo al horno' }])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  it('«mándame el menú»: la imagen de la semana, como siempre', async () => {
+    const days = [DAY, {}, {}, {}, {}, {}, {}]
+    const weekSkill: RunSkill = async () => ({ data: { menuId: 'm-1', weekStart: '2026-10-05', days, skippedDays: [] }, summary: 'Menu de la semana…', uiHint: 'menu' })
+    const menuImage = vi.fn(async () => ({ jpeg: JPEG, caption: 'Tu menú de esta semana 🍽️\nona.test/menu' }))
+    const t = setup({ menuImage, menuDigest: async () => 'digest', extra: { codeReply: codeReply(weekSkill) } })
+    await processInbound(msg({ text: 'Mándame el menú' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(menuImage).toHaveBeenCalledWith('user-1', 'm-1', 'viewing')
+    expect(t.sent).toHaveLength(1)
+    expect(t.sent[0]).toMatchObject({ type: 'image', text: 'Tu menú de esta semana 🍽️\nona.test/menu' })
+  })
+
+  it('«¿qué hay hoy? y cámbiame el jueves» va al modelo, como hoy', async () => {
+    const runSkill = vi.fn(daySkill)
+    const t = setup({ extra: { codeReply: codeReply(runSkill) } })
+    await processInbound(msg({ text: '¿qué hay hoy? y cámbiame el jueves' }), t.deps)
+    expect(runSkill).not.toHaveBeenCalled()
+    expect(t.chat).toHaveBeenCalledOnce()
+    expect(t.recordUsage).toHaveBeenCalledOnce()
+  })
+
+  it('sin menú guardado contesta el modelo (puede ofrecer hacerlo)', async () => {
+    const t = setup({ extra: { codeReply: codeReply(async () => ({ data: null, summary: 'No hay menu', uiHint: 'text' })) } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), t.deps)
+    expect(t.chat).toHaveBeenCalledOnce()
+  })
+
+  it('en el alta por WhatsApp, y a quien escribe en inglés, contesta el modelo', async () => {
+    const runSkill = vi.fn(daySkill)
+    const signup = setup({ link: { ...LINK, onboardingDone: false }, extra: { codeReply: codeReply(runSkill) } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), signup.deps)
+    expect(signup.chat).toHaveBeenCalledOnce()
+    expect(runSkill).not.toHaveBeenCalled()
+    const english = setup({ extra: { codeReply: codeReply(runSkill), language: async () => 'en' } })
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), english.deps)
+    expect(english.chat).toHaveBeenCalledOnce()
+    expect(english.sent.every((m) => m.type !== 'text' || !m.text.startsWith('Hoy, '))).toBe(true)
+  })
+})
+
+describe('processInbound — PRO-1302: con el tope agotado, lo que no gasta sigue funcionando', () => {
+  const DAY = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-1', recipeName: 'Lentejas' }] } }
+  const daySkill: RunSkill = async (name) =>
+    name === 'get_shopping_list'
+      ? { data: { listId: 'l-1', items: [{ name: 'Leche', aisle: 'lacteos', quantity: 1, unit: 'L', checked: false, inStock: false }] }, summary: 'Te faltan 1 cosas: Leche.', uiHint: 'shopping_list' }
+      : { data: { date: '2026-10-06', weekStart: '2026-10-05', menuId: 'm-1', day: DAY }, summary: 'Menu del martes', uiHint: 'menu' }
+  const codeReply: InboundDeps['codeReply'] = async (userId, text) => {
+    const intent = recognizeCodeIntent(text)
+    if (intent?.kind === 'ver_lista') {
+      const response = await listCodeReply({ userId, db: {}, channel: 'whatsapp' }, { runSkill: daySkill })
+      return response ? { kind: intent.kind, response } : null
+    }
+    if (intent?.kind !== 'ver_menu') return null
+    const response = await menuCodeReply(intent, { userId, db: {} }, { runSkill: daySkill, now: NOW })
+    return response ? { kind: intent.kind, response } : null
+  }
+  /** One household over the cap, with its `cap_hits` mark kept across messages (like the real table). */
+  function capped(extra: Partial<InboundDeps> = {}, history: HistoryRow[] = []) {
+    let told = false
+    const noteCap = vi.fn(async () => {
+      if (told) return false
+      told = true
+      return true
+    })
+    const checkBudget = vi.fn(async () => ({ exceeded: true, budgetMicros: 6_000_000, spentMicros: 6_100_000, cap: 'asistente' as const, told }))
+    const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+    const t = setup({
+      history,
+      outboundKinds: new Map([['dinner_checkin', new Date(NOW.getTime() - 3_600_000)]]),
+      recordDinnerCheckin,
+      extra: { checkBudget, noteCap, codeReply, ...extra },
+    })
+    return { ...t, noteCap, budget: checkBudget }
+  }
+  const notice = capNoticeWhatsApp(6, WEB)
+
+  it('un botón y «¿qué hay hoy?» contestan; una petición al modelo recibe el aviso una sola vez', async () => {
+    const t = capped()
+    await processInbound(msg({ kind: 'interactive', text: 'Sí, hecho', replyId: 'checkin:yes', rawType: 'interactive' }), t.deps)
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), t.deps)
+    await processInbound(msg({ text: 'la lista de la compra' }), t.deps)
+    expect(t.sent.map((m) => m.text)).toEqual([
+      'Apuntada la cena: *Merluza en salsa*.',
+      'Hoy, martes 6:\n- Comida: Lentejas',
+      expect.stringContaining('*Tu lista de la compra* · 1 cosa'),
+    ])
+    await processInbound(msg({ text: 'Cámbiame la cena del jueves' }), t.deps)
+    await processInbound(msg({ text: '¿Y algo con pescado?' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.slice(3)).toEqual([{ type: 'text', text: notice }])
+    expect(t.noteCap).toHaveBeenCalledOnce()
+    expect(t.inboundUpdates.slice(-2).map((u) => u.errorMessage)).toEqual(['over_cap', 'over_cap_told'])
+  })
+
+  it('el aviso dice qué sigue funcionando y dónde ver el menú y la lista', () => {
+    expect(notice).toContain('6 €')
+    expect(notice).toContain('los botones de mis avisos, «¿qué hay hoy?», «mándame el menú» y «la lista de la compra»')
+    expect(notice).toContain(`Menú: ${WEB}/menu`)
+    expect(notice).toContain(`Lista: ${WEB}/shopping`)
+    expect(capNoticeWhatsApp(6, WEB, 'en')).toContain(`${WEB}/shopping`)
+  })
+
+  it('el turno que llega al tope se termina entero y lleva el aviso al final (no el del 80 %)', async () => {
+    const noteCap = vi.fn(async () => true)
+    const t = setup({ spentMicros: 4_900_000, addedMicros: 200_000, chatReply: { message: 'Hoy toca crema de calabaza.' }, extra: { noteCap } })
+    await processInbound(msg(), t.deps)
+    expect(t.chat).toHaveBeenCalledOnce()
+    expect(t.sent.at(-1)?.text).toBe(`Hoy toca crema de calabaza.\n\n${capNoticeWhatsApp(5, WEB)}`)
+    expect(t.sent.map((m) => m.text).join('\n')).not.toContain(BUDGET_WARNING_LINE)
+    expect(noteCap).toHaveBeenCalledWith('user-1', { cap: 'asistente', spentMicros: 5_100_000, budgetMicros: 5_000_000 })
+  })
+
+  it('si ese turno pregunta algo, la respuesta lo termina (una vez) y entonces va el aviso', async () => {
+    const asking = setup({ spentMicros: 4_900_000, addedMicros: 200_000, chatReply: { message: '¿Te cambio el jueves por merluza?' }, extra: { noteCap: vi.fn(async () => true) } })
+    await processInbound(msg({ text: 'Cámbiame el jueves' }), asking.deps)
+    expect(asking.sent).toEqual([{ type: 'text', text: '¿Te cambio el jueves por merluza?' }])
+    expect(asking.deps.noteCap).not.toHaveBeenCalled()
+
+    const question: HistoryRow = { direction: 'out', kind: 'reply', body: '¿Te cambio el jueves por merluza?', status: 'sent', createdAt: new Date(NOW.getTime() - 60_000) }
+    const t = capped({ chat: vi.fn(async () => ({ message: 'Hecho: el jueves, merluza en salsa.', actionTaken: true, usage: EMPTY_USAGE })) }, [question])
+    await processInbound(msg({ text: 'sí' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: `Hecho: el jueves, merluza en salsa.\n\n${notice}` }])
+    expect(t.noteCap).toHaveBeenCalledOnce()
+    // Only once: the next one (even answering another question) is the cap.
+    await processInbound(msg({ text: 'y el viernes también' }), t.deps)
+    expect(t.deps.chat).toHaveBeenCalledOnce()
+    expect(t.sent).toHaveLength(1)
+  })
+
+  it('sin la marca del mes (Telegram, o no se sabe), el aviso va como antes', async () => {
+    const t = setup({ budgetExceeded: true })
+    await processInbound(msg(), t.deps)
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: capNoticeWhatsApp(5, WEB) }, { type: 'text', text: capNoticeWhatsApp(5, WEB) }])
   })
 })

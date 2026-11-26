@@ -41,7 +41,7 @@ const DAY = 86_400_000
  * (Miguel, `/ona-dia` 2026-10-21) changed only where to remove a «Me
  * apetece»: «Lo que recuerdo de ti» is no longer a screen in Perfil (PRO-318
  * folded it into «Tu ficha»), so the path is the one the web shows today
- * (`app/profile/page.tsx` → `FichaHubCard` «Tu ficha» → `app/profile/ficha`
+ * (`app/profile/page.tsx` → the strip's «Tu ficha» link → `app/profile/ficha`
  * «Editar mis datos uno a uno» → `/profile/memoria`, section «Afina tu menú»
  * of `TasteMemorySection`, with «Olvidar»).
  */
@@ -242,7 +242,11 @@ export function noticesContextBlock(rows: Array<Pick<NoticeRow, 'userId' | 'crea
   const since = now.getTime() - NOTICE_CONTEXT_DAYS * DAY
   const day = (d: Date) => madridParts(d).isoDate
   const lines: string[] = []
-  for (const r of rows) {
+  // PRO-393: the query has no ORDER BY and Postgres moves a row it updates, so
+  // the same notices could come in another order and rewrite Mimo's cached
+  // context and history. Always by key, then by date.
+  const ordered = [...rows].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()))
+  for (const r of ordered) {
     const d = noticeDeliveries(r, now)
     const sent = [d.whatsappAt, d.appAt].filter((x): x is Date => !!x && x.getTime() <= now.getTime())
     if (!sent.length || !sent.some((x) => x.getTime() >= since)) continue

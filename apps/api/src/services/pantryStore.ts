@@ -19,7 +19,7 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { db as defaultDb } from '../db/connection.js'
 import { pantryItems, recipeIngredients, recipes, ingredients } from '../db/schema.js'
 import { getPrimaryHouseholdId } from './scopeResolver.js'
-import type { Aisle, BuyableUnit, PantryLocation } from '@ona/shared'
+import type { BuyableUnit, PantryLocation } from '@ona/shared'
 import { isPantryLocation } from '@ona/shared'
 
 type Db = typeof defaultDb

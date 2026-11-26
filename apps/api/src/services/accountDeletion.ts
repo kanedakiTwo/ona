@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { forgetNewsletterSends } from './newsletter.js'
+import { ensureErasureLog, recordErasure } from './erasureLog.js'
 import {
   adminAuditLog,
   householdMembers,
@@ -34,6 +35,9 @@ import {
  * Also removed: WhatsApp messages from the linked phone (incl. those sent
  * before linking), image files on the volume for deleted recipes/photos, and
  * the newsletter's send traces for the account's email (PRO-132).
+ *
+ * The id and the date go to the erasure log (PRO-1122), so a restored backup
+ * deletes the account again before the service opens.
  */
 
 export class AdminAccountDeletionError extends Error {
@@ -68,7 +72,7 @@ export function localImagePath(
 
 export async function deleteAccount(
   userId: string,
-  deps: { db?: any; removeFile?: (path: string) => Promise<void> } = {},
+  deps: { db?: any; removeFile?: (path: string) => Promise<void>; at?: Date } = {},
 ): Promise<DeletionSummary> {
   const db = deps.db ?? defaultDb
   const removeFile = deps.removeFile ?? ((p: string) => unlink(p))
@@ -83,6 +87,7 @@ export async function deleteAccount(
   if (audited) throw new AdminAccountDeletionError()
 
   const filesToRemove: string[] = []
+  await ensureErasureLog(db)
 
   const summary = await db.transaction(async (tx: any) => {
     // 1. Households the user belongs to: hand over or delete.
@@ -155,6 +160,7 @@ export async function deleteAccount(
     // 5. Households nobody is left in, then the user (cascades the rest).
     if (deadHouseholds.length > 0) await tx.delete(households).where(inArray(households.id, deadHouseholds))
     await tx.delete(users).where(eq(users.id, userId))
+    await recordErasure(tx, 'account', userId, deps.at)
 
     return {
       recipesDeleted: recipeIds.length,

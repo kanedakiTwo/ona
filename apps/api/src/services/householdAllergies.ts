@@ -17,11 +17,13 @@
  *
  * Spec: specs/household.md → «Alergias y dieta al entrar en una casa».
  */
-import { inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { isHealthConsentActive } from '@ona/shared'
 import { db as defaultDb } from '../db/connection.js'
-import { userMemories, users } from '../db/schema.js'
+import { profileFacts, userMemories, users } from '../db/schema.js'
 import { mergeRestrictions } from './dietaryRestrictions.js'
+import { menuOnlyRestrictions } from './menuOnlyRestrictions.js'
+import { getPrimaryHouseholdId } from './scopeResolver.js'
 import { householdMemberIds } from './tasteStore.js'
 
 /** `GET /households/me/allergies` (mirrored in the web's `HouseholdAllergiesNotice`). */
@@ -111,12 +113,53 @@ export function unionMemberRestrictions(members: readonly Pick<AllergyMember, 'r
 }
 
 /**
+ * Pure (PRO-1203): the allergies and diets of the people without an account
+ * («Quién come», Mimo's «apunta que la pequeña…»): their ficha facts of type
+ * `restrictions` in force (active, no end date or not reached).
+ */
+export function personRestrictionsInForce(
+  facts: readonly { value: unknown; status: string; validUntil: Date | null }[],
+  now: Date = new Date(),
+): string[] {
+  const all: string[] = []
+  for (const f of facts) {
+    if (f.status !== 'active' || (f.validUntil && f.validUntil.getTime() <= now.getTime())) continue
+    if (Array.isArray(f.value)) for (const r of f.value) if (typeof r === 'string') all.push(r)
+  }
+  return mergeRestrictions(all)
+}
+
+/** The people without an account of the user's household (PRO-1203). */
+export async function loadPersonRestrictions(userId: string, db: typeof defaultDb = defaultDb): Promise<string[]> {
+  const householdId = await getPrimaryHouseholdId(userId, db)
+  if (!householdId) return []
+  const facts = await db
+    .select({ value: profileFacts.value, status: profileFacts.status, validUntil: profileFacts.validUntil })
+    .from(profileFacts)
+    .where(and(
+      eq(profileFacts.householdId, householdId),
+      isNotNull(profileFacts.subjectPersonId),
+      eq(profileFacts.type, 'restrictions'),
+      eq(profileFacts.status, 'active'),
+    ))
+  return personRestrictionsInForce(facts)
+}
+
+/**
  * Everyone's allergies and diets in the household, for the weekly menu: the
  * owner generating the week must not bring back the shrimp a member said
- * they're allergic to.
+ * they're allergic to. Since PRO-1203 also the people without an account
+ * (a read error of those keeps the members': it never drops theirs).
  */
 export async function loadHouseholdRestrictions(userId: string, db: typeof defaultDb = defaultDb): Promise<string[]> {
-  return unionMemberRestrictions(await loadMembers(userId, db))
+  const [members, persons] = await Promise.all([
+    loadMembers(userId, db),
+    loadPersonRestrictions(userId, db).catch((err) => {
+      console.warn('[household-restrictions] people without an account:', (err as Error)?.message ?? err)
+      return [] as string[]
+    }),
+  ])
+  return mergeRestrictions([...unionMemberRestrictions(members), ...persons])
 }
 
 /**
@@ -124,7 +167,9 @@ export async function loadHouseholdRestrictions(userId: string, db: typeof defau
  * plus every other member's, for every path that picks a recipe for the
  * household's menu — the weekly generator, «Cambiar al azar», adding a meal,
  * regenerating one dish and Mimo's `swap_meal`. A read error of the household
- * keeps the owner's own (never fails the pick).
+ * keeps the owner's own (never fails the pick). PRO-1041: plus the allergies
+ * said to Mimo and not saved, while Mimo generates a menu with them
+ * (`withMenuOnlyRestrictions`).
  */
 export async function withHouseholdRestrictions(
   own: readonly string[],
@@ -132,5 +177,5 @@ export async function withHouseholdRestrictions(
   db: typeof defaultDb = defaultDb,
   load: (userId: string, db: typeof defaultDb) => Promise<string[]> = loadHouseholdRestrictions,
 ): Promise<string[]> {
-  return mergeRestrictions([...own, ...(await load(userId, db).catch(() => [] as string[]))])
+  return mergeRestrictions([...own, ...(await load(userId, db).catch(() => [] as string[])), ...menuOnlyRestrictions()])
 }

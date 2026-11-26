@@ -3,6 +3,7 @@
  * in «Elegir otra receta». The picker loaded one page of the catalogue (the
  * API caps it at 100 of ~390; the newest come last) and searched inside it.
  * With more than 100 recipes, searching the picker must find the newest one.
+ * 2026-11-25: and without accents, in any word order (specs/recipes.md).
  */
 
 import { test, expect } from '@playwright/test'
@@ -57,7 +58,7 @@ test('«Elegir otra receta» finds a recipe beyond the first 100', async ({ page
     )
     for (const r of res) expect(r.status(), await r.text()).toBe(201)
   }
-  const target = `Butifarra de prueba ${tag}`
+  const target = `Butifarra de prueba con judías ${tag}`
   expect((await create(target)).status()).toBe(201)
 
   const page1 = await page.request.get(`${API}/recipes?perPage=100&fitsMe=1`, { headers })
@@ -77,12 +78,17 @@ test('«Elegir otra receta» finds a recipe beyond the first 100', async ({ page
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
   await hero.getByRole('button', { name: /más opciones/i }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
 
   const picker = page.getByRole('dialog').filter({ hasText: 'Cambiar plato' })
   await expect(picker.locator('ul li').first()).toBeVisible({ timeout: 15_000 })
   await picker.getByPlaceholder('Buscar receta…').fill(`butifarra de prueba ${tag}`)
   // A row of the list (the «Usar "…" como plato» button also holds the text).
+  await expect(picker.locator('ul li').filter({ hasText: target })).toBeVisible({ timeout: 15_000 })
+  await expect(picker.getByText(/sin resultados/i)).toHaveCount(0)
+
+  // 2026-11-25: without the accent, with the words in another order.
+  await picker.getByPlaceholder('Buscar receta…').fill(`JUDIAS ${tag} butifarra`)
   await expect(picker.locator('ul li').filter({ hasText: target })).toBeVisible({ timeout: 15_000 })
   await expect(picker.getByText(/sin resultados/i)).toHaveCount(0)
 })

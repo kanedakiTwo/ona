@@ -16,6 +16,7 @@ import {
   type GrowthMenuWeek,
 } from '../services/growthReport.js'
 import { USAGE_DEFINITIONS } from '../services/usageReport.js'
+import { addDays } from '../services/madridTime.js'
 
 // Madrid is UTC+2 until 2026-10-25 and UTC+1 after: these instants stay on the same Madrid day.
 const ev = (householdId: string, name: string, day: string, time = '10:00:00'): GrowthEvent => ({ householdId, name, day, at: `${day}T${time}Z` })
@@ -58,6 +59,58 @@ describe('buildGrowth: first hit', () => {
 
   it('first menu is not nested: each step counts on its own', () => {
     expect(c.firstMenu).toEqual({ eligible: 4, reached: 2, reachedInOpenWindow: 0 })
+  })
+})
+
+describe('buildGrowth: the two halves of the first hit (PRO-1148)', () => {
+  // Signup Monday 2026-10-05; today 2026-11-04 → every window is over.
+  const signups = ['cooks', 'ticks', 'both', 'neither'].map((householdId) => ({ householdId, at: '2026-10-05T09:00:00Z' }))
+  const events = [
+    ev('cooks', 'meal_cooked', '2026-10-06'),
+    ev('ticks', 'shopping_item_checked', '2026-10-07'),
+    ev('both', 'cook_mode_started', '2026-10-06'),
+    ev('both', 'shopping_list_shared', '2026-10-08'),
+    ev('neither', 'menu_generated', '2026-10-05'),
+  ]
+  const [c] = buildGrowth(input({ signups, events }))
+
+  it('one that only cooks counts in firstHitCooked, not in firstHit', () => {
+    const [only] = buildGrowth(input({ signups: signups.slice(0, 1), events }))
+    expect(only.firstHitCooked).toEqual({ eligible: 1, reached: 1, reachedInOpenWindow: 0 })
+    expect(only.firstHitList).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+    expect(only.firstHit).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+  })
+
+  it('one that only ticks the list counts in firstHitList, not in firstHit', () => {
+    const [only] = buildGrowth(input({ signups: signups.slice(1, 2), events }))
+    expect(only.firstHitList).toEqual({ eligible: 1, reached: 1, reachedInOpenWindow: 0 })
+    expect(only.firstHitCooked).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+    expect(only.firstHit).toEqual({ eligible: 1, reached: 0, reachedInOpenWindow: 0 })
+  })
+
+  it('one that does both counts in all three', () => {
+    const [only] = buildGrowth(input({ signups: signups.slice(2, 3), events }))
+    expect(only.firstHit.reached).toBe(1)
+    expect(only.firstHitCooked.reached).toBe(1)
+    expect(only.firstHitList.reached).toBe(1)
+  })
+
+  it('same eligible households as firstHit', () => {
+    expect(c.signups).toBe(4)
+    expect(c.firstHit).toEqual({ eligible: 4, reached: 1, reachedInOpenWindow: 0 })
+    expect(c.firstHitCooked).toEqual({ eligible: 4, reached: 2, reachedInOpenWindow: 0 })
+    expect(c.firstHitList).toEqual({ eligible: 4, reached: 2, reachedInOpenWindow: 0 })
+  })
+
+  it('inside an open window they go to reachedInOpenWindow', () => {
+    const [open] = buildGrowth(input({ signups: signups.slice(2, 3), events, now: new Date('2026-10-09T11:00:00Z') }))
+    expect(open.firstHitCooked).toEqual({ eligible: 0, reached: 0, reachedInOpenWindow: 1 })
+    expect(open.firstHitList).toEqual({ eligible: 0, reached: 0, reachedInOpenWindow: 1 })
+  })
+
+  it('their definition is in GROWTH_DEFINITIONS', () => {
+    expect(GROWTH_DEFINITIONS.growth).toContain('firstHitCooked')
+    expect(GROWTH_DEFINITIONS.growth).toContain('firstHitList')
   })
 })
 
@@ -123,6 +176,36 @@ describe('two weeks in a row', () => {
       ['2026-10-05', { eligible: 2, reached: 1, reachedInOpenWindow: 0 }],
       ['2026-10-19', { eligible: 0, reached: 0, reachedInOpenWindow: 1 }],
     ])
+  })
+})
+
+describe('two weeks in a row: the Thursday autopilot (PRO-1208)', () => {
+  // Signup Wednesday 2026-10-07; the autopilot makes the weeks of 10-12 and 10-19 on the Thursdays before.
+  const day0 = '2026-10-07'
+  const mine = menu('h', '2026-10-12', '2026-10-11T19:00:00Z')
+  const pilot = (seen: string | null): GrowthMenuWeek => ({ householdId: 'h', week: '2026-10-19', firstCreatedAt: null, autoplanSeenAt: seen })
+
+  it('a week only the autopilot made, never seen → not ready', () => {
+    expect(hasTwoWeeksInARow(day0, [mine, pilot(null)])).toBe(false)
+  })
+
+  it('seen or changed before its Monday → ready', () => {
+    expect(hasTwoWeeksInARow(day0, [mine, pilot('2026-10-17T10:00:00Z')])).toBe(true)
+  })
+
+  it('seen only on Monday (00:30 Madrid) → not ready', () => {
+    expect(hasTwoWeeksInARow(day0, [mine, pilot('2026-10-18T22:30:00Z')])).toBe(false)
+  })
+
+  it('in the cohort: a household whose weeks only the autopilot made does not count', () => {
+    const signups = ['pilotOnly', 'seen'].map((householdId) => ({ householdId, at: `${day0}T09:00:00Z` }))
+    const weeks = ['2026-10-12', '2026-10-19']
+    const menus: GrowthMenuWeek[] = [
+      ...weeks.map((week) => ({ householdId: 'pilotOnly', week, firstCreatedAt: null, autoplanSeenAt: null })),
+      ...weeks.map((week) => ({ householdId: 'seen', week, firstCreatedAt: null, autoplanSeenAt: `${addDays(week, -2)}T10:00:00Z` })),
+    ]
+    const [c] = buildGrowth(input({ signups, menus }))
+    expect(c.twoWeeks).toEqual({ eligible: 2, reached: 1, reachedInOpenWindow: 0 })
   })
 })
 

@@ -78,7 +78,7 @@ describe('mimo_skill_used (PRO-1022)', () => {
 
   it('also goes with the tools that have their own event', () => {
     expect(skillUsageEvents('generate_weekly_menu', { data: {} }, 'web')).toEqual([
-      { name: 'menu_generated' },
+      { name: 'menu_generated', props: { mealsOut: 0, guests: 0, fridge: 0 } },
       { name: 'mimo_skill_used', props: { skill: 'generate_weekly_menu', canal: 'web' } },
     ])
     expect(skillUsageEvents('generate_weekly_menu', { data: null }, 'web')).toEqual([])

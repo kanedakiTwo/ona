@@ -41,10 +41,19 @@ export function detectSocialPlatform(input: string): SocialPlatform | null {
 export const SOCIAL_SCREENSHOT_MESSAGE =
   'No he podido leer la receta de este vídeo; mándame una captura'
 
+/**
+ * PRO-1301: why, so Mimo can say it in one sentence: the post didn't open
+ * (private, login wall: `private`) or it opened without the recipe written
+ * in its text (`no_text`).
+ */
+export type SocialFailReason = 'private' | 'no_text'
+
 export class SocialCaptionUnavailableError extends NeedsScreenshotError {
-  constructor() {
+  reason: SocialFailReason
+  constructor(reason: SocialFailReason = 'no_text') {
     super(SOCIAL_SCREENSHOT_MESSAGE)
     this.name = 'SocialCaptionUnavailableError'
+    this.reason = reason
   }
 }
 
@@ -164,7 +173,7 @@ export async function extractSocialRecipe(
     html = await fetcher(url)
   } catch (err) {
     // Login walls, 4xx/5xx, non-HTML answers: same plan B as an empty caption.
-    if (err instanceof PageFetchError) throw new SocialCaptionUnavailableError()
+    if (err instanceof PageFetchError) throw new SocialCaptionUnavailableError('private')
     throw err
   }
 

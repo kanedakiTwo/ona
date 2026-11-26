@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import Link from "next/link"
 import { SignupCtaLink, WaitlistOnly } from "@/components/shared/SignupCta"
+import { PLANS, PLAN_HOUSEHOLD, TRIAL_DAYS, euros, planByKey, type PlanKey } from "@ona/shared"
 import { motion, useScroll, useTransform, useInView } from "motion/react"
 import { ArrowUpRight, Plus, Minus } from "lucide-react"
 
@@ -12,6 +13,12 @@ const STEP1_IMG = "/landing/step-01.jpg"
 const STEP2_IMG = "/landing/step-02.jpg"
 const STEP3_IMG = "/landing/step-03.jpg"
 
+/** «4,99 € al mes (o 49,99 € al año)», from `PLANS` (PRO-394: never by hand). */
+function priceLine(key: PlanKey): string {
+  const { mensual, anual } = planByKey(key).prices
+  return `${euros(mensual.cents)} al mes (o ${euros(anual.cents)} al año)`
+}
+
 const FAQS = [
   {
     q: "¿Puedo añadir mis propias recetas?",
@@ -19,7 +26,7 @@ const FAQS = [
   },
   {
     q: "¿Cuánto cuesta?",
-    a: "Esencial, 4,99 € al mes (o 49,99 € al año), para todo tu hogar; Plus, 8,99 € al mes (o 59,99 € al año), añade la voz y los avisos de Mimo por WhatsApp. Empiezas con 14 días gratis con todo, sin tarjeta. Lo tienes todo en Precios.",
+    a: `Esencial, ${priceLine("esencial")}, para todo tu hogar; Plus, ${priceLine("plus")}, añade la voz y los avisos de Mimo por WhatsApp. Empiezas con 14 días gratis con todo, sin tarjeta. Lo tienes todo en Precios.`,
   },
   {
     q: "¿Puedo cambiar platos del menú generado?",
@@ -36,6 +43,7 @@ export default function ComoFuncionaPage() {
     <div className="bg-[#FAF6EE] grain-subtle">
       <Hero />
       <Steps />
+      <Prices />
       <Faq />
       <CTA />
     </div>
@@ -68,10 +76,11 @@ function Steps() {
   const steps = [
     {
       num: "01",
-      eyebrow: "Cinco preguntas",
+      eyebrow: "Tres o cuatro preguntas",
       title: "Cuéntale tus gustos.",
-      desc: "Cinco preguntas conversacionales: para cuántos cocinas, cuánto cocinas a la semana, si tienes alguna restricción, tres platos que te encanten, y qué te importa más (rapidez, variedad, salud, ahorro).",
-      detail: "No formularios largos, no datos opcionales por todas partes. Cinco preguntas que el asistente te hace en orden. Cada una en una pantalla. Antes de minuto y medio terminas y ves tu primer menú.",
+      desc: "Para cuántos cocinas, cómo cocináis en casa, cuánto tiempo tenéis entre semana y si hay alergias. Cada una en una pantalla, y al terminar ves tu primer menú.",
+      // PRO-1190: the rest of the old line («Cinco preguntas…», «minuto y medio») is in `desc` now or no longer true.
+      detail: "No formularios largos, no datos opcionales por todas partes.",
       img: STEP1_IMG,
     },
     {
@@ -162,6 +171,55 @@ function StepRow({
         </div>
       </motion.div>
     </div>
+  )
+}
+
+/**
+ * The prices (PRO-1190): where the landing's «Ver planes» lands
+ * (`/como-funciona#precios`). Legal, 2026-11-08: next to «Empiezas gratis»,
+ * what you pay for and what Gratis leaves out, one click away. Figures from
+ * `PLANS`, never by hand (PRO-394).
+ */
+function Prices() {
+  return (
+    <section id="precios" data-testid="como-funciona-precios" className="scroll-mt-24 bg-[#FAF6EE] py-24 md:py-32">
+      <div className="public-container">
+        <div className="text-eyebrow mb-4">Precios</div>
+        <h2 className="text-editorial-lg mb-6">
+          Lo que <span className="font-italic italic">cuesta</span>.
+        </h2>
+        <p className="mb-16 max-w-xl text-base leading-relaxed text-[#4A4239]">
+          Empiezas con {TRIAL_DAYS} días gratis con todo, sin tarjeta. Precios con IVA, {PLAN_HOUSEHOLD}.
+        </p>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {PLANS.map((plan) => (
+            <div
+              key={plan.key}
+              data-testid={`como-funciona-plan-${plan.key}`}
+              className={`flex flex-col rounded-[24px] border p-8 ${
+                plan.featured ? "border-[#2D6A4F] bg-[#F2EDE0]" : "border-[#DDD6C5]"
+              }`}
+            >
+              <div className="font-display text-2xl text-[#1A1612]">{plan.name}</div>
+              <div className="mt-4 text-base font-medium text-[#1A1612]" data-testid={`como-funciona-price-${plan.key}`}>
+                {plan.prices ? `${plan.prices.mensual.label} · ${plan.prices.anual.label}` : "0 €, sin tarjeta"}
+              </div>
+              <p className="mt-4 text-sm leading-relaxed text-[#4A4239]">{plan.tagline}</p>
+              {plan.prices === null && (
+                <p className="mt-4 text-sm leading-relaxed text-[#7A7066]" data-testid="como-funciona-gratis-leaves-out">
+                  {plan.leavesOut}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <Link href="/precios" className="link-reveal mt-12 inline-block text-sm font-medium text-[#1A1612]">
+          Todo lo que incluye cada plan, en Precios
+        </Link>
+      </div>
+    </section>
   )
 }
 

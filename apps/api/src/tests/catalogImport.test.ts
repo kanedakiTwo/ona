@@ -109,6 +109,7 @@ function fakeDeps(over: Partial<CatalogImportDeps> = {}) {
       return rewriteFor(d, HOUSE_STEPS[d.name])
     },
     matchIngredients: async (_n, ings) => ings.map((i, k) => ({ ingredientId: `ing-${k}`, name: i.name, quantity: i.quantity, unit: i.unit as any, unitWeight: i.unit === 'u' ? 60 : null })),
+    findIngredientIds: async (names) => names.map(() => null),
     persistDraft: async (input) => {
       saved.push(input)
       return { ok: true, recipeId: `r${saved.length}` }
@@ -146,6 +147,45 @@ describe('import of three pages (PRO-154)', () => {
     expect(saved[0].internalTags).toEqual(expect.arrayContaining(['catalogo-tanda', 'proteina:legumbre', 'tecnica:sofreir', 'cocina:espanola', 'tipo:guiso']))
     expect(saved[0]).toMatchObject({ prepTime: 20, cookTime: 20, course: 'main', difficulty: 'easy' })
     expect(saved[0].steps[0].ingredientRefs).toEqual(['ing_0'])
+  })
+
+  it('«Cocinar ahora»: the marks travel to persistDraft, substitutes as catalogue ids', async () => {
+    const lines: string[] = []
+    const asked: string[][] = []
+    const { deps, saved } = fakeDeps({
+      findIngredientIds: async (names) => {
+        asked.push(names)
+        return names.map((n) => (n === 'leche' ? 'ing-leche' : null))
+      },
+      log: (l) => lines.push(l),
+    })
+    const page = PAGES[0]
+    const marked = {
+      ...page,
+      ingredients: page.ingredients.map((ing, k) =>
+        k === 0 ? { ...ing, role: 'essential' as const } : k === 1 ? { ...ing, role: 'secondary' as const, substitutes: ['leche', 'bebida de unicornio'] } : ing,
+      ),
+    }
+    await importCatalogBatch([marked], 't', deps)
+    expect(saved).toHaveLength(1)
+    const ings = saved[0].ingredients
+    expect(ings[0]).toMatchObject({ role: 'essential', substituteIngredientIds: [] })
+    expect(ings[1]).toMatchObject({ role: 'secondary', substituteIngredientIds: ['ing-leche'] })
+    expect(ings[2]).toMatchObject({ role: null, substituteIngredientIds: [] })
+    expect(asked).toEqual([['leche', 'bebida de unicornio']])
+    expect(lines.some((l) => l.includes('sustituto sin casar: bebida de unicornio'))).toBe(true)
+  })
+
+  it('a recipe without substitutes never asks the catalogue for them', async () => {
+    let calls = 0
+    const { deps } = fakeDeps({
+      findIngredientIds: async (names) => {
+        calls++
+        return names.map(() => null)
+      },
+    })
+    await importCatalogBatch([PAGES[0]], 't', deps)
+    expect(calls).toBe(0)
   })
 
   it('a rewrite that keeps copying the book is rejected and never saved', async () => {
@@ -201,7 +241,9 @@ describe('words of the rewrite that read as unlisted ingredients', () => {
 
   it('strayDietWords: what the rewrite names and neither the ingredients nor the source do', () => {
     const names = AUBERGINE.ingredients.map((i) => i.name)
-    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne con una cuchara y mézclala con el yogur.']), names)).toEqual(['carne'])
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la pulpa y mézclala con el yogur y un poco de mantequilla.']), names)).toEqual(['mantequilla'])
+    // PRO-401: the aubergine's flesh is not meat.
+    expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne con una cuchara y mézclala con el yogur.']), names)).toEqual([])
     expect(strayDietWords(AUBERGINE.sourceSteps, rewriteFor(AUBERGINE, ['Saca la carne de la berenjena y mézclala con el yogur.']), names)).toEqual([])
     // Already in the source: not the rewrite's doing.
     expect(strayDietWords(['Añade el chorizo.'], rewriteFor(AUBERGINE, ['Incorpora el chorizo al final.']), names)).toEqual([])
@@ -214,13 +256,13 @@ describe('words of the rewrite that read as unlisted ingredients', () => {
         avoided.push(opts.avoidWords)
         return rewriteFor(d, opts.avoidWords?.length
           ? ['Asa las berenjenas en mitades hasta que estén blandas.', 'Vacía la pulpa y mézclala con el yogur y el aceite.']
-          : ['Asa las berenjenas en mitades hasta que estén blandas.', 'Saca la carne y mézclala con el yogur y el aceite.'])
+          : ['Asa las berenjenas en mitades hasta que estén blandas.', 'Saca la pulpa y mézclala con el yogur y la mantequilla.'])
       },
     })
     const [out] = await importCatalogBatch([AUBERGINE], 't', deps)
     expect(out.status).toBe('draft')
-    expect(avoided).toEqual([undefined, ['carne']])
-    expect(saved[0].steps.map((s) => s.text).join(' ')).toContain('pulpa')
+    expect(avoided).toEqual([undefined, ['mantequilla']])
+    expect(saved[0].steps.map((s) => s.text).join(' ')).toContain('Vacía la pulpa')
     expect(rewriteMessage(AUBERGINE, [], ['carne'])).toContain('«carne»')
   })
 })

@@ -13,8 +13,17 @@ describe('lateDinnerCheckinNote', () => {
     expect(note).toContain('day "2026-10-16"')
   })
 
-  it('not after 06:00, not on the same evening, not when already answered', () => {
-    expect(lateDinnerCheckinNote([checkin], new Date('2026-10-17T04:30:00Z'))).toBeNull() // 06:30
+  it('19-nov: until 13:00 the next morning a reply still counts for that dinner (conditional note)', () => {
+    // Saturday 12:30 Madrid: a «sí, la hice» at noon was recorded on Saturday's dinner.
+    const noon = lateDinnerCheckinNote([checkin], new Date('2026-10-17T10:30:00Z'))
+    expect(noon).toContain('day "2026-10-16"')
+    expect(noon).toContain('viernes 16 de octubre')
+    expect(noon).toContain('Si habla de otra cosa, ignora esta nota')
+    expect(lateDinnerCheckinNote([checkin], new Date('2026-10-17T04:30:00Z'))).toContain('day "2026-10-16"') // 06:30
+    expect(lateDinnerCheckinNote([checkin], new Date('2026-10-17T11:00:00Z'))).toBeNull() // 13:00
+  })
+
+  it('not from 13:00, not on the same evening, not when already answered', () => {
     expect(lateDinnerCheckinNote([checkin], new Date('2026-10-16T21:40:00Z'))).toBeNull() // 23:40 Friday: "hoy" is right
     const answered: HistoryRow = { direction: 'in', kind: 'text', body: 'sí', status: 'processed', createdAt: new Date('2026-10-16T21:30:00Z') }
     expect(lateDinnerCheckinNote([checkin, answered], new Date('2026-10-16T22:30:00Z'))).toBeNull()

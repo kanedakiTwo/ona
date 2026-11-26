@@ -24,15 +24,16 @@ export function reorderDish(dishes: Dish[], from: number, to: number): Dish[] {
 
 /**
  * Patch a single dish. Fields that don't apply to the dish's kind are silently
- * ignored (e.g. `text` on a recipe dish, `pinnedType` on a note dish). This
+ * ignored (e.g. `text` on a recipe dish, `course` on a note dish). This
  * lets the route handler accept a uniform body shape without dispatching on kind.
  */
 export interface DishPatch {
   text?: string
-  pinnedType?: string | null
   course?: Course | null
   /** «Son sobras de otro día» (`cooked`) on a dish already in the menu (2026-10-20); never on a leftover. */
   variant?: 'planned' | 'freezer' | 'cooked'
+  /** PRO-1046: cooked in the batch of that day (YYYY-MM-DD), or null to cook it on its own day. Checked by the route. */
+  batchDate?: string | null
 }
 
 export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish[] {
@@ -44,14 +45,19 @@ export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish
     current.kind === 'recipe'
       ? {
           ...current,
-          ...(patch.pinnedType !== undefined && { pinnedType: patch.pinnedType }),
           ...(patch.course !== undefined && { course: patch.course }),
           ...(patch.variant !== undefined && current.variant !== 'leftover' && { variant: patch.variant }),
+          ...(patch.batchDate !== undefined && current.variant !== 'leftover' && { batchDate: patch.batchDate }),
         }
-      : {
-          ...current,
-          ...(patch.text !== undefined && { text: patch.text }),
-        }
+      : patch.text !== undefined && patch.text !== current.text
+        ? // Written by hand now: no longer the week type's (PRO-1186's chip goes).
+          (({ fromWeekType: _w, fixedDish: _f, ...rest }) => ({ ...rest, text: patch.text! }))(current)
+        : current
+  // A táper is already cooked: it isn't in any batch (PRO-1046).
+  if (next.kind === 'recipe' && next.batchDate && (next.variant === 'freezer' || next.variant === 'cooked' || next.variant === 'fridge')) {
+    const { batchDate: _b, ...rest } = next
+    return [...dishes.slice(0, index), rest, ...dishes.slice(index + 1)]
+  }
   return [...dishes.slice(0, index), next, ...dishes.slice(index + 1)]
 }
 
@@ -100,47 +106,5 @@ export function slotWithDishes(slot: MealSlot | null | undefined, dishes: Dish[]
   return { ...(slot ?? {}), dishes }
 }
 
-/**
- * Pure: moves the slot `from` to `to` in a week (or swaps them when `to` has
- * dishes). Each slot travels whole («Solo hoy» included), and the leftovers
- * that point at a moved slot (`leftoverOf`) point at its new place, so the
- * dish still cooks the táper (PRO-102: Laura moved Monday's curry for 2 with
- * leftovers to Thursday and its batch lost the leftover's servings). Returns
- * a new array; the input isn't mutated.
- */
-export function moveSlotInWeek(
-  days: DayMenu[],
-  from: { day: number; meal: string },
-  to: { day: number; meal: string },
-): DayMenu[] {
-  const next: DayMenu[] = days.map((d) => ({ ...(d ?? {}) }))
-  const source = next[from.day]?.[from.meal]
-  const target = next[to.day]?.[to.meal]
-  const swap = !!target && Array.isArray(target.dishes) && target.dishes.length > 0
-  next[to.day] = next[to.day] ?? {}
-  next[to.day][to.meal] = source
-  if (swap) next[from.day][from.meal] = target
-  else delete next[from.day][from.meal]
-
-  const repoint = (ref: { day: number; meal: string }) => {
-    if (ref.day === from.day && ref.meal === from.meal) return to
-    if (swap && ref.day === to.day && ref.meal === to.meal) return from
-    return null
-  }
-  for (const day of next) {
-    for (const meal of Object.keys(day)) {
-      const slot = day[meal]
-      if (!slot || !Array.isArray(slot.dishes)) continue
-      let changed = false
-      const dishes = slot.dishes.map((d) => {
-        if (d.kind !== 'recipe' || d.variant !== 'leftover' || !d.leftoverOf) return d
-        const moved = repoint(d.leftoverOf)
-        if (!moved) return d
-        changed = true
-        return { ...d, leftoverOf: { ...d.leftoverOf, day: moved.day, meal: moved.meal } }
-      })
-      if (changed) day[meal] = { ...slot, dishes }
-    }
-  }
-  return next
-}
+/** Moved to `@ona/shared` (2026-11-10): the web draws the same move before the server answers. */
+export { moveSlotInWeek } from '@ona/shared'

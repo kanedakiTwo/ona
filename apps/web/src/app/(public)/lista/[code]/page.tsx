@@ -8,7 +8,6 @@
  */
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 import { SignupCtaLink } from "@/components/shared/SignupCta"
 import { useParams } from "next/navigation"
 import { ArrowUpRight } from "lucide-react"

@@ -9,9 +9,10 @@ import { useMimo, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
-import { markRecipeFromMimo } from '@/lib/usageEvents'
+import { mimoOptions } from '@/lib/mimoOptions'
+import { markRecipeFromMimo, trackUsage } from '@/lib/usageEvents'
 import { useBilling } from '@/hooks/useBilling'
-import { AccountAccessNotice, isPaused } from '@/components/billing/AccountAccessNotice'
+import { AccountAccessNotice, isOnGratis } from '@/components/billing/AccountAccessNotice'
 
 /** Suggestions for an empty conversation, by page. */
 export function suggestionsFor(pathname: string | null): string[] {
@@ -38,8 +39,8 @@ export default function MimoPanel() {
   const inputRef = useRef<HTMLInputElement>(null)
   const busy = mimo.status === 'thinking' || mimo.status === 'transcribing'
   const billing = useBilling()
-  const paused = isPaused(billing.data)
-  const offer = !paused && !!billing.data?.founder?.offer
+  const gratis = isOnGratis(billing.data)
+  const offer = !gratis && !!billing.data?.founder?.offer
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -174,37 +175,59 @@ export default function MimoPanel() {
             </div>
           )}
 
-          {mimo.messages.map((m) => (
-            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'items-end justify-start gap-2'}`}>
-              {m.role === 'assistant' && <MimoAvatar size={28} className="mb-0.5" />}
-              <div
-                className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
-                  m.role === 'user' ? 'rounded-br-md bg-[#1A1612] text-[#FFFEFA]' : 'rounded-bl-md bg-[#F2EDE0] text-[#1A1612]'
-                }`}
-              >
-                {m.role === 'assistant' && m.recipes?.length
-                  ? linkRecipeNames(m.content, m.recipes).map((seg, i) =>
-                      seg.href ? (
-                        <Link
-                          key={i}
-                          href={seg.href}
-                          onClick={() => {
-                            markRecipeFromMimo()
-                            mimo.close()
-                          }}
-                          data-testid="mimo-recipe-link"
-                          className="font-medium text-[#C65D38] underline decoration-[#C65D38]/40 underline-offset-2"
-                        >
-                          {seg.text}
-                        </Link>
-                      ) : (
-                        <span key={i}>{seg.text}</span>
-                      ),
-                    )
-                  : m.content}
+          {mimo.messages.map((m, idx) => {
+            // Mimo's `[[opciones: A | B]]` line is never shown as written: it becomes buttons under its last message.
+            const { text, options } = m.role === 'assistant' ? mimoOptions(m.content) : { text: m.content, options: [] as string[] }
+            const last = idx === mimo.messages.length - 1
+            return (
+              <div key={m.id} className="flex flex-col gap-2">
+                <div className={`flex ${m.role === 'user' ? 'justify-end' : 'items-end justify-start gap-2'}`}>
+                  {m.role === 'assistant' && <MimoAvatar size={28} className="mb-0.5" />}
+                  <div
+                    className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed ${
+                      m.role === 'user' ? 'rounded-br-md bg-[#1A1612] text-[#FFFEFA]' : 'rounded-bl-md bg-[#F2EDE0] text-[#1A1612]'
+                    }`}
+                  >
+                    {m.role === 'assistant' && m.recipes?.length
+                      ? linkRecipeNames(text, m.recipes).map((seg, i) =>
+                          seg.href ? (
+                            <Link
+                              key={i}
+                              href={seg.href}
+                              onClick={() => {
+                                markRecipeFromMimo()
+                                mimo.close()
+                              }}
+                              data-testid="mimo-recipe-link"
+                              className="font-medium text-[#C65D38] underline decoration-[#C65D38]/40 underline-offset-2"
+                            >
+                              {seg.text}
+                            </Link>
+                          ) : (
+                            <span key={i}>{seg.text}</span>
+                          ),
+                        )
+                      : text}
+                  </div>
+                </div>
+                {last && options.length > 0 && !busy && !listening && (
+                  <div className="flex flex-wrap gap-2 pl-9" role="group" aria-label="Opciones">
+                    {options.map((o) => (
+                      <button
+                        key={o}
+                        type="button"
+                        data-testid="mimo-option"
+                        onClick={() => submit(o)}
+                        className="min-h-9 rounded-full border border-[#1A1612] px-3.5 py-1.5 text-[13px] font-medium text-[#1A1612] active:bg-[#F2EDE0]"
+                      >
+                        {o}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {(busy || listening) && (
             <div className={`flex ${listening ? 'justify-end' : 'justify-start'}`}>
@@ -217,8 +240,8 @@ export default function MimoPanel() {
           <div ref={bottomRef} />
         </div>
 
-        {/* PRO-135: a paused account can't talk to Mimo; the panel says why and offers the plans. */}
-        {paused ? (
+        {/* PRO-385: on Gratis Mimo rests; the panel says so and offers the plans. */}
+        {gratis ? (
         <div className="flex-none border-t border-[#DDD6C5] bg-[#FFFEFA] px-4 pb-[max(var(--safe-bottom),12px)] pt-3">
           <AccountAccessNotice variant="panel" />
         </div>
@@ -232,6 +255,7 @@ export default function MimoPanel() {
                 onClick={() => {
                   const next = !mimo.handsFree
                   mimo.setHandsFree(next)
+                  if (next) trackUsage('handsfree_started', { where: 'panel' })
                   if (next && mimo.status === 'idle') mimo.toggleListening()
                 }}
                 aria-pressed={mimo.handsFree}

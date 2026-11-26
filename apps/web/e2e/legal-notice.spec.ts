@@ -68,24 +68,37 @@ test('/privacidad: Resend is a US company, no third-party advertising, the new n
 })
 
 // PRO-278 (Legal, 2026-10-20): AiKit forwards the recipe text to OpenAI (US), in Legal's exact words.
-// Since 2026-10-25 it is also the transcription reserve, with Google's Gemini (wording pending Legal review).
-test('/privacidad: AiKit says its images are made with OpenAI models and its transcription with Gemini', async ({ page }) => {
+// PRO-1122: AiKit no longer transcribes (no processor contract), so it never gets the audio.
+test('/privacidad: AiKit only makes the recipe images, with OpenAI models', async ({ page }) => {
   await page.goto('/privacidad')
   await expect(page.getByTestId('privacy-processor-aikit')).toHaveText(
-    'AiKit: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto. Si Groq no está disponible, también transcribe las notas de voz y lo que le dices a Mimo con la voz; para eso usa modelos de Google (Gemini), que reciben el audio.',
+    'AiKit: generación de imágenes de recetas (solo recibe el nombre y los ingredientes de la receta). Para hacerlas usa modelos de OpenAI (EE. UU.), que reciben ese mismo texto.',
   )
   const main = page.getByTestId('reading-column')
   await expect(main).not.toContainText('cuando lo pides')
-  await expect(main).toContainText('Última actualización: 3 de noviembre de 2026')
+  await expect(main).not.toContainText('Gemini')
+  await expect(main).toContainText('Última actualización: 13 de noviembre de 2026')
+  // D-189: the daily reviewer also reads Mimo's chat in the app.
+  await expect(main).toContainText('conversaciones con Mimo, en la web y por WhatsApp, para detectar errores del asistente')
 })
 
-// 2026-10-25: Groq transcribes voice notes and Mimo's voice first (console.groq.com/docs/your-data).
-test('/privacidad: Groq transcribes the voice, does not train on it and keeps logs 30 days at most', async ({ page }) => {
+// PRO-1122 (Miguel, 2026-11-05, word for word): Groq, then OpenAI, transcribe; Oracle keeps the encrypted
+// nightly copy (D-138) for 14 days. Groq's last sentence is from 2026-10-25 (console.groq.com/docs/your-data).
+test('/privacidad: Groq and OpenAI transcribe the voice, Oracle keeps the copies 14 days', async ({ page }) => {
   await page.goto('/privacidad')
   await expect(page.getByTestId('privacy-processor-groq')).toHaveText(
-    'Groq (empresa de EE. UU.): transcripción de las notas de voz de WhatsApp y de lo que le dices a Mimo con la voz (recibe el audio). No entrena con esos datos ni los guarda, salvo registros de hasta 30 días para la fiabilidad del servicio y la prevención de abusos.',
+    'Groq (empresa de EE. UU.): pasa a texto lo que le dices a Mimo con la voz y las notas de voz de WhatsApp. Solo recibe el audio. No entrena con esos datos ni los guarda, salvo registros de hasta 30 días para la fiabilidad del servicio y la prevención de abusos.',
   )
-  await expect(page.getByTestId('reading-column')).toContainText('cuando Groq y AiKit no están disponibles')
+  await expect(page.getByTestId('privacy-processor-openai')).toHaveText(
+    'OpenAI: si Groq no está disponible, pasa a texto lo que le dices a Mimo con la voz y las notas de voz de WhatsApp; y, si AiKit no está disponible, genera las imágenes de recetas (solo recibe el nombre y los ingredientes de la receta).',
+  )
+  await expect(page.getByTestId('privacy-processor-oracle')).toHaveText(
+    'Oracle Cloud: guarda cada noche una copia de seguridad de la base de datos, cifrada con una clave que solo tiene Mimoia, en su centro de datos de Madrid (Unión Europea). Oracle no puede leerla.',
+  )
+  await expect(page.getByTestId('privacy-backups-retention')).toHaveText(
+    'Las copias de seguridad, cifradas, se guardan 14 días y después se borran solas. Si borras la cuenta o retiras el permiso de los datos de salud, desaparecen de la base al momento y de las copias en 14 días como mucho. Las copias solo se usan para recuperar el servicio si algo falla, y si un día hay que usar una, antes se vuelve a borrar lo que habías borrado.',
+  )
+  await expect(page.getByTestId('reading-column')).not.toContainText('se borran todas las copias')
 })
 
 // Halal (2026-10-25): a religion-based diet is special-category data, under the same consent.
@@ -110,12 +123,14 @@ test('/privacidad: the app counts functions and screens, never what you write', 
 })
 
 // PRO-171 (LEG-17): the waitlist's retention date, in Legal's exact words.
+// PRO-1254: without «el 16 de noviembre» as the opening day (it opens on the 23, D-184).
 test('/privacidad: the waitlist is kept until 16 May 2027', async ({ page }) => {
   await page.goto('/privacidad')
   await expect(page.getByTestId('privacy-waitlist-retention')).toContainText(
-    'Cuánto tiempo: hasta el 16 de mayo de 2027 (seis meses después de abrir el registro a todo el mundo, el 16 de noviembre de 2026) o hasta que te des de baja, lo que ocurra antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de esta política.',
+    'Cuánto tiempo: hasta el 16 de mayo de 2027 o hasta que te des de baja, lo que ocurra antes. Si pediste el menú de los viernes, guardamos tu email para ese correo mientras no te des de baja. Si te invitamos y creas una cuenta, desde ese momento se aplica el resto de esta política.',
   )
   await expect(page.getByTestId('reading-column')).not.toContainText('después de que abramos al público')
+  await expect(page.getByTestId('reading-column')).not.toContainText('16 de noviembre')
 })
 
 // PRO-70: the intended purpose (D-038, constitution §6), word for word, in its own section.

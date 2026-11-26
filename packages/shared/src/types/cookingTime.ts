@@ -141,3 +141,16 @@ export function fitsTimeBudget(r: RecipeTimes, budget: DayTimeBudget | null | un
   const minutes = budget.mode === 'activo' ? recipeActiveMinutes(r) : recipeTotalMinutes(r)
   return minutes != null && minutes <= budget.minutes
 }
+
+/**
+ * PRO-402: a «preparativo con antelación» on the ficha, next to the time it
+ * is not part of. 8 h or more before → «La víspera: pon los garbanzos en
+ * remojo»; less → «2 h antes: saca la carne de la nevera».
+ */
+export function advancePrepLabel(p: { text: string; hoursBefore: number }): string {
+  const text = p.text.trim()
+  const lower = text.charAt(0).toLowerCase() + text.slice(1)
+  if (p.hoursBefore >= 8) return `La víspera: ${lower}`
+  const hours = Math.round(p.hoursBefore * 10) / 10
+  return `${String(hours).replace('.', ',')} h antes: ${lower}`
+}

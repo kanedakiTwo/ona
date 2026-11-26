@@ -107,7 +107,13 @@ describe('the group and its count', () => {
     const plan = planQuestion(group(), { filter: FILTER, now: NOW, alreadySent: new Set(), allowed: () => true, adminEmails: ['equipo@example.org'], testDomains: TEST })
     expect(plan.recipients.map((r) => r.householdId)).toEqual(['h-ok-1', 'h-ok-2', 'h-ok-3'])
     expect(plan.recipients[2].userId).toBe('u-member')
-    expect(plan.excluded).toEqual({ ya_enviada: 0, baja: 1, interna: 2, prueba: 1, sin_whatsapp: 1 })
+    expect(plan.excluded).toEqual({ ya_enviada: 0, encuesta_semana: 0, baja: 1, interna: 2, prueba: 1, sin_whatsapp: 1 })
+  })
+
+  it('19-nov: a household that got another survey this week is left out (one a week)', () => {
+    const plan = planQuestion(group(), { filter: FILTER, now: NOW, alreadySent: new Set(), surveyedThisWeek: new Set(['h-ok-1']), allowed: () => true, adminEmails: ['equipo@example.org'], testDomains: TEST })
+    expect(plan.recipients.map((r) => r.householdId)).toEqual(['h-ok-2', 'h-ok-3'])
+    expect(plan.excluded.encuesta_semana).toBe(1)
   })
 
   it('whoever asked BAJA never gets it', () => {

@@ -4,12 +4,13 @@ import { usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { haptic } from "@/lib/pwa/haptics"
 import { TransitionLink } from "@/components/pwa/TransitionLink"
-import { CalendarDays, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic, MailPlus, MessageSquareHeart, MessageCircleQuestion, ClipboardCheck, BarChart3, LogOut } from "lucide-react"
+import { CalendarDays, ChefHat, ShoppingCart, BookOpen, User, Database, Users, Ticket, ScrollText, Mic, MailPlus, MessageSquareHeart, MessageCircleQuestion, MailQuestion, ClipboardCheck, BarChart3, LogOut, Newspaper } from "lucide-react"
 import { ADMIN_MENU, adminAreaFromPath, type AdminArea } from "@/lib/adminNav"
 import { MimoiaLogo } from "@/components/brand/Mimoia"
 
 const NAV_ITEMS = [
   { href: "/menu", label: "Menú", icon: CalendarDays },
+  { href: "/cocinar", label: "Cocinar", icon: ChefHat },
   { href: "/shopping", label: "Compra", icon: ShoppingCart },
   { href: "/recipes", label: "Recetas", icon: BookOpen },
   { href: "/profile", label: "Perfil", icon: User },
@@ -21,8 +22,10 @@ const ADMIN_ICONS: Record<AdminArea, typeof User> = {
   usuarios: Users,
   invitaciones: Ticket,
   "lista-espera": MailPlus,
+  newsletter: Newspaper,
   opiniones: MessageSquareHeart,
   "pregunta-whatsapp": MessageCircleQuestion,
+  "pregunta-correo": MailQuestion,
   funciones: BarChart3,
   auditoria: ScrollText,
   voz: Mic,

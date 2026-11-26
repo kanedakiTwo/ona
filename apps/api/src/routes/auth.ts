@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { eq, or } from 'drizzle-orm'
+import { eq, or, sql } from 'drizzle-orm'
+import { roleForEmail } from '../services/adminEmails.js'
 import { z } from 'zod'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
@@ -29,6 +30,7 @@ import { trackEvent } from '../services/usageEvents.js'
 import { accountReferralUrl, ensureReferralCode, inviterCodeForSignup } from '../services/accountReferrals.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { welcomeKind } from '../services/accountEmails.js'
+import { isWhatsAppAvailableFor } from '../services/whatsapp/config.js'
 import { defaultAccountMailerDeps, requestPasswordReset, sendWelcomeEmail } from '../services/accountMailer.js'
 
 const router = Router()
@@ -54,14 +56,16 @@ const loginLimiter = rateLimit({
 router.post('/register', registerLimiter, validate(registerSchema), async (req, res) => {
   try {
     const { username, password, inviteCode, householdInviteToken, newsletterOptIn, waitlistToken, invitedBy } = req.body
-    // With a waitlist link the email is the one on the list (lowercase, fixed on the form).
-    const email: string = waitlistToken ? String(req.body.email).trim().toLowerCase() : req.body.email
+    // `registerSchema` trims and lowercases the email (PRO-1271), so it is the
+    // same one the waitlist and ADMIN_EMAILS use.
+    const email: string = req.body.email
 
-    // Check username/email unique
+    // Check username/email unique; the email whatever its capitals (PRO-1271:
+    // older accounts may still have them, and `uq_users_email_lower` backs it).
     const existing = await db
       .select({ id: users.id })
       .from(users)
-      .where(or(eq(users.username, username), eq(users.email, email)))
+      .where(or(eq(users.username, username), sql`lower(${users.email}) = ${email}`))
       .limit(1)
 
     if (existing.length > 0) {
@@ -86,7 +90,7 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
       env.REGISTRATION_MODE === 'invite' && !campaign && !waitlistToken ? await waitlistInviteForEmail(email) : null
     const access = registrationAccess({
       mode: env.REGISTRATION_MODE,
-      isAdminEmail: env.ADMIN_EMAILS.includes(String(email).trim().toLowerCase()),
+      isAdminEmail: env.ADMIN_EMAILS.includes(email),
       campaignOk: campaign != null,
       // The link, or (invited before PRO-97, no link exists) the email alone.
       waitlistInvited: !!waitlistToken || listInvite === 'legacy',
@@ -174,7 +178,12 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
     // Welcome email (specs/email.md): beta, joining a home, or open sign-up.
     // Fire and forget: it never delays or fails the registration.
     void sendWelcomeEmail(
-      { email: user.email, kind: welcomeKind({ access, joiningHousehold: !!householdInviteToken }) },
+      {
+        email: user.email,
+        kind: welcomeKind({ access, joiningHousehold: !!householdInviteToken }),
+        // PRO-1040: the «Conecta WhatsApp» step only when Perfil can connect it.
+        whatsapp: isWhatsAppAvailableFor(user.email),
+      },
       defaultAccountMailerDeps(),
     ).catch((e) => console.error('[register] welcome email failed (continuing):', e?.message ?? e))
 
@@ -206,11 +215,13 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
   try {
     const { username, password } = req.body
 
-    // Support login with username OR email
+    // Support login with username OR email (the email whatever its capitals)
     const [user] = await db
       .select()
       .from(users)
-      .where(or(eq(users.username, username), eq(users.email, username)))
+      .where(
+        or(eq(users.username, username), sql`lower(${users.email}) = ${String(username).trim().toLowerCase()}`),
+      )
       .limit(1)
 
     if (!user) {
@@ -235,9 +246,9 @@ router.post('/login', loginLimiter, validate(loginSchema), async (req, res) => {
 
     // Reconcile role from ADMIN_EMAILS on every login. Source of truth is
     // the env var; admin status survives only if the email is still listed.
-    const desiredRole = env.ADMIN_EMAILS.includes(user.email.toLowerCase())
-      ? 'admin'
-      : 'user'
+    // Exact match (PRO-1271): an account whose email differs from a listed
+    // one only in its capitals never becomes admin.
+    const desiredRole = roleForEmail(user.email)
     let role = user.role
     if (role !== desiredRole) {
       const [updated] = await db

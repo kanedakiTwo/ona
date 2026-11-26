@@ -138,10 +138,11 @@ describe('helpers', () => {
 
 describe('the mark survives an edit (PUT /recipes/:id)', () => {
   it('a body without internalTags keeps the recipe’s; one with them uses its own', async () => {
-    const { withKeptInternalTags } = await import('../routes/recipes.js')
-    expect(withKeptInternalTags({ name: 'X' } as { name: string; internalTags?: string[] }, ['compartida', 'tiempos-pro284']).internalTags).toEqual(['compartida', 'tiempos-pro284'])
-    expect(withKeptInternalTags({ name: 'X', internalTags: ['otra'] }, ['compartida']).internalTags).toEqual(['otra'])
-    expect(withKeptInternalTags({ name: 'X' } as { name: string; internalTags?: string[] }, null).internalTags).toEqual([])
+    const { withKeptFields } = await import('../routes/recipes.js')
+    expect(withKeptFields({ name: 'X' }, { internalTags: ['compartida', 'tiempos-pro284'] }).internalTags).toEqual(['compartida', 'tiempos-pro284'])
+    expect(withKeptFields({ name: 'X', internalTags: ['otra'] }, { internalTags: ['compartida'] }).internalTags).toEqual(['otra'])
+    // A NULL column comes through as null; the save stores it as [].
+    expect(withKeptFields({ name: 'X' }, { internalTags: null }).internalTags ?? []).toEqual([])
   })
 })
 

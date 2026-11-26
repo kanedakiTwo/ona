@@ -39,7 +39,7 @@ Public articles on mimoia.com (PRO-92). Each article is a Markdown file in the r
 ## Constraints
 
 - Static: `/blog` and the published articles are pre-rendered at build time (`generateStaticParams`, `dynamicParams = false`). Publishing or unpublishing needs a commit + redeploy of `ona-web`. The Markdown files are also traced into the standalone build (`outputFileTracingIncludes` in `next.config.ts`).
-- Test hook: outside production (`NODE_ENV !== 'production'`), `BLOG_CONTENT_DIR` points the loader at another folder. The e2e job boots `next dev` with `BLOG_CONTENT_DIR=e2e/fixtures/blog` (one published and one unpublished fixture), so the suite reads a published article without publishing anything real. A production build ignores it.
+- Test hook: outside production (`NODE_ENV !== 'production'`), or in a build with `E2E_WEB_BUILD=1`, `BLOG_CONTENT_DIR` points the loader at another folder. The e2e web (`scripts/boot-built-web.sh`, a build since PRO-398; `next dev` in `scripts/test-e2e.sh`) runs with `BLOG_CONTENT_DIR` at `e2e/fixtures/blog` (one published and one unpublished fixture), so the suite reads a published article without publishing anything real. A deployed build ignores it (neither variable is set there).
 - Staging shows the same articles as production (same files, same rule): with only the example article in the repo, `/blog` on staging shows the empty state.
 
 ## Known limitations

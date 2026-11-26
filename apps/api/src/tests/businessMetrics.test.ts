@@ -113,6 +113,40 @@ describe('buildWeekly', () => {
     expect(weekly.map((w) => w.resolvedWeekHouseholds)).toEqual([0, 2, 0])
   })
 
+  // PRO-380 (D-158): sending the list (or an order to the súper / a shop) resolves the week too.
+  it('a household that only sends the list has a resolved week (that week or the weekend before)', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [
+          { householdId: 'h1', week: '2026-09-28' },
+          { householdId: 'h2', week: '2026-09-28' },
+          { householdId: 'h3', week: '2026-09-28' },
+          { householdId: 'h4', week: '2026-10-05' },
+        ],
+        listSentDays: [
+          { householdId: 'h1', day: '2026-09-29' }, // «Mandar la lista» on Tuesday, nothing checked
+          { householdId: 'h2', day: '2026-09-26' }, // order sent to the súper on the Saturday before
+          { householdId: 'h3', day: '2026-09-25' }, // Friday before → does NOT count
+          { householdId: 'h5', day: '2026-09-29' }, // sent but no menu
+        ],
+        shoppingDays: [{ householdId: 'h4', day: '2026-10-06' }],
+      }),
+    )
+    expect(weekly.map((w) => w.resolvedWeekHouseholds)).toEqual([0, 2, 1])
+    expect(DEFINITIONS.resolvedWeekHouseholds).toMatch(/shopping_list_shared/)
+  })
+
+  it('sending and checking the list on the same week counts the household once', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [{ householdId: 'h1', week: '2026-10-05' }],
+        shoppingDays: [{ householdId: 'h1', day: '2026-10-06' }],
+        listSentDays: [{ householdId: 'h1', day: '2026-10-04' }],
+      }),
+    )
+    expect(weekly.map((w) => w.resolvedWeekHouseholds)).toEqual([0, 0, 1])
+  })
+
   it('counts new households by the Madrid signup week', () => {
     const weekly = buildWeekly(
       input({
@@ -219,6 +253,22 @@ describe('menu households per week (PRO-246): who prepared the week, and who had
     expect(at('2026-10-04T21:59:59Z')).toBe(1) // Sunday 23:59:59 in Madrid
     expect(at('2026-10-04T22:00:00Z')).toBe(0) // Monday 00:00 in Madrid
     expect(at('2026-10-04T23:30:00Z')).toBe(0) // still Sunday in UTC, already Monday in Madrid
+  })
+
+  it('a week only the Thursday autopilot made counts as ready only if seen or changed before Monday (PRO-1208)', () => {
+    const weekly = buildWeekly(
+      input({
+        menus: [
+          { householdId: 'pilot', week: '2026-10-05', firstCreatedAt: null, autoplanSeenAt: null },
+          { householdId: 'seen', week: '2026-10-05', firstCreatedAt: null, autoplanSeenAt: '2026-10-03T10:00:00Z' },
+          { householdId: 'late', week: '2026-10-05', firstCreatedAt: null, autoplanSeenAt: '2026-10-05T07:00:00Z' },
+          { householdId: 'redone', week: '2026-10-05', firstCreatedAt: '2026-10-04T10:00:00Z', autoplanSeenAt: null },
+        ],
+      }),
+    )
+    expect(weekly[2].menuHouseholds).toBe(4)
+    expect(weekly[2].menuReadyByMondayHouseholds).toBe(2)
+    expect(weekly[2].activeHouseholds).toBe(0)
   })
 
   it('in winter (CET) the cut-off is 23:00 UTC on Sunday', () => {

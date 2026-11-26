@@ -38,7 +38,7 @@ test('«Elegir otra receta» → «Usar "<lo escrito>" como plato» replaces the
   const hero = page.getByTestId('menu-hero')
   await expect(hero).toBeVisible({ timeout: 20_000 })
   await hero.getByRole('button', { name: /más opciones/i }).click()
-  await page.getByRole('dialog').getByRole('button', { name: /^elegir otra receta$/i }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /^cambiar plato$/i }).click()
 
   const text = 'Pizza casera de la abuela Rosi'
   await page.getByPlaceholder('Buscar receta…').fill(text)

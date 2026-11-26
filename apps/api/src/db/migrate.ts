@@ -4,12 +4,18 @@ import { applyCatalogSourceLinks } from '../services/catalogSourceLinks.js'
 import { applyCatalogRecipeFixes } from '../services/catalogRecipeFixes.js'
 import { applyProfileFromMemories } from '../services/profileFromMemories.js'
 import { applyCatalogRecipeTimes } from '../services/catalogRecipeTimes.js'
+import { applyHouseholdRecipeTimes } from '../services/householdRecipeTimes.js'
 import { applyCatalogTimeTrim } from '../services/recipeTimeTrim.js'
+import { applyRecipeWaitTimes } from '../services/recipeWaitTime.js'
 import { applyCatalogIngredientAisles } from '../services/catalogIngredientAisles.js'
 import { applyNutritionCompleteness } from '../services/nutritionCompleteness.js'
 import { applyEdibleFractions } from '../services/nutrition/edibleFraction.js'
 import { applyCompoundIngredientTags } from '../services/compoundIngredients.js'
 import { applyNameAllergenTags } from '../services/nutrition/allergenBackfill.js'
+import { logRecipeAllergenMismatches } from '../services/nutrition/recipeAllergenSync.js'
+import { applyRecipeDishTypes } from '../services/dishTypes.js'
+import { applyWeekTypeMigration } from '../services/weekType.js'
+import { applyUndercookedMarks } from '../services/undercookedRecipes.js'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -46,12 +52,26 @@ async function main() {
   } catch (err) {
     console.error('[catalog-recipe-times] failed:', err)
   }
+  // Idempotent data fix (PRO-1037): household recipes saved without minutes
+  // (Mimo's, before PRO-308) get them estimated from their steps.
+  try {
+    await applyHouseholdRecipeTimes(db)
+  } catch (err) {
+    console.error('[household-recipe-times] failed:', err)
+  }
   // Idempotent (PRO-284): realistic totals — prep done while something goes
   // by itself, realistic prep once per recipe; cook time never touched.
   try {
     await applyCatalogTimeTrim(db)
   } catch (err) {
     console.error('[catalog-time-trim] failed:', err)
+  }
+  // Idempotent (PRO-1078): every recipe's total counts its waits (resting,
+  // rising, the fridge…) and no longer a soak the night before.
+  try {
+    await applyRecipeWaitTimes(db)
+  } catch (err) {
+    console.error('[recipe-wait-time] failed:', err)
   }
   // Idempotent data fix (PRO-177): eggs and tofu leave «Carnes y pescados»
   // for «Lácteos y huevos» (only exact names still in `proteinas`).
@@ -83,12 +103,41 @@ async function main() {
   } catch (err) {
     console.error('[allergen-names] failed:', err)
   }
+  // Read-only (PRO-1118): count the recipes whose stored allergens don't
+  // match their ingredients' union; the list is in Admin → Alérgenos sugeridos.
+  try {
+    await logRecipeAllergenMismatches(db)
+  } catch (err) {
+    console.error('[recipe-allergens] failed:', err)
+  }
   // Idempotent (PRO-176): recompute only the «nutrición incompleta» mark of
   // every recipe; the cached figures are left as they are.
   try {
     await applyNutritionCompleteness(db)
   } catch (err) {
     console.error('[nutrition-completeness] failed:', err)
+  }
+  // Idempotent («Semana tipo», D-182): every recipe still without its dish
+  // types gets them (`dishTypesOf`).
+  try {
+    await applyRecipeDishTypes(db)
+  } catch (err) {
+    console.error('[dish-types] failed:', err)
+  }
+  // Once and repeatable (D-182 §7): every household without a week type gets
+  // the one its plantilla, fixed meals, tápers and ficha gave the menu.
+  try {
+    await applyWeekTypeMigration(db)
+  } catch (err) {
+    console.error('[week-type] failed:', err)
+  }
+  // Idempotent, additive (PRO-1181, D-1009): Cocina's runny-yolk and
+  // pink-mince recipes get their hidden tag and the «Para embarazo o bebés»
+  // line in their steps.
+  try {
+    await applyUndercookedMarks(db)
+  } catch (err) {
+    console.error('[undercooked-marks] failed:', err)
   }
   await pool.end()
 }

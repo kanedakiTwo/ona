@@ -2,7 +2,8 @@
  * Perfil → Avisos (PRO-237, D-080; specs/notifications.md), against the real
  * API at 390×844. A fresh account has no WhatsApp and no phone notification:
  * every kind is on except the morning menu (opt-in, PRO-215), the prep alerts
- * say how to get them and the rest «Solo llega por WhatsApp». The switch saves (survives a reload) and the API
+ * say how to get them, the Thursday week (PRO-381) is in the app, the Sunday
+ * question isn't needed with it and the rest «Solo llega por WhatsApp». The switch saves (survives a reload) and the API
  * reports the same as the screen (what Mimo's get_alerts reads).
  */
 
@@ -18,15 +19,15 @@ test('profile → Avisos: each alert, where it arrives, and a switch that saves'
   await registerFreshUser(page)
   if (page.url().includes('/onboarding')) await completeOnboarding(page)
 
-  await page.goto('/profile')
+  await page.goto('/profile/ajustes')
   await page.getByTestId('profile-avisos-link').click()
   await expect(page).toHaveURL(/\/profile\/avisos/)
   await expect(page.getByRole('heading', { name: /Qué te llega y por dónde/ })).toBeVisible()
 
   const list = page.getByTestId('alerts-list')
-  await expect(list.getByRole('button')).toHaveCount(7)
+  await expect(list.getByRole('button')).toHaveCount(8)
   await expect(page.getByTestId('alert-prep_alerts-channel')).toHaveText('Conecta WhatsApp o activa las notificaciones del móvil.')
-  await expect(page.getByTestId('alert-weekly_nudge-channel')).toHaveText('Solo llega por WhatsApp.')
+  await expect(page.getByTestId('alert-shopping_reminder-channel')).toHaveText('Solo llega por WhatsApp.')
   // PRO-215: the morning menu only for whoever asks for it.
   await expect(page.getByTestId('alert-daily_brief')).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByTestId('alerts-channels')).toContainText('WhatsApp: sin conectar.')
@@ -48,4 +49,75 @@ test('profile → Avisos: each alert, where it arrives, and a switch that saves'
   const body = await r.json()
   expect(body.kinds.find((k: { kind: string }) => k.kind === 'weekly_nudge')).toMatchObject({ on: false, channel: 'off' })
   expect(body.kinds.find((k: { kind: string }) => k.kind === 'prep_alerts')).toMatchObject({ on: true })
+})
+
+// PRO-381 (D-158): «La semana, hecha cada jueves», on for everyone; switching it
+// off saves, and the Sunday question comes back for whoever switched it off.
+test('profile → Avisos: the Thursday week is on, in the app, and its switch saves', async ({ page }) => {
+  test.setTimeout(60_000)
+  await registerFreshUser(page)
+  if (page.url().includes('/onboarding')) await completeOnboarding(page)
+
+  await page.goto('/profile/avisos')
+  const autoplan = page.getByTestId('alert-weekly_autoplan')
+  await expect(autoplan).toContainText('La semana, hecha cada jueves')
+  await expect(autoplan).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('alert-weekly_autoplan-channel')).toHaveText('En tu menú, en la app')
+  await expect(page.getByTestId('alert-weekly_nudge-channel')).toHaveText('No hace falta: Mimo os deja hecha la semana cada jueves.')
+
+  await autoplan.click()
+  await expect(autoplan).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByTestId('alert-weekly_autoplan-channel')).toHaveText('Apagado')
+  await expect(page.getByTestId('alert-weekly_nudge-channel')).toHaveText('Solo llega por WhatsApp.')
+
+  await page.reload()
+  await expect(page.getByTestId('alert-weekly_autoplan')).toHaveAttribute('aria-pressed', 'false')
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const r = await page.request.get(`${API_URL}/notifications/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+  const body = await r.json()
+  expect(body.kinds.find((k: { kind: string }) => k.kind === 'weekly_autoplan')).toMatchObject({ on: false, channel: 'off' })
+})
+
+// PRO-1301: the household's time for the morning menu and the dinner question.
+// Saved on «Guardar», survives a reload, the API (what Mimo's get_alerts and
+// set_alert_time read and change) says the same, a time out of its hours
+// isn't saved, and «Volver a la de siempre» undoes it.
+test('profile → Avisos: the time of the morning menu and of the dinner question', async ({ page }) => {
+  test.setTimeout(60_000)
+  await registerFreshUser(page)
+  if (page.url().includes('/onboarding')) await completeOnboarding(page)
+
+  await page.goto('/profile/avisos')
+  const brief = page.getByTestId('alert-time-daily_brief')
+  await expect(brief).toContainText('Menú del día')
+  await expect(page.getByTestId('alert-time-daily_brief-note')).toContainText('La de siempre.')
+  const briefInput = brief.locator('input[type="time"]')
+  await expect(briefInput).toHaveValue(/^\d\d:\d\d$/)
+  await expect(page.getByTestId('alert-time-dinner_checkin').locator('input[type="time"]')).toHaveValue(/^\d\d:\d\d$/)
+
+  await briefInput.fill('08:30')
+  await page.getByTestId('alert-time-daily_brief-save').click()
+  await expect(page.getByTestId('alert-time-daily_brief-note')).toContainText('La hora que elegisteis.')
+  await expect(page.getByTestId('alert-time-daily_brief-save')).toHaveCount(0)
+  // No horizontal scroll at phone width.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  await page.reload()
+  await expect(page.getByTestId('alert-time-daily_brief').locator('input[type="time"]')).toHaveValue('08:30')
+
+  const token = await page.evaluate(() => localStorage.getItem('ona_token'))
+  const r = await page.request.get(`${API_URL}/notifications/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+  expect((await r.json()).times.daily_brief).toEqual({ time: '08:30', custom: true })
+
+  // Out of its hours: not saved, and says why.
+  const checkin = page.getByTestId('alert-time-dinner_checkin')
+  await checkin.locator('input[type="time"]').fill('23:30')
+  await page.getByTestId('alert-time-dinner_checkin-save').click()
+  await expect(checkin.getByRole('alert')).toContainText('entre las 19:00 y las 22:00')
+
+  // Back to the default.
+  await page.getByTestId('alert-time-daily_brief').getByRole('button', { name: 'Volver a la de siempre' }).click()
+  await expect(page.getByTestId('alert-time-daily_brief-note')).toContainText('La de siempre.')
+  const r2 = await page.request.get(`${API_URL}/notifications/prefs`, { headers: { Authorization: `Bearer ${token}` } })
+  expect((await r2.json()).times.daily_brief.custom).toBe(false)
 })

@@ -17,7 +17,9 @@
  * Callers pass a `RecipeWriteInput` (the new model with sectioned ingredients
  * and rich steps). The helper:
  *
- *   1. Mints UUIDs for the recipe_ingredients rows up front.
+ *   1. Mints UUIDs for the recipe_ingredients rows up front, or keeps the
+ *      row id the caller sent (an edit sending back the GET's ids, PRO-1259)
+ *      when it is a UUID, not repeated and not another recipe's row.
  *   2. Resolves any `step.ingredientRefs[j]` of the form `"ing_<n>"` to the
  *      minted UUID at index `<n>`. Real UUIDs that already match a minted id
  *      are passed through. Anything else is reported as a STEP_REF_DANGLING
@@ -27,11 +29,12 @@
  *      touching the DB.
  *   5. Computes nutrition (`aggregateNutrition`), allergens (`allergenUnion`),
  *      and `totalTime` (sum of `step.durationMin` if all set, else
- *      `prepTime + cookTime`, else null).
+ *      `prepTime + cookTime` with the steps' waits, PRO-1078, else null).
  *   6. Performs the write inside a Drizzle transaction:
  *        INSERT mode: insert the recipe row, then ingredients, then steps.
  *        UPDATE mode: delete recipe_steps + recipe_ingredients, update the
- *                     recipe row, re-insert children with newly-minted ids.
+ *                     recipe row, re-insert children (rows sent with their
+ *                     id keep it, so the steps' links survive).
  *
  * The helper is deliberately catalog-aware (it loads the catalog itself) so
  * route handlers stay thin: parse → call helper → respond.
@@ -43,7 +46,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 
 import { db } from '../db/connection.js'
 import {
@@ -61,11 +64,16 @@ import {
 } from './recipeLint.js'
 import {
   aggregateNutrition,
+  catalogEntryFromRow,
   type IngredientCatalogEntry,
 } from './nutrition/aggregate.js'
 import { allergenUnion } from './nutrition/allergens.js'
+import { refreshRecipeDishTypes } from './dishTypes.js'
+import { carryIngredientMarks, ingredientMarksOf, type IngredientMarks } from './ingredientRoles.js'
+import { isDayBeforeStep, totalWithWaits, waitFloor } from './recipeWaitTime.js'
 import type {
   Difficulty,
+  IngredientRole,
   Meal,
   NutritionPerServing,
   Season,
@@ -91,6 +99,9 @@ export interface RecipeIngredientWriteInput {
   displayQuantity?: number | null
   /** Human-readable unit label as entered/extracted (e.g. "cda"). Null/absent = no display override. */
   displayUnit?: string | null
+  /** «Cocinar ahora»: explicit marks (Cocina's batch). Absent = carry the previous ones on edit, else unmarked. */
+  role?: IngredientRole | null
+  substituteIngredientIds?: string[]
 }
 
 /** A single step row in a write payload. */
@@ -176,7 +187,15 @@ export interface PersistOptions {
    * `softLint = false` so they enforce the full ruleset.
    */
   softLint?: boolean
+  /**
+   * PRO-1290: runs inside the write's transaction, once the rows are written
+   * (the admin audit row of a catalogue fix). A throw rolls the save back.
+   */
+  inTransaction?: (tx: PersistTx, recipeId: string) => Promise<void>
 }
+
+/** The Drizzle transaction client `persistRecipe` writes with. */
+export type PersistTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 export interface PersistOk {
   ok: true
@@ -285,21 +304,7 @@ async function loadCatalog(requiredIds: readonly string[] = []): Promise<BuiltCa
   }))
 
   const nutrition = new Map<string, IngredientCatalogEntry>()
-  for (const c of full) {
-    nutrition.set(c.id, {
-      id: c.id,
-      name: c.name,
-      calories: c.calories,
-      protein: c.protein,
-      carbs: c.carbs,
-      fat: c.fat,
-      fiber: c.fiber,
-      salt: c.salt,
-      density: c.density,
-      unitWeight: c.unitWeight,
-      edibleFraction: c.edibleFraction,
-    })
-  }
+  for (const c of full) nutrition.set(c.id, catalogEntryFromRow(c))
 
   const allergens = new Map<string, { allergenTags?: string[] | null }>()
   for (const c of full) {
@@ -319,6 +324,54 @@ export function invalidateRecipeCatalogCache(): void {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ING_TEMP_RE = /^ing_(\d+)$/
+
+export interface AssignedRowIds {
+  /** The id each ingredient row is written with, in input order. */
+  rowIds: string[]
+  /** A sent id that couldn't be kept → the one minted in its place, so the steps' refs to it still resolve. */
+  alias: Map<string, string>
+}
+
+/**
+ * Pure (PRO-1259): the row id of each ingredient. A sent id is kept when it
+ * is a UUID, the first row with it, and not taken by another recipe's row
+ * (`takenElsewhere`); otherwise a new one is minted. Keeping it is what lets
+ * an edit save without losing the step → ingredient links.
+ */
+export function assignIngredientRowIds(
+  sentIds: ReadonlyArray<string | undefined>,
+  takenElsewhere: ReadonlySet<string>,
+  mint: () => string = randomUUID,
+): AssignedRowIds {
+  const used = new Set<string>()
+  const alias = new Map<string, string>()
+  const rowIds = sentIds.map((sent) => {
+    if (sent && UUID_RE.test(sent) && !used.has(sent) && !takenElsewhere.has(sent)) {
+      used.add(sent)
+      return sent
+    }
+    const minted = mint()
+    if (sent && UUID_RE.test(sent) && !used.has(sent) && !alias.has(sent)) alias.set(sent, minted)
+    return minted
+  })
+  return { rowIds, alias }
+}
+
+/** Sent row ids that belong to a recipe other than `recipeId` (any recipe when absent). */
+async function rowIdsTakenElsewhere(sentIds: ReadonlyArray<string | undefined>, recipeId?: string): Promise<Set<string>> {
+  const ids = sentIds.filter((id): id is string => !!id && UUID_RE.test(id))
+  if (ids.length === 0) return new Set()
+  const rows = await db
+    .select({ id: recipeIngredientsTable.id, recipeId: recipeIngredientsTable.recipeId })
+    .from(recipeIngredientsTable)
+    .where(inArray(recipeIngredientsTable.id, ids))
+  return new Set(rows.filter((r) => r.recipeId !== recipeId).map((r) => r.id))
+}
+
+/** An empty text field is stored as NULL, not as ''. */
+function textOrNull(value: string | null | undefined): string | null {
+  return value != null && value.trim().length > 0 ? value : null
+}
 
 interface ResolvedStep {
   index: number
@@ -343,6 +396,7 @@ interface ResolvedSteps {
 function resolveSteps(
   steps: RecipeStepWriteInput[],
   ingredientRowIds: string[],
+  alias: ReadonlyMap<string, string> = new Map(),
 ): ResolvedSteps {
   const errors: LintIssue[] = []
   const validIds = new Set(ingredientRowIds)
@@ -351,7 +405,7 @@ function resolveSteps(
     const refs: string[] = []
     const incoming = step.ingredientRefs ?? []
     for (let j = 0; j < incoming.length; j++) {
-      const raw = incoming[j]
+      const raw = alias.get(incoming[j]) ?? incoming[j]
       const m = ING_TEMP_RE.exec(raw)
       if (m) {
         const idx = Number(m[1])
@@ -400,15 +454,21 @@ function resolveSteps(
 
 // ─── totalTime ──────────────────────────────────────────────────
 
-function computeTotalTime(input: RecipeWriteInput): number | null {
-  const steps = input.steps ?? []
+/**
+ * Sum of `step.durationMin` if all set (a soak or a night in the fridge
+ * left out: done the day before), else `prepTime + cookTime` with the waits
+ * (resting, rising, the fridge…) the steps give (PRO-1078).
+ */
+export function computeTotalTime(input: Pick<RecipeWriteInput, 'steps' | 'prepTime' | 'cookTime'>): number | null {
+  const steps = (input.steps ?? []).map((s) => ({ text: s.text ?? '', durationMin: s.durationMin ?? null, technique: s.technique ?? null }))
   if (steps.length > 0 && steps.every((s) => s.durationMin != null)) {
-    return steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    const sum = steps.filter((s) => !isDayBeforeStep(s)).reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    return sum > 0 ? sum : steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
   }
   const prep = input.prepTime ?? 0
   const cook = input.cookTime ?? 0
-  if (prep === 0 && cook === 0) return null
-  return prep + cook
+  if (prep === 0 && cook === 0) return waitFloor(null, null, steps)
+  return totalWithWaits({ prepTime: prep, cookTime: cook, totalTime: prep + cook }, steps)
 }
 
 // ─── Main entry point ───────────────────────────────────────────
@@ -418,12 +478,14 @@ export async function persistRecipe(
   opts: PersistOptions,
 ): Promise<PersistResult> {
   // Mint or echo ingredient row UUIDs.
-  const ingredientRowIds: string[] = input.ingredients.map((ing) =>
-    ing.id && UUID_RE.test(ing.id) ? ing.id : randomUUID(),
+  const sentRowIds = input.ingredients.map((ing) => ing.id)
+  const { rowIds: ingredientRowIds, alias } = assignIngredientRowIds(
+    sentRowIds,
+    await rowIdsTakenElsewhere(sentRowIds, opts.recipeId),
   )
 
   // Resolve refs.
-  const refResolution = resolveSteps(input.steps ?? [], ingredientRowIds)
+  const refResolution = resolveSteps(input.steps ?? [], ingredientRowIds, alias)
   if (refResolution.errors.length > 0) {
     return { ok: false, errors: refResolution.errors, warnings: [] }
   }
@@ -516,10 +578,10 @@ export async function persistRecipe(
         Object.fromEntries((input.seasons ?? []).map((s) => [s, 'perfect' as const])),
       equipment: input.equipment ?? [],
       allergens,
-      notes: input.notes ?? null,
-      tips: input.tips ?? null,
-      substitutions: input.substitutions ?? null,
-      storage: input.storage ?? null,
+      notes: textOrNull(input.notes),
+      tips: textOrNull(input.tips),
+      substitutions: textOrNull(input.substitutions),
+      storage: textOrNull(input.storage),
       nutritionPerServing: aggregate.perServing,
       nutritionIncomplete: aggregate.incomplete,
       tags: input.tags ?? [],
@@ -537,9 +599,24 @@ export async function persistRecipe(
     }
 
     let id: string
+    let carried: IngredientMarks[] | null = null
     if (opts.recipeId) {
       // UPDATE mode: wipe child rows, update recipe row.
       id = opts.recipeId
+      // «Cocinar ahora» marks survive the edit (specs/cook-now.md).
+      const previousMarks = await tx
+        .select({
+          id: recipeIngredientsTable.id,
+          ingredientId: recipeIngredientsTable.ingredientId,
+          role: recipeIngredientsTable.role,
+          substituteIngredientIds: recipeIngredientsTable.substituteIngredientIds,
+        })
+        .from(recipeIngredientsTable)
+        .where(eq(recipeIngredientsTable.recipeId, id))
+      carried = carryIngredientMarks(
+        previousMarks.map((r) => ({ ...r, ...ingredientMarksOf(r) })),
+        input.ingredients.map((ing, i) => ({ id: ingredientRowIds[i], ingredientId: ing.ingredientId })),
+      )
       await tx.delete(recipeStepsTable).where(eq(recipeStepsTable.recipeId, id))
       await tx
         .delete(recipeIngredientsTable)
@@ -579,6 +656,8 @@ export async function persistRecipe(
           displayOrder: ing.displayOrder ?? i,
           displayQuantity: ing.displayQuantity ?? null,
           displayUnit: ing.displayUnit ?? null,
+          role: ing.role !== undefined ? ing.role : carried?.[i]?.role ?? null,
+          substituteIngredientIds: ing.substituteIngredientIds ?? carried?.[i]?.substituteIngredientIds ?? [],
         })),
       )
     }
@@ -597,8 +676,12 @@ export async function persistRecipe(
       )
     }
 
+    if (opts.inTransaction) await opts.inTransaction(tx, id)
     return id
   })
+
+  // «Semana tipo» (D-182): its dish types, from the name, tags and main ingredients.
+  await refreshRecipeDishTypes(db, recipeId)
 
   return {
     ok: true,

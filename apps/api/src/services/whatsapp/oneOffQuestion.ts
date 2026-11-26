@@ -13,10 +13,12 @@
  *     admins) never send it twice. A failed send is not retried.
  *   - One person per household: the owner, else the earliest member, with
  *     WhatsApp linked. Never whoever asked BAJA (or said «No, gracias»), a
- *     suspended or paused account, or one outside `WHATSAPP_ALLOWED_EMAILS`.
+ *     suspended account or one on the Gratis plan, or one outside `WHATSAPP_ALLOWED_EMAILS`.
  *   - Never a household with an internal account (role admin or in
  *     `ADMIN_EMAILS`) or a test household (an email in a reserved test
  *     domain: example.com, *.test, *.local…, or `EMAIL_SINK_DOMAINS`).
+ *   - 19-nov: never a household that got another survey in the last 7 days
+ *     (surveyCap.ts: at most one a week).
  *   - The person's next message after it lands in Opiniones (`user_feedback`,
  *     channel `whatsapp`, tag `pregunta_unica`), and still reaches Mimo.
  *
@@ -27,10 +29,12 @@ import { sql } from 'drizzle-orm'
 import { env } from '../../config/env.js'
 import { db as defaultDb } from '../../db/connection.js'
 import { recordCost } from '../costLedger.js'
-import { isAccountPaused } from '../accountAccess.js'
+import { isOnFreePlan } from '../accountAccess.js'
 import { emailSinkDomains } from '../emailSink.js'
 import { addDays, madridMidnightUtc, madridParts } from '../madridTime.js'
 import { isUserAllowed, isWhatsAppConfigured } from './config.js'
+import { surveyedHouseholds } from '../surveyCap.js'
+import { passiveEventsSql } from '../usageEvents.js'
 import { optInDeclinedSql } from './optInOffer.js'
 import { parseTemplateMap } from './proactive.js'
 import * as client from './client.js'
@@ -101,12 +105,12 @@ export interface CandidateMember {
 export interface CandidateHousehold {
   householdId: string
   createdAt: Date
-  /** Last thing anyone in it did (app usage or a WhatsApp message); null = never. */
+  /** Last thing anyone in it did (app usage or a WhatsApp message; not what Mimo did alone, `PASSIVE_USAGE_EVENTS`); null = never. */
   lastActivityAt: Date | null
   members: CandidateMember[]
 }
 
-export type ExclusionReason = 'ya_enviada' | 'baja' | 'interna' | 'prueba' | 'sin_whatsapp'
+export type ExclusionReason = 'ya_enviada' | 'encuesta_semana' | 'baja' | 'interna' | 'prueba' | 'sin_whatsapp'
 
 export interface QuestionRecipient {
   householdId: string
@@ -124,6 +128,8 @@ export interface PlanContext {
   now: Date
   /** Households that already got this question. */
   alreadySent: ReadonlySet<string>
+  /** 19-nov: households that got another survey in the last 7 days. */
+  surveyedThisWeek?: ReadonlySet<string>
   /** `WHATSAPP_ALLOWED_EMAILS`. */
   allowed?: (email: string) => boolean
   /** Paused accounts get nothing. */
@@ -145,7 +151,7 @@ export function inGroup(h: Pick<CandidateHousehold, 'createdAt' | 'lastActivityA
  * don't. The count the admin sees is `recipients.length`.
  */
 export function planQuestion(households: readonly CandidateHousehold[], ctx: PlanContext): QuestionPlan {
-  const excluded: Record<ExclusionReason, number> = { ya_enviada: 0, baja: 0, interna: 0, prueba: 0, sin_whatsapp: 0 }
+  const excluded: Record<ExclusionReason, number> = { ya_enviada: 0, encuesta_semana: 0, baja: 0, interna: 0, prueba: 0, sin_whatsapp: 0 }
   const recipients: QuestionRecipient[] = []
   const allowed = ctx.allowed ?? ((email: string) => isUserAllowed(email))
   for (const h of households) {
@@ -153,6 +159,7 @@ export function planQuestion(households: readonly CandidateHousehold[], ctx: Pla
     if (h.members.some((m) => isInternalAccount(m, ctx.adminEmails))) { excluded.interna++; continue }
     if (h.members.some((m) => isTestEmail(m.email, ctx.testDomains))) { excluded.prueba++; continue }
     if (ctx.alreadySent.has(h.householdId)) { excluded.ya_enviada++; continue }
+    if (ctx.surveyedThisWeek?.has(h.householdId)) { excluded.encuesta_semana++; continue }
     const reachable = h.members
       .filter((m) => m.link && !m.suspended && !ctx.paused?.has(m.userId) && allowed(m.email))
       .sort((a, b) => Number(b.isOwner) - Number(a.isOwner) || a.joinedAt.getTime() - b.joinedAt.getTime())
@@ -179,6 +186,8 @@ export interface QuestionStore {
   loadCandidates(filter: QuestionFilter): Promise<CandidateHousehold[]>
   /** Households that already got the question with this text. */
   sentHouseholds(text: string): Promise<Set<string>>
+  /** 19-nov: those among them that got another survey in the last 7 days (absent → none). */
+  surveyedThisWeek?(householdIds: string[], now: Date): Promise<Set<string>>
   /** The question's id, created the first time this text is sent. */
   ensureQuestion(text: string, adminId: string): Promise<string>
   /** Claim the send for this household; null when it already has one (never twice). */
@@ -195,7 +204,7 @@ export function createDbQuestionStore(db: Db = defaultDb): QuestionStore {
       const res = await db.execute(sql`
         SELECT h.id::text AS household_id, h.created_at AS household_created_at,
                GREATEST(
-                 (SELECT max(e.created_at) FROM usage_events e WHERE e.household_id = h.id),
+                 (SELECT max(e.created_at) FROM usage_events e WHERE e.household_id = h.id AND e.name NOT IN (${passiveEventsSql()})),
                  (SELECT max(l2.last_inbound_at) FROM household_members m2
                     JOIN whatsapp_links l2 ON l2.user_id = m2.user_id WHERE m2.household_id = h.id)
                ) AS last_activity_at,
@@ -232,6 +241,7 @@ export function createDbQuestionStore(db: Db = defaultDb): QuestionStore {
       }
       return [...byId.values()]
     },
+    surveyedThisWeek: (ids, now) => surveyedHouseholds(ids, now, db),
     async sentHouseholds(text) {
       const res = await db.execute(sql`
         SELECT s.household_id::text AS household_id FROM whatsapp_question_sends s
@@ -306,7 +316,7 @@ export interface QuestionPreview extends QuestionPlan {
 
 async function pausedAmong(households: readonly CandidateHousehold[], now: Date, isPaused: QuestionDeps['isPaused']): Promise<Set<string>> {
   const paused = new Set<string>()
-  const check = isPaused ?? ((id: string, at: Date) => isAccountPaused(id, at))
+  const check = isPaused ?? ((id: string, at: Date) => isOnFreePlan(id, at))
   for (const h of households) for (const m of h.members) if (m.link && (await check(m.userId, now))) paused.add(m.userId)
   return paused
 }
@@ -315,8 +325,17 @@ export async function previewQuestion(text: string, filter: QuestionFilter, deps
   const s = deps.store ?? createDbQuestionStore()
   const now = deps.now ?? new Date()
   const candidates = (await s.loadCandidates(filter)).filter((h) => inGroup(h, filter, now))
-  const [alreadySent, paused] = await Promise.all([s.sentHouseholds(questionParam(text)), pausedAmong(candidates, now, deps.isPaused)])
-  const plan = planQuestion(candidates, { filter, now, alreadySent, paused, adminEmails: deps.adminEmails, testDomains: deps.testDomains })
+  const [alreadySent, paused, surveyedThisWeek] = await Promise.all([
+    s.sentHouseholds(questionParam(text)),
+    pausedAmong(candidates, now, deps.isPaused),
+    s.surveyedThisWeek
+      ? s.surveyedThisWeek(candidates.map((h) => h.householdId), now).catch((err) => {
+          console.warn('[pregunta-unica] surveys of the week not read:', err?.message ?? err)
+          return new Set<string>()
+        })
+      : Promise.resolve(new Set<string>()),
+  ])
+  const plan = planQuestion(candidates, { filter, now, alreadySent, surveyedThisWeek, paused, adminEmails: deps.adminEmails, testDomains: deps.testDomains })
   return {
     ...plan,
     count: plan.recipients.length,

@@ -14,6 +14,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 
 interface Campaign {
   id: string
@@ -92,16 +93,17 @@ export function InvitationsSection() {
         className="grid gap-3 rounded-2xl border border-border-soft bg-paper p-4 md:grid-cols-4 md:items-end"
       >
         <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
-          Campaña
+          <FieldLabel as="span" required>Campaña</FieldLabel>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="familia, amigos-padel…"
+            required
             className="rounded-lg border border-border px-3 py-2 text-[14px] text-ink"
           />
         </label>
         <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
-          Usos máximos (opcional)
+          <FieldLabel as="span" optional plural>Usos máximos</FieldLabel>
           <input
             type="number"
             min={1}
@@ -111,7 +113,7 @@ export function InvitationsSection() {
           />
         </label>
         <label className="flex flex-col gap-1 text-[12px] text-ink-muted">
-          Caduca el (opcional)
+          <FieldLabel as="span" optional>Caduca el</FieldLabel>
           <input
             type="date"
             value={expires}
@@ -126,6 +128,7 @@ export function InvitationsSection() {
         >
           Crear enlace
         </button>
+        <RequiredNote className="md:col-span-4" />
         {create.isError && <p className="text-[12px] text-warn-text md:col-span-4">No se ha podido crear el enlace.</p>}
       </form>
 

@@ -1,29 +1,15 @@
 import type { Metadata } from "next"
-import { recipeMetadata, type PreviewRecipe } from "@/lib/recipeMetadata"
+import { recipeMetadata } from "@/lib/recipeMetadata"
+import { fetchPublicRecipe } from "@/lib/publicRecipe"
 
 /**
  * Server layout of `/recipes/<id>` (and its `/cook`, `/edit`): only here to
- * give shared links a real preview (title, description, photo, canonical).
- * The pages themselves stay client components. The recipe is fetched without
- * a token, so a private recipe gets the generic metadata — see
- * lib/recipeMetadata.ts. Fails soft: a slow or broken API never blocks the page.
+ * give shared links and search engines a real preview (title, description,
+ * photo, canonical) in the server HTML. The pages themselves stay client
+ * components; the `schema.org/Recipe` JSON-LD is in `app/@seo/recipes/[id]`
+ * (PRO-1077). The recipe is fetched without a token, so a private recipe gets
+ * the generic metadata — see lib/recipeMetadata.ts and lib/publicRecipe.ts.
  */
-
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "")
-
-async function fetchPublicRecipe(id: string): Promise<PreviewRecipe | null> {
-  try {
-    const res = await fetch(`${API_URL}/recipes/${encodeURIComponent(id)}`, {
-      signal: AbortSignal.timeout(2500),
-      next: { revalidate: 300 },
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as PreviewRecipe
-    return data?.id && data?.name ? data : null
-  } catch {
-    return null
-  }
-}
 
 type Params = { params: Promise<{ id: string }> }
 

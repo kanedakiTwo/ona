@@ -197,6 +197,7 @@ export const API_ROUTE_TEMPLATES: readonly string[] = [
   '/recipes/extract-from-image',
   '/recipes/extract-from-url',
   '/recipes/seasonal-produce',
+  '/recipes/sitemap',
   '/recipes/with-what-i-have',
   '/red/choice',
   '/red/postal-code',

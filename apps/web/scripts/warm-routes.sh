@@ -45,6 +45,11 @@ ROUTES=(
   /profile/ficha
   /profile/ficha/historial
   /profile/semana-tipo
+  /profile/avisos
+  /profile/creencias
+  /profile/staples
+  /profile/cookbooks
+  /profile/suscripcion
   /afinar
   /whatsapp/conectar
   /advisor

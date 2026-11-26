@@ -34,7 +34,7 @@ Public articles on mimoia.com (PRO-92). Each article is a Markdown file in the r
 ## SEO
 
 - Each page sets its own metadata (Next `metadata` / `generateMetadata`, `metadataBase` = `SITE_URL` `https://mimoia.com`): `<title>` («Blog · Mimoia», «<titulo> · Mimoia»), description (`resumen`), canonical (`https://mimoia.com/blog[/slug]`), Open Graph (`og:type` website/article, title, description, image, `article:published_time`, author). The root layout skips its default `<title>`/description on `/blog*` (`hasOwnMetadata`) so they are not duplicated.
-- **`/sitemap.xml`** (`app/sitemap.ts`, new with the blog) lists the public pages (`/`, `/como-funciona`, `/blog`, `/privacidad`, `/terminos`, `/aviso-legal`) and every published article with `lastmod` = `fecha`.
+- **`/sitemap.xml`** (`app/sitemap.ts`, new with the blog) lists the public pages (`/`, `/como-funciona`, `/blog`, `/privacidad`, `/terminos`, `/aviso-legal`) and every published article with `lastmod` = `fecha`; also `/recipes` and the published catalogue recipes but the book ones (PRO-1077, see [Recipes](./recipes.md) → «SEO de la ficha»).
 
 ## Constraints
 
@@ -45,7 +45,7 @@ Public articles on mimoia.com (PRO-92). Each article is a Markdown file in the r
 ## Known limitations
 
 - No categories, tags, pagination, RSS, search, comments or author pages.
-- No `robots.txt` yet (the sitemap has to be submitted to Search Console by hand or linked from a future `robots.ts`).
+- **`/robots.txt`** (`app/robots.ts`, rules in `lib/robots.ts`, PRO-1077) lets every crawler in but the private or account zones (admin, profile, menu, shopping, compra, onboarding, sign-in forms, personal links `/c/`, `/i/`, `/n/`, `/entrar/`, `/lista/`, `/newsletter/`, `/recipes/new` and recipe edit) and points to `https://mimoia.com/sitemap.xml`. Mimoia isn't verified in Search Console yet. Pages without their own metadata carry the default description from the landing («Lo cansado no es cocinar, es decidir…», `SITE_DESCRIPTION` in `lib/site.ts`, no health claims). Tests: `robots.test.ts`.
 - No scheduled publishing: `fecha` is only the date shown; an article is live as soon as `publicado: true` is deployed.
 - Images are plain `<img>` (no optimizer, see `next.config.ts`); keep them reasonably sized.
 
@@ -59,6 +59,7 @@ Public articles on mimoia.com (PRO-92). Each article is a Markdown file in the r
 - [apps/web/src/app/(public)/blog/page.tsx](../apps/web/src/app/(public)/blog/page.tsx) — listing
 - [apps/web/src/app/(public)/blog/[slug]/page.tsx](../apps/web/src/app/(public)/blog/[slug]/page.tsx) — article + metadata
 - [apps/web/src/app/sitemap.ts](../apps/web/src/app/sitemap.ts)
+- [apps/web/src/app/robots.ts](../apps/web/src/app/robots.ts), [apps/web/src/lib/robots.ts](../apps/web/src/lib/robots.ts)
 - [apps/web/src/lib/blog/markdown.ts](../apps/web/src/lib/blog/markdown.ts) — header + Markdown parser (pure)
 - [apps/web/src/lib/blog/posts.ts](../apps/web/src/lib/blog/posts.ts) — fs loader, `BLOG_CONTENT_DIR`
 - [apps/web/src/lib/site.ts](../apps/web/src/lib/site.ts) — `SITE_URL`

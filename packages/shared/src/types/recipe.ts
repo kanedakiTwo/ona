@@ -195,6 +195,11 @@ export interface Recipe {
    */
   sourceCredit?: string | null
   /**
+   * PRO-1077: a catalogue recipe adapted from a book (D-104). Its page is not
+   * indexed and it stays out of the sitemap until Legal's OK. Absent otherwise.
+   */
+  fromBook?: boolean
+  /**
    * PRO-373: the bases this recipe uses («Usa: Sofrito (2 raciones)»), from
    * `recipe_bases`, with the base's id for the link. Sent by GET /recipes/:id;
    * absent when it uses none.

@@ -145,6 +145,18 @@ export function planWeekType(
   return { template, mealDiners, dishCounts, specs, tapers, conflicts, warnings }
 }
 
+/**
+ * Pure: a dish that is what the week type asks for there — its concrete
+ * recipe (`fixedDish`) or a recipe drawn for its type (`fromWeekType`, not
+ * the «none fits» stand-in). Automatic placements (the fridge dish, the
+ * sign-up's dishes) never take its place (PRO-1296).
+ */
+export function asksWeekType(d: Dish): boolean {
+  if (d.fixedDish) return true
+  const from = (d as RecipeDish).fromWeekType
+  return !!from && !from.missing
+}
+
 /** Pure: the recipes put whole by the week type (not drawn elsewhere in the week). */
 export function presetRecipeIds(specs: Record<string, DishSpec[]>): Set<string> {
   const out = new Set<string>()
@@ -212,4 +224,35 @@ export function missingDishTypes(warnings: readonly string[]): string[] {
     if (m) out.add(m[1])
   }
   return [...out]
+}
+
+const DAY_NAMES_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+const MEAL_NAMES_ES: Record<string, string> = { breakfast: 'desayuno', lunch: 'comida', snack: 'merienda', dinner: 'cena' }
+
+/**
+ * Pure (PRO-1296): what the generated week couldn't keep of what the
+ * household said (the generator's warnings), for Mimo: said in one line with
+ * a way out, never the menu handed over first and permission asked after (in
+ * the history Mimo saw the broken rule, listed it and asked «¿lo cambio?»).
+ * Empty when everything was kept.
+ */
+export function unmetRulesLine(warnings: readonly string[]): string {
+  const lines = new Map<string, string>()
+  const at = (meal: string, day: string) => `${DAY_NAMES_ES[Number(day)] ?? `día ${day}`}, ${MEAL_NAMES_ES[meal] ?? meal}`
+  for (const w of warnings) {
+    let m: RegExpExecArray | null
+    if ((m = /^dish_type_missing_(.+)_(breakfast|lunch|snack|dinner)_d(\d)$/.exec(w))) {
+      const info = dishTypeInfo(m[1])
+      const label = info?.label ?? m[1]
+      lines.set(`${m[3]}:${m[2]}`, `${at(m[2], m[3])}: ninguna receta de «${label}» encaja con la casa; ${info?.kind === 'broad' ? 'he puesto otra receta' : `lo he dejado escrito («${label}», sin receta)`}.`)
+    } else if ((m = /^week_type_recipe_restricted_(breakfast|lunch|snack|dinner)_d(\d)$/.exec(w))) {
+      lines.set(`${m[2]}:${m[1]}`, `${at(m[1], m[2])}: el plato de su semana tipo no encaja con las alergias o la dieta de casa; he puesto otro.`)
+    } else if ((m = /^light_short_(breakfast|lunch|snack|dinner)_d(\d)$/.exec(w))) {
+      if (!lines.has(`${m[2]}:${m[1]}`)) lines.set(`${m[2]}:${m[1]}`, `${at(m[1], m[2])}: ningún plato ligero encajaba; he puesto el que más se acerca.`)
+    } else if ((m = /^no_(main|starter|dessert)_available_(breakfast|lunch|snack|dinner)_d(\d)$/.exec(w))) {
+      lines.set(`${m[3]}:${m[2]}`, `${at(m[2], m[3])}: ninguna receta encaja con todo lo que han dicho; se ha quedado sin plato.`)
+    }
+  }
+  if (lines.size === 0) return ''
+  return `Lo que no he podido cumplir de lo que la casa ha dicho (el resto del menú sí lo cumple). Díselo en una línea y propón una salida concreta (otra receta o tipo de plato para ese día, crear su receta, cambiar su semana tipo); no le preguntes si quiere que lo arregle:\n${[...lines.values()].map((l) => `- ${l}`).join('\n')}`
 }

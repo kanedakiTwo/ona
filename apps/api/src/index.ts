@@ -41,6 +41,7 @@ import metricsRoutes from './routes/metrics.js'
 import mimoRemotoRoutes from './routes/mimoRemoto.js'
 import ingredientRoleRoutes from './routes/ingredientRoles.js'
 import shopOrdersRoutes, { publicShopOrdersRouter } from './routes/shopOrders.js'
+import redRoutes from './routes/red.js'
 import appErrorsRoutes, { clientErrorsRouter } from './routes/appErrors.js'
 import waitlistRoutes, { adminWaitlistRouter } from './routes/waitlist.js'
 import newsletterRoutes from './routes/newsletter.js'
@@ -58,6 +59,7 @@ import noticesRoutes from './routes/notices.js'
 import { startAfinaNotice } from './services/afinaNotice.js'
 import catalogWishesRoutes from './routes/catalogWishes.js'
 import catalogReviewRoutes from './routes/catalogReview.js'
+import adminHouseholdsRoutes from './routes/adminHouseholds.js'
 import catalogCollectionsRoutes from './routes/catalogCollections.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
@@ -108,6 +110,8 @@ app.use(clientErrorsRouter)
 // the global 100 KB body limit, so its import routes read their own body (2 MB)
 // after the admin check. Per-route auth, no catch-all.
 app.use(catalogReviewRoutes)
+// PRO-1290: a household's Mimo cap. Per-route auth, no catch-all.
+app.use(adminHouseholdsRoutes)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 // Logs shopping-list item mutations (2xx) for the business metrics'
@@ -234,6 +238,7 @@ app.use(pantryRoutes)
 app.use(cookbooksRoutes)
 app.use(recipePhotosRoutes)
 app.use(shopOrdersRoutes)
+app.use(redRoutes)
 
 // Error handler — captureServerErrors records the error, then hands it to
 // errorHandler unchanged.

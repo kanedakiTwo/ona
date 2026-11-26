@@ -95,6 +95,8 @@ export interface CatalogDraftInput {
   fridgeDays?: number | null
   /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día», from the batch. */
   featuredOn?: string | null
+  /** D-1028: «Y si tienes más tiempo…», from the batch as Cocina wrote it. */
+  moreTime?: string | null
   ingredients: DraftIngredient[]
   /** The source's steps. Read to rewrite them; never saved. */
   sourceSteps: string[]
@@ -179,6 +181,8 @@ export interface PersistDraftInput {
   fridgeDays: number | null
   /** PRO-1099: «la receta del día» of that day (AAAA-MM-DD); null = none. */
   featuredOn?: string | null
+  /** D-1028: «Y si tienes más tiempo…»; null = none. */
+  moreTime?: string | null
   ingredients: Array<{
     ingredientId: string
     quantity: number
@@ -240,15 +244,21 @@ function words(text: string): string[] {
  */
 /**
  * Pure: meat, fish, shellfish or allergen words the rewrite uses and neither
- * the ingredients nor the source steps account for («saca la carne» of an
- * aubergine, «el hueso» of a peach, «galletas» in a cookie recipe). The
+ * the ingredients nor the source steps account for (a «chorizo» the book
+ * doesn't name; «saca la carne» of an aubergine, «el hueso» of a peach and
+ * «galletas» in a cookie recipe read right since PRO-401). The
  * reviewer would reject them (PRO-268); being the rewrite's own words, one
  * more try avoiding them usually fixes it. A word the source already uses is
  * the source's problem and stays for the reviewer.
  */
-export function strayDietWords(sourceSteps: readonly string[], rewrite: CatalogRewrite, ingredientNames: readonly string[]): string[] {
-  const inSource = new Set(unlistedDietMentions(sourceSteps, ingredientNames).map((m) => m.term))
-  const inRewrite = unlistedDietMentions(rewrite.steps.map((s) => s.text), ingredientNames).map((m) => m.term)
+export function strayDietWords(
+  sourceSteps: readonly string[],
+  rewrite: CatalogRewrite,
+  ingredientNames: readonly string[],
+  recipeName?: string,
+): string[] {
+  const inSource = new Set(unlistedDietMentions(sourceSteps, ingredientNames, recipeName).map((m) => m.term))
+  const inRewrite = unlistedDietMentions(rewrite.steps.map((s) => s.text), ingredientNames, recipeName).map((m) => m.term)
   return [...new Set(inRewrite)].filter((t) => !inSource.has(t))
 }
 
@@ -534,7 +544,7 @@ async function houseRewrite(draft: CatalogDraftInput, forFour: CatalogDraftInput
     copied = copiedPhrases(draft.sourceSteps, [...rewrite.steps.map((s) => s.text), rewrite.tips ?? ''])
     if (copied.length > 0) return { rejected: `${copied.length} frase(s) iguales al libro` }
   }
-  const stray = strayDietWords(draft.sourceSteps, rewrite, forFour.ingredients.map((i) => i.name))
+  const stray = strayDietWords(draft.sourceSteps, rewrite, forFour.ingredients.map((i) => i.name), forFour.name)
   if (stray.length > 0) {
     deps.log?.(`  ↻ ${draft.name}: reescribiendo otra vez (${stray.join(', ')}: no está en los ingredientes)`)
     const again = await deps.rewrite(forFour, { avoidWords: stray })
@@ -608,6 +618,7 @@ export async function importCatalogRecipe(
     tips: rewrite.tips?.trim() || null,
     ...storageFrom(rewrite, draft),
     featuredOn: isIsoDay(draft.featuredOn) ? draft.featuredOn : null,
+    moreTime: draft.moreTime?.trim() || null,
     ingredients: matched.map((m, i) => ({
       ingredientId: m.ingredientId as string,
       quantity: m.quantity,
@@ -729,6 +740,7 @@ export function draftsFromCocinaJson(json: unknown, fallback: CatalogSourceRef):
       freezable: typeof r.freezable === 'boolean' ? r.freezable : null,
       fridgeDays: cleanFridgeDays(r.fridgeDays),
       featuredOn: isIsoDay(r.featuredOn) ? r.featuredOn : null,
+      moreTime: typeof r.moreTime === 'string' && r.moreTime.trim() ? r.moreTime.trim() : null,
       ingredients: (r.ingredients ?? []).map((i: any) => ({
         name: String(i.name ?? ''),
         quantity: Number(i.qty ?? i.quantity ?? 0),

@@ -2,6 +2,7 @@ import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { getUserMonthlySpendEur } from './costLedger.js'
 import { capOverrideEur } from './capOverrides.js'
+import { householdMimoCapEur } from './householdMimoCap.js'
 
 export interface SpendCapStatus {
   exceeded: boolean
@@ -20,7 +21,7 @@ export async function spendCapStatus(
   userId: string,
   opts: { capEur?: number; now?: Date; db?: any; spent?: (userId: string, now: Date) => Promise<number> } = {},
 ): Promise<SpendCapStatus> {
-  const capEur = opts.capEur ?? capOverrideEur(userId) ?? env.USER_MONTHLY_SPEND_CAP_EUR
+  const capEur = opts.capEur ?? capOverrideEur(userId) ?? (await generalCapEur(userId, opts.db ?? defaultDb))
   if (!(capEur > 0)) return { exceeded: false, spentEur: 0, capEur }
   const now = opts.now ?? new Date()
   try {
@@ -32,6 +33,17 @@ export async function spendCapStatus(
     console.warn('[spendCap] ledger read failed, allowing:', (err as Error)?.message ?? err)
     return { exceeded: false, spentEur: 0, capEur }
   }
+}
+
+/**
+ * The general cap, raised to the household's Mimo cap when that is higher
+ * (PRO-1290): a household given more Mimo isn't stopped here first.
+ */
+async function generalCapEur(userId: string, db: any): Promise<number> {
+  const general = env.USER_MONTHLY_SPEND_CAP_EUR
+  if (!(general > 0)) return general
+  const household = await householdMimoCapEur(userId, db)
+  return household != null ? Math.max(general, household) : general
 }
 
 export function spendCapMessage(capEur: number): string {

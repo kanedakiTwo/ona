@@ -26,7 +26,7 @@ import {
 } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
-import { madridParts, madridWeekStart } from '../madridTime.js'
+import { addDays, madridParts, madridWeekStart, mondayOf } from '../madridTime.js'
 import { DAY_PROP, dateLabel, isMenuDayError, menuDayOf, resolveMenuDay, type MenuDay } from './menuDay.js'
 import { env } from '../../config/env.js'
 import { HEALTH_CONSENT_SKILL_REPLY, RELIGION_CONSENT_SKILL_REPLY, saidAllergyReply, whatsappHealthReply } from '../healthConsent.js'
@@ -108,6 +108,8 @@ export function bestMatch<T>(items: readonly T[], query: string, nameOf: (t: T) 
     if (!n) continue
     let score = 0
     if (n === q) score = 100
+    // «tomates cherry» is «Tomate cherry», not «Tomate» (PRO-1039).
+    else if (sameWords(productWords(n), q.split(' '))) score = 95
     else if (n.startsWith(q)) score = 85
     else if (n.includes(q)) score = 70
     else if (q.includes(n)) score = 55
@@ -772,7 +774,7 @@ const addFreezerDish: SkillDefinition = {
 // ─── Shopping list ───────────────────────────────────────────────
 
 type ListItem = Pick<ShoppingItem, 'id' | 'name'> &
-  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText'>>
+  Partial<Pick<ShoppingItem, 'ingredientId' | 'quantity' | 'unit' | 'aisle' | 'checked' | 'inStock' | 'kind' | 'haveQuantity' | 'skipped' | 'menuQuantity' | 'amountText' | 'weeks'>>
 interface ListDoc { id: string; items: ListItem[] }
 // The rolling list /shopping shows (today → next Sunday): menu items, staples
 // and manual items, with their checked / inStock state.
@@ -798,6 +800,10 @@ export function itemLabel(i: ListItem): string {
 function sameWord(a: string, b: string): boolean {
   return a === b || `${a}s` === b || `${b}s` === a || `${a}es` === b || `${b}es` === a
 }
+/** Same words in the same order, singular or plural. */
+function sameWords(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((w, i) => sameWord(w, b[i]))
+}
 function productWords(name: string): string[] {
   const words = normalize(name).split(' ')
   return words.filter((w) => !(STOPWORDS.has(w) && words.length > 1))
@@ -822,39 +828,136 @@ export function findSameProduct<T extends ListItem>(items: readonly T[], name: s
   return prefixHit
 }
 
+/** Words of a line name that tell products apart: «sin» and «con» count («caldo de pollo sin sal»). */
+const LINE_FILLER = new Set([...STOPWORDS].filter((w) => w !== 'sin' && w !== 'con'))
+function lineWords(name: string): string[] {
+  const words = normalize(name).split(' ')
+  return words.filter((w) => !(LINE_FILLER.has(w) && words.length > 1))
+}
+
+/**
+ * The one line of the list the household means (PRO-1050), for the tools
+ * that change or remove it by its id: the same name first; otherwise the
+ * only line whose name has every word asked («los cherry» → «Tomate
+ * cherry»). Never a line whose name is only part of what was asked: «caldo
+ * de pollo» is not «Pollo». Before, bestMatch dropped «de» and «sin» and took
+ * «Pollo» for «caldo de pollo sin sal» (Marta y Jorge, 2026-10-25 → 11-17).
+ * Several lines with those words → `ambiguous`, to ask which.
+ */
+export function findListLine<T extends Pick<ListItem, 'name'>>(
+  items: readonly T[],
+  query: string,
+): { line: T } | { ambiguous: T[] } | null {
+  const q = lineWords(query)
+  if (q.length === 0 || !q[0]) return null
+  const full = normalize(query)
+  const exact = items.find((i) => normalize(i.name) === full)
+  if (exact) return { line: exact }
+  const has = (words: string[], w: string) => words.some((x) => sameWord(x, w))
+  const same = items.find((i) => {
+    const n = lineWords(i.name)
+    return n.length === q.length && n.every((w, k) => sameWord(w, q[k]))
+  })
+  if (same) return { line: same }
+  const wider = items.filter((i) => {
+    const n = lineWords(i.name)
+    return q.every((w) => has(n, w))
+  })
+  if (wider.length === 1) return { line: wider[0] }
+  if (wider.length > 1) return { ambiguous: wider }
+  return null
+}
+
+/** «Hay varias: Leche entera, Leche de coco. ¿Cuál?» */
+export const whichLine = (asked: string, lines: Array<Pick<ListItem, 'name'>>) =>
+  `Hay varias líneas con "${asked}": ${lines.slice(0, 6).map((l) => capitalize(prettyName(l.name))).join(', ')}. ¿Cuál?`
+
+const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+/** Monday `YYYY-MM-DD` of the week of an ISO date. */
+const mondayOfDate = (iso: string) => mondayOf(iso, (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7)
+/** «Esta semana», «La que viene» or «Semana del 7 dic», as /shopping labels a line (lineWeekLabel). */
+function weekName(monday: string, thisMonday: string): string {
+  if (monday === thisMonday) return 'Esta semana'
+  if (monday === addDays(thisMonday, 7)) return 'La que viene'
+  const [, m, d] = monday.split('-').map(Number)
+  return `Semana del ${d} ${MONTHS_SHORT[m - 1]}`
+}
+/** The weeks (Mondays) a menu line is for, from its `weeks` (PRO-270); none for manual lines and staples. */
+const lineWeeks = (i: ListItem): string[] =>
+  Object.entries(i.weeks ?? {})
+    .filter(([, q]) => q > 0)
+    .map(([w]) => w)
+    .sort()
+
+/**
+ * What get_shopping_list tells Mimo (PRO-1039): the same list /shopping shows,
+ * every pending line (manual ones too: a cap of 60 left «Pan de barra ·
+ * MANUAL» out), each under the week it's for, a line of both weeks with what
+ * each one asks («44 huevos» were 19 + 25), and the names of what is bought
+ * or at home. With `week`, only that week's lines and amounts, like the
+ * «Esta semana» / «La que viene» chips (plus the lines that have no week).
+ */
+export function shoppingListSummary(items: readonly ListItem[], today: string, week?: 'esta' | 'que_viene'): string {
+  if (items.length === 0) return 'La lista de la compra está vacía: no hay menú para estos días ni nada apuntado a mano.'
+  const thisMonday = mondayOfDate(today)
+  const wanted = week === 'esta' ? thisMonday : week === 'que_viene' ? addDays(thisMonday, 7) : null
+  const names = (list: ListItem[]) => list.map((i) => prettyName(i.name)).join(', ')
+  const bought = items.filter((i) => i.checked)
+  const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped)
+  const skipped = items.filter((i) => i.skipped)
+  const extra = [
+    bought.length ? `Ya comprado (${bought.length}): ${names(bought)}.` : '',
+    atHome.length ? `En casa (${atHome.length}): ${names(atHome)}.` : '',
+    skipped.length ? `Quitado de esta compra: ${names(skipped)}.` : '',
+  ].filter(Boolean).join(' ')
+  let missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
+  if (wanted) missing = missing.filter((i) => lineWeeks(i).length === 0 || lineWeeks(i).includes(wanted))
+  const scope = wanted ? ` para ${weekName(wanted, thisMonday).toLowerCase()}` : ''
+  if (missing.length === 0) return `${wanted ? `No te falta nada${scope}.` : 'Ya lo tienes todo.'} ${extra}`.trim()
+
+  // Weeks in order, then the lines of both weeks, then the ones without a week.
+  const groups = new Map<string, { order: string; labels: string[] }>()
+  const put = (group: string, label: string, order = group) => {
+    const g = groups.get(group) ?? { order, labels: [] }
+    groups.set(group, { ...g, labels: [...g.labels, label] })
+  }
+  for (const i of missing) {
+    const ws = lineWeeks(i)
+    const amount = (w: string) => (i.unit ? formatQty(i.weeks![w], i.unit) : String(i.weeks![w]))
+    if (ws.length === 0) put('A mano o básicos (sin semana)', itemLabel(i), '9')
+    else if (wanted) put(weekName(wanted, thisMonday), ws.length > 1 ? `${prettyName(i.name)} (${amount(wanted)}; la línea de /shopping junta las dos semanas: ${itemLabel(i)})` : itemLabel(i), wanted)
+    else if (ws.length === 1) put(weekName(ws[0], thisMonday), itemLabel(i), ws[0])
+    else put('Para las dos semanas', `${itemLabel(i)} [${ws.map((w) => `${amount(w)} ${weekName(w, thisMonday).toLowerCase()}`).join(', ')}]`, '8')
+  }
+  const head = `Te faltan ${missing.length} cosas${scope}`
+  const sorted = [...groups].sort(([, a], [, b]) => a.order.localeCompare(b.order))
+  const body =
+    sorted.length === 1 && !wanted
+      ? `${head}: ${sorted[0][1].labels.join(', ')}.`
+      : `${head}. ${sorted.map(([g, { labels }]) => `${g}: ${labels.join(', ')}.`).join(' ')}`
+  return `${body} ${extra}`.trim()
+}
+
 const getShoppingList: SkillDefinition = {
   name: 'get_shopping_list',
   description:
-    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar. Usala para "que me falta", "que tengo que comprar", "lee la lista", "hazme la lista de la compra", "mandame la lista".',
-  parameters: { type: 'object', properties: {}, required: [] },
-  async handler(_p, ctx) {
+    'Lee la lista de la compra (la misma que /shopping: lo que pide el menu de hoy al domingo que viene, los basicos y lo añadido a mano) y dice que falta por comprar, cada cosa con su semana ("Esta semana", "La que viene", o las dos con lo de cada una), y los nombres de lo ya comprado y de lo que hay en casa. Con week, solo lo de esa semana (como los atajos de /shopping). Usala para "que me falta", "que tengo que comprar", "lee la lista", "que he comprado ya", "hazme la lista de la compra", "mandame la lista".',
+  parameters: {
+    type: 'object',
+    properties: {
+      week: { type: 'string', enum: ['esta', 'que_viene'], description: 'Solo si pregunta por una semana: "esta" o "que_viene". Sin week, las dos.' },
+    },
+    required: [],
+  },
+  async handler(p, ctx) {
     const list = await currentList(ctx)
     const items = list.items ?? []
     const data = { listId: list.id, items }
-    if (items.length === 0) {
-      return { data, summary: 'La lista de la compra está vacía: no hay menú para estos días ni nada apuntado a mano.', uiHint: 'shopping_list' }
-    }
-    const missing = items.filter(pending).sort((a, b) => AISLES.indexOf(a.aisle ?? 'otros') - AISLES.indexOf(b.aisle ?? 'otros'))
-    const bought = items.filter((i) => i.checked).length
-    const atHome = items.filter((i) => i.inStock && !i.checked && !i.skipped).length
-    const skipped = items.filter((i) => i.skipped).map((i) => prettyName(i.name))
-    const extra = [
-      bought ? `Ya comprado: ${bought}.` : '',
-      atHome ? `En casa: ${atHome}.` : '',
-      skipped.length ? `Quitado de esta compra: ${skipped.join(', ')}.` : '',
-    ].filter(Boolean).join(' ')
-    if (missing.length === 0) {
-      return { data, summary: `Ya lo tienes todo. ${extra}`.trim(), uiHint: 'shopping_list' }
-    }
-    const shown = missing.slice(0, 60).map(itemLabel)
-    const more = missing.length > shown.length ? ` y ${missing.length - shown.length} más` : ''
+    const week = p?.week === 'esta' || p?.week === 'que_viene' ? p.week : undefined
+    const summary = shoppingListSummary(items, madridParts(new Date()).isoDate, week)
     // PRO-380: Mimo handing out the whole list counts like «Mandar la lista» (a resolved week).
-    await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
-    return {
-      data,
-      summary: `Te faltan ${missing.length} cosas: ${shown.join(', ')}${more}. ${extra}`.trim(),
-      uiHint: 'shopping_list',
-    }
+    if (summary.startsWith('Te faltan')) await api(ctx)('POST', '/usage/list-shared', { channel: ctx.channel === 'whatsapp' ? 'whatsapp' : 'web' }).catch(() => {})
+    return { data, summary, uiHint: 'shopping_list' }
   },
 }
 
@@ -951,13 +1054,19 @@ const removeShoppingItems: SkillDefinition = {
     const removed: string[] = []
     const missing: string[] = []
     const staples: string[] = []
+    const which: string[] = []
     let items = [...(list.items ?? [])].filter((i) => !i.skipped)
     for (const name of p.names ?? []) {
-      const hit = bestMatch(items, name, (i) => i.name)
-      if (!hit) {
+      const found = findListLine(items, String(name ?? ''))
+      if (!found) {
         missing.push(name)
         continue
       }
+      if ('ambiguous' in found) {
+        which.push(whichLine(name, found.ambiguous))
+        continue
+      }
+      const hit = found.line
       items = items.filter((i) => i.id !== hit.id)
       if (hit.kind === 'staple') {
         staples.push(prettyName(hit.name))
@@ -972,6 +1081,7 @@ const removeShoppingItems: SkillDefinition = {
     if (removed.length) parts.push(`Quitado de la lista: ${removed.join(', ')}.`)
     if (staples.length) parts.push(`${staples.join(', ')} ${staples.length === 1 ? 'es uno de tus básicos' : 'son de tus básicos'}: si quieres, lo pauso (manage_staples).`)
     if (missing.length) parts.push(`No estaban en la lista: ${missing.join(', ')}.`)
+    parts.push(...which)
     return { data: null, summary: parts.join(' '), uiHint: 'shopping_list' }
   },
 }
@@ -988,8 +1098,10 @@ const changeShoppingItemAmount: SkillDefinition = {
   },
   async handler(p, ctx) {
     const list = await currentList(ctx)
-    const hit = bestMatch(list.items ?? [], String(p.name ?? ''), (i) => i.name)
-    if (!hit) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    const found = findListLine(list.items ?? [], String(p.name ?? ''))
+    if (!found) return text(`"${p.name}" no está en la lista; no he cambiado nada.`)
+    if ('ambiguous' in found) return text(whichLine(String(p.name), found.ambiguous))
+    const hit = found.line
     const name = prettyName(hit.name)
     const b = toBuyable(p.quantity, p.unit)
     if (hit.kind === 'staple') return text(`${name} es uno de tus básicos: su cantidad se cambia en tus básicos (manage_staples).`)
@@ -1065,51 +1177,137 @@ interface PantryRow { id: string; name: string; quantity: number; unit: string; 
 
 // Reading the pantry is get_pantry_stock (skills.ts): pantry + list flags in one answer.
 
+/** PRO-1294: how many products one update_pantry / mark_in_stock call takes. */
+export const PANTRY_BATCH_MAX = 100
+
+/** PRO-1294: a name worth writing down (a voice note can leave «eh» or «…»). */
+export const pantryNameOk = (name: unknown): boolean =>
+  typeof name === 'string' && (normalize(name).match(/[a-zñ]/g) ?? []).length >= 2
+
+/**
+ * PRO-1294: the reply to a list of products — how many went in, where, and
+ * the doubts («no he reconocido X e Y»), never one line per product nor a
+ * technical error. The list is the household's dictation, so the reply stays short.
+ */
+export function pantryBatchSummary(done: { location?: string; removed?: boolean }[], doubts: string[]): string {
+  const added = done.filter((d) => !d.removed)
+  const removed = done.length - added.length
+  const where = (['nevera', 'congelador'] as const)
+    .map((l) => [l, added.filter((d) => d.location === l).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([l, n]) => `${n} en ${l === 'nevera' ? 'la nevera' : 'el congelador'}`)
+  const parts: string[] = []
+  if (added.length) parts.push(`${added.length} ${added.length === 1 ? 'producto apuntado' : 'productos apuntados'} en la despensa${where.length ? ` (${where.join(', ')})` : ''}`)
+  if (removed) parts.push(`${removed} ${removed === 1 ? 'quitado' : 'quitados'}`)
+  const quoted = doubts.map((d) => `"${d}"`)
+  const doubtLine = quoted.length
+    ? `Dudas: no he reconocido ${quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(', ')} y ${quoted[quoted.length - 1]}`}; pregúntale qué es${quoted.length === 1 ? '' : ' cada uno'}, como una duda, sin hablar de fallos.`
+    : ''
+  if (!parts.length) return `No he apuntado nada. ${doubtLine}`.trim()
+  return `Hecho: ${parts.join(' y ')}.${doubtLine ? ` ${doubtLine}` : ''} Resúmeselo en una línea, sin recitar la lista.`
+}
+
+const PANTRY_LOCATIONS = ['nevera', 'congelador', 'despensa']
+
+type PantryChange = { action?: string; name?: string; quantity?: number; unit?: string; expiresAt?: string; location?: string }
+
+/** One product of update_pantry against the rows read once; keeps `rows` up to date for the next one. */
+async function applyPantryChange(p: PantryChange, rows: PantryRow[], ctx: SkillContext): Promise<{ ok: boolean; line: string; location?: string; removed?: boolean }> {
+  const name = String(p.name ?? '').trim()
+  const hit = bestMatch(rows, name, (r) => r.name)
+  const b = toBuyable(p.quantity, p.unit)
+  const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
+  // PRO-228: where it is; a move restarts its date in the new place.
+  const location = p.location && PANTRY_LOCATIONS.includes(p.location) ? p.location : undefined
+  if (p.action === 'remove') {
+    if (!hit) return { ok: false, line: `"${name}" no estaba en la despensa.` }
+    await api(ctx)('DELETE', `/pantry/${hit.id}`)
+    if (rows.includes(hit)) rows.splice(rows.indexOf(hit), 1)
+    return { ok: true, removed: true, line: `Hecho: "${hit.name}" fuera de la despensa.` }
+  }
+  if (hit && (p.action === 'set' || p.action === 'add')) {
+    const quantity = b.quantity == null ? undefined : p.action === 'add' && hit.unit === b.unit ? hit.quantity + b.quantity : b.quantity
+    const patch = {
+      ...(quantity != null ? { quantity } : {}),
+      ...(b.unit ? { unit: b.unit } : {}),
+      ...(exp ? { expiresAt: exp } : {}),
+      ...(location ? { location } : {}),
+    }
+    if (Object.keys(patch).length) await api(ctx)('PATCH', `/pantry/${hit.id}`, patch)
+    if (quantity != null) hit.quantity = quantity
+    if (b.unit) hit.unit = b.unit
+    return { ok: true, location, line: `Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.` }
+  }
+  const created = await api(ctx)<PantryRow | undefined>('POST', '/pantry', {
+    name: String(b.suffix ? `${name} (${b.suffix})` : name).slice(0, 80),
+    ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
+    ...(exp ? { expiresAt: exp } : {}),
+    ...(location ? { location } : {}),
+  })
+  // Two «leche» in one dictation go to one row.
+  if (created?.id && created.name) rows.push(created)
+  return { ok: true, location, line: `Hecho: "${name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.` }
+}
+
 const updatePantry: SkillDefinition = {
   name: 'update_pantry',
   description:
-    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio.',
+    'Actualiza la despensa real: action add ("he comprado 1 kg de arroz"), set (fija la cantidad), remove ("se acabo el aceite"). expiresAt opcional YYYY-MM-DD. location: donde esta (nevera, congelador o despensa), p. ej. "he congelado 4 pechugas" → congelador; con set y solo location lo cambia de sitio. Varios productos ("tengo en la nevera leche, huevos, yogures…", la despensa dictada) van en UNA sola llamada con items (hasta 100), nunca una llamada por producto; cada item hereda action y location si no los lleva. Devuelve cuantos ha apuntado y las dudas: lo que no ha reconocido se lo preguntas al usuario.',
   parameters: {
     type: 'object',
     properties: {
       action: { type: 'string', enum: ['add', 'set', 'remove'] },
-      name: { type: 'string' },
+      name: { type: 'string', description: 'Un solo producto; para varios, items' },
       quantity: { type: 'number' },
       unit: { type: 'string' },
       expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
       location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+      items: {
+        type: 'array',
+        maxItems: PANTRY_BATCH_MAX,
+        description: 'Varios productos en una llamada',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            action: { type: 'string', enum: ['add', 'set', 'remove'] },
+            quantity: { type: 'number' },
+            unit: { type: 'string' },
+            expiresAt: { type: 'string', description: 'YYYY-MM-DD' },
+            location: { type: 'string', enum: ['nevera', 'congelador', 'despensa'] },
+          },
+          required: ['name'],
+        },
+      },
     },
-    required: ['action', 'name'],
+    required: ['action'],
   },
   async handler(p, ctx) {
     const rows = await api(ctx)<PantryRow[]>('GET', '/pantry')
-    const hit = bestMatch(rows, p.name, (r) => r.name)
-    const b = toBuyable(p.quantity, p.unit)
-    const exp = typeof p.expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.expiresAt) ? p.expiresAt : undefined
-    // PRO-228: where it is; a move restarts its date in the new place.
-    const location = ['nevera', 'congelador', 'despensa'].includes(p.location) ? (p.location as string) : undefined
-    if (p.action === 'remove') {
-      if (!hit) return text(`"${p.name}" no estaba en la despensa.`)
-      await api(ctx)('DELETE', `/pantry/${hit.id}`)
-      return text(`Hecho: "${hit.name}" fuera de la despensa.`)
+    if (!Array.isArray(p.items) || p.items.length === 0) {
+      if (!pantryNameOk(p.name)) return text('Falta el nombre del producto; no he cambiado nada.')
+      return text((await applyPantryChange(p, rows, ctx)).line)
     }
-    if (hit && (p.action === 'set' || p.action === 'add')) {
-      const quantity = b.quantity == null ? undefined : p.action === 'add' && hit.unit === b.unit ? hit.quantity + b.quantity : b.quantity
-      await api(ctx)('PATCH', `/pantry/${hit.id}`, {
-        ...(quantity != null ? { quantity } : {}),
-        ...(b.unit ? { unit: b.unit } : {}),
-        ...(exp ? { expiresAt: exp } : {}),
-        ...(location ? { location } : {}),
-      })
-      return text(`Hecho: "${hit.name}" actualizado en la despensa${quantity != null ? ` (${quantity} ${b.unit ?? hit.unit})` : ''}${location ? ` (${location})` : ''}.`)
+    // PRO-1294: the whole dictation in one call; a product it can't place is a doubt, not an error.
+    const done: { location?: string; removed?: boolean }[] = []
+    const doubts: string[] = []
+    for (const raw of (p.items as PantryChange[]).slice(0, PANTRY_BATCH_MAX)) {
+      const item = { action: p.action, location: p.location, ...raw }
+      const name = String(item.name ?? '').trim()
+      if (!pantryNameOk(name)) {
+        if (name) doubts.push(name.slice(0, 40))
+        continue
+      }
+      try {
+        const r = await applyPantryChange(item, rows, ctx)
+        if (r.ok) done.push(r)
+        else doubts.push(name.slice(0, 40))
+      } catch (err) {
+        console.warn('[update_pantry] item failed:', name, (err as Error)?.message ?? err)
+        doubts.push(name.slice(0, 40))
+      }
     }
-    await api(ctx)('POST', '/pantry', {
-      name: String(b.suffix ? `${p.name} (${b.suffix})` : p.name).slice(0, 80),
-      ...(b.quantity != null ? { quantity: b.quantity, unit: b.unit } : {}),
-      ...(exp ? { expiresAt: exp } : {}),
-      ...(location ? { location } : {}),
-    })
-    return text(`Hecho: "${p.name}" añadido a la despensa${location && location !== 'despensa' ? ` (${location})` : ''}.`)
+    return text(pantryBatchSummary(done, doubts), { added: done.filter((d) => !d.removed).length, removed: done.filter((d) => d.removed).length, doubts })
   },
 }
 

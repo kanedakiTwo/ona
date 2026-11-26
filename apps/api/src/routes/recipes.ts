@@ -60,6 +60,7 @@ import {
   RETIRED_RECIPE_TAG,
   PLAN_GRATIS_IMPORTS_MESSAGE,
   isDishType,
+  recipeSearchRank,
   type Course,
   type Difficulty,
   type Meal,
@@ -72,6 +73,7 @@ import {
 } from '@ona/shared'
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
 import { sortCatalog, type CatalogOrderRow } from '../services/recipeCatalogOrder.js'
+import { recipeNameSearch } from '../services/recipeSearch.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
 import { requirePaidPlan } from '../services/accountAccess.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
@@ -179,6 +181,8 @@ interface RecipeRow {
   tips: string | null
   substitutions: string | null
   storage: string | null
+  /** D-1028 (migration 0118); absent on pre-migration rows. */
+  moreTime?: string | null
   /** PRO-372 (migration 0097); absent on pre-migration rows. */
   freezable?: boolean | null
   fridgeDays?: number | null
@@ -214,6 +218,8 @@ interface RecipeCard {
   imageUrl: string | null
   prepTime: number | null
   cookTime: number | null
+  /** D-1028: the card says «25 min de trabajo» first. */
+  activeTime: number | null
   totalTime: number | null
   meals: Meal[]
   seasons: Season[]
@@ -253,6 +259,7 @@ function toCard(row: RecipeRow): RecipeCard {
     imageUrl: row.imageUrl,
     prepTime: row.prepTime,
     cookTime: row.cookTime,
+    activeTime: row.activeTime,
     totalTime: row.totalTime,
     meals: (row.meals ?? []) as Meal[],
     seasons: (row.seasons ?? []) as Season[],
@@ -402,6 +409,8 @@ function toDetailRecipe(
   // PRO-372: the ficha's «Se puede congelar» / «Aguanta N días en nevera» seals.
   if (row.freezable != null) detail.freezable = row.freezable
   if (row.fridgeDays != null) detail.fridgeDays = row.fridgeDays
+  // D-1028: «Y si tienes más tiempo…», public like the rest of the ficha.
+  if (row.moreTime?.trim()) detail.moreTime = row.moreTime
   // notes/tips/substitutions/storage are intentionally NOT exposed on the
   // public detail payload — see spec "Tag Visibility" / "Display Constraints".
 
@@ -534,7 +543,9 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     if (mine) conditions.push(req.userId ? eq(recipes.authorId, req.userId) : sql`FALSE`)
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
-    if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
+    // Search (2026-11-25): each word, any order, no accents or case (services/recipeSearch.ts).
+    const searchWhere = typeof search === 'string' ? recipeNameSearch(search) : null
+    if (searchWhere) conditions.push(searchWhere)
     // ?dishType=<clave> (PRO-1175): the type chips of the menu's picker
     // («Legumbres», «Cremas y sopas»…), `recipes.dish_types` (D-182). An
     // unknown key is ignored.
@@ -607,7 +618,10 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
       .from(recipes)
       .where(where)) as CatalogOrderRow[]
     const total = orderRows.length
-    const pageIds = sortCatalog(orderRows.map((r) => ({ ...r, favoriteHouseholds: Number(r.favoriteHouseholds) })))
+    const sorted = sortCatalog(orderRows.map((r) => ({ ...r, favoriteHouseholds: Number(r.favoriteHouseholds) })))
+    // With a search, names that start with a searched word first (stable: the catalogue order stays inside each group).
+    if (searchWhere) sorted.sort((a, b) => recipeSearchRank(a.name, search!) - recipeSearchRank(b.name, search!))
+    const pageIds = sorted
       .slice(offset, offset + perPage)
       .map((r) => r.id)
 
@@ -981,7 +995,7 @@ router.post(
  * from `meals` / `seasons` when absent.
  */
 export const KEPT_ON_UPDATE = [
-  'notes', 'tips', 'substitutions', 'storage', 'course',
+  'notes', 'tips', 'substitutions', 'storage', 'moreTime', 'course',
   'yieldText', 'prepTime', 'cookTime', 'activeTime', 'servingsConfidence', 'difficulty',
   'seasons', 'equipment', 'tags', 'internalTags', 'frequency', 'sourceUrl', 'sourceType',
 ] as const satisfies ReadonlyArray<keyof RecipeWriteInput>
@@ -1167,6 +1181,7 @@ router.post('/recipes/:id/copy', requireRecipeId(), authMiddleware, async (req: 
           tips: source.tips,
           substitutions: source.substitutions,
           storage: source.storage,
+          moreTime: source.moreTime ?? null,
           advancePrep: source.advancePrep ?? [],
           nutritionPerServing: source.nutritionPerServing,
           nutritionIncomplete: source.nutritionIncomplete ?? false,

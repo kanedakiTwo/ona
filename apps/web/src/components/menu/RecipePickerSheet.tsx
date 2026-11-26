@@ -6,7 +6,7 @@ import { Search, X, Plus, Shuffle } from "lucide-react"
 import { useRecipes } from "@/hooks/useRecipes"
 import { ApiError } from "@/lib/api"
 import { NO_RECIPE_OF_TYPE } from "@/lib/mealSheet"
-import { DISH_TYPES, type Recipe } from "@ona/shared"
+import { DISH_TYPES, matchesRecipeSearch, type Recipe } from "@ona/shared"
 
 interface RecipePickerSheetProps {
   open: boolean
@@ -106,9 +106,8 @@ export function RecipePickerSheet({
 
   // Narrows the previous results at once while the server's answer arrives.
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (q.length === 0) return recipes
-    return recipes.filter((r) => r.name.toLowerCase().includes(q))
+    if (query.trim().length === 0) return recipes
+    return recipes.filter((r) => matchesRecipeSearch(r.name, query))
   }, [recipes, query])
 
   if (!open) return null

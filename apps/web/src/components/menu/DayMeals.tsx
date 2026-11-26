@@ -19,12 +19,13 @@
 import { useState } from "react"
 import Link from "next/link"
 import { motion, useReducedMotion } from "motion/react"
-import { BookOpen, CalendarX, Check, History, Lock, Play, Plus, Refrigerator, RotateCw, Snowflake, TriangleAlert, Utensils, X } from "lucide-react"
+import { BookOpen, CalendarX, Check, CookingPot, History, Lock, Play, Plus, Refrigerator, RotateCw, Snowflake, TriangleAlert, Utensils, X } from "lucide-react"
 import type { TaperPlace as TaperVariant } from "./RecipePickerSheet"
-import { isTaperDish, replacedDishLine, weekTypeChipOf, type MealSlot, type RecipeDish } from "@ona/shared"
+import { batchCookLine, isBatchCooked, isTaperDish, replacedDishLine, weekdayNameOfIso, weekTypeChipOf, type BatchCookItem, type MealSlot, type RecipeDish } from "@ona/shared"
 import { DishTypeIcon } from "@/components/weekType/DishTypeIcon"
 import { cookHref } from "@/lib/cookHref"
 import { mealLabel } from "@/lib/labels"
+import { menuRecipeHref } from "@/lib/menuReturn"
 import { trackSheetAction } from "@/lib/usageEvents"
 import { DAY_MEAL_ORDER, dishName, firstRecipeDish, mealEyebrow, slotDishParts, slotMinutes, type DaySlot, type MealKey } from "@/lib/menuDay"
 import { RecipeCover, mealIconFor } from "./RecipeCover"
@@ -61,6 +62,8 @@ export function SlotChips({
   const fromFreezer = first?.variant === "freezer"
   const fromFridge = first?.variant === "fridge"
   const fromOtherDay = first?.variant === "cooked"
+  // PRO-1046: cooked earlier, in the batch of that day.
+  const fromBatch = isBatchCooked(first) ? first.batchDate : null
   const eaten = !!ctx.slot.eaten && !showEatenElsewhere
   // PRO-364: someone saved an allergy or diet this dish breaks and there was nothing to put instead.
   const conflict = (ctx.slot.dishes ?? []).some((d) => d.kind === "recipe" && d.restrictionConflict)
@@ -68,7 +71,7 @@ export function SlotChips({
   const replaced = first?.replaced ?? null
   // PRO-1186: «Legumbres · semana tipo», or the warning when no recipe of that type fitted.
   const weekType = weekTypeChipOf(ctx.slot.dishes)
-  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !eaten && !replaced && !weekType && ctx.slot.servings == null) return null
+  if (!conflict && !ctx.isLocked && !leftover && !fromFreezer && !fromFridge && !fromOtherDay && !fromBatch && !eaten && !replaced && !weekType && ctx.slot.servings == null) return null
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-mid">
       {conflict && (
@@ -113,6 +116,11 @@ export function SlotChips({
       {fromOtherDay && (
         <span data-testid="taper-other-day" className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
           <History size={11} /> Sobras de otro día · no suma a la compra
+        </span>
+      )}
+      {fromBatch && (
+        <span data-testid="batch-taper" className="inline-flex items-center gap-1 rounded-full bg-cream-deep px-2 py-0.5 font-medium text-ink">
+          <CookingPot size={11} /> Táper del lote del {weekdayNameOfIso(fromBatch)} · ya en la compra
         </span>
       )}
       {leftover && first?.leftoverOf && (
@@ -216,7 +224,9 @@ export function MealHero({
   const reduce = useReducedMotion()
   const first = firstRecipeDish(ctx.slot)!
   const name = first.recipeName ?? "Receta"
-  const eyebrow = mealEyebrow(mealLabel(ctx.meal), slotMinutes(ctx.slot), servingsOf(ctx))
+  // PRO-1046: a dish of an earlier batch is a táper here: who eats it, not the whole batch.
+  const batchTaper = isBatchCooked(first)
+  const eyebrow = mealEyebrow(mealLabel(ctx.meal), batchTaper ? null : slotMinutes(ctx.slot), batchTaper ? (ctx.slot.servings ?? ctx.defaultDiners) : servingsOf(ctx))
   // Remember which URL failed, so swapping to another recipe tries its photo.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const hasPhoto = Boolean(first.imageUrl) && failedSrc !== first.imageUrl
@@ -235,8 +245,8 @@ export function MealHero({
   )
   const captionActions = (
     <div className="flex gap-2">
-      {isTaperDish(first) && !ctx.slot.eaten ? (
-        // A táper (freezer or fridge, PRO-240) is already cooked: no «Empezar a cocinar».
+      {(isTaperDish(first) || batchTaper) && !ctx.slot.eaten ? (
+        // A táper (freezer or fridge, PRO-240; or the batch's, PRO-1046) is already cooked: no «Empezar a cocinar».
         <Link
           href={slotRecipeHref(first.recipeId, ctx)}
           data-testid="taper-see-recipe"
@@ -598,6 +608,68 @@ export function AbsentMealSheets({
       onNote={(text) => onAddNote(meal, text)}
       onDone={(recipeId, place) => onAddFreezer(meal, recipeId, place)}
     />
+  )
+}
+
+/* ───────────────────────── Batch day ───────────────────────── */
+
+/**
+ * PRO-1046 · el día de lote: «Cocinas hoy» and, one line per dish, «Bowl de
+ * pollo ×8 (para lunes a jueves)» (`batchCookingOn` in `@ona/shared`, over
+ * this week and the next). Above the day's meals, even when the day is «sin
+ * cocinar» or has no meals: Dani y Sara's Sunday showed «Día marcado sin
+ * cocinar» while the bowl ×8 sat on Monday as a dish to cook.
+ */
+export function BatchCookCard({
+  items,
+  isToday,
+  dayName,
+  compact = false,
+}: {
+  items: BatchCookItem[]
+  isToday: boolean
+  /** «domingo». */
+  dayName: string
+  /** Desktop: no side margins. */
+  compact?: boolean
+}) {
+  if (items.length === 0) return null
+  return (
+    <section
+      data-testid="batch-day"
+      aria-label={isToday ? "Cocinas hoy" : `El ${dayName} cocinas`}
+      className={`rounded-[22px] border border-border-soft bg-paper p-4 ${compact ? "" : "mx-4 mt-4"}`}
+    >
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-terracotta-deep">
+        <CookingPot size={13} strokeWidth={2} /> Día de lote
+      </p>
+      <h2 className="mt-1 font-serif-text text-[22px] font-[650] leading-[1.15] text-ink">
+        {isToday ? "Cocinas hoy" : `El ${dayName} cocinas`}
+      </h2>
+      <ul className="mt-2 flex flex-col">
+        {items.map((item) => (
+          <li
+            key={`${item.weekStart}-${item.day}-${item.meal}-${item.position}`}
+            data-batch-dish={item.recipeName}
+            className="flex min-h-[48px] items-center gap-2 border-t border-dashed border-border-soft first:border-t-0"
+          >
+            <Link
+              href={menuRecipeHref(item.recipeId, item.servings)}
+              className="min-w-0 flex-1 py-2 font-serif-text text-[17px] leading-[1.25] text-ink hover:underline hover:underline-offset-4"
+            >
+              {batchCookLine(item)}
+            </Link>
+            <Link
+              href={cookHref(item.recipeId, item.servings)}
+              aria-label={`Cocinar ${item.recipeName}`}
+              className="inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full bg-ink px-3.5 text-[14px] font-semibold text-cream transition-colors hover:bg-forest focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            >
+              <Play size={13} fill="currentColor" strokeWidth={0} /> Cocinar
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

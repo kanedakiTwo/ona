@@ -74,6 +74,12 @@ export {
   recipeTotalMinutes,
   recipeActiveMinutes,
   fitsTimeBudget,
+  EVERYDAY_WORK_MINUTES,
+  fitsEverydayWork,
+  workTimeLabel,
+  weekWorkMinutes,
+  minutesText,
+  advancePrepLabel,
 } from './types/cookingTime.js'
 export type { CookingStyle } from './types/cookingStyle.js'
 export {
@@ -112,6 +118,7 @@ export {
   applyFreezeAnswer,
   freezeAnswerFromHabits,
   thawIsConditional,
+  habitTurnsOn,
 } from './types/freezeHabit.js'
 export type { ShoppingItem, ShoppingList, BuyableUnit } from './types/shopping.js'
 export { missingQuantity, activeShoppingItems } from './types/shopping.js'
@@ -179,6 +186,19 @@ export type {
   BasketUndoResult,
   StoredBasketResult,
 } from './types/basketExtension.js'
+export {
+  RED_KINDS,
+  RED_ORDER_STATUSES,
+  RED_HOUSEHOLD_CANCELLABLE,
+  DEFAULT_RED_SETTINGS,
+  isRedKind,
+  isPostalCode,
+  postalCodeSchema,
+  redChoiceSchema,
+  placeRedOrderSchema,
+  redMaxBody,
+} from './types/red.js'
+export type { RedKind, RedOrderStatus, RedSettings, RedOrderView, RedPrepareInfo, RedShopRef, RedStatus } from './types/red.js'
 export type { Macros, Vitamins, Minerals, AminoAcids, FatAcids, CarbTypes, NutrientBalance } from './types/nutrition.js'
 export type {
   Meal,
@@ -306,6 +326,7 @@ export { ingredientNutrients, sumNutrients, nutrientsToPercentages, updateNutrie
 export { firstMenuWeeks, pastDayIndexes, pastMealsOn, MEAL_CUTOFFS } from './utils/firstMenuWeeks.js'
 export type { FirstMenuWeeks } from './utils/firstMenuWeeks.js'
 export { FOLD_FROM, foldIngredientName, hasSameIngredientName } from './utils/ingredientSearch.js'
+export { RECIPE_SEARCH_STOPWORDS, recipeSearchWords, matchesRecipeSearch, recipeSearchRank } from './utils/recipeSearch.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
 export {
   SEASONAL_PRODUCE,
@@ -355,7 +376,7 @@ export type { ShoppingGroup } from './buy/listGroup.js'
 export { basketBaseName, basketLineOrigin, basketMayBeInCart, basketSearch, basketSnapshot, extensionKey, isLiveBasketSend, orderMembers, buildExtensionBasket, sourceItemsForBasketKey } from './buy/extensionBasket.js'
 export type { OrderMember, OrderMemberInput } from './buy/extensionBasket.js'
 
-export { buildRecipePayload } from './recipeFormPayload.js'
+export { buildRecipePayload, moreTimePayload } from './recipeFormPayload.js'
 export type { IngredientRowState, RecipeFormState } from './recipeFormPayload.js'
 export { RATING_PROMPT_CHOICES, RATING_PROMPT_COOLDOWN_DAYS, shouldAskRating } from './ratingPrompt.js'
 export { FEATURED_RECIPES, RETIRED_RECIPE_TAG, BASE_RECIPE_TAG, isBaseRecipe, EVERYDAY_RECIPE_TAG, isEverydayRecipe } from './featuredRecipes.js'
@@ -785,6 +806,8 @@ export type {
 export { ISO_DAY_RE, isIsoDay, RECIPE_OF_THE_DAY_PHOTO_SIZES, RECIPE_OF_THE_DAY_PATH } from './types/recipeOfTheDay.js'
 export type { RecipeOfTheDayPhotoFormat, RecipeOfTheDayView } from './types/recipeOfTheDay.js'
 export { leftoverShares, slotServingsOverride, batchServingsOf } from './utils/leftoverBatch.js'
+export { BATCH_MAX_DAYS_BEFORE, addDaysIso, weekdayOfIso, weekdayNameOfIso, isValidBatchDate, isBatchCooked, batchCookingOn, batchForLabel, batchCookLine } from './utils/batchDay.js'
+export type { BatchCookItem } from './utils/batchDay.js'
 export { moveSlotInWeek, dishKey, slotKey, MENU_CHANGED_CODE, withLock, swapLocks } from './utils/menuSlots.js'
 export type { MenuSheetName, MenuSheetAction } from './constants/menuSheets.js'
 export { MENU_SHEETS, MENU_SHEET_ACTIONS, isMenuSheetAction } from './constants/menuSheets.js'

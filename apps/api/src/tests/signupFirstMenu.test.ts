@@ -70,6 +70,19 @@ describe('placeSignupDishes', () => {
     expect(days[1].dinner.dishes[0].recipeId).toBe('d1') // a copy
     expect(out.left).toEqual([])
   })
+  it('a dish said later and already drawn keeps its slot: an earlier dish never takes it (PRO-1296)', () => {
+    const days = week()
+    days[0].dinner.dishes = [recipe('costillas', 'Costillas a la riojana')]
+    const out = placeSignupDishes(days, [
+      { dish: 'bacalao con tomate', recipe: { id: 'bacalao', name: 'Bacalao con tomate' } },
+      { dish: 'costillas a la riojana', recipe: { id: 'costillas', name: 'Costillas a la riojana' } },
+    ])
+    expect(out.placed).toEqual([
+      { dish: 'bacalao con tomate', dayIndex: 1, meal: 'dinner', recipeName: 'Bacalao con tomate' },
+      { dish: 'costillas a la riojana', dayIndex: 0, meal: 'dinner', recipeName: 'Costillas a la riojana', already: true },
+    ])
+    expect(out.days[0].dinner.dishes[0].recipeId).toBe('costillas')
+  })
   it('locked slots, leftovers and fixed dishes are never touched; what finds no slot is left for next week', () => {
     const days = week().slice(0, 1)
     days[0].lunch.dishes = [recipe('t', 'Táper', { leftoverOf: { dayIndex: 0, meal: 'dinner' } })]

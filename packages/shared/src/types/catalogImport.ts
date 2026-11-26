@@ -124,6 +124,8 @@ export const cocinaRecipeSchema = catalogRewriteLabelsSchema.extend({
   freezable: z.boolean().nullish(),
   /** PRO-372: «Aguanta N días en nevera». Absent = the rewriter guesses it. */
   fridgeDays: z.number().int().min(1).max(30).nullish(),
+  /** D-1028: «Y si tienes más tiempo…», how the quick version gets better with more time. */
+  moreTime: z.string().trim().max(2000).nullish(),
   /** PRO-1099: the day (AAAA-MM-DD) it is «la receta del día»; one recipe per day. */
   featuredOn: z
     .string()
@@ -195,6 +197,7 @@ const FIELDS: Record<string, { label: string; plural?: boolean }> = {
   freezable: { label: 'si se congela (freezable)' },
   fridgeDays: { label: 'los días en nevera (fridgeDays)', plural: true },
   featuredOn: { label: 'la fecha de la receta del día (featuredOn)' },
+  moreTime: { label: '«Y si tienes más tiempo…» (moreTime)' },
   source: { label: 'source' },
   origin: { label: 'el origen (source.origin)' },
   book: { label: 'el libro (source.book)' },

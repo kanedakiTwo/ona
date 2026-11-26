@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildRecipePayload,
   createRecipeSchema,
+  moreTimePayload,
   type RecipeFormState,
 } from '@ona/shared'
 
@@ -247,5 +248,30 @@ describe('buildRecipePayload — nota del ingrediente (PRO-109)', () => {
       fullState({ ingredientRows: [{ ingredientId: UUID_A, ingredientName: 'patata', quantity: 600, unit: 'g', note: '   ' }] }),
     )
     expect((payload.ingredients as Array<Record<string, unknown>>)[0]).not.toHaveProperty('note')
+  })
+})
+
+describe('D-1028 · «Y si tienes más tiempo…» (moreTime)', () => {
+  it('the form sends the text trimmed and the schema takes it', () => {
+    const payload = buildRecipePayload(fullState({ moreTime: '  Con el sofrito a fuego lento 40 min queda más dulce.  ' }))
+    expect(payload.moreTime).toBe('Con el sofrito a fuego lento 40 min queda más dulce.')
+    const parsed = createRecipeSchema.safeParse(payload)
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.moreTime).toBe('Con el sofrito a fuego lento 40 min queda más dulce.')
+  })
+
+  it("emptied in the form → '' (clears it), and the schema takes it", () => {
+    expect(moreTimePayload('   ')).toBe('')
+    const payload = buildRecipePayload(fullState({ moreTime: '   ' }))
+    expect(payload.moreTime).toBe('')
+    expect(createRecipeSchema.safeParse(payload).success).toBe(true)
+  })
+
+  it('not in the form → not sent (the PUT keeps what the recipe had)', () => {
+    expect(buildRecipePayload(fullState())).not.toHaveProperty('moreTime')
+  })
+
+  it('more than 2000 characters is refused', () => {
+    expect(createRecipeSchema.safeParse(buildRecipePayload(fullState({ moreTime: 'a'.repeat(2001) }))).success).toBe(false)
   })
 })

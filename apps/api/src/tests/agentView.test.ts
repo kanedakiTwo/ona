@@ -42,6 +42,7 @@ import { env } from '../config/env.js'
 import { FLAG_CATEGORIES } from '../services/assistantFlags.js'
 import { WAITLIST_DEFINITIONS, buildWaitlistReport } from '../services/waitlist.js'
 import { REVIEW_SCHEMA } from '../services/whatsapp/reviewer.js'
+import { buildSignupSources } from '../services/usageReport.js'
 import { normalizeSource, waitlistSignupSchema } from '@ona/shared'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../..')
@@ -673,5 +674,41 @@ describe('comparisonForAgents', () => {
       },
     ])
     expect(JSON.stringify(v)).not.toMatch(LEAK)
+  })
+})
+
+describe('signupSources in /admin/usage (PRO-1288, PRO-1310)', () => {
+  it('only counts under closed labels: no household or user ids, no emails, no exact dates', () => {
+    const hh = '3f2a9c1e-1234-4abc-9def-0123456789ab'
+    const rows = buildSignupSources(
+      {
+        days: ['2026-11-10'],
+        today: '2026-11-29',
+        counts: [],
+        householdDays: [
+          { householdId: hh, day: '2026-11-10', name: 'meal_cooked' },
+          { householdId: hh, day: '2026-11-11', name: 'shopping_item_checked' },
+        ],
+      },
+      [
+        { householdId: hh, day: '2026-11-10', source: 'ana.garcia@example.com', utmSource: 'Instagram' },
+        { householdId: 'b1c2d3e4-0000-4000-8000-000000000001', day: '2026-11-10', source: 'iar-receta', utmSource: 'pepe@example.org' },
+      ],
+      new Set(['directo', 'iar-receta']),
+      {
+        menus: [{ householdId: hh, week: '2026-11-23', firstCreatedAt: '2026-11-20T10:00:00.000Z', autoplanSeenAt: null }],
+        people: [{ householdId: hh, people: 3, accounts: 2 }],
+      },
+    )
+    for (const r of rows) {
+      expect(Object.keys(r).sort()).toEqual(
+        ['firstHit', 'firstMenu', 'isoWeek', 'partial', 'signups', 'source', 'twoPlusPeople', 'utmSource', 'week', 'week2MenuReady'].sort(),
+      )
+    }
+    expect(rows.map((r) => [r.source, r.utmSource])).toEqual([
+      ['iar-receta', 'otro'],
+      ['otro', 'instagram'],
+    ])
+    expect(JSON.stringify(rows)).not.toMatch(/3f2a9c1e|b1c2d3e4|@|example|garcia|pepe|2026-11-10|2026-11-20T/)
   })
 })

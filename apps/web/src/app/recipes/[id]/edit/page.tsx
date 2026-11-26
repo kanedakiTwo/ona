@@ -33,7 +33,7 @@ import {
 } from "@/components/recipes/form/RecipeFormUI"
 import { FieldLabel, RequiredNote } from "@/components/FieldLabel"
 import { LintFailureError } from "@/lib/api"
-import { createRecipeSchema, formatIngredientText, splitSteps, COURSES, COURSE_LABELS } from "@ona/shared"
+import { createRecipeSchema, formatIngredientText, moreTimePayload, splitSteps, COURSES, COURSE_LABELS } from "@ona/shared"
 import type { Course, CreateRecipeInput, Difficulty, Meal, RecipeStep, Season } from "@ona/shared"
 import { MEAL_LABELS, SEASON_LABELS } from "@/lib/labels"
 
@@ -138,6 +138,8 @@ export default function EditRecipePage() {
   // `tips` (Mimo reads them as «Trucos»); edited or new ones go to `notes`.
   const [notes, setNotes] = useState<string[]>([""])
   const [loadedTips, setLoadedTips] = useState<string[]>([])
+  // D-1028 · «Y si tienes más tiempo…»: how the quick version gets better with more time.
+  const [moreTime, setMoreTime] = useState("")
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Set to true after the server returns lint warnings: the next click of
@@ -178,6 +180,7 @@ export default function EditRecipePage() {
     const merged = [...splitParas(recipe.notes), ...splitParas(recipe.tips)]
     setNotes(merged.length > 0 ? merged : [""])
     setLoadedTips(splitParas(recipe.tips))
+    setMoreTime(recipe.moreTime ?? "")
     const rows: SavedIngredientRow[] = recipe.ingredients.map((ri) => ({
       id: ri.id,
       ingredientId: ri.ingredientId,
@@ -348,6 +351,8 @@ export default function EditRecipePage() {
     }
     payload.notes = noteParas.join("\n\n")
     payload.tips = tipParas.join("\n\n")
+    // D-1028: '' clears the section.
+    payload.moreTime = moreTimePayload(moreTime)
 
     return payload
   }
@@ -722,6 +727,24 @@ export default function EditRecipePage() {
                   onUpdate={(idx, v) => updateAt(setNotes, notes, idx, v)}
                   onAdd={() => addAt(setNotes, notes)}
                   onRemove={(idx) => removeAt(setNotes, notes, idx)}
+                />
+              </FormCard>
+
+              {/* D-1028: shown at the end of the ficha, only with text. */}
+              <FormCard
+                title="Y si tienes más tiempo…"
+                description="Cómo queda aún mejor con más tiempo: el sofrito a fuego lento, la legumbre seca en remojo, el caldo casero…"
+                mark={{ optional: true }}
+              >
+                <textarea
+                  id="recipe-more-time"
+                  aria-label="Y si tienes más tiempo…"
+                  data-testid="recipe-more-time-input"
+                  value={moreTime}
+                  onChange={(e) => setMoreTime(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  className="min-h-[88px] w-full resize-y rounded-xl border border-border-soft bg-paper px-3.5 py-2.5 text-[16px] leading-relaxed text-ink placeholder:text-ink-light focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink lg:text-[15px]"
                 />
               </FormCard>
             </div>

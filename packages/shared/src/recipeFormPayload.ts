@@ -69,6 +69,19 @@ export interface RecipeFormState {
    * link is sent as `sourceType: 'youtube'`, anything else as `'article'`.
    */
   sourceUrl?: string
+  /**
+   * D-1028 · «Y si tienes más tiempo…» (the edit form). Absent = not sent
+   * (the recipe keeps it); '' clears it.
+   */
+  moreTime?: string
+}
+
+/**
+ * D-1028: the `moreTime` the edit form sends — the text trimmed; '' clears
+ * the section (the API stores it as NULL).
+ */
+export function moreTimePayload(text: string): string {
+  return text.trim()
 }
 
 export function buildRecipePayload(form: RecipeFormState): Record<string, unknown> {
@@ -120,6 +133,8 @@ export function buildRecipePayload(form: RecipeFormState): Record<string, unknow
     payload.sourceUrl = sourceUrl
     payload.sourceType = /^https?:\/\/([a-z0-9-]+\.)*(youtube\.com|youtu\.be)(\/|$)/i.test(sourceUrl) ? 'youtube' : 'article'
   }
+
+  if (form.moreTime !== undefined) payload.moreTime = moreTimePayload(form.moreTime)
 
   return payload
 }

@@ -153,6 +153,11 @@ export interface Recipe {
   substitutions?: string
   storage?: string
   /**
+   * D-1028 · «Y si tienes más tiempo…»: how the quick version gets better
+   * with more time. Public; the ficha shows it at the end when it has text.
+   */
+  moreTime?: string
+  /**
    * PRO-372: «Se puede congelar» (true) / «No se congela» (false) seal on the
    * ficha. Null/absent = no data, no seal.
    */
@@ -278,6 +283,8 @@ export const createRecipeSchema = z.object({
   tips: z.string().optional(),
   substitutions: z.string().optional(),
   storage: z.string().optional(),
+  // D-1028: '' clears it on an edit; absent keeps it (KEPT_ON_UPDATE).
+  moreTime: z.string().max(2000).optional(),
   advancePrep: z.array(advancePrepSchema).max(5).optional(),
 
   tags: z.array(z.string()).default([]),

@@ -1,5 +1,5 @@
 import type { DayTimeBudget, FitLevel, Meal, RecipeFrequency, Season } from '@ona/shared'
-import { FIT_WEIGHT, FREQUENCY_WEIGHT, appliancesIn, classifyEquipment, fitsTimeBudget, isInSeason } from '@ona/shared'
+import { FIT_WEIGHT, FREQUENCY_WEIGHT, appliancesIn, classifyEquipment, fitsEverydayWork, fitsTimeBudget, isInSeason } from '@ona/shared'
 import { compileRestrictions, violatesRestrictions } from './dietaryRestrictions.js'
 import type { DietCategory } from './stepDietMentions.js'
 import { tasteWeight, type MenuTastes } from './menuTastes.js'
@@ -151,6 +151,16 @@ export interface MatcherOptions {
   /** Legacy shape of `timeBudget`: N minutes in total. */
   maxPrepMinutes?: number | null
   /**
+   * D-1028 · «30 minutos de tu tiempo como mucho»: the most hands-on
+   * minutes (`activeTime`, else `prepTime`) a drawn dish may ask for, on top
+   * of the household's own limit (both apply, so the stricter wins). Null on
+   * a special occasion (a holiday, a meal with guests). Callers search with
+   * it first and without it only when nothing fits (`withWorkCapFallback`).
+   */
+  workCap?: number | null
+  /** D-1028: recipes the household chose itself («mis favoritas»): the cap never takes them out. */
+  workCapExempt?: ReadonlySet<string>
+  /**
    * PRO-1201: the ficha's cuisines and the cook's level, as weights of the
    * draw (`menuTastes.ts`); they never filter. Absent = as before.
    */
@@ -244,6 +254,8 @@ export function matchRecipes(
     //    prep + cook), a «trabajo» day activeTime (else prepTime). With a
     //    limit, a recipe without that time does not pass.
     if (!fitsTimeBudget(recipe, budget)) return false
+    // 6b. D-1028: no more than `workCap` minutes of the cook's time.
+    if (options.workCap && !options.workCapExempt?.has(recipe.id) && !fitsEverydayWork(recipe, options.workCap)) return false
 
     return true
   })
@@ -376,6 +388,17 @@ export function needsUnavailableEquipment(equipment: readonly string[] | null | 
     const k = classifyEquipment(e)
     return unavailable.has(k.kind === 'appliance' ? k.name : normaliseEquipment(e))
   })
+}
+
+/**
+ * D-1028: a search with the everyday work cap (`options.workCap`) and, only
+ * when nothing fits, the same search without it, so the cap never leaves a
+ * meal without a dish (the household's own limits still apply).
+ */
+export function withWorkCapFallback<T>(options: MatcherOptions, find: (o: MatcherOptions) => T | undefined): T | undefined {
+  const found = find(options)
+  if (found !== undefined || !options.workCap) return found
+  return find({ ...options, workCap: null })
 }
 
 export function findRecipeForSlot(

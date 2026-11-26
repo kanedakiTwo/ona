@@ -24,6 +24,8 @@ vi.mock('../services/menuGenerator.js', () => ({
 vi.mock('../services/recipeMatcher.js', () => ({
   findRecipeForSlot: vi.fn(() => ({ id: 'r-new', name: 'Receta nueva' })),
   normaliseEquipment: (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim(),
+  // D-1028: the real wrapper (with the cap first, then without it).
+  withWorkCapFallback: (o: { workCap?: number | null }, find: (o: unknown) => unknown) => find(o) ?? (o.workCap ? find({ ...o, workCap: null }) : undefined),
 }))
 vi.mock('../services/calorieCalculator.js', () => ({
   calculateMenuCaloriesFromDB: vi.fn(async () => 12345),
@@ -90,6 +92,11 @@ vi.mock('../services/weekType.js', () => ({
   weekTypeDishTypeAt: vi.fn(async () => null),
   poolOfDishType: (pool: unknown[]) => pool,
   fromWeekTypeOf: () => ({}),
+}))
+// PRO-1071: the household's notes (their DB read is tested in householdRecipeNotes.smoke.ts) — none unless a test says so.
+vi.mock('../services/assistant/householdRecipeNotes.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/assistant/householdRecipeNotes.js')>()),
+  loadHouseholdRecipeNotes: vi.fn(async () => new Map()),
 }))
 vi.mock('../services/scopeResolver.js', () => ({
   resolveScope: vi.fn(async (userId: string) => ({ kind: 'user', value: userId })),
@@ -329,6 +336,22 @@ describe('get_weekly_menu', () => {
     )
   })
 
+  // PRO-1039: Carmen heard the week without the curry of Friday (only the
+  // first dish of each meal) and Laura «la que viene todavía no tiene menú»
+  // with it planned.
+  it('names every dish of a meal and adds next week when it has a menu', async () => {
+    const days = [{}, {}, {}, {}, { dinner: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Arroz blanco' }, { kind: 'recipe', recipeId: 'b', recipeName: 'Curry de berenjena' }] } }, {}, {}]
+    const next = [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'c', recipeName: 'Paella' }, { kind: 'note', text: 'Ensalada' }] } }, {}, {}, {}, {}, {}, {}]
+    const db = makeDb([{ id: 'm-7', days, skippedDays: [] }], [], [], [{ id: 'm-8', days: next, skippedDays: [] }], [], [])
+    const r = await at(() => skill.handler({}, ctx(db)))
+    expect(r.summary).toBe(
+      'Menu de la semana del lunes 12 de octubre:\nviernes 16 de octubre: cena · 2 raciones: Arroz blanco + Curry de berenjena' +
+        '\n\nLa semana que viene (del lunes 19 de octubre) ya tiene menu:\nlunes 19 de octubre: comida · 2 raciones: Paella + Ensalada',
+    )
+    // The picture on WhatsApp stays this week's.
+    expect(r.data).toMatchObject({ menuId: 'm-7', weekStart: '2026-10-12' })
+  })
+
   it('nextWeek reads next week', async () => {
     const db = makeDb([{ id: 'm-8', days: [{ lunch: { dishes: [{ kind: 'recipe', recipeId: 'a', recipeName: 'Paella' }] } }], skippedDays: [] }], /* diners */ [], /* recipe times */ [])
     const r = await at(() => skill.handler({ nextWeek: true }, ctx(db)))
@@ -530,6 +553,65 @@ describe('suggest_recipes', () => {
     expect(r.summary).toContain('Crema de calabaza')
     expect(r.summary).not.toContain('Espaguetis')
     expect(r.summary).not.toContain('Pollo')
+  })
+})
+
+// ─── 5b. PRO-1071: Mimo reads the household's notes ─────────────────────
+// Carmen y Antonio (2026-10-28 to 2026-11-18): «Una pizca de comino al final.»
+// on their «Lentejas guisadas» (saved twice) and Mimo said there was no note,
+// made one up from the recipe's tips, or «el texto de la nota no me aparece».
+
+describe('the recipe tools read the household\'s note (PRO-1071)', () => {
+  const own = { id: 'r-own', name: 'Lentejas guisadas', authorId: 'u-1', servings: 4, prepTime: 10, tips: 'Añadir el hueso de pollo y cocer 40-45 minutos.' }
+  const other = { id: 'r-salmon', name: 'Lentejas con salmón', authorId: 'u-1', servings: 2, prepTime: 20 }
+  const catalogue = { id: 'r-cat', name: 'Lentejas guisadas con verduras', authorId: null, servings: 4, prepTime: 40 }
+  const ings = [{ ingredientName: 'lentejas', quantity: 300, unit: 'g' }]
+  const withNote = async () => {
+    const { loadHouseholdRecipeNotes } = await import('../services/assistant/householdRecipeNotes.js')
+    vi.mocked(loadHouseholdRecipeNotes).mockImplementationOnce(async (_u: string, ids: readonly string[]) => {
+      const m = new Map()
+      if (ids.includes('r-own')) m.set('r-own', { notes: 'Una pizca de comino al final.', substitutions: 'Si no hay merluza, vale la pescadilla.' })
+      return m
+    })
+  }
+
+  it('get_recipe_details says the note word for word, apart from the tips, and whose recipe it is', async () => {
+    await withNote()
+    const r = await get('get_recipe_details').handler({ recipeName: 'lentejas guisadas' }, ctx(makeDb(/* menu */ [], [catalogue, other, own], ings, [])))
+    expect(r.data?.id).toBe('r-own')
+    expect(r.summary).toContain('Es una receta del hogar')
+    expect(r.summary).toContain('Nota del hogar en esta receta (citala tal cual, entre comillas): «Una pizca de comino al final.»')
+    expect(r.summary).toContain('Sustituciones apuntadas por el hogar en esta receta: «Si no hay merluza, vale la pescadilla.»')
+    expect(r.summary).toContain('Trucos de la receta (vienen con la receta, no son la nota del hogar): Añadir el hueso de pollo')
+    expect(r.data?.householdNote).toEqual({ notes: 'Una pizca de comino al final.', substitutions: 'Si no hay merluza, vale la pescadilla.' })
+  })
+
+  it('get_recipe_details says there is no note when there is none (never another recipe\'s)', async () => {
+    await withNote()
+    const r = await get('get_recipe_details').handler({ recipeName: 'lentejas con salmón' }, ctx(makeDb(/* menu */ [], [other], ings, [])))
+    expect(r.summary).toContain('Nota del hogar en esta receta: ninguna.')
+    expect(r.summary).not.toContain('comino')
+  })
+
+  it('get_recipe_details calls a catalogue recipe the catalogue\'s', async () => {
+    const r = await get('get_recipe_details').handler({ recipeName: 'lentejas guisadas con verduras' }, ctx(makeDb(/* menu */ [], [catalogue], ings, [])))
+    expect(r.summary).toContain('Es una receta del catalogo de Mimoia.')
+  })
+
+  it('search_recipes puts their recipe first, with its note', async () => {
+    await withNote()
+    const rows = [catalogue, other, own].map(({ id, name, authorId }) => ({ id, name, authorId, meals: [], seasons: [], prepTime: 20 }))
+    const r = await get('search_recipes').handler({ query: 'lentejas guisadas' }, ctx(makeDb(rows)))
+    expect(r.summary).toMatch(/^Encontradas 3 receta\(s\): Lentejas guisadas \(suya; nota del hogar: «Una pizca de comino al final\.»; sustituciones del hogar: «Si no hay merluza, vale la pescadilla\.»\), /)
+    expect(r.summary).toContain('Lentejas con salmón (suya)')
+  })
+
+  it('recipe_variation reads the same recipe and its note', async () => {
+    await withNote()
+    const r = await get('recipe_variation').handler({ recipeName: 'lentejas guisadas', ingredientToReplace: 'comino' }, ctx(makeDb([other, catalogue, own], ings)))
+    expect(r.data?.recipeName).toBe('Lentejas guisadas')
+    expect(r.summary).toContain('Receta Lentejas guisadas (suya).')
+    expect(r.summary).toContain('«Una pizca de comino al final.»')
   })
 })
 
@@ -1551,7 +1633,10 @@ describe('skill export coverage', () => {
     // and 94 with get_week_type + set_week_type_slot (D-182 fase 3, weekTypeSkills.test.ts).
     // and 95 with answer_sean_ellis (PRO-334, seanEllisSurvey.test.ts).
     // and 96 with set_alert_time (PRO-1301, alertTimes.test.ts).
-    expect(skills.length).toBe(98)
+    // and 97 with set_batch_day (PRO-1046, batchDay.test.ts).
+    // and 98 with check_menu_for_baby (PRO-1035, mimoBabyWeek.test.ts).
+    // and 100 with forget_allergy + withdraw_health_permission (PRO-1305, chatAllergies tests).
+    expect(skills.length).toBe(100)
   })
 
   it('every skill has a unique name', () => {

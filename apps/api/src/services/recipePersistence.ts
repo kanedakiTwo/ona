@@ -29,7 +29,7 @@
  *      touching the DB.
  *   5. Computes nutrition (`aggregateNutrition`), allergens (`allergenUnion`),
  *      and `totalTime` (sum of `step.durationMin` if all set, else
- *      `prepTime + cookTime`, else null).
+ *      `prepTime + cookTime` with the steps' waits, PRO-1078, else null).
  *   6. Performs the write inside a Drizzle transaction:
  *        INSERT mode: insert the recipe row, then ingredients, then steps.
  *        UPDATE mode: delete recipe_steps + recipe_ingredients, update the
@@ -70,6 +70,7 @@ import {
 import { allergenUnion } from './nutrition/allergens.js'
 import { refreshRecipeDishTypes } from './dishTypes.js'
 import { carryIngredientMarks, ingredientMarksOf, type IngredientMarks } from './ingredientRoles.js'
+import { isDayBeforeStep, totalWithWaits, waitFloor } from './recipeWaitTime.js'
 import type {
   Difficulty,
   IngredientRole,
@@ -147,6 +148,8 @@ export interface RecipeWriteInput {
   tips?: string | null
   substitutions?: string | null
   storage?: string | null
+  /** D-1028: «Y si tienes más tiempo…». */
+  moreTime?: string | null
   /** PRO-220. Undefined on an update keeps what the recipe had (the edit form doesn't send it). */
   advancePrep?: Array<{ text: string; hoursBefore: number }>
   tags?: string[]
@@ -186,7 +189,15 @@ export interface PersistOptions {
    * `softLint = false` so they enforce the full ruleset.
    */
   softLint?: boolean
+  /**
+   * PRO-1290: runs inside the write's transaction, once the rows are written
+   * (the admin audit row of a catalogue fix). A throw rolls the save back.
+   */
+  inTransaction?: (tx: PersistTx, recipeId: string) => Promise<void>
 }
+
+/** The Drizzle transaction client `persistRecipe` writes with. */
+export type PersistTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 export interface PersistOk {
   ok: true
@@ -445,15 +456,21 @@ function resolveSteps(
 
 // ─── totalTime ──────────────────────────────────────────────────
 
-function computeTotalTime(input: RecipeWriteInput): number | null {
-  const steps = input.steps ?? []
+/**
+ * Sum of `step.durationMin` if all set (a soak or a night in the fridge
+ * left out: done the day before), else `prepTime + cookTime` with the waits
+ * (resting, rising, the fridge…) the steps give (PRO-1078).
+ */
+export function computeTotalTime(input: Pick<RecipeWriteInput, 'steps' | 'prepTime' | 'cookTime'>): number | null {
+  const steps = (input.steps ?? []).map((s) => ({ text: s.text ?? '', durationMin: s.durationMin ?? null, technique: s.technique ?? null }))
   if (steps.length > 0 && steps.every((s) => s.durationMin != null)) {
-    return steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    const sum = steps.filter((s) => !isDayBeforeStep(s)).reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
+    return sum > 0 ? sum : steps.reduce((acc, s) => acc + (s.durationMin ?? 0), 0)
   }
   const prep = input.prepTime ?? 0
   const cook = input.cookTime ?? 0
-  if (prep === 0 && cook === 0) return null
-  return prep + cook
+  if (prep === 0 && cook === 0) return waitFloor(null, null, steps)
+  return totalWithWaits({ prepTime: prep, cookTime: cook, totalTime: prep + cook }, steps)
 }
 
 // ─── Main entry point ───────────────────────────────────────────
@@ -482,6 +499,9 @@ export async function persistRecipe(
     servings: input.servings,
     prepTime: input.prepTime ?? null,
     cookTime: input.cookTime ?? null,
+    activeTime: input.activeTime ?? null,
+    moreTime: input.moreTime ?? null,
+    frequency: input.frequency ?? null,
     difficulty: input.difficulty,
     meals: input.meals,
     seasons: input.seasons ?? [],
@@ -504,6 +524,8 @@ export async function persistRecipe(
   const lintResult: LintResult = lintRecipe(lintInput, {
     ingredientCatalog: catalog.lint,
     force: opts.force,
+    // D-1028: Cocina's identity checks, only on catalogue recipes (warnings).
+    catalog: opts.authorId === null,
   })
   if (!lintResult.ok) {
     if (!opts.softLint) {
@@ -567,6 +589,8 @@ export async function persistRecipe(
       tips: textOrNull(input.tips),
       substitutions: textOrNull(input.substitutions),
       storage: textOrNull(input.storage),
+      // D-1028: only when sent (an update that leaves it out keeps it, like advancePrep).
+      ...(input.moreTime !== undefined ? { moreTime: textOrNull(input.moreTime) } : {}),
       nutritionPerServing: aggregate.perServing,
       nutritionIncomplete: aggregate.incomplete,
       tags: input.tags ?? [],
@@ -661,6 +685,7 @@ export async function persistRecipe(
       )
     }
 
+    if (opts.inTransaction) await opts.inTransaction(tx, id)
     return id
   })
 

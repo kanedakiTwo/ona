@@ -36,6 +36,7 @@ import { db } from '../db/connection.js'
 import { ingredients, menuEdits, menus, recipeIngredients, recipeSteps, recipes, shoppingLists, users } from '../db/schema.js'
 import { compileRestrictions, violatesRestrictions, type RestrictableRecipe } from './dietaryRestrictions.js'
 import { findForCourse } from './courseAwareMatcher.js'
+import { withWorkCapFallback } from './recipeMatcher.js'
 import { madridParts, madridWeekStart } from './madridTime.js'
 import { recordMenuEdits, slotDiff, type MenuEditChange } from './menuEdits.js'
 import { loadMenuRestrictions, loadSlotPickContext, slotPickOptions, type SlotPickContext } from './menuSlotPick.js'
@@ -102,7 +103,7 @@ async function loadRecipesForCheck(allIds: string[]): Promise<Map<string, Recipe
         .sort((a, b) => a.index - b.index)
         .map((st) => st.text)
       // PRO-346: meat, fish or allergens the steps name and the ingredients don't, like `loadMatchableRecipes`.
-      const stepMentions = unlistedDietMentions(steps, lines.map((i) => i.ingredientName)).map(({ term, category }) => ({ term, category }))
+      const stepMentions = unlistedDietMentions(steps, lines.map((i) => i.ingredientName), r.name).map(({ term, category }) => ({ term, category }))
       return [r.id, { id: r.id, name: r.name, allergens: r.allergens ?? [], ingredients: lines, stepMentions }]
     }),
   )
@@ -298,7 +299,7 @@ async function reviewMenu(
     handPicked: (day, meal, id) => handPicked.has(`${day}:${meal}:${id}`),
     pick: async (day, meal, course, used) => {
       const { pool, options } = await slotPickOptions(await getCtx(), pickMenu, day, meal, used)
-      const found = findForCourse(pool, course ?? null, options)
+      const found = withWorkCapFallback(options, (o) => findForCourse(pool, course ?? null, o))
       return found && !violatesRestrictions(found, rules) ? found : null
     },
     recipeName: (id) => checked.get(id)?.name,

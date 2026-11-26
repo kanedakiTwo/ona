@@ -7,6 +7,7 @@ import {
   BRAND_NAME,
   detectSeason,
   filterCatalogRecipes,
+  matchesRecipeSearch,
   pickFeaturedRecipes,
   type CatalogIntent,
   type CatalogScope,
@@ -128,10 +129,9 @@ export default function RecipesPage() {
   // (server-side on the plain catalogue) are applied here instead.
   const recipes = useMemo(() => {
     if (!withWhatIHave) return catalogRecipes
-    const q = searchQuery.trim().toLowerCase()
     return (withWhatIHaveRecipes ?? []).filter(
       (r) =>
-        (!q || r.name.toLowerCase().includes(q)) &&
+        matchesRecipeSearch(r.name, searchQuery) &&
         (!selectedMeal || (r.meals ?? []).includes(selectedMeal)),
     )
   }, [withWhatIHave, catalogRecipes, withWhatIHaveRecipes, searchQuery, selectedMeal])

@@ -131,6 +131,19 @@ test('/terminos: Mimo notes down the allergies with the permission; check the la
   await expect(terms).toContainText('Revisa siempre las etiquetas')
 })
 
+// D-1035 / LEG-509 (Legal, 2026-11-26): the nutritionist's diet sent to Mimo, in Legal's words.
+test('/privacidad and /terminos: the nutritionist diet sent to Mimo is read once and not stored', async ({ page }) => {
+  await page.goto('/privacidad')
+  const diet = page.getByTestId('privacy-nutritionist-diet')
+  await expect(diet).toContainText('la lee una sola vez')
+  await expect(diet).toContainText('No guardamos el documento, ni el motivo de la dieta')
+  await expect(page.getByText('la lectura de la dieta de tu nutricionista si se la mandas a Mimo')).toBeVisible()
+  await page.goto('/terminos')
+  const terms = page.getByTestId('terms-nutritionist-diet')
+  await expect(terms).toContainText('Mimo no revisa, cambia ni valora esa dieta')
+  await expect(terms).toContainText('Comprueba lo que Mimo ha apuntado.')
+})
+
 // PRO-120 (Legal, 2026-10-20): the app's own usage events, screens included, in Legal's exact words.
 test('/privacidad: the app counts functions and screens, never what you write', async ({ page }) => {
   await page.goto('/privacidad')

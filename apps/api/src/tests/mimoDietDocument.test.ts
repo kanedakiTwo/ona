@@ -81,18 +81,24 @@ describe('the prompt rule', () => {
     }
   })
 
-  it('notes only with the existing tools, lists what it can not apply, never changes the diet, and says it the right way', () => {
-    for (const tool of ['update_profile addRestrictions', 'note_ficha_fact', 'update_memory dislikes', 'menu_rule', 'set_fixed_meal']) {
-      expect(NUTRITIONIST_DIET_RULE).toContain(tool)
-    }
+  it('follows Legal (LEG-509): only the allergy path, literal, no clinical data, no advice, the right words', () => {
+    // Everything from the diet goes through the allergy path, so the one-time health permission covers it.
+    expect(NUTRITIONIST_DIET_RULE).toContain('update_profile addRestrictions')
+    expect(NUTRITIONIST_DIET_RULE).toContain('note_ficha_fact restrictions con about=person')
     expect(NUTRITIONIST_DIET_RULE).toMatch(/el permiso lo pide el sistema/)
+    // Tools that would skip the permission are not used for the diet.
+    for (const tool of ['update_memory dislikes', 'menu_rule', 'set_fixed_meal']) expect(NUTRITIONIST_DIET_RULE).not.toContain(tool)
+    expect(NUTRITIONIST_DIET_RULE).toMatch(/No deduzcas ni completes nada/)
+    expect(NUTRITIONIST_DIET_RULE).toMatch(/no llames a update_profile con weight, height, age ni activityLevel/)
+    expect(NUTRITIONIST_DIET_RULE).toMatch(/medicacion/)
+    expect(NUTRITIONIST_DIET_RULE).toMatch(/Si es la de otro adulto, no apuntes nada/)
     expect(NUTRITIONIST_DIET_RULE).toMatch(/lista corta/)
     expect(NUTRITIONIST_DIET_RULE).toMatch(/calorias/)
     expect(NUTRITIONIST_DIET_RULE).toMatch(/No cambies, completes ni valores su dieta/)
-    expect(NUTRITIONIST_DIET_RULE).toContain('"Eso, con tu nutricionista"')
-    expect(NUTRITIONIST_DIET_RULE).toContain('la regla de Salud')
+    expect(NUTRITIONIST_DIET_RULE).toMatch(/si la cumple o se la salta/)
+    expect(NUTRITIONIST_DIET_RULE).toContain('«Eso comentalo con tu nutricionista.')
     expect(NUTRITIONIST_DIET_RULE).toContain('«la dieta de tu nutricionista»')
-    expect(NUTRITIONIST_DIET_RULE).toMatch(/nunca «pauta», «tratamiento» ni «consulta»/)
+    expect(NUTRITIONIST_DIET_RULE).toMatch(/nunca «pauta», «tratamiento», «consulta», «paciente» ni «prescrito»/)
   })
 })
 

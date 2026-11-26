@@ -18,6 +18,7 @@ import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, N
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
+import { ATTACHMENT_DEFAULT_TEXT, ChatAttachmentError, attachmentForModel, mentionsDiet, withAttachmentMarker } from '../assistant/chatAttachment.js'
 import { recordServiceMessageCost } from './serviceCost.js'
 import { needsReturnDisclosure, stripAiSignature, withReturnDisclosure } from './aiNotice.js'
 import {
@@ -1174,11 +1175,17 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         break
       }
       case 'document': {
-        // PRO-224: a PDF is read only as the school menu.
+        // PRO-224: a PDF that is the school menu is read as such. Any other
+        // (2026-11-26: the nutritionist's diet) goes to Mimo, never stored.
         if (await handleSchoolMenu(msg, userId, now, deps, out, acker, true)) return
-        await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-        await outText('system', COPY.unsupported)
-        return
+        const doc = await pdfForMimo(msg, userId, deps, out)
+        if (doc === 'done') return
+        text = doc.text
+        images = doc.images
+        historyBody = withAttachmentMarker(msg.text)
+        // Growth gate: a PDF that reaches Mimo is, in practice, the diet (looksLikeDietDocument).
+        trackEvent('mimo_diet_document', { userId, channel: 'whatsapp', props: { kind: 'pdf' } })
+        break
       }
       case 'image': {
         if (await handleSchoolMenu(msg, userId, now, deps, out, acker, false)) return
@@ -1255,7 +1262,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       console.warn('[whatsapp] recordUsage failed (continuing):', err)
     }
     const nearCap = spentBefore !== null && crossesBudgetWarning(spentBefore, added, budgetLimit)
-    trackEvent('mimo_message', { userId, channel: 'whatsapp', props: { kind: msg.kind === 'audio' ? 'voice_note' : images ? 'photo' : 'text' } })
+    trackEvent('mimo_message', { userId, channel: 'whatsapp', props: { kind: msg.kind === 'audio' ? 'voice_note' : msg.kind === 'document' ? 'pdf' : images ? 'photo' : 'text' } })
 
     // Mark the inbound processed BEFORE replying so it precedes the reply in
     // history even if a send fails half-way.
@@ -1431,7 +1438,13 @@ export function schoolMenuReply(days: SchoolLunch[]): string {
   ].join('\n')
 }
 
-/** True = handled (read, or explained why not). False = not a school menu message. */
+/**
+ * True = handled (read, or explained why not). False = not a school menu
+ * message. A photo needs the words («menú del cole»). A PDF with those words
+ * is always the school menu; one without them (2026-11-26) is read silently
+ * and, if it isn't a school menu (or is too big to read), goes to Mimo — and
+ * one whose caption speaks of a diet goes to Mimo without being read.
+ */
 async function handleSchoolMenu(
   msg: InboundMessage,
   userId: string,
@@ -1444,9 +1457,9 @@ async function handleSchoolMenu(
   const { store, client } = deps
   if (!deps.readSchoolMenu || !msg.mediaId) return false
   const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - SCHOOL_MENU_WINDOW_MS), userId)
-  // A PDF is only ever a school menu here; a photo needs the words.
-  if (!isPdf && !schoolMenuIntent(msg.text, rows, now)) return false
-  acker.now(COPY.ackSchoolMenu)
+  const asked = schoolMenuIntent(msg.text, rows, now)
+  if (!asked && (!isPdf || mentionsDiet(msg.text))) return false
+  if (asked) acker.now(COPY.ackSchoolMenu)
   const caption = msg.text?.trim() ?? ''
   try {
     const media = await client.downloadMedia(msg.mediaId)
@@ -1460,6 +1473,8 @@ async function handleSchoolMenu(
     await out('reply', renderPlainText(schoolMenuReply(days)))
   } catch (err: any) {
     const fileProblem = err instanceof SchoolMenuFileError ? err.reason : null
+    // A PDF nobody called the school menu: Mimo reads it instead (pdfForMimo).
+    if (!asked && (err instanceof NotASchoolMenuError || fileProblem === 'too_big')) return false
     const notMenu = err instanceof NotASchoolMenuError || fileProblem !== null
     if (!notMenu) console.error('[whatsapp] school menu read failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, { status: notMenu ? 'processed' : 'failed', userId, errorMessage: notMenu ? undefined : String(err?.message ?? err).slice(0, 500) })
@@ -1468,6 +1483,34 @@ async function handleSchoolMenu(
     await out('system', renderPlainText(copy))
   }
   return true
+}
+
+/**
+ * A PDF that isn't the school menu, for Mimo to read this turn (never
+ * stored): the caption, or a default line. Too big → said, 'done'.
+ */
+async function pdfForMimo(
+  msg: InboundMessage,
+  userId: string,
+  deps: InboundDeps,
+  out: (kind: string, messages: OutboundMessage[]) => Promise<void>,
+): Promise<'done' | { text: string; images: { mediaType: string; data: string }[] }> {
+  const { store, client } = deps
+  if (!msg.mediaId) {
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId })
+    await out('system', renderPlainText(COPY.unsupported))
+    return 'done'
+  }
+  const media = await client.downloadMedia(msg.mediaId)
+  try {
+    const file = await attachmentForModel(media.buffer, 'application/pdf')
+    return { text: msg.text?.trim() || ATTACHMENT_DEFAULT_TEXT, images: [file] }
+  } catch (err) {
+    if (!(err instanceof ChatAttachmentError)) throw err
+    await store.updateInbound(msg.wamid, { status: 'processed', userId, body: withAttachmentMarker(msg.text) })
+    await out('system', renderPlainText(err.message))
+    return 'done'
+  }
 }
 
 /** How long after the Sunday message a bare photo still answers «¿Qué te queda en la nevera?». */
@@ -1499,7 +1542,10 @@ async function handleImage(
     text: msg.text?.trim() || '¿Qué me dices de esta foto?',
     images: [{ mediaType: mimeType, data: media.buffer.toString('base64') }],
   }
-  if (photoIntent(msg.text) === 'ask' || !deps.importRecipeFromImage) return forMimo
+  // 2026-11-26: «la dieta de mi nutricionista» is no recipe to import: Mimo reads it.
+  const diet = mentionsDiet(msg.text)
+  if (diet) trackEvent('mimo_diet_document', { userId, channel: 'whatsapp', props: { kind: 'photo' } })
+  if (diet || photoIntent(msg.text) === 'ask' || !deps.importRecipeFromImage) return forMimo
   // PRO-229: a photo with no caption right after the Sunday «¿Qué te queda en
   // la nevera?» is the fridge, not a recipe: Mimo reads it.
   if (!msg.text?.trim()) {

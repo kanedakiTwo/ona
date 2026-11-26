@@ -1,7 +1,7 @@
 /**
  * PRO-1077 — SEO de la ficha (specs/recipes.md): the `schema.org/Recipe`
- * JSON-LD of a catalogue recipe (lib/recipeJsonLd.ts, written by the `@seo`
- * slot) and the recipes in `sitemap.xml`: published catalogue recipes, a
+ * JSON-LD of a catalogue recipe (lib/recipeJsonLd.ts, written by
+ * app/recipes/[id]/layout.tsx) and the recipes in `sitemap.xml`: published catalogue recipes, a
  * creator's in, a book's out (D-104) until Legal's OK; a book recipe's page
  * is `noindex` too.
  */

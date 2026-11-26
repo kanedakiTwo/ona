@@ -17,6 +17,9 @@ import { listActiveStaplesForHousehold, NoHouseholdError } from '../services/sta
 import { applyHabitualToRows, setStapleForLine, withHabitual } from '../services/shoppingHabitual.js'
 import { carryItemState, editMenuLine, setHaveAtHome, toggleChecked, UnitChangeError, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { withWeekShares } from '../services/shoppingWeeks.js'
+import { withPantryAtHome } from '../services/shoppingPantry.js'
+import { syncPantryForLine } from '../services/shoppingPantrySync.js'
+import { listPantryForUser } from '../services/pantryStore.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
 import { INTERNAL_CALL_HEADER, trackEvent } from '../services/usageEvents.js'
@@ -368,10 +371,14 @@ router.get('/shopping-list', async (req: AuthRequest, res) => {
     const coeliac = isCoeliacHousehold((await loadUserRestrictions(userId, db)).restrictions)
     // Manual items always at the end, preserving order.
     // PRO-292: which units each menu line can switch to.
-    const finalItems = [
+    const withUnits = [
       ...withUnitOptions(withGlutenFreeCharcuterieNames(stapleMerged, coeliac), await lineConverter(menuItems)),
       ...withHabitual(manualSurviving, staples.map((s) => s.name)),
     ]
+    // PRO-1265: «Ya en casa» only keeps what the pantry has now.
+    const finalItems = householdId
+      ? withPantryAtHome(withUnits, await listPantryForUser(userId, db), convertQty)
+      : withUnits
 
     // Overwrite the persisted row — one shopping list per user. Delete
     // any prior rows so historical churn doesn't pile up.
@@ -546,9 +553,20 @@ router.put('/shopping-list/:listId/item/:itemId/stock', async (req: AuthRequest,
       return
     }
 
-    item.inStock = !item.inStock
-    clearHave(item)
-    setActivityDetail(res, { item: item.name, on: item.inStock })
+    // The client says which way (an offline replay must not flip it twice).
+    const want = typeof req.body?.inStock === 'boolean' ? req.body.inStock : !item.inStock
+    if (!want && item.inStock && item.kind === 'manual') {
+      // PRO-1265: «Quitar» on a manual line in «Ya en casa» takes it off the
+      // list; it doesn't go back to «Por comprar» (Dani y Sara, 2026-11-26).
+      items.splice(items.indexOf(item), 1)
+    } else {
+      item.inStock = want
+      clearHave(item)
+    }
+    setActivityDetail(res, { item: item.name, on: want })
+    // «Ya en casa» is the pantry (PRO-1265): what is marked goes in, what is
+    // taken out goes away, so the next rebuild keeps it.
+    await syncPantryForLine(req.userId!, item, want, { convert: await ingredientConverter([item]) }).catch((err) => console.error('Stock → pantry error:', err))
 
     const [updated] = await db
       .update(shoppingLists)

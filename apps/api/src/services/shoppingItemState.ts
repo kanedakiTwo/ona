@@ -449,7 +449,7 @@ export function setHaveAtHome(item: ShoppingItem, have: number): ShoppingItem {
 }
 
 /** What is left to buy, in amounts a shop sells; 0 when the gap is rounding noise (≤ 2 %). */
-function roundMissing(missing: number, unit: BuyableUnit): number {
+export function roundMissing(missing: number, unit: BuyableUnit): number {
   if (!(missing > 0)) return 0
   if (unit === 'u') return Math.ceil(missing - 0.1)
   if (unit === 'g' || unit === 'ml') return missing < 5 ? 0 : Math.round(missing)

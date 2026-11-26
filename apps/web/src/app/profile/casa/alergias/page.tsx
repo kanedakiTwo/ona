@@ -29,6 +29,9 @@
  * or WhatsApp (`#marcar=sin%20gluten`, lib/markedRestrictions.ts): what they
  * said opens already marked and the box stays unticked; saving still needs
  * it ticked, and «No tengo ninguna» is not offered over what they said.
+ *
+ * 2026-11-26: «¿Sigues la dieta de un nutricionista? Mándasela a Mimo» opens
+ * Mimo's chat with the file picker; Mimo notes what its tools can hold.
  */
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -48,6 +51,8 @@ import { RestrictionsPicker } from "@/components/onboarding/RestrictionsPicker"
 import { withTyped } from "@/lib/restrictionText"
 import { clearMarkedRestrictions, readMarkedRestrictions } from "@/lib/markedRestrictions"
 import { Accent, PILL_INK, PILL_OUTLINE, SubPage } from "@/components/profile/SubPage"
+import { useOptionalMimo } from "@/components/mimo/MimoProvider"
+import { NUTRITIONIST_DIET_DRAFT } from "@/lib/mimoAttachment"
 
 /** Mirrors `RestrictionReading` in apps/api/src/services/restrictionReader.ts. */
 interface RestrictionReading {
@@ -67,6 +72,7 @@ export default function HouseholdAllergiesPage() {
   const { user, updateUser } = useAuth()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const mimo = useOptionalMimo()
   const [householdName, setHouseholdName] = useState<string | null>(null)
   const [consent, setConsent] = useState(false)
   /** The consent already in force when the screen opened (null = none). */
@@ -318,6 +324,18 @@ export default function HouseholdAllergiesPage() {
                 </>
               )}
             </div>
+            {mimo && (
+              <div data-testid="nutritionist-diet" className="mt-8 flex flex-col gap-3 border-t border-border-soft pt-6">
+                <p className="text-[14px] leading-relaxed text-ink">¿Sigues la dieta de un nutricionista? Mándasela a Mimo.</p>
+                <button
+                  type="button"
+                  onClick={() => mimo.open({ draft: NUTRITIONIST_DIET_DRAFT, attach: true })}
+                  className={PILL_OUTLINE}
+                >
+                  Mandársela a Mimo
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

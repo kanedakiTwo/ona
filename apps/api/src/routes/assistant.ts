@@ -1,4 +1,5 @@
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
+import multer from 'multer'
 import { claimOptInReoffer, withReofferLine } from '../services/whatsapp/optInOffer.js'
 import { db } from '../db/connection.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
@@ -24,6 +25,16 @@ import type { AssistantResponse } from '../services/assistant/types.js'
 import { randomUUID } from 'node:crypto'
 import { answerConsentButton, finishChatTurn, parseConsentButton, withChatAllergyOutbox } from '../services/chatAllergies.js'
 import { answerDeps, noteSaidByCode } from '../services/chatAllergySave.js'
+import { runWithCostUser } from '../services/costLedger.js'
+import {
+  ATTACHMENT_DEFAULT_TEXT,
+  CHAT_ATTACHMENT_COPY,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  ChatAttachmentError,
+  attachmentForModel,
+  looksLikeDietDocument,
+  withAttachmentMarker,
+} from '../services/assistant/chatAttachment.js'
 
 /** PRO-1305: a fixed message of the allergy permission, shown under Mimo's reply (with its buttons). */
 interface WebHealthMessage {
@@ -40,8 +51,44 @@ const router = Router()
 // All routes require auth
 router.use(authMiddleware)
 
+/**
+ * 2026-11-26: one photo or PDF with the message (multipart, field `file`; the
+ * rest of the body comes as form fields, `history` and `context` as JSON). Kept
+ * in memory for this turn only, never written anywhere.
+ */
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: CHAT_ATTACHMENT_MAX_BYTES, files: 1 },
+})
+const uploadAttachment: RequestHandler = (req, res, next) => {
+  attachmentUpload.single('file')(req, res, (err: unknown) => {
+    if (!err) return next()
+    if (err instanceof multer.MulterError && (err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE')) {
+      const tooBig = err.code === 'LIMIT_FILE_SIZE'
+      res.status(tooBig ? 413 : 400).json({ error: tooBig ? CHAT_ATTACHMENT_COPY.too_big : CHAT_ATTACHMENT_COPY.type, code: tooBig ? 'ATTACHMENT_TOO_BIG' : 'ATTACHMENT_TYPE' })
+      return
+    }
+    next(err)
+  })
+}
+
+/** A multipart body brings `history` and `context` as JSON text; a JSON body, as they are. */
+function jsonField(v: unknown): unknown {
+  if (typeof v !== 'string') return v
+  try {
+    return JSON.parse(v)
+  } catch {
+    return undefined
+  }
+}
+
 // POST /assistant/:userId/chat
-router.post('/assistant/:userId/chat', requirePaidPlan(), async (req: AuthRequest, res) => {
+router.post('/assistant/:userId/chat', requirePaidPlan(), uploadAttachment, (req: AuthRequest, res) =>
+  // multer's stream callbacks drop authMiddleware's cost context; re-enter it.
+  runWithCostUser(req.userId ?? null, () => chatTurn(req, res)),
+)
+
+async function chatTurn(req: AuthRequest, res: import('express').Response): Promise<void> {
   try {
     const userId = String(req.params.userId)
 
@@ -52,21 +99,47 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), async (req: AuthReques
       return
     }
 
-    const { message, history } = req.body
+    const file = req.file
+    const history = jsonField(req.body?.history)
+    const context = jsonField(req.body?.context) as { path?: unknown; cookStep?: unknown } | undefined
     const mode: AssistantMode = WEB_MODES.includes(req.body?.mode) ? req.body.mode : 'text'
-    const path = typeof req.body?.context?.path === 'string' ? req.body.context.path.slice(0, 200) : null
-    const cookStep = cookStepOf(req.body?.context?.cookStep)
+    const path = typeof context?.path === 'string' ? context.path.slice(0, 200) : null
+    const cookStep = cookStepOf(context?.cookStep)
+    // With a file the words may be empty: Mimo reads a default line.
+    const message = typeof req.body?.message === 'string' && req.body.message.trim() ? req.body.message : file ? ATTACHMENT_DEFAULT_TEXT : null
 
-    if (!message || typeof message !== 'string') {
+    if (!message) {
       res.status(400).json({ error: 'Message is required' })
       return
     }
 
+    // The file, checked and shaped for the model (never stored). The
+    // conversation keeps «[Adjunto]» in its place.
+    let attachment: { mediaType: string; data: string } | null = null
+    if (file) {
+      if (mode === 'onboarding') {
+        res.status(400).json({ error: CHAT_ATTACHMENT_COPY.type, code: 'ATTACHMENT_TYPE' })
+        return
+      }
+      try {
+        attachment = await attachmentForModel(file.buffer, file.mimetype)
+      } catch (err) {
+        if (err instanceof ChatAttachmentError) {
+          const tooBig = err.reason === 'too_big'
+          res.status(tooBig ? 413 : 415).json({ error: err.message, code: tooBig ? 'ATTACHMENT_TOO_BIG' : 'ATTACHMENT_TYPE' })
+          return
+        }
+        throw err
+      }
+    }
+    const keptMessage = attachment ? withAttachmentMarker(message) : message
+
     // PRO-1292: «¿qué hay hoy?», «mándame el menú», «la lista» (PRO-1302) and,
     // in cook mode, «siguiente» / «anterior» / «repite» are answered by the
     // code — no model, no cost, also with the monthly cap used up (PRO-1302:
-    // the caps are checked after this). Anything more goes on below.
-    if (mode !== 'onboarding') {
+    // the caps are checked after this). Anything more goes on below. A
+    // message with a file always goes to the model.
+    if (mode !== 'onboarding' && !attachment) {
       try {
         const coded = await answerByCode(userId, message, mode, describePage(path), cookStep)
         if (coded) {
@@ -120,6 +193,12 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), async (req: AuthReques
     }
     const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
 
+    const chatOpts = { mode, page: page.kind, ...(attachment ? { images: [attachment] } : {}) }
+    // Growth gate (2026-11-26): the nutritionist's diet reached Mimo.
+    if (attachment && looksLikeDietDocument(message, attachment.mediaType)) {
+      trackEvent('mimo_diet_document', { userId, channel: channelOfMode(mode), props: { kind: attachment.mediaType === 'application/pdf' ? 'pdf' : 'photo' } })
+    }
+
     const startedAt = Date.now()
     // PRO-1305: an allergy said here is kept out of the menus at once and
     // what Mimo saves or asks (the code's own words) goes with the reply.
@@ -127,12 +206,12 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), async (req: AuthReques
     const turn = chatAllergyMode
       ? withChatAllergyOutbox({ userId, channel: 'web', messageId: randomUUID() }, async () => {
           await noteSaidByCode(userId, message).catch((e) => console.warn('[assistant] said allergies not read (continuing):', e))
-          return chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
+          return chat(userId, modelMessage, chatHistory, db, chatOpts)
         })
       : null
     const { usage, ...response }: Awaited<ReturnType<typeof chat>> & { healthMessages?: WebHealthMessage[] } = turn
       ? await turn.run
-      : await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
+      : await chat(userId, modelMessage, chatHistory, db, chatOpts)
     if (turn) {
       const healthMessages: WebHealthMessage[] = []
       try {
@@ -198,7 +277,7 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), async (req: AuthReques
     // (without the page note) and Mimo's reply with what it did. A failure
     // here must not fail the chat — swallow and log.
     try {
-      await recordWebChatTurn({ userId, userMessage: message, response, mode, path, ms: Date.now() - startedAt }, db)
+      await recordWebChatTurn({ userId, userMessage: keptMessage, response, mode, path, ms: Date.now() - startedAt }, db)
     } catch (e) {
       console.warn('[assistant] recordWebChatTurn failed (continuing):', e)
     }
@@ -213,7 +292,7 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), async (req: AuthReques
     }
     res.status(500).json({ error: 'Internal server error' })
   }
-})
+}
 
 /**
  * PRO-1305: a button of the allergy permission tapped in the web chat («Sí,

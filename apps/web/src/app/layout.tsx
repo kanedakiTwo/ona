@@ -14,6 +14,7 @@ import { reportInstalledOpen } from "@/lib/pwa/installedOpen"
 import { installPushOpenedReporter, reportPathView } from "@/lib/usageEvents"
 import { installChunkReload, installErrorReporter } from "@/lib/errorReporter"
 import { CF_BEACON_SRC, cfBeaconAttr } from "@/lib/cfBeacon"
+import { SITE_DESCRIPTION } from "@/lib/site"
 import "./globals.css"
 
 const inter = Inter({
@@ -100,7 +101,7 @@ export default function RootLayout({ children, seo }: { children: React.ReactNod
         {!hasOwnMetadata(pathname) && (
           <>
             <title>Mimoia — Tu semana de comidas, ya pensada</title>
-            <meta name="description" content="Asistente nutricional en castellano. Te planifica el menú de la semana, te hace la lista de la compra y va recordando lo que vas aprendiendo sobre tu cuerpo." />
+            <meta name="description" content={SITE_DESCRIPTION} />
           </>
         )}
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />

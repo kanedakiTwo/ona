@@ -18,7 +18,7 @@ import { applyHabitualToRows, setStapleForLine, withHabitual } from '../services
 import { carryItemState, editMenuLine, setHaveAtHome, toggleChecked, UnitChangeError, type ConvertQty, type ItemStateMap } from '../services/shoppingItemState.js'
 import { withWeekShares } from '../services/shoppingWeeks.js'
 import { withPantryAtHome } from '../services/shoppingPantry.js'
-import { syncPantryForLine } from '../services/shoppingPantrySync.js'
+import { setPantryAmountForLine, syncPantryForLine } from '../services/shoppingPantrySync.js'
 import { listPantryForUser } from '../services/pantryStore.js'
 import { isCoeliacHousehold, withGlutenFreeCharcuterieNames } from '../services/glutenFreeCharcuterie.js'
 import { loadUserRestrictions } from '../services/withWhatIHave.js'
@@ -725,6 +725,8 @@ router.put('/shopping-list/:listId/item/:itemId/have', async (req: AuthRequest, 
     }
     setHaveAtHome(item, have)
     setActivityDetail(res, { item: item.name, on: have > 0 })
+    // «Ya en casa» is the pantry (PRO-1265): what is left goes in it.
+    await setPantryAmountForLine(req.userId!, item, have).catch((err) => console.error('Have → pantry error:', err))
     const [updated] = await db
       .update(shoppingLists)
       .set({ items })

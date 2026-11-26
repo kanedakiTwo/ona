@@ -41,3 +41,28 @@ export async function syncPantryForLine(
     if (!(err instanceof NoHouseholdError)) throw err
   }
 }
+
+/**
+ * «¿Cuánto os queda en casa?» on a line (PRO-182) is what the pantry holds
+ * of it (PRO-1265): the row that backs it gets that amount, in the line's
+ * unit (it's what's left, not added), or a new row; 0 takes it out.
+ */
+export async function setPantryAmountForLine(userId: string, item: ShoppingItem, have: number, db: Db = defaultDb): Promise<void> {
+  const rows = pantryRowsFor(item, await listPantryForUser(userId, db))
+  if (!(have > 0)) {
+    for (const r of rows) await deletePantryForUser(userId, r.id, db)
+    return
+  }
+  const unit = item.unit as BuyableUnit
+  try {
+    if (rows[0]) {
+      await patchPantryForUser(userId, rows[0].id, { quantity: have, unit }, db)
+      // One row says how much there is: the rest that matched would add up on top.
+      for (const r of rows.slice(1)) await deletePantryForUser(userId, r.id, db)
+    } else {
+      await addPantryForUser(userId, { name: item.name.trim().slice(0, 80), quantity: have, unit, ...(item.ingredientId ? { ingredientId: item.ingredientId } : {}) }, db)
+    }
+  } catch (err) {
+    if (!(err instanceof NoHouseholdError)) throw err
+  }
+}

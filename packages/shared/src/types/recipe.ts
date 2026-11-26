@@ -52,7 +52,12 @@ const recipeIngredientWriteSchema = z.object({
   unit: z.enum(UNITS),
   optional: z.boolean().default(false),
   note: z.string().optional(),
-  displayOrder: z.number().int().min(0).default(0),
+  /**
+   * Position in the list. Absent = the position in the array sent: the writer
+   * (`persistRecipe`) uses the index. No default here: a `0` for every row
+   * left them all tied and the GET returned them in any order (PRO-1344).
+   */
+  displayOrder: z.number().int().min(0).optional(),
   /**
    * Human-readable quantity as entered/extracted (e.g. 2 for "2 cda").
    * Canonical `quantity` holds the converted SI value (e.g. 30 ml).
@@ -67,6 +72,8 @@ const recipeIngredientWriteSchema = z.object({
 })
 
 export const recipeIngredientSchema = recipeIngredientWriteSchema.extend({
+  /** Server-set: always present on a saved row. */
+  displayOrder: z.number().int().min(0),
   /** Server-set: id of this recipe_ingredient row (referenced by step.ingredientRefs) */
   id: z.string().uuid(),
   /** Server-set: denormalized name for display */

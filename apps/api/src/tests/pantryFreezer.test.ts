@@ -164,8 +164,11 @@ describe('plan_freezer_items («Sí, mételo»)', () => {
   })
 
   it('nothing old in the freezer → changes nothing', async () => {
+    // On the fixed `now`: with the real clock the 3 days grow past 4 weeks.
+    vi.useFakeTimers({ now })
     const { api, calls } = fakeApi([row({ name: 'Guisantes', location: 'congelador', storedAt: ago(3) })], {})
     const r = await planFreezerItems.handler({}, { userId: 'u-1', db: {} as any, api } as any)
+    vi.useRealTimers()
     expect(r.summary).toContain('no he cambiado nada')
     expect(calls.filter(([m]) => m !== 'GET')).toEqual([])
   })

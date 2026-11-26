@@ -2,7 +2,8 @@ import crypto from 'crypto'
 import { refreshRecipeDishTypes } from '../dishTypes.js'
 import { fromWeekTypeOf, poolOfDishType, saveWeekTypeSlots, weekTypeDishTypeAt, weekTypeHasMeal } from '../weekType.js'
 import { unmetRulesLine } from '../weekTypePlan.js'
-import { and, eq, desc, ilike, or, inArray } from 'drizzle-orm'
+import { and, eq, desc, or, inArray } from 'drizzle-orm'
+import { recipeNameContains } from '../recipeSearch.js'
 import {
   menus,
   recipes,
@@ -538,7 +539,7 @@ async function recipeForDetails(
   let results = await db
     .select()
     .from(recipes)
-    .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${name}%`)))
+    .where(and(await visibleWhere(ctx), recipeNameContains(name)))
     .limit(10)
 
   // If no exact match, try word-by-word
@@ -548,7 +549,7 @@ async function recipeForDetails(
       results = await db
         .select()
         .from(recipes)
-        .where(and(await visibleWhere(ctx), or(...words.map((w: string) => ilike(recipes.name, `%${w}%`)))))
+        .where(and(await visibleWhere(ctx), or(...words.map((w: string) => recipeNameContains(w)))))
         .limit(10)
     }
   }
@@ -944,8 +945,8 @@ const searchRecipes: SkillDefinition = {
       .where(and(
         await visibleWhere(ctx),
         or(
-          ilike(recipes.name, `%${params.query}%`),
-          ...params.query.split(/\s+/).filter(w => w.length >= 3).map(word => ilike(recipes.name, `%${word}%`)),
+          recipeNameContains(params.query),
+          ...params.query.split(/\s+/).filter(w => w.length >= 3).map(word => recipeNameContains(word)),
         ),
       ))
       .limit(40)
@@ -1608,7 +1609,7 @@ const swapMeal: SkillDefinition = {
         const candidates = await db
           .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
           .from(recipes)
-          .where(and(visible, ilike(recipes.name, `%${params.recipeName}%`)))
+          .where(and(visible, recipeNameContains(params.recipeName)))
           .limit(20)
         const owned = candidates.find((c: { authorId: string | null }) => c.authorId === userId)
         chosen = owned ?? candidates[0] ?? null
@@ -1620,7 +1621,7 @@ const swapMeal: SkillDefinition = {
             const loose = await db
               .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
               .from(recipes)
-              .where(and(visible, or(...words.map((w) => ilike(recipes.name, `%${w}%`)))))
+              .where(and(visible, or(...words.map((w) => recipeNameContains(w)))))
               .limit(50)
             // "hamburguesa Gipsy Chef" names "Hamburguesa perfecta de Gipsy
             // Chef": every word the user said is in it, so that IS the recipe
@@ -1782,8 +1783,8 @@ const toggleFavorite: SkillDefinition = {
       .select({ id: recipes.id, name: recipes.name })
       .from(recipes)
       .where(and(await visibleWhere(ctx), or(
-        ilike(recipes.name, `%${params.recipeName}%`),
-        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map((w: string) => ilike(recipes.name, `%${w}%`)),
+        recipeNameContains(params.recipeName),
+        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map((w: string) => recipeNameContains(w)),
       )))
       .limit(1)
 
@@ -1949,8 +1950,8 @@ const recipeVariation: SkillDefinition = {
       .select()
       .from(recipes)
       .where(and(await visibleWhere(ctx), or(
-        ilike(recipes.name, `%${params.recipeName}%`),
-        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map((w: string) => ilike(recipes.name, `%${w}%`)),
+        recipeNameContains(params.recipeName),
+        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map((w: string) => recipeNameContains(w)),
       )))
       .limit(40)
     const recipe = found?.length ? pickRecipeByName(found as any[], params.recipeName) : null
@@ -2469,8 +2470,8 @@ const scaleRecipeSkill: SkillDefinition = {
       .select()
       .from(recipes)
       .where(and(await visibleWhere(ctx), or(
-        ilike(recipes.name, `%${params.recipeName}%`),
-        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+        recipeNameContains(params.recipeName),
+        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => recipeNameContains(w)),
       )))
       .limit(1)
     if (!recipe) {
@@ -2547,8 +2548,8 @@ const suggestSubstitution: SkillDefinition = {
         .select({ name: recipes.name, allergens: recipes.allergens })
         .from(recipes)
         .where(and(await visibleWhere(ctx), or(
-          ilike(recipes.name, `%${params.recipeName}%`),
-          ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+          recipeNameContains(params.recipeName),
+          ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => recipeNameContains(w)),
         )))
         .limit(1)
       if (recipe) {
@@ -2840,8 +2841,8 @@ const getWeekBalance: SkillDefinition = {
         .select()
         .from(recipes)
         .where(and(await visibleWhere(ctx), or(
-          ilike(recipes.name, `%${params.recipeName}%`),
-          ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+          recipeNameContains(params.recipeName),
+          ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => recipeNameContains(w)),
         )))
         .limit(1)
       if (!recipe) {
@@ -2896,8 +2897,8 @@ const startCookingMode: SkillDefinition = {
       .select({ id: recipes.id, name: recipes.name })
       .from(recipes)
       .where(and(await visibleWhere(ctx), or(
-        ilike(recipes.name, `%${params.recipeName}%`),
-        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => ilike(recipes.name, `%${w}%`)),
+        recipeNameContains(params.recipeName),
+        ...params.recipeName.split(/\s+/).filter(w => w.length >= 3).map(w => recipeNameContains(w)),
       )))
       .limit(1)
     if (!recipe) {
@@ -3024,7 +3025,7 @@ const editRecipe: SkillDefinition = {
       const candidates = await db
         .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
         .from(recipes)
-        .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${params.recipeName}%`)))
+        .where(and(await visibleWhere(ctx), recipeNameContains(params.recipeName)))
         .limit(10)
       const menuIds = new Set(menuRecipeDishes(await menuOfWeek(ctx, getWeekStart())).map((d) => d.recipeId))
       target =
@@ -3210,7 +3211,7 @@ const addRecipeToMine: SkillDefinition = {
       const candidates = await db
         .select({ id: recipes.id, name: recipes.name, authorId: recipes.authorId })
         .from(recipes)
-        .where(and(await visibleWhere(ctx), ilike(recipes.name, `%${params.recipeName}%`)))
+        .where(and(await visibleWhere(ctx), recipeNameContains(params.recipeName)))
         .limit(20)
       // Prefer Mimoia system recipes for "add to mine" (don't accidentally copy
       // your own recipe). If only your own match, refuse with a friendly

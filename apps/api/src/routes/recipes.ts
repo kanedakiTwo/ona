@@ -60,6 +60,7 @@ import {
   RETIRED_RECIPE_TAG,
   PLAN_GRATIS_IMPORTS_MESSAGE,
   isDishType,
+  recipeSearchRank,
   type Course,
   type Difficulty,
   type Meal,
@@ -72,6 +73,7 @@ import {
 } from '@ona/shared'
 import { extractRecipeFromImage } from '../services/recipeExtractor.js'
 import { sortCatalog, type CatalogOrderRow } from '../services/recipeCatalogOrder.js'
+import { recipeNameSearch } from '../services/recipeSearch.js'
 import { saveExtractedRecipe } from '../services/recipeImport.js'
 import { requirePaidPlan } from '../services/accountAccess.js'
 import { AnthropicProvider } from '../services/providers/anthropic.js'
@@ -541,7 +543,9 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
     if (mine) conditions.push(req.userId ? eq(recipes.authorId, req.userId) : sql`FALSE`)
     if (meal) conditions.push(arrayContains(recipes.meals, [meal]))
     if (season) conditions.push(arrayContains(recipes.seasons, [season]))
-    if (search) conditions.push(sql`lower(${recipes.name}) like ${`%${search.toLowerCase()}%`}`)
+    // Search (2026-11-25): each word, any order, no accents or case (services/recipeSearch.ts).
+    const searchWhere = typeof search === 'string' ? recipeNameSearch(search) : null
+    if (searchWhere) conditions.push(searchWhere)
     // ?dishType=<clave> (PRO-1175): the type chips of the menu's picker
     // («Legumbres», «Cremas y sopas»…), `recipes.dish_types` (D-182). An
     // unknown key is ignored.
@@ -614,7 +618,10 @@ router.get('/recipes', optionalAuthMiddleware, async (req: AuthRequest, res) => 
       .from(recipes)
       .where(where)) as CatalogOrderRow[]
     const total = orderRows.length
-    const pageIds = sortCatalog(orderRows.map((r) => ({ ...r, favoriteHouseholds: Number(r.favoriteHouseholds) })))
+    const sorted = sortCatalog(orderRows.map((r) => ({ ...r, favoriteHouseholds: Number(r.favoriteHouseholds) })))
+    // With a search, names that start with a searched word first (stable: the catalogue order stays inside each group).
+    if (searchWhere) sorted.sort((a, b) => recipeSearchRank(a.name, search!) - recipeSearchRank(b.name, search!))
+    const pageIds = sorted
       .slice(offset, offset + perPage)
       .map((r) => r.id)
 

@@ -326,6 +326,7 @@ export { ingredientNutrients, sumNutrients, nutrientsToPercentages, updateNutrie
 export { firstMenuWeeks, pastDayIndexes, pastMealsOn, MEAL_CUTOFFS } from './utils/firstMenuWeeks.js'
 export type { FirstMenuWeeks } from './utils/firstMenuWeeks.js'
 export { FOLD_FROM, foldIngredientName, hasSameIngredientName } from './utils/ingredientSearch.js'
+export { RECIPE_SEARCH_STOPWORDS, recipeSearchWords, matchesRecipeSearch, recipeSearchRank } from './utils/recipeSearch.js'
 export { detectSeason, isInSeason } from './utils/seasons.js'
 export {
   SEASONAL_PRODUCE,

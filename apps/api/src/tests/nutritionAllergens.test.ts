@@ -488,3 +488,41 @@ describe('seed catalogue — every broth carries celery (PRO-363)', () => {
     for (const b of broths) expect((b as { allergenTags?: string[] }).allergenTags ?? [], b.name).toContain('apio')
   })
 })
+
+// ─── PRO-1334: wheat doughs and pasta shapes by their own name ──
+
+describe('inferAllergenTagsFromName — brick, filo and other wheat doughs (PRO-1334)', () => {
+  it('«hojas de brick» is gluten (the «Brick de huevo» of 2026-11-25)', () => {
+    expect(inferAllergenTagsFromName('hojas de brick')).toEqual(['gluten'])
+    expect(inferAllergenTagsFromName('Hojas de brick')).toContain('gluten')
+  })
+
+  it('filo, kataifi, yufka, wrappers, pasta shapes, croutons and biscotes are gluten', () => {
+    for (const n of [
+      'pasta brick', 'masa filo', 'filo', 'hojas de filo', 'phyllo', 'kataifi', 'kadaif', 'yufka',
+      'obleas de wonton', 'obleas para gyozas', 'orzo', 'risoni', 'penne', 'penne rigate', 'fusilli', 'rigatoni',
+      'farfalle', 'tagliatelle', 'pappardelle', 'fettuccine', 'linguine', 'ravioli de ricota', 'tortellini',
+      'ditalini', 'orecchiette', 'croutons', 'biscotes',
+    ]) {
+      expect(inferAllergenTagsFromName(n), n).toContain('gluten')
+    }
+  })
+
+  it('a gluten-free base or «sin gluten» still wins', () => {
+    for (const n of ['penne sin gluten', 'fusilli de maíz', 'hojas de brick sin gluten', 'orzo de arroz']) {
+      expect(inferAllergenTagsFromName(n), n).not.toContain('gluten')
+    }
+  })
+})
+
+describe('missingNameAllergens — the boot step adds gluten to brick, filo and pasta shapes (PRO-1334)', () => {
+  it('adds «gluten» to a PRO-1334 name that lacks it, and only to those', () => {
+    expect(missingNameAllergens('hojas de brick', ['huevo'])).toEqual(['gluten'])
+    expect(missingNameAllergens('orzo', null)).toEqual(['gluten'])
+    expect(missingNameAllergens('kataifi', [])).toEqual(['gluten'])
+    expect(missingNameAllergens('hojas de brick', ['gluten'])).toEqual([])
+    expect(missingNameAllergens('penne sin gluten', [])).toEqual([])
+    // Not a PRO-1334 word: left as stored.
+    expect(missingNameAllergens('harina de trigo', [])).toEqual([])
+  })
+})

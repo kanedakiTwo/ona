@@ -19,6 +19,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import { ingredients, recipeIngredients, recipes } from '../../db/schema.js'
 import {
+  PRO1334_GLUTEN_TERMS,
   PRO332_MILK_TERMS,
   PRO363_SULFITE_TERMS,
   inferAllergenTagsFromName,
@@ -31,7 +32,8 @@ type Db = typeof import('../../db/connection.js').db
 
 /**
  * The tags the boot step adds to a name: «lactosa» for a PRO-332 milk word,
- * «apio» for a broth and «sulfitos» for raisins (PRO-363), each only when
+ * «apio» for a broth, «sulfitos» for raisins (PRO-363) and «gluten» for a
+ * PRO-1334 dough or pasta shape, each only when
  * `stored` lacks it; else [].
  */
 export function missingNameAllergens(name: string, stored: readonly string[] | null | undefined): string[] {
@@ -44,6 +46,8 @@ export function missingNameAllergens(name: string, stored: readonly string[] | n
   if (!have.has('lactosa') && PRO332_MILK_TERMS.some((t) => nameHasTerm(n, t)) && inferred.includes('lactosa'))
     missing.push('lactosa')
   if (!have.has('sulfitos') && PRO363_SULFITE_TERMS.some((t) => nameHasTerm(n, t))) missing.push('sulfitos')
+  if (!have.has('gluten') && PRO1334_GLUTEN_TERMS.some((t) => nameHasTerm(n, t)) && inferred.includes('gluten'))
+    missing.push('gluten')
   return missing
 }
 

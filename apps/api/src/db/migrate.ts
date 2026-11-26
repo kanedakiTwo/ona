@@ -97,7 +97,8 @@ async function main() {
   }
   // Idempotent, additive (PRO-332): cheeses called by their name, kéfir,
   // ghee… get the milk tag, in the ingredient and in the recipes that use it;
-  // PRO-363: broths get celery and raisins sulphites, the same way.
+  // PRO-363: broths get celery and raisins sulphites, the same way;
+  // PRO-1334: brick, filo, orzo and other wheat doughs get gluten.
   try {
     await applyNameAllergenTags(db)
   } catch (err) {

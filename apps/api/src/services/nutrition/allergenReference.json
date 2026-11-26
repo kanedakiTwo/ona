@@ -590,6 +590,68 @@
       "por": "PRO-61, PRO-193 y Cocina 2026-11-12 (freekeh)"
     },
     {
+      "ingrediente": "hojas de brick",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
+      "ingrediente": "pasta filo",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
+      "ingrediente": "masa filo",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
+      "ingrediente": "kataifi",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
+      "ingrediente": "orzo",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
+      "ingrediente": "penne",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
+      "ingrediente": "obleas para gyozas",
+      "alergenos": [
+        "gluten"
+      ],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
+      "ingrediente": "penne sin gluten",
+      "alergenos": [],
+      "grupo": "Sin gluten y cereales",
+      "por": "PRO-1334 y Cocina 2026-11-25 (Brick de huevo)"
+    },
+    {
       "ingrediente": "pan de molde",
       "alergenos": [
         "gluten"

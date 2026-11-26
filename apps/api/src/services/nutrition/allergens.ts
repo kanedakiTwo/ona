@@ -184,6 +184,42 @@ const GLUTEN_KEYWORDS = [
   'farro',
 ]
 
+/**
+ * PRO-1334: wheat doughs (brick, filo, kataifi, yufka, wonton and gyoza
+ * wrappers), pasta shapes and toasted bread that don't say «masa», «pasta» or
+ * «pan». Exported so the boot step (`allergenBackfill.ts`) only revisits the
+ * names these words catch.
+ */
+export const PRO1334_GLUTEN_TERMS = [
+  'brick',
+  'filo',
+  'fillo',
+  'phyllo',
+  'kataifi',
+  'kadaif*',
+  'yufka',
+  'wonton',
+  'gyoza',
+  'orzo',
+  'risoni',
+  'penne',
+  'fusilli',
+  'rigatoni',
+  'farfalle',
+  'ditalini',
+  'conchiglie',
+  'orecchiette',
+  'tagliatell*',
+  'pappardell*',
+  'fettuccin*',
+  'linguin*',
+  'raviol*',
+  'tortellin*',
+  'tortellon*',
+  'crouton*',
+  'biscote*',
+] as const
+
 /** Flour-like products: gluten unless they name a gluten-free base. */
 const GLUTEN_FLOUR_LIKE = [
   'harina',
@@ -200,6 +236,10 @@ const GLUTEN_FLOUR_LIKE = [
   'gnocchi',
   'semola',
   'masa',
+  // PRO-1334 (Cocina 2026-11-25: the «Brick de huevo» went out with egg only):
+  // wheat doughs and pasta shapes called by their own name, without «masa»
+  // or «pasta».
+  ...PRO1334_GLUTEN_TERMS,
 ]
 
 /** «Pasta de …» that is a paste, not pasta (PRO-193). */

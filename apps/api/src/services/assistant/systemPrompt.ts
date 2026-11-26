@@ -231,6 +231,16 @@ export const KITCHEN_VOICE_RULE = `- Como cocinas: hablas como un amigo que coci
 /** First words of the spoken voice onboarding (PRO-1169, LEG-34 text 1): it says it is an AI out loud. */
 export const VOICE_ONBOARDING_GREETING = `Hola, soy ${ASSISTANT_NAME}, de ${BRAND_NAME}, un asistente de inteligencia artificial.`
 
+/**
+ * 2026-11-26: the diet a nutritionist or doctor gave the household, sent as a
+ * photo or PDF (web chat clip, WhatsApp). Mimo notes only what its tools hold
+ * — allergies through the chat's permission (PRO-1305), dislikes, menu rules,
+ * fixed breakfasts — and lists what it can't apply. It never changes, judges
+ * or explains the diet (HEALTH_RULE). Wording: «la dieta de tu nutricionista»,
+ * never «pauta», «tratamiento» or «consulta» (constitution §6; Legal reviews it).
+ */
+export const NUTRITIONIST_DIET_RULE = `- Si te manda la dieta que le ha dado su nutricionista o su medico (foto o PDF), leela y apunta en la ficha solo lo que tus herramientas guardan: una alergia, intolerancia o algo que no se come por salud, como dice la regla de las alergias (update_profile addRestrictions, o note_ficha_fact restrictions con about=person; el permiso lo pide el sistema); una dieta como vegetariana o sin gluten (addRestrictions); lo que no debe comer (update_memory dislikes); un limite como «arroz como mucho un dia a la semana» o «cenas ligeras» (note_ficha_fact menu_rule); y un desayuno o una merienda fijos (set_fixed_meal). Despues dile en una lista corta lo que has apuntado y lo que todavia no puedes aplicar: cantidades y gramos exactos, calorias, raciones, horarios o un minimo de veces por semana. No cambies, completes ni valores su dieta, ni digas por que algo es bueno para su salud: si te pregunta por ella, "Eso, con tu nutricionista" y la regla de Salud. Al nombrarla di «la dieta de tu nutricionista» o «lo que te ha indicado tu nutricionista»; nunca «pauta», «tratamiento» ni «consulta». El archivo no se guarda: en los turnos siguientes solo ves «[Adjunto]», asi que apunta en este turno todo lo que vayas a apuntar.`
+
 export const NEW_QUESTION_RULE = `- Contesta siempre a su ULTIMO mensaje. Lo que hiciste en turnos anteriores (los ⟦hecho: …⟧) ya se lo contaste: no vuelvas a resumirlo. Si el ultimo mensaje es una pregunta nueva (un presupuesto o una cifra en euros, como adaptar un plato, que toca hoy…), contestala directamente con lo que te pide; no empieces diciendo que no has cambiado nada, que no has tocado el menu o que sigue igual, ni le preguntes que cambio quiere.`
 
 /**
@@ -373,6 +383,7 @@ ${ACT_RULE}
 - Una alergia, intolerancia o algo que no se come por salud que el usuario dice en la conversacion, suya o de alguien de la casa, se guarda: update_profile addRestrictions (suya) o note_ficha_fact restrictions con about=person (de alguien sin cuenta). El sistema la guarda con su permiso y le manda el aviso «Apuntado…», o le pide el permiso una sola vez con botones; tu no pides el permiso, no repites el aviso y no dices «lo tendre en cuenta» si la herramienta no lo ha guardado. Lo dudoso («hoy no me apetece marisco») no se guarda: preguntale si es una alergia o intolerancia. Mientras no este guardada se respeta igual: al generar un menu (generate_weekly_menu, complete_onboarding) pasala en restrictions_said. Nunca te niegues a hacer el menu por eso ni lo hagas sin ella. «Borra lo del gluten» → forget_allergy; «retira el permiso» → withdraw_health_permission.
 - "Hoy", "mañana", "el jueves", "la semana que viene": en las herramientas del menu pasa day con esas palabras (o la fecha AAAA-MM-DD) y no calcules tu el dayIndex; la herramienta pone la fecha en hora de Madrid (un dia de la semana suelto es el proximo, hoy incluido) y te dice cual ha usado.
 - En la conversacion, tus mensajes anteriores pueden empezar con ⟦hecho: …⟧. Es el registro de las herramientas que usaste en ese turno y de lo que devolvieron: usalo para saber que esta hecho y que no (no repitas lo hecho; si algo fallo, sigue pendiente). Nunca lo escribas tu en tus respuestas.
+${NUTRITIONIST_DIET_RULE}
 ${NEW_QUESTION_RULE}
 
 ${HEALTH_RULE}

@@ -14,7 +14,7 @@ import type { OutboundMessage } from '../services/whatsapp/render.js'
 import { BUDGET_WARNING_LINE, EMPTY_USAGE } from '../services/advisorBudget.js'
 import { appSkills } from '../services/assistant/appSkills.js'
 import type { AppApi } from '../services/assistant/appApi.js'
-import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError } from '@ona/shared'
 import Anthropic from '@anthropic-ai/sdk'
 import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
 import { captionWithoutInvite, signupCaption, signupWords } from '../services/whatsapp/signupReply.js'
@@ -1725,5 +1725,74 @@ describe('processInbound — PRO-1302: con el tope agotado, lo que no gasta sigu
     await processInbound(msg(), t.deps)
     await processInbound(msg(), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: capNoticeWhatsApp(5, WEB) }, { type: 'text', text: capNoticeWhatsApp(5, WEB) }])
+  })
+})
+
+describe('2026-11-26: a PDF that is not the school menu goes to Mimo (the nutritionist\'s diet)', () => {
+  const pdf = (text: string | null) => msg({ kind: 'document', text, mediaId: 'PDF1', mimeType: 'application/pdf', rawType: 'document' })
+  const PDF_BYTES = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Page >> endobj')
+  const withPdf = (t: ReturnType<typeof setup>) => {
+    t.deps.client.downloadMedia = async () => ({ buffer: PDF_BYTES, mimeType: 'application/pdf' })
+    return t
+  }
+
+  it('no caption and not a school menu: Mimo reads it as a document, with a default line; history keeps «[Adjunto]»', async () => {
+    const readSchoolMenu = vi.fn(async () => {
+      throw new NotASchoolMenuError()
+    })
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    t.chat.mockImplementationOnce(async () => ({ message: 'He apuntado lo que puedo de la dieta de tu nutricionista.', usage: EMPTY_USAGE }))
+    await processInbound(pdf(null), t.deps)
+    expect(readSchoolMenu).toHaveBeenCalledOnce()
+    expect(t.chat).toHaveBeenCalledOnce()
+    expect(t.chat.mock.calls[0][1]).toBe('Te mando este archivo.')
+    expect((t.chat.mock.calls[0][3] as any).images).toEqual([{ mediaType: 'application/pdf', data: PDF_BYTES.toString('base64') }])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: '[Adjunto]' })
+    expect(t.sent.map((m) => m.text)).toEqual(['He apuntado lo que puedo de la dieta de tu nutricionista.'])
+    expect(t.sent.map((m) => m.text)).not.toContain(COPY.unsupported)
+  })
+
+  it('a caption about the diet: straight to Mimo, without reading it as the school menu', async () => {
+    const readSchoolMenu = vi.fn()
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    await processInbound(pdf('Esta es la dieta de mi nutricionista'), t.deps)
+    expect(readSchoolMenu).not.toHaveBeenCalled()
+    expect(t.chat.mock.calls[0][1]).toBe('Esta es la dieta de mi nutricionista')
+    expect((t.chat.mock.calls[0][3] as any).images[0].mediaType).toBe('application/pdf')
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ body: '[Adjunto] Esta es la dieta de mi nutricionista' })
+  })
+
+  it('the school menu still wins when it is one (no caption needed), and Mimo is not called', async () => {
+    const readSchoolMenu = vi.fn(async () => [{ date: '2026-12-01', dish: 'Lentejas', group: 'legumbre' as const }])
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    await processInbound(pdf(null), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.at(-1)?.text).toMatch(/^He apuntado el menú del cole \(1 día\)/)
+  })
+
+  it('«menú del cole» that turns out not to be one: the school menu answer, as before, not Mimo', async () => {
+    const readSchoolMenu = vi.fn(async () => {
+      throw new NotASchoolMenuError()
+    })
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    await processInbound(pdf('el menú del cole de diciembre'), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.map((m) => m.text)).toContain(COPY.schoolMenuNotFound)
+  })
+
+  it('a PDF too big to read: said in Spanish, no Mimo', async () => {
+    const t = setup()
+    t.deps.client.downloadMedia = async () => ({ buffer: Buffer.from('%PDF-1.4\n' + '<< /Type /Page >>\n'.repeat(101)), mimeType: 'application/pdf' })
+    await processInbound(pdf('la dieta'), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.map((m) => m.text).join(' ')).toMatch(/demasiado grande/)
+  })
+
+  it('a photo «la dieta de mi nutricionista» is not imported as a recipe: Mimo looks at it', async () => {
+    const importRecipeFromImage = vi.fn()
+    const t = setup({ importRecipeFromImage })
+    await processInbound(msg({ kind: 'image', text: 'la dieta de mi nutricionista', mediaId: 'IMG9', mimeType: 'image/jpeg' }), t.deps)
+    expect(importRecipeFromImage).not.toHaveBeenCalled()
+    expect((t.chat.mock.calls[0][3] as any).images).toHaveLength(1)
   })
 })

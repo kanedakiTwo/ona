@@ -54,7 +54,11 @@ export interface ChatOptions {
    * asks them in the chat and finishes with `complete_onboarding`.
    */
   onboarding?: boolean
-  /** Photos sent with the message (WhatsApp): Mimo sees them and answers about them. */
+  /**
+   * Photos sent with the message (WhatsApp, the web chat's clip button): Mimo
+   * sees them and answers about them. An `application/pdf` entry goes as a
+   * `document` block (2026-11-26: the nutritionist's diet; chatAttachment.ts).
+   */
   images?: { mediaType: string; data: string }[]
   /**
    * PRO-313: the chat app the `whatsapp` mode really runs in. Telegram keeps
@@ -316,7 +320,7 @@ export function buildChatRequest(input: FixedBlockOptions & {
 /**
  * Messages for one turn: the history, with a cache breakpoint on its last
  * block, then the new user message: the clock first (`clockNote`), up to 4
- * photos, then the text. The next turn's history starts with exactly the same
+ * photos (a PDF among them goes as a `document` block), then the text. The next turn's history starts with exactly the same
  * messages, so it reads context + history from the cache written here (as
  * long as the 5-minute cache is alive and the menu/memory didn't change).
  * Breakpoints in a request: tools and instructions (1 hour), history end and
@@ -333,11 +337,14 @@ export function buildTurnMessages(
     role: 'user',
     content: [
       { type: 'text' as const, text: clockNote(now) },
-      ...images.slice(0, 4).map((img) => ({
-        type: 'image' as const,
-        source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg', data: img.data },
-      })),
-      ...(message || images.length ? [{ type: 'text' as const, text: message || '(foto sin texto)' }] : []),
+      ...images.slice(0, 4).map((img) =>
+        img.mediaType === 'application/pdf'
+          ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: img.data } }
+          : { type: 'image' as const, source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg', data: img.data } },
+      ),
+      ...(message || images.length
+        ? [{ type: 'text' as const, text: message || (images.some((i) => i.mediaType === 'application/pdf') ? '(documento sin texto)' : '(foto sin texto)') }]
+        : []),
     ],
   })
   return messages

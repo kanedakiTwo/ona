@@ -205,6 +205,24 @@ export interface FichaMenuConstraints {
   lightMeals: LightMeal[]
   /** `effort` facts: the time a day and a meal allow, for «Cambiar» without a dish. */
   efforts: Array<{ days: number[]; meal: Meal; totalMinutes: number }>
+  /**
+   * PRO-1262: the household cooks in batches («Batch cooking» in `cooking_style`,
+   * or `batch_cooking` with `batches`; a `batch_cooking` saying no wins):
+   * the days before Monday the batch is cooked (1 = Sunday, 2 = Saturday). Null: cooks its day.
+   */
+  batchCooking?: { daysBefore: number } | null
+}
+
+/** Pure: the batch day of `cooking_style` / `batch_cooking` facts (PRO-1262), or null. */
+export function batchCookingOf(facts: ReadonlyArray<Pick<ReadableFact, 'type' | 'value'>>): { daysBefore: number } | null {
+  const said = facts.find((f) => f.type === 'batch_cooking')?.value as { batches?: unknown; days?: unknown } | undefined
+  if (said && typeof said.batches === 'boolean') {
+    if (!said.batches) return null
+    const days = Array.isArray(said.days) ? said.days.map(String) : []
+    return { daysBefore: days.includes('sabado') && !days.includes('domingo') ? 2 : 1 }
+  }
+  const style = facts.find((f) => f.type === 'cooking_style')?.value as { style?: unknown } | undefined
+  return style?.style === 'batch' ? { daysBefore: 1 } : null
 }
 
 export interface FichaFixedDish {
@@ -319,6 +337,7 @@ export function fichaMenuConstraints(ficha: HouseholdFicha | null, forUserId?: s
     }
   }
   out.cookingSkill ??= householdSkill
+  out.batchCooking = batchCookingOf(ficha.facts)
   return out
 }
 

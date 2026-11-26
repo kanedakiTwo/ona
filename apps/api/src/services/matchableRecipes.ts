@@ -233,6 +233,8 @@ export async function loadMatchableRecipes(userId: string, db: any = defaultDb):
     dishTypes: r.dishTypes ?? dishTypesOf({ name: r.name, tags: r.tags, ingredients: ingredientsByRecipe.get(r.id) ?? [] }),
     nutritionPerServing: r.nutritionPerServing ?? null,
     servings: r.servings ?? null,
+    // How long it keeps cooked (PRO-1262: the batch week only cooks ahead what keeps).
+    fridgeDays: r.fridgeDays ?? null,
     ingredients: ingredientsByRecipe.get(r.id) ?? [],
     // PRO-346: meat, fish or allergens the steps name and the ingredients
     // don't (PRO-268's list for Cocina). The diet filter counts them as

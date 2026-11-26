@@ -111,6 +111,11 @@ function totalMinutesOf(r: { totalTime?: number | null; prepTime?: number | null
   return sum > 0 ? sum : null
 }
 
+/** A working day's lunch or dinner: at most `cap` minutes in total; unknown times pass (the weekly generator too, PRO-1262). */
+export function withinWorkday<T extends { totalTime?: number | null; prepTime?: number | null; cookTime?: number | null }>(pool: T[], cap: number): T[] {
+  return pool.filter((r) => { const t = totalMinutesOf(r); return t == null || t <= cap })
+}
+
 /**
  * Pure: the week's recipes outside one slot (`days`, the menu as it is),
  * looked up in `byId`.
@@ -152,7 +157,7 @@ export function applySlotRules<T extends RecipeWithCourse>(pool: T[], i: SlotRul
   let out = pool
   if (i.weeklyLimits.length) out = withinLimits(out, i.weeklyLimits, limitCounts(i.weeklyLimits, week))
   if (i.lightMeals.includes(i.meal)) out = out.filter((r) => isLightDish(r))
-  if (i.workdayCap) out = out.filter((r) => { const t = totalMinutesOf(r); return t == null || t <= i.workdayCap! })
+  if (i.workdayCap) out = withinWorkday(out, i.workdayCap)
   const keys = new Set(week.map((r) => mainFoodKey(r)).filter((k): k is string => !!k))
   const preferred = keys.size ? out.filter((r) => { const k = mainFoodKey(r); return !k || !keys.has(k) }) : out
   return { pool: out, preferred }

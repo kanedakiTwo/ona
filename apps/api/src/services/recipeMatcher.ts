@@ -35,6 +35,8 @@ export interface RecipeWithIngredients {
    */
   prepTime?: number | null
   cookTime?: number | null
+  /** Days it keeps cooked in the fridge (`recipes.fridge_days`); null = not known. */
+  fridgeDays?: number | null
   activeTime?: number | null
   totalTime?: number | null
   /** Recipe-level allergen union (recipes.allergens). Checked by the restriction filter. */

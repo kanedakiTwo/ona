@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { setCostSinkForTests } from '../services/costLedger.js'
+import { setCostSinkForTests, type CostRow } from '../services/costLedger.js'
 import { cleanPhrase, cookNowPhrase, phraseFacts } from '../services/cookNow/phrase.js'
 
-const costRows: unknown[] = []
+const costRows: CostRow[] = []
 beforeAll(() => setCostSinkForTests(async (row) => void costRows.push(row)))
 afterAll(() => setCostSinkForTests(null))
 
@@ -35,5 +35,12 @@ describe('cookNowPhrase', () => {
     expect(await cookNowPhrase('u', facts, { create: async () => { throw new Error('x') }, paused: async () => false })).toBeNull()
     expect(await cookNowPhrase('u', facts, { create: () => new Promise(() => {}), paused: async () => false, timeoutMs: 10 })).toBeNull()
     expect(await cookNowPhrase('u', facts, { create: ok as any, paused: async () => true })).toBeNull()
+  })
+  it('bills the line to the user and household that asked for it, not to the system (PRO-1316)', async () => {
+    costRows.length = 0
+    await cookNowPhrase('user-1', facts, { create: ok as any, paused: async () => false, householdId: 'hh-1' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(costRows).toHaveLength(1)
+    expect(costRows[0]).toMatchObject({ feature: 'cook_now_phrase', userId: 'user-1', householdId: 'hh-1' })
   })
 })

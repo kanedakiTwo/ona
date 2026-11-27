@@ -46,6 +46,8 @@ import { CLAIM_EVAL_CASES, claimReplyProblems } from '../src/services/assistant/
 import { CONDUCT_EVAL_CASES, conductReplyProblems } from '../src/services/assistant/mimoConductEvalCases.js'
 import { LONG_TALK_EVAL_CASES, longTalkProblems } from '../src/services/assistant/mimoLongTalkEvalCases.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
+import { flushCostEvents } from '../src/services/costLedger.js'
+import { scriptAnthropic } from '../src/services/scriptCost.js'
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
 const mode = (arg('mode') ?? 'whatsapp') as AssistantMode
@@ -63,7 +65,7 @@ const anthropic = remote
       const { dbTurnStore, remoteMessagesClient } = await import('../src/services/assistant/mimoRemoto.js')
       return remoteMessagesClient(dbTurnStore(db))
     })()
-  : new Anthropic()
+  : scriptAnthropic('evalHealthAnswers', new Anthropic())
 /** Every tool is simulated; a case can say what a read tool answers. */
 const simulated = (results: Record<string, string> = {}): SkillDefinition[] =>
   toolsFor({ mode }).map((s) => ({
@@ -147,4 +149,5 @@ console.log(`\n${out.length - failed}/${out.length} respuestas sin problemas.`)
 const byCase = new Map<string, boolean>()
 for (const o of out as { case: string; problems: string[] }[]) byCase.set(o.case, (byCase.get(o.case) ?? true) && o.problems.length === 0)
 console.log(`pass^${runs}: ${[...byCase.values()].filter(Boolean).length}/${byCase.size} casos (${perTurn ? 'herramientas por turno' : 'todas las herramientas'}).`)
+await flushCostEvents()
 process.exit(failed ? 1 : 0)

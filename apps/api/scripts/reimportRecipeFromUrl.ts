@@ -18,10 +18,14 @@ import { readFileSync } from 'node:fs'
 import { inArray } from 'drizzle-orm'
 import { db, pool } from '../src/db/connection.js'
 import { recipes } from '../src/db/schema.js'
+import { billCostsToScript, flushCostEvents } from '../src/services/costLedger.js'
 import { AnthropicProvider } from '../src/services/providers/anthropic.js'
 import { extractRecipeFromUrl } from '../src/services/recipeUrlExtractor.js'
 import { extractedToWriteInput } from '../src/services/recipeImport.js'
 import { persistRecipe } from '../src/services/recipePersistence.js'
+
+// PRO-1316: the extraction and the matcher it pays for, as `script_reimportRecipeFromUrl`.
+billCostsToScript('reimportRecipeFromUrl')
 
 const EXECUTE = process.argv.includes('--execute')
 const IDS = process.argv.slice(2).filter((a) => !a.startsWith('--'))
@@ -77,4 +81,7 @@ main()
     console.error(err)
     process.exitCode = 1
   })
-  .finally(() => pool.end())
+  .finally(async () => {
+    await flushCostEvents()
+    await pool.end()
+  })

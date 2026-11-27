@@ -17,7 +17,7 @@
  * the week and, as a single dish, has protein (`pickForSlot`).
  */
 import type { Course, DayMenu, Meal } from '@ona/shared'
-import { detectSeason, weekHolidays } from '@ona/shared'
+import { EVERYDAY_WORK_MINUTES, detectSeason, weekHolidays } from '@ona/shared'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { userFavorites, users } from '../db/schema.js'
@@ -32,7 +32,7 @@ import { proteinKind } from './tasteDeck.js'
 import { isLightDish, limitCounts, mainFoodKey, withinLimits } from './menuRules.js'
 import type { RecipeWithCourse } from './matchableRecipes.js'
 import { loadFichaMenuConstraints, withFichaFilters } from './profile/reader.js'
-import { normaliseEquipment } from './recipeMatcher.js'
+import { normaliseEquipment, withWorkCapFallback } from './recipeMatcher.js'
 import { memoryTastes } from './menuTastes.js'
 import { schoolDinnerPool } from './schoolMenu.js'
 import { resolveScope, scopeWhere } from './scopeResolver.js'
@@ -111,6 +111,11 @@ function totalMinutesOf(r: { totalTime?: number | null; prepTime?: number | null
   return sum > 0 ? sum : null
 }
 
+/** A working day's lunch or dinner: at most `cap` minutes in total; unknown times pass (the weekly generator too, PRO-1262). */
+export function withinWorkday<T extends { totalTime?: number | null; prepTime?: number | null; cookTime?: number | null }>(pool: T[], cap: number): T[] {
+  return pool.filter((r) => { const t = totalMinutesOf(r); return t == null || t <= cap })
+}
+
 /**
  * Pure: the week's recipes outside one slot (`days`, the menu as it is),
  * looked up in `byId`.
@@ -152,7 +157,7 @@ export function applySlotRules<T extends RecipeWithCourse>(pool: T[], i: SlotRul
   let out = pool
   if (i.weeklyLimits.length) out = withinLimits(out, i.weeklyLimits, limitCounts(i.weeklyLimits, week))
   if (i.lightMeals.includes(i.meal)) out = out.filter((r) => isLightDish(r))
-  if (i.workdayCap) out = out.filter((r) => { const t = totalMinutesOf(r); return t == null || t <= i.workdayCap! })
+  if (i.workdayCap) out = withinWorkday(out, i.workdayCap)
   const keys = new Set(week.map((r) => mainFoodKey(r)).filter((k): k is string => !!k))
   const preferred = keys.size ? out.filter((r) => { const k = mainFoodKey(r); return !k || !keys.has(k) }) : out
   return { pool: out, preferred }
@@ -171,11 +176,14 @@ export function pickForSlot<T extends RecipeWithCourse>(
   const preferred = pick.preferred ?? pick.pool
   const savoury = (course === null || course === 'main') && (pick.options.meal === 'lunch' || pick.options.meal === 'dinner')
   const tries = [...(savoury ? [preferred.filter((r) => proteinKind({ name: r.name, ingredients: r.ingredients ?? [] }) !== 'verdura')] : []), preferred, pick.pool]
-  for (const p of tries) {
-    const found = findForCourse(narrow(p), course, pick.options) as T | undefined
-    if (found) return found
-  }
-  return undefined
+  // D-1028: every pool within the work cap first, then without it.
+  return withWorkCapFallback(pick.options, (o) => {
+    for (const p of tries) {
+      const found = findForCourse(narrow(p), course, o) as T | undefined
+      if (found) return found
+    }
+    return undefined
+  })
 }
 
 /**
@@ -211,6 +219,8 @@ export async function slotPickOptions(ctx: SlotPickContext, menu: SlotPickMenu, 
     tastes: ctx.tastes,
     // PRO-138: the day's limit on total or hands-on time.
     timeBudget: said,
+    // D-1028: 30 min of the cook's time at most, save on a holiday (`withWorkCapFallback`).
+    workCap: holiday ? null : EVERYDAY_WORK_MINUTES,
     // PRO-1200: the rest of the week's dishes say how many from outside are left.
     everyday: slotEveryday(ctx.everyday, usedRecipeIds),
   }

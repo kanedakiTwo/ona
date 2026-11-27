@@ -52,7 +52,12 @@ const recipeIngredientWriteSchema = z.object({
   unit: z.enum(UNITS),
   optional: z.boolean().default(false),
   note: z.string().optional(),
-  displayOrder: z.number().int().min(0).default(0),
+  /**
+   * Position in the list. Absent = the position in the array sent: the writer
+   * (`persistRecipe`) uses the index. No default here: a `0` for every row
+   * left them all tied and the GET returned them in any order (PRO-1344).
+   */
+  displayOrder: z.number().int().min(0).optional(),
   /**
    * Human-readable quantity as entered/extracted (e.g. 2 for "2 cda").
    * Canonical `quantity` holds the converted SI value (e.g. 30 ml).
@@ -67,6 +72,8 @@ const recipeIngredientWriteSchema = z.object({
 })
 
 export const recipeIngredientSchema = recipeIngredientWriteSchema.extend({
+  /** Server-set: always present on a saved row. */
+  displayOrder: z.number().int().min(0),
   /** Server-set: id of this recipe_ingredient row (referenced by step.ingredientRefs) */
   id: z.string().uuid(),
   /** Server-set: denormalized name for display */
@@ -153,6 +160,11 @@ export interface Recipe {
   substitutions?: string
   storage?: string
   /**
+   * D-1028 · «Y si tienes más tiempo…»: how the quick version gets better
+   * with more time. Public; the ficha shows it at the end when it has text.
+   */
+  moreTime?: string
+  /**
    * PRO-372: «Se puede congelar» (true) / «No se congela» (false) seal on the
    * ficha. Null/absent = no data, no seal.
    */
@@ -189,6 +201,11 @@ export interface Recipe {
    * «<libro>»». Sent by GET /recipes/:id; null when there is nothing to credit.
    */
   sourceCredit?: string | null
+  /**
+   * PRO-1077: a catalogue recipe adapted from a book (D-104). Its page is not
+   * indexed and it stays out of the sitemap until Legal's OK. Absent otherwise.
+   */
+  fromBook?: boolean
   /**
    * PRO-373: the bases this recipe uses («Usa: Sofrito (2 raciones)»), from
    * `recipe_bases`, with the base's id for the link. Sent by GET /recipes/:id;
@@ -278,6 +295,8 @@ export const createRecipeSchema = z.object({
   tips: z.string().optional(),
   substitutions: z.string().optional(),
   storage: z.string().optional(),
+  // D-1028: '' clears it on an edit; absent keeps it (KEPT_ON_UPDATE).
+  moreTime: z.string().max(2000).optional(),
   advancePrep: z.array(advancePrepSchema).max(5).optional(),
 
   tags: z.array(z.string()).default([]),

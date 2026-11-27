@@ -54,14 +54,12 @@ import Link from "next/link"
 import {
   allergenLabel,
   householdToDinersOrNull,
-  minutesLabel,
   publicTagsOf,
   recipeEyebrow,
-  recipeTotalMinutes,
   timelineString,
 } from "@/lib/recipeView"
 import { DIFFICULTY_LABELS, SEASON_LABELS } from "@/lib/labels"
-import { BRAND_NAME, normalizeReferralCode, recipeSharePayload } from "@ona/shared"
+import { BRAND_NAME, advancePrepLabel, normalizeReferralCode, recipeSharePayload, workTimeLabel } from "@ona/shared"
 import { ApiError } from "@/lib/api"
 import { loginHrefFor } from "@/lib/routeAccess"
 import { recipeBackTarget } from "@/lib/menuReturn"
@@ -338,10 +336,18 @@ export default function RecipeDetailPage() {
   const stepsBlock = (
     <>
       {timeLine && (
-        <p className="mb-5 flex items-center gap-1.5 text-[13px] text-[#4A4239]">
+        <p className={`${recipe.advancePrep?.length ? "mb-1.5" : "mb-5"} flex items-center gap-1.5 text-[13px] text-[#4A4239]`}>
           <Clock size={14} className="text-[#7A7066]" aria-hidden />
           {timeLine}
         </p>
+      )}
+      {/* PRO-402: what goes the day before (a soak, a marinade) is not in the time above. */}
+      {recipe.advancePrep && recipe.advancePrep.length > 0 && (
+        <ul className="mb-5 flex flex-col gap-0.5 text-[13px] text-[#4A4239]" data-testid="recipe-advance-prep">
+          {recipe.advancePrep.map((p) => (
+            <li key={`${p.hoursBefore}-${p.text}`}>{advancePrepLabel(p)}</li>
+          ))}
+        </ul>
       )}
       {stepCount > 0 ? (
         <StepsSection
@@ -351,6 +357,21 @@ export default function RecipeDetailPage() {
         />
       ) : (
         <EmptyLine>Esta receta aún no tiene pasos.</EmptyLine>
+      )}
+      {/* D-1028: the slower, better version, after the last step. Only with text. */}
+      {recipe.moreTime?.trim() && (
+        <section className="mt-8 border-t border-[#DDD6C5] pt-5" data-testid="recipe-more-time" aria-label="Y si tienes más tiempo…">
+          <h3 className="font-display mb-2 text-[20px] font-semibold! leading-tight text-[#1A1612]">Y si tienes más tiempo…</h3>
+          <div className="space-y-2 text-[15px] leading-relaxed text-[#1A1612]">
+            {recipe.moreTime
+              .split(/\n{2,}/)
+              .map((p) => p.trim())
+              .filter(Boolean)
+              .map((p, i) => (
+                <p key={i}>{p}</p>
+              ))}
+          </div>
+        </section>
       )}
     </>
   )
@@ -731,7 +752,8 @@ function RecipeHeader({
     { ...recipe, tags },
     { withTimeAndDifficulty: !isDesktop },
   )
-  const total = minutesLabel(recipeTotalMinutes(recipe))
+  // D-1028: «25 min de trabajo · 2 h en total», the cook's time first.
+  const total = workTimeLabel(recipe)
   const difficulty = recipe.difficulty ? DIFFICULTY_LABELS[recipe.difficulty] : ""
   const kcal = recipe.nutritionIncomplete ? undefined : recipe.nutritionPerServing?.kcal
   const metaParts = [

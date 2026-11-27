@@ -32,6 +32,8 @@ export interface DishPatch {
   course?: Course | null
   /** «Son sobras de otro día» (`cooked`) on a dish already in the menu (2026-10-20); never on a leftover. */
   variant?: 'planned' | 'freezer' | 'cooked'
+  /** PRO-1046: cooked in the batch of that day (YYYY-MM-DD), or null to cook it on its own day. Checked by the route. */
+  batchDate?: string | null
 }
 
 export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish[] {
@@ -45,11 +47,17 @@ export function patchDish(dishes: Dish[], index: number, patch: DishPatch): Dish
           ...current,
           ...(patch.course !== undefined && { course: patch.course }),
           ...(patch.variant !== undefined && current.variant !== 'leftover' && { variant: patch.variant }),
+          ...(patch.batchDate !== undefined && current.variant !== 'leftover' && { batchDate: patch.batchDate }),
         }
       : patch.text !== undefined && patch.text !== current.text
         ? // Written by hand now: no longer the week type's (PRO-1186's chip goes).
           (({ fromWeekType: _w, fixedDish: _f, ...rest }) => ({ ...rest, text: patch.text! }))(current)
         : current
+  // A táper is already cooked: it isn't in any batch (PRO-1046).
+  if (next.kind === 'recipe' && next.batchDate && (next.variant === 'freezer' || next.variant === 'cooked' || next.variant === 'fridge')) {
+    const { batchDate: _b, ...rest } = next
+    return [...dishes.slice(0, index), rest, ...dishes.slice(index + 1)]
+  }
   return [...dishes.slice(0, index), next, ...dishes.slice(index + 1)]
 }
 

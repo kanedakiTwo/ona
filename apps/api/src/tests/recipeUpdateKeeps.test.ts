@@ -51,6 +51,7 @@ describe('withKeptFields (PUT /recipes/:id)', () => {
     tips: 'Sala el agua al final.',
     substitutions: 'Sin huevo: aquafaba.',
     storage: 'Tres días en nevera.',
+    moreTime: 'Con garbanzo seco en remojo la víspera queda más meloso.',
     course: 'main',
     activeTime: 15,
     prepTime: 10,
@@ -86,5 +87,12 @@ describe('withKeptFields (PUT /recipes/:id)', () => {
     expect(parsed.steps?.[0].ingredientRefs).toEqual([A])
     // The form's own check: a cleared time is null, not a failure.
     expect(createRecipeSchema.safeParse({ ...parsed, servings: 2, meals: ['lunch'], prepTime: null }).success).toBe(true)
+  })
+
+  it('D-1028: «Y si tienes más tiempo…» survives a save that does not send it; \'\' clears it', () => {
+    expect(withKeptFields({ name: 'Cocido' }, saved).moreTime).toBe(saved.moreTime)
+    expect(withKeptFields({ moreTime: '' }, saved).moreTime).toBe('')
+    expect(withKeptFields({ moreTime: 'Otra cosa.' }, saved).moreTime).toBe('Otra cosa.')
+    expect(updateRecipeSchema.parse({ name: 'X' }).moreTime).toBeUndefined()
   })
 })

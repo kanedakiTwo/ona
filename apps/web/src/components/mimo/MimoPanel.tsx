@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Mic, Send, Square, Volume2, VolumeX, X, Headphones, RotateCcw } from 'lucide-react'
+import { Mic, Send, Square, Volume2, VolumeX, X, Headphones, RotateCcw, Paperclip, FileText } from 'lucide-react'
 import { AI_DISCLOSURE, founderOfferText } from '@ona/shared'
-import { useMimo, type MimoStatus } from './MimoProvider'
+import { useMimo, type HealthButton, type MimoMessage, type MimoStatus } from './MimoProvider'
 import { isCookPath, isRecipeDetailPath } from './MimoButton'
 import { MimoAvatar } from '@/components/brand/Mimoia'
 import { linkRecipeNames } from '@/lib/mimoRecipeLinks'
@@ -13,6 +13,7 @@ import { mimoOptions } from '@/lib/mimoOptions'
 import { markRecipeFromMimo, trackUsage } from '@/lib/usageEvents'
 import { useBilling } from '@/hooks/useBilling'
 import { AccountAccessNotice, isOnGratis } from '@/components/billing/AccountAccessNotice'
+import { MIMO_ATTACHMENT_ACCEPT, mimoAttachmentProblem } from '@/lib/mimoAttachment'
 
 /** Suggestions for an empty conversation, by page. */
 export function suggestionsFor(pathname: string | null): string[] {
@@ -35,8 +36,12 @@ export default function MimoPanel() {
   const mimo = useMimo()
   const pathname = usePathname()
   const [input, setInput] = useState('')
+  /** One photo or PDF to send with the next message (2026-11-26). */
+  const [file, setFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const busy = mimo.status === 'thinking' || mimo.status === 'transcribing'
   const billing = useBilling()
   const gratis = isOnGratis(billing.data)
@@ -53,6 +58,8 @@ export default function MimoPanel() {
     if (!draft) return
     setInput(draft.text)
     clearDraft()
+    // «Mándasela a Mimo» (the allergies screen): straight to the file picker, still within the tap.
+    if (draft.attach) fileRef.current?.click()
     // Not cleaned up on purpose: clearing the draft re-runs this effect.
     setTimeout(() => {
       const el = inputRef.current
@@ -71,9 +78,18 @@ export default function MimoPanel() {
 
   const submit = (text?: string) => {
     const t = (text ?? input).trim()
-    if (!t || busy) return
+    if ((!t && !file) || busy) return
     setInput('')
-    void mimo.send(t)
+    const attached = file
+    setFile(null)
+    void mimo.send(t, attached ?? undefined)
+  }
+
+  const pickFile = (picked: File | undefined) => {
+    if (!picked) return
+    const problem = mimoAttachmentProblem(picked)
+    setFileError(problem)
+    setFile(problem ? null : picked)
   }
 
   const listening = mimo.status === 'listening'
@@ -210,6 +226,9 @@ export default function MimoPanel() {
                       : text}
                   </div>
                 </div>
+                {m.role === 'assistant' && m.buttons?.length ? (
+                  <HealthButtons message={m} onAnswer={mimo.answerButton} />
+                ) : null}
                 {last && options.length > 0 && !busy && !listening && (
                   <div className="flex flex-wrap gap-2 pl-9" role="group" aria-label="Opciones">
                     {options.map((o) => (
@@ -283,6 +302,28 @@ export default function MimoPanel() {
               )}
             </div>
           )}
+          {(file || fileError) && (
+            <div className="mb-2 flex items-center gap-2" data-testid="mimo-attachment">
+              {file ? (
+                <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-[#DDD6C5] bg-[#F2EDE0] py-1 pl-3 pr-1 text-[12px] text-[#1A1612]">
+                  <FileText size={13} className="shrink-0" />
+                  <span className="truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFile(null)}
+                    aria-label="Quitar el archivo"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#7A7066] hover:text-[#1A1612]"
+                  >
+                    <X size={13} />
+                  </button>
+                </span>
+              ) : (
+                <p role="alert" className="text-[12px] text-[#A3302A]">
+                  {fileError}
+                </p>
+              )}
+            </div>
+          )}
           <form
             className="flex items-center gap-2"
             onSubmit={(e) => {
@@ -290,6 +331,28 @@ export default function MimoPanel() {
               submit()
             }}
           >
+            <input
+              ref={fileRef}
+              type="file"
+              accept={MIMO_ATTACHMENT_ACCEPT}
+              className="hidden"
+              data-testid="mimo-file-input"
+              onChange={(e) => {
+                pickFile(e.target.files?.[0])
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              aria-label="Adjuntar una foto o un PDF"
+              title="Adjuntar una foto o un PDF"
+              data-testid="mimo-attach"
+              disabled={busy || listening}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#DDD6C5] bg-[#FFFEFA] text-[#1A1612] disabled:opacity-30"
+            >
+              <Paperclip size={17} />
+            </button>
             <input
               ref={inputRef}
               type="text"
@@ -318,7 +381,7 @@ export default function MimoPanel() {
             <button
               type="submit"
               aria-label="Enviar"
-              disabled={!input.trim() || busy}
+              disabled={(!input.trim() && !file) || busy}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1A1612] text-[#FFFEFA] disabled:opacity-30"
             >
               <Send size={16} />
@@ -332,6 +395,38 @@ export default function MimoPanel() {
         )}
       </section>
     </>
+  )
+}
+
+/** PRO-1305: an allergy notice's buttons (permission, withdrawal); each is answered once. */
+function HealthButtons({ message, onAnswer }: { message: MimoMessage; onAnswer: (messageId: string, button: HealthButton) => Promise<void> }) {
+  const [failed, setFailed] = useState(false)
+  // Stays mounted while answered (nothing shown), so a failed save can say so and offer the buttons again.
+  if (message.answered) return null
+  return (
+    <div className="flex flex-col gap-1.5 pl-9">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Respuestas">
+        {message.buttons!.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            data-testid="mimo-health-button"
+            onClick={() => {
+              setFailed(false)
+              onAnswer(message.id, b).catch(() => setFailed(true))
+            }}
+            className="min-h-9 rounded-full border border-[#1A1612] px-3.5 py-1.5 text-[13px] font-medium text-[#1A1612] active:bg-[#F2EDE0]"
+          >
+            {b.title}
+          </button>
+        ))}
+      </div>
+      {failed && (
+        <p role="alert" className="text-[12px] text-[#A3302A]">
+          No se ha podido guardar tu respuesta. Inténtalo otra vez.
+        </p>
+      )}
+    </div>
   )
 }
 

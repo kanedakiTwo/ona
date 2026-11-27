@@ -37,7 +37,8 @@ const regenIngredientSchema = z.object({
   unit: z.enum(UNITS),
   optional: z.boolean().default(false),
   note: z.string().optional(),
-  displayOrder: z.number().int().min(0).default(0),
+  /** Absent = its position in the list (PRO-1344). */
+  displayOrder: z.number().int().min(0).optional(),
 })
 
 const regenStepSchema = z.object({

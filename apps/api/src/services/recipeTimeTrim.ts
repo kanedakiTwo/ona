@@ -17,7 +17,8 @@
  *     time (it never was).
  *  3. **Total** = prep + cook time − overlap (a recipe without cook time
  *     uses its passive minutes). Never below the cook time nor the minutes
- *     of the steps that go by themselves, and never above the total it had.
+ *     of the steps that go by themselves, and never above the total it had
+ *     — except to count the waits (PRO-1078, `waitFloor`).
  *  4. **Hands-on («de trabajo»)**: drops by what the prep dropped (not below
  *     the new prep unless it already was), never above the new total.
  *
@@ -36,8 +37,10 @@
  */
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { recipeSteps, recipes } from '../db/schema.js'
-import { normalizeRecipeName } from './catalogSourceLinks.js'
 import { isPassiveStep, stepMinutes, type StepForTime } from './catalogRecipeTimes.js'
+import { isDayBeforeStep, waitFloor } from './recipeWaitTime.js'
+
+export { isDayBeforeStep }
 
 /** Internal tag: the recipe's prep has been made realistic (PRO-284). */
 export const TIME_TRIM_TAG = 'tiempos-pro284'
@@ -47,14 +50,6 @@ export const PREP_REALISM = 0.8
 export const OVERLAP_SHARE = 0.5
 /** The day limit whose crossings the log counts (the menu's «30 min»). */
 export const LIMIT_MINUTES = 30
-
-const DAY_BEFORE_STEP = /\b(remoj(o|ar|e|a)|noche (anterior|antes)|dia anterior|vispera)\b/
-
-/** Soaking or anything the day before: not part of the recipe's time. */
-export function isDayBeforeStep(step: StepForTime): boolean {
-  if (DAY_BEFORE_STEP.test(normalizeRecipeName(`${step.technique ?? ''} ${step.text}`))) return true
-  return (stepMinutes(step) ?? 0) >= 6 * 60
-}
 
 /**
  * Minutes of the steps that go by themselves (day-before steps excluded).
@@ -120,6 +115,10 @@ export function planTimeTrim(row: TimeRow, steps: readonly StepForTime[], opts: 
   } else if (oldTotal != null) {
     total = Math.max(cook, oldTotal)
   }
+  // PRO-1078: never below the total with its waits (resting, rising, the
+  // fridge…), even above the total it had.
+  const floor = waitFloor(newPrep, cook, steps)
+  if (floor != null) total = Math.max(total ?? 0, floor)
 
   let active = has(row.activeTime) ? row.activeTime : null
   if (active != null) {

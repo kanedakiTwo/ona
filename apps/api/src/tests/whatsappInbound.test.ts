@@ -14,13 +14,14 @@ import type { OutboundMessage } from '../services/whatsapp/render.js'
 import { BUDGET_WARNING_LINE, EMPTY_USAGE } from '../services/advisorBudget.js'
 import { appSkills } from '../services/assistant/appSkills.js'
 import type { AppApi } from '../services/assistant/appApi.js'
-import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL } from '@ona/shared'
+import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, NotASchoolMenuError } from '@ona/shared'
 import Anthropic from '@anthropic-ai/sdk'
 import { API_SALDO_REPLY, setApiSaldoWriterForTests } from '../services/apiSaldo.js'
 import { captionWithoutInvite, signupCaption, signupWords } from '../services/whatsapp/signupReply.js'
 import { COALESCE_WINDOW_MS } from '../services/whatsapp/coalesce.js'
 import { checkinReplyIdOfEmoji } from '../services/whatsapp/checkinButtons.js'
-import { menuCodeReply, recognizeCodeIntent, type RunSkill } from '../services/assistant/codeReply.js'
+import { listCodeReply, menuCodeReply, recognizeCodeIntent, type RunSkill } from '../services/assistant/codeReply.js'
+import { capNoticeWhatsApp } from '../services/capNotice.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -267,7 +268,7 @@ describe('processInbound — gates', () => {
   it('stops at the monthly budget without calling the model', async () => {
     const t = setup({ budgetExceeded: true })
     await processInbound(msg(), t.deps)
-    expect(t.sent).toEqual([{ type: 'text', text: COPY.budget('5') }])
+    expect(t.sent).toEqual([{ type: 'text', text: capNoticeWhatsApp(5, WEB) }])
     expect(t.chat).not.toHaveBeenCalled()
   })
 
@@ -1388,17 +1389,21 @@ describe('processInbound — the avisos of 19-nov', () => {
     expect((t.chat.mock.calls[0] as unknown[])[1]).toBe('Cámbiame la cena de hoy por algo rápido')
   })
 
-  it('«¿Te sigo avisando…?»: «No» leaves the kind off, «Sí» switches it on; no model', async () => {
+  it('«¿Te sigo avisando?» (PRO-1303, one for every aviso): «No» switches them off, «Sí» keeps them; no model', async () => {
     const setAvisoKind = vi.fn(async () => {})
     const no = setup({ budgetExceeded: true, extra: { setAvisoKind } })
-    await processInbound(tap('avisos:no:cooking_reminder', 'No'), no.deps)
-    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'cooking_reminder', false)
+    await processInbound(tap('avisos:no:todos', 'No'), no.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'todos', false)
     expect(no.chat).not.toHaveBeenCalled()
-    expect(no.sent[0].text).toContain('no te aviso más')
+    expect(no.sent[0].text).toContain('no te mando más esos avisos')
     const yes = setup({ extra: { setAvisoKind } })
-    await processInbound(tap('avisos:si:dinner_checkin', 'Sí'), yes.deps)
-    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'dinner_checkin', true)
+    await processInbound(tap('avisos:si:todos', 'Sí'), yes.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'todos', true)
     expect(yes.sent).toEqual([{ type: 'text', text: 'Hecho, te sigo avisando.' }])
+    // A question of one kind sent before PRO-1303 still gets its answer.
+    const old = setup({ extra: { setAvisoKind } })
+    await processInbound(tap('avisos:si:dinner_checkin', 'Sí'), old.deps)
+    expect(setAvisoKind).toHaveBeenLastCalledWith('user-1', 'dinner_checkin', true)
   })
 
   it('BAJA: the first time it also asks why, with three buttons; the answer is an opinion, no model', async () => {
@@ -1623,5 +1628,171 @@ describe('processInbound — PRO-1292: el menú lo lee el código, sin modelo', 
     await processInbound(msg({ text: '¿Qué hay hoy?' }), english.deps)
     expect(english.chat).toHaveBeenCalledOnce()
     expect(english.sent.every((m) => m.type !== 'text' || !m.text.startsWith('Hoy, '))).toBe(true)
+  })
+})
+
+describe('processInbound — PRO-1302: con el tope agotado, lo que no gasta sigue funcionando', () => {
+  const DAY = { lunch: { dishes: [{ kind: 'recipe', recipeId: 'r-1', recipeName: 'Lentejas' }] } }
+  const daySkill: RunSkill = async (name) =>
+    name === 'get_shopping_list'
+      ? { data: { listId: 'l-1', items: [{ name: 'Leche', aisle: 'lacteos', quantity: 1, unit: 'L', checked: false, inStock: false }] }, summary: 'Te faltan 1 cosas: Leche.', uiHint: 'shopping_list' }
+      : { data: { date: '2026-10-06', weekStart: '2026-10-05', menuId: 'm-1', day: DAY }, summary: 'Menu del martes', uiHint: 'menu' }
+  const codeReply: InboundDeps['codeReply'] = async (userId, text) => {
+    const intent = recognizeCodeIntent(text)
+    if (intent?.kind === 'ver_lista') {
+      const response = await listCodeReply({ userId, db: {}, channel: 'whatsapp' }, { runSkill: daySkill })
+      return response ? { kind: intent.kind, response } : null
+    }
+    if (intent?.kind !== 'ver_menu') return null
+    const response = await menuCodeReply(intent, { userId, db: {} }, { runSkill: daySkill, now: NOW })
+    return response ? { kind: intent.kind, response } : null
+  }
+  /** One household over the cap, with its `cap_hits` mark kept across messages (like the real table). */
+  function capped(extra: Partial<InboundDeps> = {}, history: HistoryRow[] = []) {
+    let told = false
+    const noteCap = vi.fn(async () => {
+      if (told) return false
+      told = true
+      return true
+    })
+    const checkBudget = vi.fn(async () => ({ exceeded: true, budgetMicros: 6_000_000, spentMicros: 6_100_000, cap: 'asistente' as const, told }))
+    const recordDinnerCheckin = vi.fn(async () => ({ name: 'Merluza en salsa' }))
+    const t = setup({
+      history,
+      outboundKinds: new Map([['dinner_checkin', new Date(NOW.getTime() - 3_600_000)]]),
+      recordDinnerCheckin,
+      extra: { checkBudget, noteCap, codeReply, ...extra },
+    })
+    return { ...t, noteCap, budget: checkBudget }
+  }
+  const notice = capNoticeWhatsApp(6, WEB)
+
+  it('un botón y «¿qué hay hoy?» contestan; una petición al modelo recibe el aviso una sola vez', async () => {
+    const t = capped()
+    await processInbound(msg({ kind: 'interactive', text: 'Sí, hecho', replyId: 'checkin:yes', rawType: 'interactive' }), t.deps)
+    await processInbound(msg({ text: '¿Qué hay hoy?' }), t.deps)
+    await processInbound(msg({ text: 'la lista de la compra' }), t.deps)
+    expect(t.sent.map((m) => m.text)).toEqual([
+      'Apuntada la cena: *Merluza en salsa*.',
+      'Hoy, martes 6:\n- Comida: Lentejas',
+      expect.stringContaining('*Tu lista de la compra* · 1 cosa'),
+    ])
+    await processInbound(msg({ text: 'Cámbiame la cena del jueves' }), t.deps)
+    await processInbound(msg({ text: '¿Y algo con pescado?' }), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.slice(3)).toEqual([{ type: 'text', text: notice }])
+    expect(t.noteCap).toHaveBeenCalledOnce()
+    expect(t.inboundUpdates.slice(-2).map((u) => u.errorMessage)).toEqual(['over_cap', 'over_cap_told'])
+  })
+
+  it('el aviso dice qué sigue funcionando y dónde ver el menú y la lista', () => {
+    expect(notice).toContain('6 €')
+    expect(notice).toContain('los botones de mis avisos, «¿qué hay hoy?», «mándame el menú» y «la lista de la compra»')
+    expect(notice).toContain(`Menú: ${WEB}/menu`)
+    expect(notice).toContain(`Lista: ${WEB}/shopping`)
+    expect(capNoticeWhatsApp(6, WEB, 'en')).toContain(`${WEB}/shopping`)
+  })
+
+  it('el turno que llega al tope se termina entero y lleva el aviso al final (no el del 80 %)', async () => {
+    const noteCap = vi.fn(async () => true)
+    const t = setup({ spentMicros: 4_900_000, addedMicros: 200_000, chatReply: { message: 'Hoy toca crema de calabaza.' }, extra: { noteCap } })
+    await processInbound(msg(), t.deps)
+    expect(t.chat).toHaveBeenCalledOnce()
+    expect(t.sent.at(-1)?.text).toBe(`Hoy toca crema de calabaza.\n\n${capNoticeWhatsApp(5, WEB)}`)
+    expect(t.sent.map((m) => m.text).join('\n')).not.toContain(BUDGET_WARNING_LINE)
+    expect(noteCap).toHaveBeenCalledWith('user-1', { cap: 'asistente', spentMicros: 5_100_000, budgetMicros: 5_000_000 })
+  })
+
+  it('si ese turno pregunta algo, la respuesta lo termina (una vez) y entonces va el aviso', async () => {
+    const asking = setup({ spentMicros: 4_900_000, addedMicros: 200_000, chatReply: { message: '¿Te cambio el jueves por merluza?' }, extra: { noteCap: vi.fn(async () => true) } })
+    await processInbound(msg({ text: 'Cámbiame el jueves' }), asking.deps)
+    expect(asking.sent).toEqual([{ type: 'text', text: '¿Te cambio el jueves por merluza?' }])
+    expect(asking.deps.noteCap).not.toHaveBeenCalled()
+
+    const question: HistoryRow = { direction: 'out', kind: 'reply', body: '¿Te cambio el jueves por merluza?', status: 'sent', createdAt: new Date(NOW.getTime() - 60_000) }
+    const t = capped({ chat: vi.fn(async () => ({ message: 'Hecho: el jueves, merluza en salsa.', actionTaken: true, usage: EMPTY_USAGE })) }, [question])
+    await processInbound(msg({ text: 'sí' }), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: `Hecho: el jueves, merluza en salsa.\n\n${notice}` }])
+    expect(t.noteCap).toHaveBeenCalledOnce()
+    // Only once: the next one (even answering another question) is the cap.
+    await processInbound(msg({ text: 'y el viernes también' }), t.deps)
+    expect(t.deps.chat).toHaveBeenCalledOnce()
+    expect(t.sent).toHaveLength(1)
+  })
+
+  it('sin la marca del mes (Telegram, o no se sabe), el aviso va como antes', async () => {
+    const t = setup({ budgetExceeded: true })
+    await processInbound(msg(), t.deps)
+    await processInbound(msg(), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: capNoticeWhatsApp(5, WEB) }, { type: 'text', text: capNoticeWhatsApp(5, WEB) }])
+  })
+})
+
+describe('2026-11-26: a PDF that is not the school menu goes to Mimo (the nutritionist\'s diet)', () => {
+  const pdf = (text: string | null) => msg({ kind: 'document', text, mediaId: 'PDF1', mimeType: 'application/pdf', rawType: 'document' })
+  const PDF_BYTES = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Page >> endobj')
+  const withPdf = (t: ReturnType<typeof setup>) => {
+    t.deps.client.downloadMedia = async () => ({ buffer: PDF_BYTES, mimeType: 'application/pdf' })
+    return t
+  }
+
+  it('no caption and not a school menu: Mimo reads it as a document, with a default line; history keeps «[Adjunto]»', async () => {
+    const readSchoolMenu = vi.fn(async () => {
+      throw new NotASchoolMenuError()
+    })
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    t.chat.mockImplementationOnce(async () => ({ message: 'He apuntado lo que puedo de la dieta de tu nutricionista.', usage: EMPTY_USAGE }))
+    await processInbound(pdf(null), t.deps)
+    expect(readSchoolMenu).toHaveBeenCalledOnce()
+    expect(t.chat).toHaveBeenCalledOnce()
+    expect(t.chat.mock.calls[0][1]).toBe('Te mando este archivo.')
+    expect((t.chat.mock.calls[0][3] as any).images).toEqual([{ mediaType: 'application/pdf', data: PDF_BYTES.toString('base64') }])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: '[Adjunto]' })
+    expect(t.sent.map((m) => m.text)).toEqual(['He apuntado lo que puedo de la dieta de tu nutricionista.'])
+    expect(t.sent.map((m) => m.text)).not.toContain(COPY.unsupported)
+  })
+
+  it('a caption about the diet: straight to Mimo, without reading it as the school menu', async () => {
+    const readSchoolMenu = vi.fn()
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    await processInbound(pdf('Esta es la dieta de mi nutricionista'), t.deps)
+    expect(readSchoolMenu).not.toHaveBeenCalled()
+    expect(t.chat.mock.calls[0][1]).toBe('Esta es la dieta de mi nutricionista')
+    expect((t.chat.mock.calls[0][3] as any).images[0].mediaType).toBe('application/pdf')
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ body: '[Adjunto] Esta es la dieta de mi nutricionista' })
+  })
+
+  it('the school menu still wins when it is one (no caption needed), and Mimo is not called', async () => {
+    const readSchoolMenu = vi.fn(async () => [{ date: '2026-12-01', dish: 'Lentejas', group: 'legumbre' as const }])
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    await processInbound(pdf(null), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.at(-1)?.text).toMatch(/^He apuntado el menú del cole \(1 día\)/)
+  })
+
+  it('«menú del cole» that turns out not to be one: the school menu answer, as before, not Mimo', async () => {
+    const readSchoolMenu = vi.fn(async () => {
+      throw new NotASchoolMenuError()
+    })
+    const t = withPdf(setup({ extra: { readSchoolMenu } }))
+    await processInbound(pdf('el menú del cole de diciembre'), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.map((m) => m.text)).toContain(COPY.schoolMenuNotFound)
+  })
+
+  it('a PDF too big to read: said in Spanish, no Mimo', async () => {
+    const t = setup()
+    t.deps.client.downloadMedia = async () => ({ buffer: Buffer.from('%PDF-1.4\n' + '<< /Type /Page >>\n'.repeat(101)), mimeType: 'application/pdf' })
+    await processInbound(pdf('la dieta'), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent.map((m) => m.text).join(' ')).toMatch(/demasiado grande/)
+  })
+
+  it('a photo «la dieta de mi nutricionista» is not imported as a recipe: Mimo looks at it', async () => {
+    const importRecipeFromImage = vi.fn()
+    const t = setup({ importRecipeFromImage })
+    await processInbound(msg({ kind: 'image', text: 'la dieta de mi nutricionista', mediaId: 'IMG9', mimeType: 'image/jpeg' }), t.deps)
+    expect(importRecipeFromImage).not.toHaveBeenCalled()
+    expect((t.chat.mock.calls[0][3] as any).images).toHaveLength(1)
   })
 })

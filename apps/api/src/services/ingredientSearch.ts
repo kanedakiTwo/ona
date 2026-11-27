@@ -7,7 +7,7 @@
  * FOLD_FROM, lower(), single spaces. Results rank the exact name first, then names that start with the term, then
  * those with a word that starts with it, then the rest; so "sal" shows "sal" before "agua con sal".
  */
-import { sql, type SQL } from 'drizzle-orm'
+import { sql, type AnyColumn, type SQL } from 'drizzle-orm'
 import { FOLD_FROM, foldIngredientName } from '@ona/shared'
 import { ingredients } from '../db/schema.js'
 
@@ -19,7 +19,12 @@ export function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => `\\${c}`)
 }
 
-const folded = sql`btrim(regexp_replace(lower(translate(${ingredients.name}, ${FOLD_FROM}, ${FOLD_TO})), '\\s+', ' ', 'g'))`
+/** A text column folded in SQL with the same rule as `foldIngredientName` (also used by the recipe search). */
+export function foldedColumn(column: AnyColumn | SQL): SQL {
+  return sql`btrim(regexp_replace(lower(translate(${column}, ${FOLD_FROM}, ${FOLD_TO})), '\\s+', ' ', 'g'))`
+}
+
+const folded = foldedColumn(ingredients.name)
 
 /** The filter and the ranking for a search term, or null when the term folds to nothing (no filter). */
 export function ingredientSearch(raw: string): { term: string; where: SQL; rank: SQL } | null {

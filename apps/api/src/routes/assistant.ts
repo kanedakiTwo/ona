@@ -1,12 +1,14 @@
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
+import multer from 'multer'
 import { claimOptInReoffer, withReofferLine } from '../services/whatsapp/optInOffer.js'
 import { db } from '../db/connection.js'
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js'
 import { chat } from '../services/assistant/engine.js'
 import type { ChatMessage } from '../services/assistant/types.js'
 import { BUDGET_WARNING_LINE, checkAdvisorBudget, crossesBudgetWarning, recordAdvisorUsage } from '../services/advisorBudget.js'
-import { requireSpendCapacity } from '../middleware/spendCap.js'
-import { recordCapHit } from '../services/capHits.js'
+import { spendCapStatus } from '../services/spendCap.js'
+import { capHitThisMonth, recordCapHit, type CapKind } from '../services/capHits.js'
+import { asksSomething, capNoticeApp, capNoticeAppShort, reachesCap } from '../services/capNotice.js'
 import { API_SALDO_REPLY, API_SALDO_TYPE, noteApiBalanceError } from '../services/apiSaldo.js'
 import { requirePaidPlan } from '../services/accountAccess.js'
 import { asc, eq } from 'drizzle-orm'
@@ -17,9 +19,29 @@ import type { AssistantMode } from '../services/assistant/systemPrompt.js'
 import { recordWebChatTurn } from '../services/chatMessages.js'
 import { generatedMenuThisTurn, withSnowballLine } from '../services/menuText.js'
 import { generatedWeeksOf } from '../services/menuWeek.js'
-import { menuCodeReply, recognizeCodeIntent, stepCodeReply } from '../services/assistant/codeReply.js'
+import { listCodeReply, menuCodeReply, recognizeCodeIntent, stepCodeReply, type CodeReplyKind } from '../services/assistant/codeReply.js'
 import { channelOfMode, trackEvent } from '../services/usageEvents.js'
 import type { AssistantResponse } from '../services/assistant/types.js'
+import { randomUUID } from 'node:crypto'
+import { answerConsentButton, finishChatTurn, parseConsentButton, withChatAllergyOutbox } from '../services/chatAllergies.js'
+import { answerDeps, noteSaidByCode } from '../services/chatAllergySave.js'
+import { runWithCostUser } from '../services/costLedger.js'
+import {
+  ATTACHMENT_DEFAULT_TEXT,
+  CHAT_ATTACHMENT_COPY,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  ChatAttachmentError,
+  attachmentForModel,
+  looksLikeDietDocument,
+  withAttachmentMarker,
+} from '../services/assistant/chatAttachment.js'
+
+/** PRO-1305: a fixed message of the allergy permission, shown under Mimo's reply (with its buttons). */
+interface WebHealthMessage {
+  id: string
+  text: string
+  buttons?: { id: string; title: string }[]
+}
 
 /** Web modes: the companion's chat and voice, and the voice onboarding. WhatsApp has its own route. */
 const WEB_MODES: AssistantMode[] = ['text', 'voice', 'onboarding']
@@ -29,8 +51,44 @@ const router = Router()
 // All routes require auth
 router.use(authMiddleware)
 
+/**
+ * 2026-11-26: one photo or PDF with the message (multipart, field `file`; the
+ * rest of the body comes as form fields, `history` and `context` as JSON). Kept
+ * in memory for this turn only, never written anywhere.
+ */
+const attachmentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: CHAT_ATTACHMENT_MAX_BYTES, files: 1 },
+})
+const uploadAttachment: RequestHandler = (req, res, next) => {
+  attachmentUpload.single('file')(req, res, (err: unknown) => {
+    if (!err) return next()
+    if (err instanceof multer.MulterError && (err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE')) {
+      const tooBig = err.code === 'LIMIT_FILE_SIZE'
+      res.status(tooBig ? 413 : 400).json({ error: tooBig ? CHAT_ATTACHMENT_COPY.too_big : CHAT_ATTACHMENT_COPY.type, code: tooBig ? 'ATTACHMENT_TOO_BIG' : 'ATTACHMENT_TYPE' })
+      return
+    }
+    next(err)
+  })
+}
+
+/** A multipart body brings `history` and `context` as JSON text; a JSON body, as they are. */
+function jsonField(v: unknown): unknown {
+  if (typeof v !== 'string') return v
+  try {
+    return JSON.parse(v)
+  } catch {
+    return undefined
+  }
+}
+
 // POST /assistant/:userId/chat
-router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity(), async (req: AuthRequest, res) => {
+router.post('/assistant/:userId/chat', requirePaidPlan(), uploadAttachment, (req: AuthRequest, res) =>
+  // multer's stream callbacks drop authMiddleware's cost context; re-enter it.
+  runWithCostUser(req.userId ?? null, () => chatTurn(req, res)),
+)
+
+async function chatTurn(req: AuthRequest, res: import('express').Response): Promise<void> {
   try {
     const userId = String(req.params.userId)
 
@@ -41,20 +99,47 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
       return
     }
 
-    const { message, history } = req.body
+    const file = req.file
+    const history = jsonField(req.body?.history)
+    const context = jsonField(req.body?.context) as { path?: unknown; cookStep?: unknown } | undefined
     const mode: AssistantMode = WEB_MODES.includes(req.body?.mode) ? req.body.mode : 'text'
-    const path = typeof req.body?.context?.path === 'string' ? req.body.context.path.slice(0, 200) : null
-    const cookStep = cookStepOf(req.body?.context?.cookStep)
+    const path = typeof context?.path === 'string' ? context.path.slice(0, 200) : null
+    const cookStep = cookStepOf(context?.cookStep)
+    // With a file the words may be empty: Mimo reads a default line.
+    const message = typeof req.body?.message === 'string' && req.body.message.trim() ? req.body.message : file ? ATTACHMENT_DEFAULT_TEXT : null
 
-    if (!message || typeof message !== 'string') {
+    if (!message) {
       res.status(400).json({ error: 'Message is required' })
       return
     }
 
-    // PRO-1292: «¿qué hay hoy?», «mándame el menú» and, in cook mode,
-    // «siguiente» / «anterior» / «repite» are answered by the code — no model,
-    // no cost, also with the monthly cap used up. Anything more goes on below.
-    if (mode !== 'onboarding') {
+    // The file, checked and shaped for the model (never stored). The
+    // conversation keeps «[Adjunto]» in its place.
+    let attachment: { mediaType: string; data: string } | null = null
+    if (file) {
+      if (mode === 'onboarding') {
+        res.status(400).json({ error: CHAT_ATTACHMENT_COPY.type, code: 'ATTACHMENT_TYPE' })
+        return
+      }
+      try {
+        attachment = await attachmentForModel(file.buffer, file.mimetype)
+      } catch (err) {
+        if (err instanceof ChatAttachmentError) {
+          const tooBig = err.reason === 'too_big'
+          res.status(tooBig ? 413 : 415).json({ error: err.message, code: tooBig ? 'ATTACHMENT_TOO_BIG' : 'ATTACHMENT_TYPE' })
+          return
+        }
+        throw err
+      }
+    }
+    const keptMessage = attachment ? withAttachmentMarker(message) : message
+
+    // PRO-1292: «¿qué hay hoy?», «mándame el menú», «la lista» (PRO-1302) and,
+    // in cook mode, «siguiente» / «anterior» / «repite» are answered by the
+    // code — no model, no cost, also with the monthly cap used up (PRO-1302:
+    // the caps are checked after this). Anything more goes on below. A
+    // message with a file always goes to the model.
+    if (mode !== 'onboarding' && !attachment) {
       try {
         const coded = await answerByCode(userId, message, mode, describePage(path), cookStep)
         if (coded) {
@@ -72,21 +157,31 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
       }
     }
 
-    // Monthly spend cap: reject before spending any tokens once the user has
-    // burned through their euro budget for the month. Resets next month.
-    const budget = await checkAdvisorBudget(userId, db)
-    if (budget.exceeded) {
-      // PRO-1090: the first time this month, a cap_hits row (admins excluded).
-      await recordCapHit({ userId, cap: 'asistente', spentEur: budget.spentMicros / 1_000_000, capEur: budget.budgetMicros / 1_000_000, channel: 'app' })
-      const euros = (budget.budgetMicros / 1_000_000).toFixed(0)
-      res.status(429).json({
-        error: `Has alcanzado tu límite mensual del asistente (€${euros}). Se renueva el mes que viene.`,
-        code: 'ADVISOR_BUDGET_EXCEEDED',
-      })
-      return
-    }
-
     const chatHistory: ChatMessage[] = Array.isArray(history) ? history : []
+
+    // Monthly caps, before spending any tokens: the one on all paid AI
+    // (spendCap.ts, admins exempt) and Mimo's own € budget. Reset next month.
+    const budget = await checkAdvisorBudget(userId, db)
+    const capped = await capReached(userId, req.user?.role === 'admin', budget)
+    // PRO-1302: the turn that reached the cap ended asking something (and
+    // nobody has been told yet): this answer finishes it, once.
+    let grace = false
+    if (capped) {
+      const lastWords = [...chatHistory].reverse().find((m) => m?.role === 'assistant')?.content
+      grace = mode !== 'onboarding' && asksSomething(lastWords) && !(await capHitThisMonth(userId, new Date(), db))
+      if (!grace) {
+        // PRO-1090: the first time this month, a cap_hits row (admins
+        // excluded) — PRO-1302: and the whole notice; after that, one line.
+        const first = await recordCapHit({ userId, cap: capped.cap, spentEur: capped.spentEur, capEur: capped.capEur, channel: 'app' })
+        res.status(429).json({
+          error: first ? capNoticeApp(capped.capEur) : capNoticeAppShort(capped.capEur),
+          code: capped.code,
+          spentEur: Math.round(capped.spentEur * 100) / 100,
+          capEur: capped.capEur,
+        })
+        return
+      }
+    }
 
     // Floating companion (D-023): what the user is looking at travels with the message.
     const page = describePage(path)
@@ -98,8 +193,41 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     }
     const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
 
+    const chatOpts = { mode, page: page.kind, ...(attachment ? { images: [attachment] } : {}) }
+    // Growth gate (2026-11-26): the nutritionist's diet reached Mimo.
+    if (attachment && looksLikeDietDocument(message, attachment.mediaType)) {
+      trackEvent('mimo_diet_document', { userId, channel: channelOfMode(mode), props: { kind: attachment.mediaType === 'application/pdf' ? 'pdf' : 'photo' } })
+    }
+
     const startedAt = Date.now()
-    const { usage, ...response } = await chat(userId, modelMessage, chatHistory, db, { mode, page: page.kind })
+    // PRO-1305: an allergy said here is kept out of the menus at once and
+    // what Mimo saves or asks (the code's own words) goes with the reply.
+    const chatAllergyMode = mode === 'text' || mode === 'voice'
+    const turn = chatAllergyMode
+      ? withChatAllergyOutbox({ userId, channel: 'web', messageId: randomUUID() }, async () => {
+          await noteSaidByCode(userId, message).catch((e) => console.warn('[assistant] said allergies not read (continuing):', e))
+          return chat(userId, modelMessage, chatHistory, db, chatOpts)
+        })
+      : null
+    const { usage, ...response }: Awaited<ReturnType<typeof chat>> & { healthMessages?: WebHealthMessage[] } = turn
+      ? await turn.run
+      : await chat(userId, modelMessage, chatHistory, db, chatOpts)
+    if (turn) {
+      const healthMessages: WebHealthMessage[] = []
+      try {
+        await finishChatTurn(turn.outbox, {
+          lang: 'es',
+          send: async (m) => {
+            const id = randomUUID()
+            healthMessages.push({ id, text: m.text, ...(m.buttons ? { buttons: m.buttons } : {}) })
+            return id
+          },
+        })
+      } catch (e) {
+        console.warn('[assistant] allergy notices failed (continuing):', e)
+      }
+      if (healthMessages.length) response.healthMessages = healthMessages
+    }
 
     // «Efecto bola de nieve» (PRO-170): after generating a menu in the
     // household's first generated weeks, the reply opens with the same line
@@ -129,8 +257,16 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     // fail the chat the user already paid for — swallow and log.
     try {
       const added = await recordAdvisorUsage(userId, usage, db)
-      // 18-nov: the turn that takes the month past 80 % of the cap says so, once.
-      if (crossesBudgetWarning(budget.spentMicros, added, budget.budgetMicros)) {
+      // PRO-1302: the turn that reaches the cap ends whole, with the notice
+      // (once a month) — unless it asks something: the answer finishes it.
+      if (grace || (reachesCap(budget.spentMicros, added, budget.budgetMicros) && !asksSomething(response.message))) {
+        const capEur = capped?.capEur ?? budget.budgetMicros / 1_000_000
+        const spentEur = capped?.spentEur ?? (budget.spentMicros + added) / 1_000_000
+        if (await recordCapHit({ userId, cap: capped?.cap ?? 'asistente', spentEur, capEur, channel: 'app' }, db)) {
+          response.message = `${response.message}\n\n${capNoticeApp(capEur)}`
+        }
+      } else if (crossesBudgetWarning(budget.spentMicros, added, budget.budgetMicros)) {
+        // 18-nov: the turn that takes the month past 80 % of the cap says so, once.
         response.message = `${response.message}\n\n${BUDGET_WARNING_LINE}`
       }
     } catch (e) {
@@ -141,7 +277,7 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     // (without the page note) and Mimo's reply with what it did. A failure
     // here must not fail the chat — swallow and log.
     try {
-      await recordWebChatTurn({ userId, userMessage: message, response, mode, path, ms: Date.now() - startedAt }, db)
+      await recordWebChatTurn({ userId, userMessage: keptMessage, response, mode, path, ms: Date.now() - startedAt }, db)
     } catch (e) {
       console.warn('[assistant] recordWebChatTurn failed (continuing):', e)
     }
@@ -156,7 +292,54 @@ router.post('/assistant/:userId/chat', requirePaidPlan(), requireSpendCapacity()
     }
     res.status(500).json({ error: 'Internal server error' })
   }
+}
+
+/**
+ * PRO-1305: a button of the allergy permission tapped in the web chat («Sí,
+ * doy mi permiso» / «No, gracias», the other adult's, the withdrawal's). The
+ * code records it and answers with fixed texts, no model.
+ */
+router.post('/assistant/:userId/health-consent', async (req: AuthRequest, res) => {
+  const userId = String(req.params.userId)
+  if (userId !== req.userId) {
+    res.status(403).json({ error: 'No puedes contestar por otro usuario.' })
+    return
+  }
+  const button = parseConsentButton(typeof req.body?.buttonId === 'string' ? req.body.buttonId : null)
+  if (!button) {
+    res.status(400).json({ error: 'Botón no válido' })
+    return
+  }
+  try {
+    const healthMessages: WebHealthMessage[] = []
+    await answerConsentButton(userId, button, { channel: 'web', wamid: null, title: typeof req.body?.title === 'string' ? req.body.title.slice(0, 40) : null, lang: 'es' }, answerDeps(userId, 'web', async (m) => {
+      const id = randomUUID()
+      healthMessages.push({ id, text: m.text, ...(m.buttons ? { buttons: m.buttons } : {}) })
+      return id
+    }))
+    res.json({ healthMessages })
+  } catch (err: any) {
+    console.error('Health consent button error:', err?.message ?? err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
 })
+
+/**
+ * The cap this user has used up this month, or null: first the one on all paid
+ * AI (spendCap.ts; admins exempt), then Mimo's own € budget.
+ */
+async function capReached(
+  userId: string,
+  isAdmin: boolean,
+  budget: { exceeded: boolean; spentMicros: number; budgetMicros: number },
+): Promise<{ cap: CapKind; code: 'SPEND_CAP_EXCEEDED' | 'ADVISOR_BUDGET_EXCEEDED'; spentEur: number; capEur: number } | null> {
+  if (!isAdmin) {
+    const all = await spendCapStatus(userId)
+    if (all.exceeded) return { cap: 'ia', code: 'SPEND_CAP_EXCEEDED', spentEur: all.spentEur, capEur: all.capEur }
+  }
+  if (budget.exceeded) return { cap: 'asistente', code: 'ADVISOR_BUDGET_EXCEEDED', spentEur: budget.spentMicros / 1_000_000, capEur: budget.budgetMicros / 1_000_000 }
+  return null
+}
 
 /**
  * PRO-1292: the reply the code gives (and its kind for `mimo_code_reply`), or
@@ -169,13 +352,17 @@ async function answerByCode(
   mode: AssistantMode,
   page: ReturnType<typeof describePage>,
   cookStep: ReturnType<typeof cookStepOf>,
-): Promise<{ kind: 'ver_menu' | 'paso_cocina'; response: AssistantResponse } | null> {
+): Promise<{ kind: CodeReplyKind; response: AssistantResponse } | null> {
   const cooking = page.kind === 'cooking' && !!page.recipeId && !!cookStep
   const intent = recognizeCodeIntent(message, { cooking })
   if (!intent) return null
   if (intent.kind === 'ver_menu') {
     const response = await menuCodeReply(intent, { userId, db, channel: mode })
     return response ? { kind: 'ver_menu', response } : null
+  }
+  if (intent.kind === 'ver_lista') {
+    const response = await listCodeReply({ userId, db, channel: mode })
+    return response ? { kind: 'ver_lista', response } : null
   }
   const [r] = await db.select({ authorId: recipes.authorId }).from(recipes).where(eq(recipes.id, page.recipeId!)).limit(1)
   if (!r || !(await canViewRecipe(userId, r.authorId))) return null

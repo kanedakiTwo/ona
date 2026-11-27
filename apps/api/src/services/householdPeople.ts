@@ -328,7 +328,7 @@ export async function setPersonList(
   personId: string,
   type: PersonListType,
   values: readonly unknown[],
-  opts: { db?: Db; now?: Date } = {},
+  opts: { db?: Db; now?: Date; reason?: string; chatAllergyPermit?: boolean } = {},
 ): Promise<string[]> {
   const db = opts.db ?? defaultDb
   const now = opts.now ?? new Date()
@@ -339,7 +339,8 @@ export async function setPersonList(
     .where(and(eq(householdPersons.id, personId), eq(householdPersons.householdId, reader.householdId))).limit(1)
   if (!person) throw new FichaError(404, 'NO_PERSON', 'Esa persona no está en tu casa')
   const list = cleanList(values)
-  if (type === 'restrictions') {
+  // Taking every allergy off is always allowed; PRO-1305: the chat's permission is checked by `chatAllergies`.
+  if (type === 'restrictions' && list.length > 0 && !opts.chatAllergyPermit) {
     if (!(await hasHealthConsent(userId))) {
       throw new FichaError(403, 'HEALTH_CONSENT_REQUIRED', 'Para guardar alergias necesitas dar tu consentimiento de datos de salud')
     }
@@ -364,13 +365,13 @@ export async function setPersonList(
       eq(profileFacts.type, type), eq(profileFacts.status, 'active'),
     ))
     if (list.length === 0 || current.length > 1) {
-      await retireProfileFacts(tx, { ...subject, reason: 'Lo cambió en Quién come', origin: 'user', actorUserId: userId, now })
+      await retireProfileFacts(tx, { ...subject, reason: opts.reason ?? 'Lo cambió en Quién come', origin: 'user', actorUserId: userId, now })
       if (list.length === 0) return
     }
     await upsertProfileFact(tx, {
       ...subject, value: list, origin: 'user', confidence: 1,
       evidence: signalEvidence('profile', type, list, now),
-      reason: 'Lo cambió en Quién come', actorUserId: userId, now,
+      reason: opts.reason ?? 'Lo cambió en Quién come', actorUserId: userId, now,
     })
   })
   if (review) await review()

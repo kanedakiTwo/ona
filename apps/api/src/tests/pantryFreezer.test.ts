@@ -164,10 +164,16 @@ describe('plan_freezer_items («Sí, mételo»)', () => {
   })
 
   it('nothing old in the freezer → changes nothing', async () => {
-    const { api, calls } = fakeApi([row({ name: 'Guisantes', location: 'congelador', storedAt: ago(3) })], {})
-    const r = await planFreezerItems.handler({}, { userId: 'u-1', db: {} as any, api } as any)
-    expect(r.summary).toContain('no he cambiado nada')
-    expect(calls.filter(([m]) => m !== 'GET')).toEqual([])
+    // The handler reads the clock: pin it to the test's «now», or the row ages past a month (it broke on 26-nov).
+    vi.useFakeTimers({ now, toFake: ['Date'] })
+    try {
+      const { api, calls } = fakeApi([row({ name: 'Guisantes', location: 'congelador', storedAt: ago(3) })], {})
+      const r = await planFreezerItems.handler({}, { userId: 'u-1', db: {} as any, api } as any)
+      expect(r.summary).toContain('no he cambiado nada')
+      expect(calls.filter(([m]) => m !== 'GET')).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a táper is a dish only when it says so or names a recipe exactly', () => {

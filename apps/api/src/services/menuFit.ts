@@ -27,7 +27,7 @@ import { env } from '../config/env.js'
 import { db as defaultDb } from '../db/connection.js'
 import { menus, recipes, recipeVerdicts, users } from '../db/schema.js'
 import { recordAnthropicCost } from './costLedger.js'
-import { catalogCoversDish, publishedCatalogNames, recordCatalogWish, wishWords } from './catalogWishes.js'
+import { catalogCoversDish, dishAlternatives, publishedCatalogNames, recordCatalogWish, wishWords } from './catalogWishes.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 
 type Db = typeof defaultDb
@@ -192,7 +192,95 @@ export function normalizeFit(raw: unknown, input: FitInput, now: Date = new Date
   const ratio = Math.round((met.length / input.preferences.length) * 100)
   const said = Number(r.acierto)
   const score = Number.isFinite(said) ? Math.max(0, Math.min(100, Math.round(said))) : ratio
-  return { score, level: menuFitLevel(score), met, missed, unusedAddMethods: [...input.unusedAddMethods], evaluatedAt: now.toISOString() }
+  const fit: MenuFit = { score, level: menuFitLevel(score), met, missed, unusedAddMethods: [...input.unusedAddMethods], evaluatedAt: now.toISOString() }
+  return reconcileFit(fit, input.menuRecipes, known)
+}
+
+/** Two stemmed words alike: equal, or one starts the other when both are long enough («sop»/«sopa», «calabac»/«calabacin»). */
+function sameWord(a: string, b: string): boolean {
+  if (a === b) return true
+  return a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a))
+}
+
+/**
+ * Pure: the first recipe whose name covers the dish, by a look-alike name
+ * (PRO-1051): every significant word of the dish (or of one of its
+ * alternatives, «cremas y sopas») is in the name. «merluza» → «Merluza
+ * rebozada con ensalada»; «pescado a la plancha» ≠ «Merluza a la plancha».
+ */
+export function recipeCoveringDish(dish: string, recipeNames: readonly string[]): string | null {
+  const names = recipeNames.map((name) => ({ name, words: wishWords(name) }))
+  for (const alt of dishAlternatives(dish)) {
+    const words = wishWords(alt)
+    if (words.length === 0) continue
+    const hit = names.find((n) => words.every((w) => n.words.some((x) => sameWord(w, x))))
+    if (hit) return hit.name
+  }
+  return null
+}
+
+/**
+ * Pure: the verdict checked against the week as it is now and what we
+ * have (PRO-1051). The verdict is written once, when the week is made, and
+ * the week changes after (swaps, Mimo, the autoplan); the model also
+ * misses dishes that are right there. So, by name:
+ *   - a missed dish that a recipe of the week covers is met, with it;
+ *   - a met dish whose recipe left the week, and no other covers it, is
+ *     missed again (and «no cabía» when we have it);
+ *   - a missed dish that the catalogue covers is never «no está».
+ * When something moved, the score is the share of liked things met.
+ */
+export function reconcileFit(fit: MenuFit, menuRecipes: readonly string[], catalogNames: readonly string[]): MenuFit {
+  const known = [...catalogNames, ...menuRecipes]
+  const met: MenuFit['met'] = []
+  const missed: MenuFit['missed'] = []
+  let changed = false
+  for (const m of fit.met) {
+    if (!m.recipe || menuRecipes.includes(m.recipe)) {
+      met.push(m)
+      continue
+    }
+    changed = true
+    const now = recipeCoveringDish(m.preference, menuRecipes)
+    if (now) met.push({ preference: m.preference, recipe: now })
+    else missed.push({ preference: m.preference, reason: recipeCoveringDish(m.preference, known) ? 'no_cabia' : 'no_catalogo' })
+  }
+  for (const m of fit.missed) {
+    const inWeek = recipeCoveringDish(m.preference, menuRecipes)
+    if (inWeek) {
+      changed = true
+      met.push({ preference: m.preference, recipe: inWeek })
+    } else if (m.reason === 'no_catalogo' && recipeCoveringDish(m.preference, known)) {
+      changed = true
+      missed.push({ preference: m.preference, reason: 'no_cabia' })
+    } else {
+      missed.push(m)
+    }
+  }
+  if (!changed) return { ...fit, met }
+  const total = met.length + missed.length
+  const score = total ? Math.round((met.length / total) * 100) : fit.score
+  return { ...fit, score, level: menuFitLevel(score), met, missed }
+}
+
+/**
+ * The stored verdict of a week, checked against its dishes now and the
+ * recipes the household can have (catalogue + its own). Null stays null;
+ * an error leaves the verdict as it was.
+ */
+export async function currentMenuFit(
+  menu: { fit?: MenuFit | null; days: readonly DayMenu[] | null | undefined; userId?: string | null },
+  db: Db = defaultDb,
+): Promise<MenuFit | null> {
+  const fit = menu.fit ?? null
+  if (!fit) return null
+  try {
+    const [catalog, own] = await Promise.all([publishedCatalogNames(db), menu.userId ? loadOwnRecipeNames(menu.userId, db) : Promise.resolve([])])
+    return reconcileFit(fit, menuRecipeNames(menu.days), [...catalog, ...own])
+  } catch (err) {
+    console.warn('[menuFit] reconcile failed (verdict as stored):', (err as Error)?.message ?? err)
+    return fit
+  }
 }
 
 /** Claude's verdict on a week, or null (no key, nothing to compare, error, timeout, garbage). */

@@ -59,10 +59,16 @@ describe('saidRestrictionsForMenu', () => {
     expect((await saidRestrictionsForMenu('u1', null, ['frutos secos'], down, load([])))?.apply).toEqual(['frutos secos'])
   })
 
-  it('the line for Mimo says it is applied to this menu only, and gives the link', () => {
+  it('PRO-1305: the line for Mimo says it is applied for 30 days and to save it with its tools (no link)', () => {
     const line = saidRestrictionsLine({ apply: ['sin gluten'], link: healthConsentLink(['sin gluten']) }, 'whatsapp')
-    expect(line).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
-    expect(line).toMatch(/Por WhatsApp no se guardan/)
+    expect(line).toMatch(/Aplicado a este menu y a los de los proximos 30 dias, pero no esta en su ficha: sin gluten/)
+    expect(line).toMatch(/update_profile/)
+    expect(line).not.toContain('/profile/casa/alergias')
+  })
+
+  it('Telegram keeps the link (nothing is saved from Telegram)', () => {
+    const line = saidRestrictionsLine({ apply: ['sin gluten'], link: healthConsentLink(['sin gluten']) }, 'telegram')
+    expect(line).toMatch(/Aplicado a este menu \(no esta guardado\): sin gluten/)
     expect(line).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
   })
 })
@@ -116,7 +122,7 @@ describe('Mimo is told to pass them and never to refuse the menu', () => {
   it('the prompt (every mode) and the WhatsApp sign-up', () => {
     for (const mode of ['text', 'whatsapp'] as const) {
       const prompt = buildSystemPrompt('ctx', mode)
-      expect(prompt).toMatch(/pasala en restrictions_said y el menu la aplica solo esa vez/)
+      expect(prompt).toMatch(/Mientras no este guardada se respeta igual: al generar un menu \(generate_weekly_menu, complete_onboarding\) pasala en restrictions_said/)
       expect(prompt).toMatch(/Nunca te niegues a hacer el menu por eso/)
     }
     expect(WHATSAPP_ONBOARDING_PROMPT).toMatch(/pasalas a complete_onboarding en restrictions_said/)

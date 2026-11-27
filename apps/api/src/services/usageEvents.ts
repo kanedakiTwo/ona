@@ -93,8 +93,10 @@ export const USAGE_EVENTS = [
   'shopper_answered',
   // PRO-1174: an option tapped in one of the menu's «···» sheets (`props.sheet`, `props.action`: MENU_SHEET_ACTIONS).
   'menu_sheet_action',
-  // PRO-1292: a message to Mimo the code answered without the model (`props.kind`: ver_menu · paso_cocina).
+  // PRO-1292: a message to Mimo the code answered without the model (`props.kind`: ver_menu · paso_cocina · ver_lista, PRO-1302).
   'mimo_code_reply',
+  // 2026-11-26: a diet from a nutritionist or doctor sent to Mimo (`props.kind`: pdf · photo; chatAttachment.ts).
+  'mimo_diet_document',
 ] as const
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
 
@@ -114,6 +116,16 @@ export const PASSIVE_USAGE_EVENTS: ReadonlySet<string> = new Set<UsageEventName>
   'autoplan_generated',
   'autoplan_viewed',
 ])
+
+/**
+ * The passive events as a SQL list, for «the last thing the household did»:
+ * `e.name NOT IN (${passiveEventsSql()})`. 24-nov: the weekly menu Mimo makes
+ * by itself (`autoplan_generated`) made every household look active in the
+ * «días sin actividad» filter of the admin's questions.
+ */
+export function passiveEventsSql() {
+  return sql.join([...PASSIVE_USAGE_EVENTS].map((name) => sql`${name}`), sql`, `)
+}
 
 export const USAGE_CHANNELS = ['web', 'whatsapp', 'voice'] as const
 export type UsageChannel = (typeof USAGE_CHANNELS)[number]

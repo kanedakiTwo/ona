@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query"
 import { api, ApiError } from "@/lib/api"
 import { enqueue } from "@/lib/pwa/offlineQueue"
+import { isOffline } from "@/lib/pwa/network"
 import { dishKey, slotKey, type MenuFit, type WeekPlan, type WeekTypeOption } from "@ona/shared"
 import { NO_RECIPE_OF_TYPE, regenerateDishBody, regenerateMealBody, type WeekTypeApplied } from "@/lib/mealSheet"
 import {
@@ -255,7 +256,7 @@ export function useRegenerateMeal() {
     }) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}`
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,
@@ -504,7 +505,7 @@ export function useLockMeal() {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/lock`
       const body = { locked: params.locked }
 
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (await isOffline()) {
         await enqueue({
           id: crypto.randomUUID(),
           url,
@@ -649,7 +650,7 @@ export function usePatchDish() {
     ...MENU_CHANGE,
     ...optimistic(
       queryClient,
-      (m, v: { day: number; meal: string; position: number; patch: { text?: string; newPosition?: number; variant?: 'planned' | 'freezer' | 'cooked' } }) =>
+      (m, v: { day: number; meal: string; position: number; patch: { text?: string; newPosition?: number; variant?: 'planned' | 'freezer' | 'cooked'; batchDate?: string | null } }) =>
         patchDishIn(m, v.day, v.meal, v.position, v.patch),
       (m, v) => ({ expect: dishKey(m.days[v.day]?.[v.meal]?.dishes?.[v.position]) }),
     ),
@@ -658,7 +659,7 @@ export function usePatchDish() {
       day: number
       meal: string
       position: number
-      patch: { text?: string; newPosition?: number; course?: string | null; variant?: 'planned' | 'freezer' | 'cooked' }
+      patch: { text?: string; newPosition?: number; course?: string | null; variant?: 'planned' | 'freezer' | 'cooked'; batchDate?: string | null }
     }, expect) => {
       const url = `/menu/${params.menuId}/day/${params.day}/meal/${params.meal}/dish/${params.position}`
       return api.patch<Menu>(url, { ...params.patch, ...expect }, changeOpts())

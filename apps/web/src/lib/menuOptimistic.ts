@@ -84,7 +84,7 @@ export function patchDishIn<M extends OptimisticMenu>(
   day: number,
   meal: string,
   position: number,
-  patch: { text?: string; newPosition?: number; variant?: "planned" | "freezer" | "cooked" },
+  patch: { text?: string; newPosition?: number; variant?: "planned" | "freezer" | "cooked"; batchDate?: string | null },
 ): M {
   return withDays(menu, (days) => {
     const slot = days[day]?.[meal]
@@ -98,6 +98,11 @@ export function patchDishIn<M extends OptimisticMenu>(
       const d = dishes[position]
       if (d.kind === "note" && patch.text !== undefined) dishes[position] = { ...d, text: patch.text }
       if (d.kind === "recipe" && patch.variant !== undefined && d.variant !== "leftover") dishes[position] = { ...d, variant: patch.variant }
+      // PRO-1046: «Lo cocino en el lote del domingo»; a táper isn't in any batch.
+      const r = dishes[position]
+      if (r.kind === "recipe" && patch.batchDate !== undefined && r.variant !== "leftover") dishes[position] = { ...r, batchDate: patch.batchDate }
+      const after = dishes[position]
+      if (after.kind === "recipe" && after.batchDate && (after.variant === "freezer" || after.variant === "cooked" || after.variant === "fridge")) dishes[position] = { ...after, batchDate: null }
     }
     days[day] = { ...days[day], [meal]: { ...slot, dishes } }
   })

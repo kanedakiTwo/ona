@@ -47,7 +47,20 @@ const spendAll = (userId: string) =>
 
 const chat = (u: { id: string; token: string }) => call('POST', `/assistant/${u.id}/chat`, u.token, { message: 'hola' })
 const rowsOf = (userId: string) => db.select().from(capHits).where(eq(capHits.userId, userId))
-const whatsappBudget = (userId: string) => runWithCostUser(null, () => buildInboundDeps().checkBudget(userId), 'whatsapp')
+/** WhatsApp's gate: the cap, and (PRO-1302) its mark when the notice goes out. */
+const whatsappBudget = (userId: string) =>
+  runWithCostUser(
+    null,
+    async () => {
+      const deps = buildInboundDeps()
+      const budget = await deps.checkBudget(userId)
+      if (budget.exceeded && budget.told === false) {
+        await deps.noteCap!(userId, { cap: budget.cap ?? 'asistente', spentMicros: budget.spentMicros ?? 0, budgetMicros: budget.budgetMicros })
+      }
+      return budget
+    },
+    'whatsapp',
+  )
 
 describe.skipIf(!reachable)('cap_hits (PRO-1090)', () => {
   it('app: the second 429 of the month does not add a row, and capHits counts by cap and channel', async () => {
@@ -58,7 +71,11 @@ describe.skipIf(!reachable)('cap_hits (PRO-1090)', () => {
     const first = await chat(mimo)
     expect(first.status).toBe(429)
     expect(first.body.code).toBe('ADVISOR_BUDGET_EXCEEDED')
-    expect((await chat(mimo)).status).toBe(429)
+    // PRO-1302: the whole notice once (what still works, where the menu and the list are), then one line.
+    expect(first.body.error).toContain('la lista de la compra')
+    const again = await chat(mimo)
+    expect(again.status).toBe(429)
+    expect(again.body.error).not.toBe(first.body.error)
     const rows = await rowsOf(mimo.id)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ cap: 'asistente', channel: 'app', capMicros: Math.round(env.ADVISOR_MONTHLY_BUDGET_EUR * 1_000_000) })
@@ -74,8 +91,9 @@ describe.skipIf(!reachable)('cap_hits (PRO-1090)', () => {
 
     const wa = await register(3)
     await spendAll(wa.id)
-    expect((await whatsappBudget(wa.id)).exceeded).toBe(true)
-    expect((await whatsappBudget(wa.id)).exceeded).toBe(true)
+    expect(await whatsappBudget(wa.id)).toMatchObject({ exceeded: true, cap: 'ia', told: false })
+    // PRO-1302: the second message knows the notice already went.
+    expect(await whatsappBudget(wa.id)).toMatchObject({ exceeded: true, told: true })
     expect(await rowsOf(wa.id)).toMatchObject([{ cap: 'ia', channel: 'whatsapp' }])
 
     const after = await loadCapHits()

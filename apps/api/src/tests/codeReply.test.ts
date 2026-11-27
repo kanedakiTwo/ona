@@ -8,6 +8,7 @@ import type { DayMenu } from '@ona/shared'
 import {
   cookStepReply,
   dayMenuReply,
+  listCodeReply,
   menuCodeReply,
   recognizeCodeIntent,
   stepCodeReply,
@@ -214,5 +215,40 @@ describe('mimo_code_reply en /admin/usage', () => {
     expect(USAGE_DEFINITIONS.breakdown).toContain('mimo_code_reply')
     expect(sanitizeProps({ kind: 'ver_menu' })).toEqual({ kind: 'ver_menu' })
     expect(sanitizeProps({ kind: 'paso_cocina' })).toEqual({ kind: 'paso_cocina' })
+  })
+})
+
+describe('PRO-1302: la lista de la compra la lee el código', () => {
+  it('reconoce la lista cuando el mensaje es solo eso', () => {
+    for (const t of [
+      'la lista',
+      'La lista de la compra',
+      'Mándame la lista de la compra, porfa',
+      'pásame la lista',
+      'Hola Mimo, ¿me pasas la lista?',
+      '¿Qué me falta por comprar?',
+      '¿qué tengo que comprar?',
+      'hazme la lista de la compra',
+    ]) {
+      expect(recognizeCodeIntent(t), t).toEqual({ kind: 'ver_lista' })
+    }
+    for (const t of ['añade leche a la lista', 'quita el pan de la lista', 'la lista y el menú del jueves', '¿qué me falta para la tortilla?']) {
+      expect(recognizeCodeIntent(t), t).toBeNull()
+    }
+  })
+
+  it('listCodeReply: get_shopping_list; en la app su resumen, en WhatsApp sin palabras (la lista va debajo)', async () => {
+    const runSkill = vi.fn(async () => ({ data: { listId: 'l', items: [{ name: 'Leche', aisle: 'lacteos' }] }, summary: 'Te faltan 1 cosas: Leche.', uiHint: 'shopping_list' as const }))
+    const app = await listCodeReply({ userId: 'u', db: {}, channel: 'text' }, { runSkill })
+    expect(app).toMatchObject({ message: 'Te faltan 1 cosas: Leche.', uiHint: 'shopping_list', toolsUsed: ['get_shopping_list'] })
+    expect(runSkill).toHaveBeenCalledWith('get_shopping_list', {}, expect.objectContaining({ userId: 'u' }))
+    const wa = await listCodeReply({ userId: 'u', db: {}, channel: 'whatsapp' }, { runSkill })
+    expect(wa?.message).toBe('')
+    expect(wa?.toolTrace?.[0]).toMatchObject({ name: 'get_shopping_list', summary: 'Te faltan 1 cosas: Leche.' })
+  })
+
+  it('la lista vacía: null, y contesta el modelo (puede ofrecer hacerla)', async () => {
+    const runSkill = async () => ({ data: { listId: 'l', items: [] }, summary: 'La lista de la compra está vacía', uiHint: 'shopping_list' as const })
+    expect(await listCodeReply({ userId: 'u', db: {} }, { runSkill })).toBeNull()
   })
 })

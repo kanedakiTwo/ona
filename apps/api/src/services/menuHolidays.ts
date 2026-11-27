@@ -5,7 +5,7 @@
  * Saturday's (none, unless the household set one for Saturdays). Local
  * holidays are not in the table yet (they are published per town).
  */
-import { SPANISH_REGIONS, isSpanishRegion, timeBudgetsByDay, weekHolidays, type DayTimeBudget, type SpanishRegion } from '@ona/shared'
+import { EVERYDAY_WORK_MINUTES, SPANISH_REGIONS, isSpanishRegion, timeBudgetsByDay, weekHolidays, type DayTimeBudget, type SpanishRegion, type WeekPlanGuests } from '@ona/shared'
 
 const SATURDAY = 5
 
@@ -62,6 +62,40 @@ export function slotTimeBudget(
   if (!weekStart) return budgets[dayIndex] ?? null
   const start = typeof weekStart === 'string' ? weekStart : weekStart.toISOString()
   return holidayTimeBudgets(budgets, start.slice(0, 10), regionFromMemory(memory?.region?.value)).budgets[dayIndex] ?? null
+}
+
+/**
+ * D-1028 · the everyday work cap of one slot of the weekly draw: 30 min of
+ * the cook's time, or none on a special occasion — a holiday of the
+ * household's comunidad (Saturdays and Sundays included) or a meal with
+ * guests in this week's plan (`weekPlan.guests`; a guest entry without a
+ * meal covers the whole day). Pure.
+ */
+export function workCapForSlot(
+  dayIndex: number,
+  meal: string,
+  special: { holidayDays?: ReadonlySet<number>; guests?: readonly WeekPlanGuests[] | null },
+): number | null {
+  if (special.holidayDays?.has(dayIndex)) return null
+  if (special.guests?.some((g) => g.day === dayIndex && (!g.meal || g.meal === meal))) return null
+  return EVERYDAY_WORK_MINUTES
+}
+
+/**
+ * D-1028 · the same cap for the single-slot paths (Cambiar al azar, add a
+ * meal or a dish, regenerate a dish): none on a holiday of the household's
+ * comunidad. The menu row doesn't keep the week's guests, so a meal with
+ * guests changed later keeps the cap.
+ */
+export function slotWorkCap(
+  memory: { region?: { value?: unknown } } | null | undefined,
+  weekStart: string | Date | null | undefined,
+  dayIndex: number,
+): number | null {
+  if (!weekStart) return EVERYDAY_WORK_MINUTES
+  const start = (typeof weekStart === 'string' ? weekStart : weekStart.toISOString()).slice(0, 10)
+  const holidayDays = new Set(weekHolidays(start, regionFromMemory(memory?.region?.value)).map((h) => h.dayIndex))
+  return workCapForSlot(dayIndex, '', { holidayDays })
 }
 
 /**

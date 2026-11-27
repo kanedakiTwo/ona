@@ -128,4 +128,82 @@ describe('mark_in_stock', () => {
     expect(pimiento).toMatchObject({ haveQuantity: 150 })
     expect(r.summary).toContain('quedan 450 g por comprar')
   })
+
+  // PRO-1265: «Tamari (salsa de soja sin gluten) 1 u · MANUAL» went to «Ya en casa» by itself.
+  it('"tengo tamari" leaves a manual line as it was and writes the pantry', async () => {
+    const tamari = { id: 'm-1', ingredientId: null, kind: 'manual', name: 'Tamari (salsa de soja sin gluten)', quantity: 1, unit: 'u', inStock: false }
+    const r = await get('mark_in_stock').handler({ ingredient: 'tamari', inStock: true }, ctx(makeDb([{ id: 'sl-1', items: [tamari] }])))
+    expect(tamari.inStock).toBe(false)
+    expect(addPantryForUser).toHaveBeenCalledWith('u-1', { name: 'Tamari (salsa de soja sin gluten)' }, expect.anything())
+    expect(r.summary).toContain('marcado como en casa')
+  })
+
+  // PRO-1265: arroz twice in «Ya en casa» (the menu's and a manual one), and «Ya en casa» is what the pantry holds.
+  it('"tengo arroz" marks the menu line, not the manual one, and the pantry gets the line\'s amount', async () => {
+    const manual = { id: 'm-1', ingredientId: null, kind: 'manual', name: 'Arroz', quantity: 1, unit: 'u', inStock: false }
+    const menu = { id: 'menu:arr:g', ingredientId: 'arr', kind: 'menu', name: 'Arroz', quantity: 300, unit: 'g', inStock: false }
+    const r = await get('mark_in_stock').handler({ ingredient: 'arroz', inStock: true }, ctx(makeDb([{ id: 'sl-1', items: [manual, menu] }], undefined, [{ density: null, unitWeight: null }])))
+    expect(menu.inStock).toBe(true)
+    expect(manual.inStock).toBe(false)
+    expect(addPantryForUser).toHaveBeenCalledWith('u-1', { name: 'Arroz', quantity: 300, unit: 'g', location: undefined, ingredientId: 'arr' }, expect.anything())
+    expect(r.summary).toBe('Arroz marcado como en casa.')
+  })
+})
+
+// PRO-1294: «tengo en la nevera…» with twenty things was twenty calls; now one, with the list written once.
+describe('mark_in_stock with a list of products', () => {
+  beforeEach(() => {
+    pantry.length = 0
+    vi.mocked(addPantryForUser).mockClear()
+    vi.mocked(deletePantryForUser).mockClear()
+  })
+
+  it('marks them all, writes the list once and returns what it could not place as a doubt', async () => {
+    const leche = { name: 'Leche', inStock: false }
+    const huevos = { name: 'Huevos', inStock: false }
+    const list = { id: 'sl-1', items: [leche, huevos] }
+    let updates = 0
+    const db = makeDb([list], undefined)
+    const counting: any = new Proxy(db, { get: (t, prop) => (prop === 'update' && updates++, t[prop]) })
+    const names = ['leche', 'huevos', ...Array.from({ length: 17 }, (_, i) => `cosa ${i + 1}`)]
+    const r = await get('mark_in_stock').handler(
+      { inStock: true, location: 'nevera', items: [...names.map((ingredient) => ({ ingredient })), { ingredient: 'trufa negra', inStock: false }] },
+      ctx(counting),
+    )
+    expect(updates).toBe(1)
+    expect(leche.inStock).toBe(true)
+    expect(huevos.inStock).toBe(true)
+    expect(addPantryForUser).toHaveBeenCalledTimes(19)
+    expect(addPantryForUser).toHaveBeenCalledWith('u-1', { name: 'cosa 1', location: 'nevera' }, expect.anything())
+    expect(r.data).toEqual({ added: 19, removed: 0, doubts: ['trufa negra'] })
+    expect(r.summary).toBe('Hecho: 19 productos apuntados en la despensa (19 en la nevera). Dudas: no he reconocido "trufa negra"; pregúntale qué es, como una duda, sin hablar de fallos. Resúmeselo en una línea, sin recitar la lista.')
+  })
+
+  it('the same product twice in a dictation is one pantry row', async () => {
+    await get('mark_in_stock').handler({ items: [{ ingredient: 'arroz', inStock: true }, { ingredient: 'Arroz', inStock: true }] }, ctx(makeDb([])))
+    expect(addPantryForUser).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the battery case «tengo en la nevera…» with 20 things (PRO-1294)', async () => {
+  const { MIMO_EVAL_CASES, mimoReplyProblems, pantryProductsNamed } = await import('../services/assistant/mimoEvalCases.js')
+  const c = MIMO_EVAL_CASES.find((x) => x.id === 'despensa-dictada-nevera')!
+  const good = 'Apuntadas 19 cosas en la nevera. Solo una duda: ¿qué es «fuet»? No lo he reconocido.'
+
+  it('dictates 20 products', () => {
+    expect(pantryProductsNamed(c.message, c.message)).toBe(20)
+    expect(pantryProductsNamed(good, c.message)).toBe(1)
+  })
+
+  it('fails the literal bad reply (technical error, the list read back)', () => {
+    expect(mimoReplyProblems(c.badReply, c)).toEqual(['error-tecnico', 'recita-lista'])
+  })
+
+  it('live: one call with the 20 products passes; one call per product does not', () => {
+    const one = [{ name: 'update_pantry', input: JSON.stringify({ action: 'add', location: 'nevera', items: Array.from({ length: 20 }, (_, i) => ({ name: `p${i}` })) }) }]
+    expect(mimoReplyProblems(good, c, ['update_pantry'], one)).toEqual([])
+    const many = Array.from({ length: 20 }, (_, i) => ({ name: 'update_pantry', input: JSON.stringify({ action: 'add', name: `p${i}` }) }))
+    expect(mimoReplyProblems(good, c, ['update_pantry'], many)).toEqual(['una-por-producto'])
+    expect(mimoReplyProblems(good, c, [], [])).toEqual(['no-guarda'])
+  })
 })

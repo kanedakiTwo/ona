@@ -26,7 +26,8 @@ import {
 } from '@ona/shared'
 import type { SkillContext, SkillDefinition, SkillResult } from './types.js'
 import { appApiFor, AppApiError, type AppApi } from './appApi.js'
-import { WHATSAPP_HEALTH_DATA_REPLY, HEALTH_CONSENT_SKILL_REPLY } from '../healthConsent.js'
+import { WHATSAPP_HEALTH_DATA_REPLY, HEALTH_CONSENT_SKILL_REPLY, whatsappHealthReply } from '../healthConsent.js'
+import { noteChatAllergies } from '../chatAllergySave.js'
 import { mentionsHealth, stripHealthFromWhatsAppText } from '../profile/healthText.js'
 import { addDays, madridMidnightUtc } from '../madridTime.js'
 
@@ -151,7 +152,7 @@ export const explainFichaFactSkill: SkillDefinition = {
 export const noteFichaFactSkill: SkillDefinition = {
   name: 'note_ficha_fact',
   description:
-    '«Apunta que…», «recuerda que en casa…», «quiero proteína en cada plato»: escribe en la ficha del hogar algo que la persona cuenta de sí misma, de la casa o de alguien que vive sin cuenta (por su apodo, «el abuelo», «la pequeña»). Úsalo para lo que no es memoria personal: un plato que les gusta, sin día ni comida (fixed_dish {dish}), cada cuánto un plato sin día fijo (dish_frequency {dish, minWeeks, maxWeeks}), afinidad (affinity {kind: ingredient|style, target, score -2..2}), esfuerzo (effort {days, meal, activeMinutes, totalMinutes}), situación temporal (temporary_situation {description} con valid_until: «sin horno hasta el 2 de noviembre»), compra (shopping {places?, days?, note?}), batch (batch_cooking {batches, days?, lunchboxes?}), gusto por lo nuevo (novelty {score -2..2}), reglas del menú (menu_rule, about household: «arroz no más de un día a la semana», «lentejas dos veces como mucho» → {rule: "max_per_week", target: "arroz", times: 1}; «cenas ligeras» → {rule: "light", meal: "dinner"}), notas (notes [texto], el menú NO las lee: lo que sea una regla del menú va en menu_rule, dislikes o la semana tipo) y «proteína en cada plato» (protein_minimum {scope: "every_dish"}, siempre de quien lo pide: 80 g de carne, pescado o huevo por ración en todos los platos, entrantes y arroces o legumbres incluidos). Para los gustos, el equipo y los horarios propios sigue valiendo update_memory. Días: lunes…domingo sin tildes; comidas: breakfast, lunch, snack, dinner. Una lista (notes, dislikes) se suma a lo que ya hay. Por WhatsApp nunca se apunta nada de salud. Lo que se come o no se hace un día y una comida concretos («los viernes por la noche, pizza», «legumbres el sábado cada dos semanas», «el domingo no desayunamos») no va aquí: va a la semana tipo con set_week_type_slot.',
+    '«Apunta que…», «recuerda que en casa…», «quiero proteína en cada plato»: escribe en la ficha del hogar algo que la persona cuenta de sí misma, de la casa o de alguien que vive sin cuenta (por su apodo, «el abuelo», «la pequeña»). Úsalo para lo que no es memoria personal: un plato que les gusta, sin día ni comida (fixed_dish {dish}), cada cuánto un plato sin día fijo (dish_frequency {dish, minWeeks, maxWeeks}), afinidad (affinity {kind: ingredient|style, target, score -2..2}), esfuerzo (effort {days, meal, activeMinutes, totalMinutes}), situación temporal (temporary_situation {description} con valid_until: «sin horno hasta el 2 de noviembre»), compra (shopping {places?, days?, note?}), batch (batch_cooking {batches, days?, lunchboxes?}), gusto por lo nuevo (novelty {score -2..2}), reglas del menú (menu_rule, about household: «arroz no más de un día a la semana», «lentejas dos veces como mucho» → {rule: "max_per_week", target: "arroz", times: 1}; «cenas ligeras» → {rule: "light", meal: "dinner"}), notas (notes [texto], el menú NO las lee: lo que sea una regla del menú va en menu_rule, dislikes o la semana tipo) y «proteína en cada plato» (protein_minimum {scope: "every_dish"}, siempre de quien lo pide: 80 g de carne, pescado o huevo por ración en todos los platos, entrantes y arroces o legumbres incluidos). Para los gustos, el equipo y los horarios propios sigue valiendo update_memory. Días: lunes…domingo sin tildes; comidas: breakfast, lunch, snack, dinner. Una lista (notes, dislikes) se suma a lo que ya hay. Una alergia o intolerancia de alguien sin cuenta va en restrictions con about=person (el sistema la guarda con el permiso o lo pide); otro dato de salud por WhatsApp, nunca. Lo que se come o no se hace un día y una comida concretos («los viernes por la noche, pizza», «legumbres el sábado cada dos semanas», «el domingo no desayunamos») no va aquí: va a la semana tipo con set_week_type_slot.',
   parameters: {
     type: 'object',
     properties: {
@@ -168,8 +169,15 @@ export const noteFichaFactSkill: SkillDefinition = {
     if (!(PROFILE_FACT_TYPES as readonly string[]).includes(type)) return text(`No he guardado nada: type tiene que ser uno de ${PROFILE_FACT_TYPES.join(', ')}.`)
     // «Semana tipo» (D-182 fase 3): a meal that isn't made on some days is a «no hay» of the week type, never a fact.
     if (WEEK_TYPE_FACT_TYPES.has(type)) return text(WEEK_TYPE_INSTEAD)
-    // Never health from WhatsApp (LEG-03): neither a health type nor a note that talks about it.
-    if (onWhatsApp(ctx) && (isHealthProfileFactType(type) || mentionsHealth(JSON.stringify(p.value ?? '')))) return text(WHATSAPP_HEALTH_DATA_REPLY)
+    // PRO-1305 (D-1025): an allergy of the person or of someone without an
+    // account goes through the chat's permission (saved with the code's
+    // notice, the one-time question, or C.3 for another adult).
+    if (type === 'restrictions') {
+      const noted = await noteChatAllergies(ctx, Array.isArray(p.value) ? p.value : [p.value], p.about === 'person' ? p.person ?? null : null)
+      if (noted !== null) return text(noted)
+    }
+    // Never other health from WhatsApp (LEG-03): neither a health type nor a note that talks about it.
+    if (onWhatsApp(ctx) && (isHealthProfileFactType(type) || mentionsHealth(JSON.stringify(p.value ?? '')))) return text(whatsappHealthReply(ctx))
     const about = p.about === 'household' || p.about === 'person' ? p.about : 'me'
     if (p.valid_until && !/^\d{4}-\d{2}-\d{2}$/.test(p.valid_until)) return text('No he guardado nada: valid_until va como AAAA-MM-DD.')
     try {
@@ -225,7 +233,7 @@ export const forgetFichaFactSkill: SkillDefinition = {
     try {
       const { fact } = await findFact(ctx, p.fact_id)
       if (!fact) return text('No he olvidado nada: ese dato ya no está en su ficha.')
-      if (onWhatsApp(ctx) && (fact.health || mentionsHealth(fact.sentence))) return text('No he olvidado nada: lo de salud se cambia en Tu ficha, en la web (/profile/ficha), no por WhatsApp.')
+      if (onWhatsApp(ctx) && (fact.health || mentionsHealth(fact.sentence))) return text('No he olvidado nada con esta herramienta: una alergia o intolerancia se borra con forget_allergy; el resto de lo de salud, en Tu ficha, en la web (/profile/ficha).')
       if (!fact.canEdit) return text('No he olvidado nada: es de otra persona de la casa y solo lo cambia ella desde su ficha.')
       await api(ctx)('DELETE', `${FICHA_PATH}/facts/${encodeURIComponent(p.fact_id)}`)
       return { data: { factId: p.fact_id }, summary: `Olvidado: «${fact.sentence}». No lo volveré a apuntar sin preguntar.`, uiHint: 'confirmation' }

@@ -192,10 +192,11 @@ export function memorySubject(key: string, userId: string): { subjectUserId: str
  */
 export async function mirrorMemoryWrite(
   tx: any,
-  w: { userId: string; memoryId: string; key: string; value: unknown; source: MemorySource; confidence: number; signal: FactSignal; hasHealthConsent: boolean; now?: Date },
+  w: { userId: string; memoryId: string; key: string; value: unknown; source: MemorySource; confidence: number; signal: FactSignal; hasHealthConsent: boolean; chatAllergyPermit?: boolean; now?: Date },
 ): Promise<FactWriteResult | null> {
   const allowed = canWriteProfileFact({ type: w.key, channel: channelOf(w.signal), hasHealthConsent: w.hasHealthConsent })
-  if (!allowed.ok) return null
+  // PRO-1305: an allergy said in the chat under its permission goes to the ficha from WhatsApp too.
+  if (!allowed.ok && !(w.chatAllergyPermit && w.key === 'restrictions')) return null
   const householdId = await householdIdForUser(tx, w.userId)
   if (!householdId) return null
   const now = w.now ?? new Date()

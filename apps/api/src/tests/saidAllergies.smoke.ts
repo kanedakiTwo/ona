@@ -77,9 +77,10 @@ describe.skipIf(!reachable)('allergies said without the consent (PRO-1041)', () 
       { userId, db, channel: 'whatsapp' },
     )
 
-    expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
+    // PRO-1305: applied for 30 days; saving is the chat's permission (no link from Mimo).
+    expect(r.summary).toMatch(/Aplicado a este menu y a los de los proximos 30 dias, pero no esta en su ficha: sin gluten/)
     expect(r.summary).toMatch(/No he puesto «albóndigas en salsa española»: su receta lleva algo que en casa no pueden comer/)
-    expect(r.summary).toContain('/profile/casa/alergias?next=%2Fmenu#marcar=sin%20gluten')
+    expect(r.summary).not.toContain('/profile/casa/alergias')
     const { count, withGluten } = await menuAllergens(userId)
     expect(count).toBeGreaterThan(0)
     expect(withGluten).toEqual([])
@@ -89,8 +90,7 @@ describe.skipIf(!reachable)('allergies said without the consent (PRO-1041)', () 
   it('web chat: restrictions_said applies it to that menu only', async () => {
     const userId = await register(2)
     const r = await generateWeeklyMenu.handler({ restrictions_said: ['celiaca'] }, { userId, db, channel: 'text' })
-    expect(r.summary).toMatch(/Aplicado solo a este menu \(no esta guardado\): sin gluten/)
-    expect(r.summary).toMatch(/Sin su consentimiento no se guardan/)
+    expect(r.summary).toMatch(/Aplicado a este menu y a los de los proximos 30 dias, pero no esta en su ficha: sin gluten/)
     const { count, withGluten } = await menuAllergens(userId)
     expect(count).toBeGreaterThan(0)
     expect(withGluten).toEqual([])

@@ -54,7 +54,11 @@ export interface ChatOptions {
    * asks them in the chat and finishes with `complete_onboarding`.
    */
   onboarding?: boolean
-  /** Photos sent with the message (WhatsApp): Mimo sees them and answers about them. */
+  /**
+   * Photos sent with the message (WhatsApp, the web chat's clip button): Mimo
+   * sees them and answers about them. An `application/pdf` entry goes as a
+   * `document` block (2026-11-26: the nutritionist's diet; chatAttachment.ts).
+   */
   images?: { mediaType: string; data: string }[]
   /**
    * PRO-313: the chat app the `whatsapp` mode really runs in. Telegram keeps
@@ -65,6 +69,10 @@ export interface ChatOptions {
   surface?: ChatSurface
   /** PRO-392: the page the web companion writes from. Since PRO-1291 every turn carries every tool, so it no longer picks any. */
   page?: PageKind
+  /** PRO-1298: when the person sent the message (`ctx.requestedAt`). */
+  requestedAt?: Date
+  /** PRO-1298: the message is a tapped button (`ctx.button`). */
+  button?: SkillContext['button']
   /**
    * PRO-1295: tools this turn may not use (an opinion on a proposal is no
    * cooked meal: no `log_cooked`). Absent → all of the selection.
@@ -131,7 +139,11 @@ export async function chat(
     messages,
     // PRO-1295: a tool left out can't run either, even if the model names it.
     skills: opts.withoutTools?.length ? skills.filter((s) => !opts.withoutTools!.includes(s.name)) : skills,
-    ctx: { userId, db, channel: mode, surface: opts.surface },
+    ctx: {
+      userId, db, channel: mode, surface: opts.surface,
+      ...(opts.requestedAt ? { requestedAt: opts.requestedAt } : {}),
+      ...(opts.button ? { button: opts.button } : {}),
+    },
     onToolStart: opts.onToolStart,
   })
 
@@ -308,7 +320,7 @@ export function buildChatRequest(input: FixedBlockOptions & {
 /**
  * Messages for one turn: the history, with a cache breakpoint on its last
  * block, then the new user message: the clock first (`clockNote`), up to 4
- * photos, then the text. The next turn's history starts with exactly the same
+ * photos (a PDF among them goes as a `document` block), then the text. The next turn's history starts with exactly the same
  * messages, so it reads context + history from the cache written here (as
  * long as the 5-minute cache is alive and the menu/memory didn't change).
  * Breakpoints in a request: tools and instructions (1 hour), history end and
@@ -325,11 +337,14 @@ export function buildTurnMessages(
     role: 'user',
     content: [
       { type: 'text' as const, text: clockNote(now) },
-      ...images.slice(0, 4).map((img) => ({
-        type: 'image' as const,
-        source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg', data: img.data },
-      })),
-      ...(message || images.length ? [{ type: 'text' as const, text: message || '(foto sin texto)' }] : []),
+      ...images.slice(0, 4).map((img) =>
+        img.mediaType === 'application/pdf'
+          ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: img.data } }
+          : { type: 'image' as const, source: { type: 'base64' as const, media_type: img.mediaType as 'image/jpeg', data: img.data } },
+      ),
+      ...(message || images.length
+        ? [{ type: 'text' as const, text: message || (images.some((i) => i.mediaType === 'application/pdf') ? '(documento sin texto)' : '(foto sin texto)') }]
+        : []),
     ],
   })
   return messages
@@ -487,6 +502,7 @@ export async function runToolLoop(params: {
       const skill = params.skills.find((s) => s.name === toolUse.name)
       let result: SkillResult
       let isError = false
+      const started = Date.now()
       if (toolUse.name === MORE_TOOLS_NAME && params.moreTools) {
         const groups = validGroups((toolUse.input as { groups?: unknown })?.groups)
         const have = new Set((tools as { name?: string }[]).map((t) => t.name))
@@ -508,7 +524,7 @@ export async function runToolLoop(params: {
           isError = true
         }
       }
-      executed.push({ name: toolUse.name, input: toolUse.input, result, isError })
+      executed.push({ name: toolUse.name, input: toolUse.input, result, isError, ms: Date.now() - started })
       results.push({
         type: 'tool_result',
         tool_use_id: toolUse.id,
@@ -527,6 +543,8 @@ interface ExecutedTool {
   input: unknown
   result: SkillResult
   isError: boolean
+  /** PRO-1298: how long the tool took. */
+  ms?: number
 }
 
 // claimsAction lives in claims.ts (no imports) so the conversation flags can use it without the engine.
@@ -540,6 +558,7 @@ export function traceOf(executed: ExecutedTool[]): ToolTrace[] {
     summary: String(e.result.summary ?? '').replace(/\s+/g, ' ').slice(0, 400),
     ...(e.isError ? { error: true } : {}),
     ...((e.result.data as { replaced?: unknown } | null | undefined)?.replaced === false ? { unchanged: true } : {}),
+    ...(typeof e.ms === 'number' ? { ms: e.ms } : {}),
   }))
 }
 

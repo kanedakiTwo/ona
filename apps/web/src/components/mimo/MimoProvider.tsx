@@ -27,9 +27,13 @@ import { handsFreeAfterSilence, leavesCookMode, turnSilenceMs } from '@/lib/mimo
 import { recipeRefsFrom, type RecipeRef } from '@/lib/mimoRecipeLinks'
 import { mimoOptions } from '@/lib/mimoOptions'
 import { createPendingListen } from '@/lib/pendingListen'
+import { withAttachmentMarker } from '@/lib/mimoAttachment'
 import MimoPanel from './MimoPanel'
 import MimoButton from './MimoButton'
 import { useFloatingButtonsHidden } from '@/hooks/useFloatingButtonsHidden'
+
+/** PRO-1302: the API's 429s for the month's cap; their text is Mimo's notice. */
+const CAP_CODES = new Set(['ADVISOR_BUDGET_EXCEEDED', 'SPEND_CAP_EXCEEDED'])
 
 export interface MimoMessage {
   id: string
@@ -38,6 +42,22 @@ export interface MimoMessage {
   uiHint?: string
   /** PRO-85: recipes this reply is about; their names render as links to their page. */
   recipes?: RecipeRef[]
+  /** PRO-1305: a fixed allergy notice's buttons (permission, withdrawal); answered via `/health-consent`. */
+  buttons?: HealthButton[]
+  /** Set once one of `buttons` is tapped, so it can't be answered twice. */
+  answered?: boolean
+}
+
+export interface HealthButton {
+  id: string
+  title: string
+}
+
+/** PRO-1305: fixed messages the code (not the model) writes about allergies said in the chat. */
+interface HealthMessage {
+  id: string
+  text: string
+  buttons?: HealthButton[]
 }
 
 interface AssistantResponse {
@@ -46,6 +66,7 @@ interface AssistantResponse {
   data?: any
   uiHint?: string
   actionTaken?: boolean
+  healthMessages?: HealthMessage[]
 }
 
 export type MimoStatus = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'
@@ -54,12 +75,14 @@ export type MimoStatus = 'idle' | 'listening' | 'transcribing' | 'thinking' | 's
 export interface MimoDraft {
   text: string
   n: number
+  /** `open({ attach })`: the panel also opens the file picker (the nutritionist's diet, 2026-11-26). */
+  attach?: boolean
 }
 
 interface MimoContextValue {
   isOpen: boolean
-  /** `draft`: start the message for the person («Recuerda que en casa …», «Tu ficha»); they finish it and send. */
-  open: (opts?: { listen?: boolean; handsFree?: boolean; draft?: string }) => void
+  /** `draft`: start the message for the person («Recuerda que en casa …», «Tu ficha»); they finish it and send. `attach`: and pick a file. */
+  open: (opts?: { listen?: boolean; handsFree?: boolean; draft?: string; attach?: boolean }) => void
   /** The draft the panel should put in its box, until it takes it (`clearDraft`). */
   draft: MimoDraft | null
   clearDraft: () => void
@@ -68,7 +91,10 @@ interface MimoContextValue {
   clear: () => void
   status: MimoStatus
   error: string | null
-  send: (text: string) => Promise<void>
+  /** `file`: one photo or PDF for Mimo to read this turn (never stored; the conversation keeps «[Adjunto]»). */
+  send: (text: string, file?: File) => Promise<void>
+  /** Answer an allergy notice's button; throws (and leaves it answerable) if it couldn't be saved. */
+  answerButton: (messageId: string, button: HealthButton) => Promise<void>
   /** Tap the mic: start listening, or stop and send what was said. */
   toggleListening: () => void
   micLevel: number
@@ -206,30 +232,82 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
   const append = (m: Omit<MimoMessage, 'id'>) =>
     setMessages((prev) => [...prev, { ...m, id: `${m.role[0]}-${Date.now()}-${prev.length}` }].slice(-MAX_KEPT))
 
+  /** The code's allergy notices, after Mimo's reply and in order. */
+  const appendHealth = (list: HealthMessage[] | undefined) => {
+    if (!list?.length) return
+    setMessages((prev) =>
+      [
+        ...prev,
+        ...list.map((h, i) => ({
+          id: `h-${h.id || `${Date.now()}-${prev.length + i}`}`,
+          role: 'assistant' as const,
+          content: h.text,
+          ...(h.buttons?.length ? { buttons: h.buttons } : {}),
+        })),
+      ].slice(-MAX_KEPT),
+    )
+  }
+
+  const markAnswered = (messageId: string, answered: boolean) =>
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, answered } : m)))
+
+  const answerButton = useCallback(
+    async (messageId: string, button: HealthButton) => {
+      if (!userId) return
+      markAnswered(messageId, true)
+      try {
+        const res = await api.post<{ healthMessages?: HealthMessage[] }>(`/assistant/${userId}/health-consent`, {
+          buttonId: button.id,
+          title: button.title,
+        })
+        appendHealth(res.healthMessages)
+        queryClient.invalidateQueries()
+      } catch (err) {
+        markAnswered(messageId, false)
+        throw err
+      }
+    },
+    [userId, queryClient],
+  )
+
   const listenRef = useRef<() => void>(() => {})
 
-  /** One turn with the assistant. `spoken` = it came from the mic (short spoken reply). */
+  /** One turn with the assistant. `spoken` = it came from the mic (short spoken reply). `file`: a photo or PDF with it. */
   const ask = useCallback(
-    async (text: string, spoken: boolean) => {
+    async (text: string, spoken: boolean, file?: File) => {
       const question = text.trim()
-      if (!question || !userId || busyRef.current) return
+      if ((!question && !file) || !userId || busyRef.current) return
       busyRef.current = true
       setError(null)
       voice.stopSpeaking()
       const history = messagesRef.current.slice(-20).map(({ role, content }) => ({ role, content }))
-      append({ role: 'user', content: question })
+      append({ role: 'user', content: file ? withAttachmentMarker(question) : question })
       setStatus('thinking')
       let reply = ''
       try {
-        const res = await api.post<AssistantResponse>(`/assistant/${userId}/chat`, {
+        const body = {
           message: question,
           history,
           mode: spoken ? 'voice' : 'text',
           context: { path: pathRef.current, ...(getCookStep() ? { cookStep: getCookStep() } : {}) },
-        })
+        }
+        let res: AssistantResponse
+        if (file) {
+          // Multipart: the file plus the same fields (history and context as JSON).
+          const form = new FormData()
+          form.append('message', body.message)
+          form.append('history', JSON.stringify(body.history))
+          form.append('mode', body.mode)
+          form.append('context', JSON.stringify(body.context))
+          form.append('file', file, file.name)
+          res = await api.upload<AssistantResponse>(`/assistant/${userId}/chat`, form)
+        } else {
+          res = await api.post<AssistantResponse>(`/assistant/${userId}/chat`, body)
+        }
         reply = res.message || 'No he podido responder.'
         const recipes = recipeRefsFrom(res.uiHint, res.data)
         append({ role: 'assistant', content: reply, uiHint: res.uiHint, ...(recipes.length ? { recipes } : {}) })
+        appendHealth(res.healthMessages)
 
         // Same dispatchers the cook mode listens to.
         const d = res.data
@@ -245,8 +323,14 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         if (res.actionTaken) queryClient.invalidateQueries()
       } catch (err: any) {
         const msg = err?.message || 'No he podido conectar.'
-        setError(msg)
-        append({ role: 'assistant', content: `No he podido responder: ${msg}` })
+        if (CAP_CODES.has(err?.code)) {
+          // PRO-1302: the month's cap is Mimo's own words (what still works and where), not an error.
+          reply = msg
+          append({ role: 'assistant', content: msg })
+        } else {
+          setError(msg)
+          append({ role: 'assistant', content: `No he podido responder: ${msg}` })
+        }
       } finally {
         busyRef.current = false
       }
@@ -262,7 +346,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
     [userId, voice, router, queryClient, speakReplies],
   )
 
-  const send = useCallback((text: string) => ask(text, false), [ask])
+  const send = useCallback((text: string, file?: File) => ask(text, false, file), [ask])
 
   // ── Listening ──
   const canListen = typeof window !== 'undefined' && (recorderSupported() || voice.sttSupported)
@@ -343,9 +427,9 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
 
   // ── Open / close ──
   const open = useCallback(
-    (opts: { listen?: boolean; handsFree?: boolean; draft?: string } = {}) => {
+    (opts: { listen?: boolean; handsFree?: boolean; draft?: string; attach?: boolean } = {}) => {
       setIsOpen(true)
-      if (opts.draft) setDraft((prev) => ({ text: opts.draft!, n: (prev?.n ?? 0) + 1 }))
+      if (opts.draft) setDraft((prev) => ({ text: opts.draft!, n: (prev?.n ?? 0) + 1, ...(opts.attach ? { attach: true } : {}) }))
       if (opts.handsFree) setHandsFree(true)
       if (opts.listen) pendingListen.schedule(() => listenRef.current(), 150)
     },
@@ -374,6 +458,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
       status,
       error,
       send,
+      answerButton,
       toggleListening,
       micLevel: recorder.level,
       canListen,
@@ -394,7 +479,7 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
         void voice.speak('Hola, soy Mimo. Así sueno con esta voz. ¿Qué cocinamos hoy?', key)
       },
     }),
-    [isOpen, open, close, draft, clearDraft, messages, status, error, send, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
+    [isOpen, open, close, draft, clearDraft, messages, status, error, send, answerButton, toggleListening, recorder.level, canListen, handsFree, setHandsFree, speakReplies, setSpeakReplies, voice, pendingListen],
   )
 
   // PRO-122: also out of the way while a sheet is open or the keyboard is up.

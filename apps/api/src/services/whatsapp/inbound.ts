@@ -18,6 +18,7 @@ import { AI_DISCLOSURE_FIRST_PERSON, BRAND_SUPPORT_EMAIL, PLAN_GRATIS_MESSAGE, N
 import { guidedMeta, type GuideSpec, type GuidedResult } from './guided.js'
 import { controlCommand, OPT_IN_NO, OPT_IN_YES } from './commands.js'
 import { trackEvent } from '../usageEvents.js'
+import { ATTACHMENT_DEFAULT_TEXT, ChatAttachmentError, attachmentForModel, mentionsDiet, withAttachmentMarker } from '../assistant/chatAttachment.js'
 import { recordServiceMessageCost } from './serviceCost.js'
 import { needsReturnDisclosure, stripAiSignature, withReturnDisclosure } from './aiNotice.js'
 import {
@@ -34,6 +35,8 @@ import { fatigueAnswerOf, fatigueConfirmation, type FatigueKind } from './fatigu
 import { optOutReasonOf, optOutReasonThanks, optOutWithReason, type OptOutReason } from './optOutReason.js'
 import type { Lang } from './language.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
+import { isTypedAnswer, parseConsentButton, withChatAllergyOutbox, type ChatAllergyOutbox, type ConsentButton, type FlushMessage } from '../chatAllergies.js'
+import { asksSomething, capNoticeWhatsApp, reachesCap } from '../capNotice.js'
 import {
   ASK_SOURCE_COPY,
   PHOTO_SOURCE_WINDOW_MS,
@@ -113,8 +116,19 @@ export interface InboundDeps {
     history: ChatMessage[],
     opts: ChatOptions,
   ) => Promise<AssistantResponse & { usage: TokenUsage }>
-  /** `spentMicros`: Mimo's spend so far this month (for the 80 % notice); absent → no notice. */
-  checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number; spentMicros?: number }>
+  /**
+   * `spentMicros`: Mimo's spend so far this month (for the 80 % notice); absent → no notice.
+   * PRO-1302: `cap`, the one used up (`asistente` = Mimo's €, `ia` = all paid AI), and
+   * `told`, whether this month's cap notice already went (its `cap_hits` row);
+   * absent → not known: the notice goes on every message, as before.
+   */
+  checkBudget: (userId: string) => Promise<{ exceeded: boolean; budgetMicros: number; spentMicros?: number; cap?: 'asistente' | 'ia'; told?: boolean }>
+  /**
+   * PRO-1302: the cap notice is going out → its mark for the month (`cap_hits`,
+   * PRO-1090). True = the first this month (the notice goes); false = already
+   * marked. Absent → always true.
+   */
+  noteCap?: (userId: string, hit: { cap: 'asistente' | 'ia'; spentMicros: number; budgetMicros: number }) => Promise<boolean>
   /**
    * PRO-385: the household is on Gratis (trial over, no plan; never before
    * launch day). No Mimo: its messages get, once a day, the notice to choose
@@ -142,7 +156,7 @@ export interface InboundDeps {
   /** 19-nov: the language this number writes in, for the fixed lines (language.ts). Absent → Spanish. */
   language?: (phone: string) => Promise<Lang>
   /** 19-nov: «¿Te sigo avisando de…?» answered (fatigue.ts): the kind on or off. Absent → Mimo answers. */
-  setAvisoKind?: (userId: string, kind: FatigueKind, on: boolean) => Promise<void>
+  setAvisoKind?: (userId: string, kind: FatigueKind | 'todos', on: boolean) => Promise<void>
   /** 19-nov: why they wrote BAJA (optOutReason.ts), as an opinion. Absent → no question, no record. */
   saveOptOutReason?: (userId: string, reason: OptOutReason, text: string) => Promise<void>
   /** Speech-to-text for voice notes. Absent → voice notes get a polite "escríbemelo". */
@@ -186,6 +200,25 @@ export interface InboundDeps {
    * fixed text. Absent → the fixed text (COPY).
    */
   guided?: (userId: string, phone: string, spec: GuideSpec, fallback: string) => Promise<GuidedResult>
+  /**
+   * PRO-1305 (D-1025): the allergies said in the chat (chatAllergies.ts).
+   * `beforeTurn` reads the person's words and `finishTurn` sends what the
+   * turn left (the «Apuntado…» notice, the one-time permission question…);
+   * the permission's buttons are answered by the code. Absent → off.
+   */
+  chatAllergies?: ChatAllergiesDeps
+}
+
+export interface ChatAllergiesDeps {
+  beforeTurn: (userId: string, text: string) => Promise<void>
+  answerButton: (userId: string, button: ConsentButton, tap: { wamid: string; title: string | null; lang: Lang }, send: (m: FlushMessage) => Promise<string | null>) => Promise<{ tools: string[] }>
+  repeatButtons: (userId: string, lang: Lang) => Promise<FlushMessage | null>
+  finishTurn: (outbox: ChatAllergyOutbox, lang: Lang, send: (m: FlushMessage) => Promise<string | null>) => Promise<void>
+}
+
+/** A fixed message of the allergy permission → WhatsApp. */
+export function flushMessageOf(m: FlushMessage): OutboundMessage {
+  return m.buttons?.length ? { type: 'buttons', text: m.text, buttons: m.buttons } : { type: 'text', text: m.text }
 }
 
 /** Skills after which the reply carries the week's menu (not just a link to it). */
@@ -484,9 +517,12 @@ export const COPY = {
    */
   linkedOnboarding: (name: string | null) =>
     `¡Hola${name ? `, ${name}` : ''}! Ya estás conectado: soy Mimo, de Mimoia. Soy un asistente de inteligencia artificial (IA) especializado en cocina: puedo equivocarme y no sustituyo a un profesional sanitario, pero puedo encargarme de las tareas rutinarias para que cocinar vuelva a ser divertido.\n\nPuedes escribirme o mandarme notas de voz, como te sea más cómodo.\n\nPara entrar en calor te propongo preparar tu primer menú en un momento: solo necesito saber ${countWord(WHATSAPP_ONBOARDING_QUESTIONS.length)} cosas.\n\n${WHATSAPP_ONBOARDING_QUESTIONS.map((q, i) => `*${i + 1}.* ${q}`).join('\n')}`,
-  /** ~10 min after the first menu (signupFollowUps.ts): health data goes to the web, never through WhatsApp (PRO-24). */
+  /**
+   * ~10 min after the first menu (signupFollowUps.ts), when no allergy was
+   * said in the sign-up (PRO-1305: then the one-time permission question goes instead).
+   */
   healthOnWeb: (url: string) =>
-    `Si en casa hay alergias, intolerancias o algo que no podáis o queráis comer, añádelo aquí con tu permiso y lo tendré en cuenta: ${url}\nPor WhatsApp no me dejan guardar datos de salud.`,
+    `Si en casa hay alergias, intolerancias o algo que no podáis comer, dímelo por aquí y lo apunto (te pediré permiso una sola vez), o añádelo en tu perfil: ${url}`,
   linked: (name: string | null) =>
     `¡Listo${name ? `, ${name}` : ''}! Tu WhatsApp ya está conectado con Mimoia. Pregúntame qué toca hoy, pídeme la lista de la compra, mándame un audio o compárteme una receta (enlace o foto) para guardarla.\n\n${AI_DISCLOSURE_FIRST_PERSON}`,
   /** Explicit opt-in for proactive messages: right after linking an account; ~10 min after the WhatsApp sign-up's first menu, after the health link (signupFollowUps.ts). */
@@ -680,10 +716,17 @@ export function awaitsAnswer(rows: readonly HistoryRow[], now: Date): boolean {
  * 18-nov (6b): the reply of the turn that takes Mimo's spend past 80 % of the
  * month's cap carries one fixed line (once a month: the spend only grows).
  */
-export function withBudgetWarning(messages: OutboundMessage[]): OutboundMessage[] {
+export function withBudgetWarning(messages: OutboundMessage[], line: string = BUDGET_WARNING_LINE): OutboundMessage[] {
   const last = messages.at(-1)
-  if (last?.type === 'text') return [...messages.slice(0, -1), { ...last, text: `${last.text}\n\n${BUDGET_WARNING_LINE}` }]
-  return [...messages, { type: 'text', text: BUDGET_WARNING_LINE }]
+  if (last?.type === 'text') return [...messages.slice(0, -1), { ...last, text: `${last.text}\n\n${line}` }]
+  return [...messages, { type: 'text', text: line }]
+}
+
+/** PRO-1302: the reply ends asking something (buttons, or a question in its last line): the next message answers it. */
+export function replyAwaitsAnswer(messages: readonly OutboundMessage[]): boolean {
+  const last = messages.at(-1)
+  if (!last) return false
+  return last.type === 'buttons' || asksSomething(last.text)
 }
 
 export async function processInbound(msg: InboundMessage, deps: InboundDeps): Promise<void> {
@@ -835,6 +878,40 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       await sendText(userId, 'system', COPY.human(deps.supportEmail))
     }
     return
+  }
+  // PRO-1305: the allergy permission's buttons (and the withdrawal's) are
+  // answered by the code — no model, also with the monthly cap used up. A
+  // typed «sí» to the question gets the buttons again (only the tap counts).
+  const sendFixed = async (userId: string, m: FlushMessage): Promise<string | null> => {
+    const out = flushMessageOf(m)
+    try {
+      const wamid = await client.sendMessage(msg.from, out)
+      void recordServiceMessageCost(userId)
+      await store.insertOutbound({ phone: msg.from, userId, kind: m.kind, body: outboundBody(out), status: 'sent', wamid })
+      return wamid
+    } catch (err: any) {
+      await store.insertOutbound({ phone: msg.from, userId, kind: m.kind, body: outboundBody(out), status: 'failed', errorMessage: String(err?.message ?? err).slice(0, 500) })
+      return null
+    }
+  }
+  const consentButton = link && msg.kind === 'interactive' ? parseConsentButton(msg.replyId) : null
+  if (link && consentButton && deps.chatAllergies) {
+    const lang = await languageOf()
+    const done = await deps.chatAllergies.answerButton(link.userId, consentButton, { wamid: msg.wamid, title: msg.text, lang }, (m) => sendFixed(link.userId, m))
+    await store.updateInbound(msg.wamid, { status: 'processed', userId: link.userId, body: msg.text, meta: { tools: done.tools } })
+    return
+  }
+  if (link && deps.chatAllergies && msg.kind === 'text' && isTypedAnswer(msg.text)) {
+    const kinds = await store.recentOutboundKinds(msg.from, new Date(now.getTime() - 24 * 60 * 60 * 1000))
+    const asked = kinds.get('health_ask')
+    if (asked && [...kinds.entries()].every(([k, t]) => k === 'health_ask' || t <= asked)) {
+      const again = await deps.chatAllergies.repeatButtons(link.userId, await languageOf())
+      if (again) {
+        await store.updateInbound(msg.wamid, { status: 'processed', userId: link.userId, body: msg.text, meta: { tools: [] } })
+        await sendFixed(link.userId, again)
+        return
+      }
+    }
   }
   // "No, gracias" only means something as the answer to the opt-in question.
   // PRO-1295: its button always answers it, whatever Mimo sent after.
@@ -1033,18 +1110,34 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     }
 
     // ── 2. Budget gate (same cap as the web chat), before ANY paid work:
-    // transcription, photo extraction and the chat itself.
+    // transcription, photo extraction and the chat itself. PRO-1302: what the
+    // code answers went above, so it works with the cap used up; here the
+    // notice says so, once a month, and the next ones get nothing.
     let spentBefore: number | null = null
     let budgetLimit = 0
+    let capKind: 'asistente' | 'ia' = 'asistente'
+    // PRO-1302: this message answers what the turn that reached the cap asked.
+    let grace = false
     if (msg.kind !== 'unsupported') {
       const budget = await deps.checkBudget(userId)
       if (budget.exceeded) {
-        await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-        await outText('system', COPY.budget((budget.budgetMicros / 1_000_000).toFixed(0)))
-        return
+        grace =
+          budget.told === false &&
+          link.onboardingDone !== false &&
+          awaitsAnswer(await store.loadHistoryRows(msg.from, new Date(now.getTime() - COURTESY_ANSWER_WINDOW_MS), userId), now)
+        if (!grace) {
+          const tell = budget.told !== true
+          await store.updateInbound(msg.wamid, { status: 'ignored', userId, errorMessage: tell ? 'over_cap' : 'over_cap_told' })
+          if (tell) {
+            await deps.noteCap?.(userId, { cap: budget.cap ?? 'asistente', spentMicros: budget.spentMicros ?? budget.budgetMicros, budgetMicros: budget.budgetMicros })
+            await outText('system', capNoticeWhatsApp(budget.budgetMicros / 1_000_000, deps.webUrl, await languageOf()))
+          }
+          return
+        }
       }
       spentBefore = budget.spentMicros ?? null
       budgetLimit = budget.budgetMicros
+      capKind = budget.cap ?? 'asistente'
     }
     acker.arm()
 
@@ -1082,11 +1175,17 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         break
       }
       case 'document': {
-        // PRO-224: a PDF is read only as the school menu.
+        // PRO-224: a PDF that is the school menu is read as such. Any other
+        // (2026-11-26: the nutritionist's diet) goes to Mimo, never stored.
         if (await handleSchoolMenu(msg, userId, now, deps, out, acker, true)) return
-        await store.updateInbound(msg.wamid, { status: 'ignored', userId })
-        await outText('system', COPY.unsupported)
-        return
+        const doc = await pdfForMimo(msg, userId, deps, out)
+        if (doc === 'done') return
+        text = doc.text
+        images = doc.images
+        historyBody = withAttachmentMarker(msg.text)
+        // Growth gate: a PDF that reaches Mimo is, in practice, the diet (looksLikeDietDocument).
+        trackEvent('mimo_diet_document', { userId, channel: 'whatsapp', props: { kind: 'pdf' } })
+        break
       }
       case 'image': {
         if (await handleSchoolMenu(msg, userId, now, deps, out, acker, false)) return
@@ -1116,17 +1215,44 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
     const lateCheckin = lateDinnerCheckinNote(rows, now)
     const chatText = [lateCheckin, answer.note, text].filter(Boolean).join('\n\n')
-    const { usage, ...response } = await deps.chat(userId, chatText, history, {
+    const runChat = () => deps.chat(userId, chatText, history, {
       mode: 'whatsapp',
       ...(images ? { images } : {}),
       ...(answer.withoutTools ? { withoutTools: answer.withoutTools } : {}),
       // WhatsApp-first sign-up: Mimo asks the first steps until complete_onboarding.
       onboarding: link.onboardingDone === false,
+      // PRO-1298: when it was sent (a repeat queued behind the menu's turn
+      // doesn't make a second one) and, for a button, what it answered
+      // (PRO-1295: the question its ref points at, else Mimo's last message).
+      requestedAt: sentAt(msg, now),
+      ...(msg.kind === 'interactive' && (answer.text ?? msg.text)?.trim()
+        ? {
+            button: {
+              title: (answer.text ?? msg.text)!.trim(),
+              asked: answer.asked !== undefined ? answer.asked : ([...history].reverse().find((m) => m.role === 'assistant')?.content ?? null),
+            },
+          }
+        : {}),
       onToolStart: (names) => {
         const ack = ackTextForTools(names)
         if (ack) acker.now(ack)
       },
     })
+    // PRO-1305: an allergy said here is kept out of the menus at once (read by
+    // the code) and whatever Mimo saves or asks goes out after its reply.
+    let allergyOutbox: ChatAllergyOutbox | null = null
+    const turn = deps.chatAllergies
+      ? (() => {
+          const ca = deps.chatAllergies
+          const t = withChatAllergyOutbox({ userId, channel: 'whatsapp', messageId: msg.wamid, quiet: link.onboardingDone === false }, async () => {
+            await ca.beforeTurn(userId, text!).catch((err) => console.warn('[whatsapp] said allergies not read:', err?.message ?? err))
+            return runChat()
+          })
+          allergyOutbox = t.outbox
+          return t.run
+        })()
+      : runChat()
+    const { usage, ...response } = await turn
     // 18-nov: the WhatsApp sign-up (and the first menu it ends with) doesn't
     // count toward Mimo's monthly cap; the cost ledger still sees it.
     let added = 0
@@ -1136,7 +1262,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       console.warn('[whatsapp] recordUsage failed (continuing):', err)
     }
     const nearCap = spentBefore !== null && crossesBudgetWarning(spentBefore, added, budgetLimit)
-    trackEvent('mimo_message', { userId, channel: 'whatsapp', props: { kind: msg.kind === 'audio' ? 'voice_note' : images ? 'photo' : 'text' } })
+    trackEvent('mimo_message', { userId, channel: 'whatsapp', props: { kind: msg.kind === 'audio' ? 'voice_note' : msg.kind === 'document' ? 'pdf' : images ? 'photo' : 'text' } })
 
     // Mark the inbound processed BEFORE replying so it precedes the reply in
     // history even if a send fails half-way.
@@ -1155,7 +1281,23 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
       },
     })
     const reply = await replyMessages(response, userId, deps, lastSentButtons(rows))
-    await out('reply', nearCap ? withBudgetWarning(reply) : reply)
+    // PRO-1302: the turn that reaches the cap ends whole, with the notice
+    // (once a month) — unless it asks something: the answer finishes it (the
+    // grace above) and that turn says it.
+    let capNotice: string | null = null
+    if (link.onboardingDone !== false && (grace || (reachesCap(spentBefore, added, budgetLimit) && !replyAwaitsAnswer(reply)))) {
+      const spent = Math.max(spentBefore ?? 0, (spentBefore ?? 0) + added)
+      const first = deps.noteCap ? await deps.noteCap(userId, { cap: capKind, spentMicros: spent, budgetMicros: budgetLimit }).catch(() => false) : true
+      if (first) capNotice = capNoticeWhatsApp(budgetLimit / 1_000_000, deps.webUrl, await languageOf())
+    }
+    await out('reply', capNotice ? withBudgetWarning(reply, capNotice) : nearCap ? withBudgetWarning(reply) : reply)
+    // PRO-1305: «Apuntado en la ficha de tu casa: …» (or the one-time question), the code's own words.
+    if (allergyOutbox && deps.chatAllergies) {
+      await acker.settle()
+      await deps.chatAllergies.finishTurn(allergyOutbox, await languageOf(), (m) => sendFixed(userId, m)).catch((err) =>
+        console.warn('[whatsapp] allergy notices not sent:', err?.message ?? err),
+      )
+    }
     // 19-nov: a survey always goes as a message of its own (never stuck to the
     // reply nor under another question's buttons).
     if (response.survey) await out('survey', renderPlainText(response.survey))
@@ -1196,7 +1338,7 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
  * 19-nov: the avisos' buttons answered with a fixed line and no model (they
  * cost no turn and work with the monthly cap used up). True = handled.
  *   - «Lo hago» (`cooking:ok`) under «hora de cocinar»;
- *   - «¿Te sigo avisando de…?» Sí / No (fatigue.ts): the kind on or off;
+ *   - «¿Te sigo avisando?» Sí / No (fatigue.ts): the pause lifted, with «No» every aviso off;
  *   - why BAJA (optOutReason.ts): an opinion tagged `baja_avisos`.
  */
 async function answerAvisoButton(
@@ -1296,7 +1438,13 @@ export function schoolMenuReply(days: SchoolLunch[]): string {
   ].join('\n')
 }
 
-/** True = handled (read, or explained why not). False = not a school menu message. */
+/**
+ * True = handled (read, or explained why not). False = not a school menu
+ * message. A photo needs the words («menú del cole»). A PDF with those words
+ * is always the school menu; one without them (2026-11-26) is read silently
+ * and, if it isn't a school menu (or is too big to read), goes to Mimo — and
+ * one whose caption speaks of a diet goes to Mimo without being read.
+ */
 async function handleSchoolMenu(
   msg: InboundMessage,
   userId: string,
@@ -1309,9 +1457,9 @@ async function handleSchoolMenu(
   const { store, client } = deps
   if (!deps.readSchoolMenu || !msg.mediaId) return false
   const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - SCHOOL_MENU_WINDOW_MS), userId)
-  // A PDF is only ever a school menu here; a photo needs the words.
-  if (!isPdf && !schoolMenuIntent(msg.text, rows, now)) return false
-  acker.now(COPY.ackSchoolMenu)
+  const asked = schoolMenuIntent(msg.text, rows, now)
+  if (!asked && (!isPdf || mentionsDiet(msg.text))) return false
+  if (asked) acker.now(COPY.ackSchoolMenu)
   const caption = msg.text?.trim() ?? ''
   try {
     const media = await client.downloadMedia(msg.mediaId)
@@ -1325,6 +1473,8 @@ async function handleSchoolMenu(
     await out('reply', renderPlainText(schoolMenuReply(days)))
   } catch (err: any) {
     const fileProblem = err instanceof SchoolMenuFileError ? err.reason : null
+    // A PDF nobody called the school menu: Mimo reads it instead (pdfForMimo).
+    if (!asked && (err instanceof NotASchoolMenuError || fileProblem === 'too_big')) return false
     const notMenu = err instanceof NotASchoolMenuError || fileProblem !== null
     if (!notMenu) console.error('[whatsapp] school menu read failed:', err?.message ?? err)
     await store.updateInbound(msg.wamid, { status: notMenu ? 'processed' : 'failed', userId, errorMessage: notMenu ? undefined : String(err?.message ?? err).slice(0, 500) })
@@ -1333,6 +1483,34 @@ async function handleSchoolMenu(
     await out('system', renderPlainText(copy))
   }
   return true
+}
+
+/**
+ * A PDF that isn't the school menu, for Mimo to read this turn (never
+ * stored): the caption, or a default line. Too big → said, 'done'.
+ */
+async function pdfForMimo(
+  msg: InboundMessage,
+  userId: string,
+  deps: InboundDeps,
+  out: (kind: string, messages: OutboundMessage[]) => Promise<void>,
+): Promise<'done' | { text: string; images: { mediaType: string; data: string }[] }> {
+  const { store, client } = deps
+  if (!msg.mediaId) {
+    await store.updateInbound(msg.wamid, { status: 'ignored', userId })
+    await out('system', renderPlainText(COPY.unsupported))
+    return 'done'
+  }
+  const media = await client.downloadMedia(msg.mediaId)
+  try {
+    const file = await attachmentForModel(media.buffer, 'application/pdf')
+    return { text: msg.text?.trim() || ATTACHMENT_DEFAULT_TEXT, images: [file] }
+  } catch (err) {
+    if (!(err instanceof ChatAttachmentError)) throw err
+    await store.updateInbound(msg.wamid, { status: 'processed', userId, body: withAttachmentMarker(msg.text) })
+    await out('system', renderPlainText(err.message))
+    return 'done'
+  }
 }
 
 /** How long after the Sunday message a bare photo still answers «¿Qué te queda en la nevera?». */
@@ -1364,7 +1542,10 @@ async function handleImage(
     text: msg.text?.trim() || '¿Qué me dices de esta foto?',
     images: [{ mediaType: mimeType, data: media.buffer.toString('base64') }],
   }
-  if (photoIntent(msg.text) === 'ask' || !deps.importRecipeFromImage) return forMimo
+  // 2026-11-26: «la dieta de mi nutricionista» is no recipe to import: Mimo reads it.
+  const diet = mentionsDiet(msg.text)
+  if (diet) trackEvent('mimo_diet_document', { userId, channel: 'whatsapp', props: { kind: 'photo' } })
+  if (diet || photoIntent(msg.text) === 'ask' || !deps.importRecipeFromImage) return forMimo
   // PRO-229: a photo with no caption right after the Sunday «¿Qué te queda en
   // la nevera?» is the fridge, not a recipe: Mimo reads it.
   if (!msg.text?.trim()) {
@@ -1429,6 +1610,12 @@ async function handleImage(
     ),
   )
   return 'done'
+}
+
+/** PRO-1298: when the person sent the message (Meta's seconds); `now` when it's missing or in the future. */
+export function sentAt(msg: Pick<InboundMessage, 'timestamp'>, now: Date): Date {
+  const ms = Number(msg.timestamp) * 1000
+  return Number.isFinite(ms) && ms > 0 && ms <= now.getTime() ? new Date(ms) : now
 }
 
 // ─── Per-phone serial queue ──────────────────────────────────────

@@ -54,6 +54,7 @@ import {
   Unlock,
   Users,
   Package,
+  CookingPot,
 } from "lucide-react"
 import {
   DndContext,
@@ -129,6 +130,8 @@ export interface SlotHandlers {
   setCooked: (position: number, on: boolean) => void
   /** PRO-223: mark / unmark this meal as the táper of the dinner before. */
   setTaper?: (on: boolean) => void
+  /** PRO-1046: «Lo cocino en el lote del domingo» (on) / «Lo cocino su día» (off), on the recipe dish at `position`. */
+  setBatch?: (position: number, on: boolean) => void
   /** «Guardar en mi semana tipo» in «Más opciones» (PRO-1186): that day and meal of the household's week type, and this week if it can. */
   saveToWeekType?: (option: WeekTypeOption) => void
 }
@@ -241,6 +244,7 @@ export function MealOptionsSheets({
     canTaper: Boolean(handlers.setTaper && ctx.taperFrom),
     feedsLeftovers: ctx.feedsLeftovers,
     canSaveToWeekType: Boolean(handlers.saveToWeekType),
+    canBatch: Boolean(handlers.setBatch) && ctx.day <= 5,
   })
   const has = (o: (typeof opts.first)[number]) => opts.first.includes(o)
   const label = mealLabel(ctx.meal)
@@ -476,6 +480,30 @@ export function MealOptionsSheets({
               hint="La comida queda vacía para poner otra cosa"
               onClick={() => {
                 handlers.setTaper?.(false)
+                close()
+              }}
+            />
+          )}
+          {opts.done.includes("lote_si") && (
+            <SheetAction
+              icon={CookingPot}
+              label="Lo cocino en el lote del domingo"
+              action="lote_si"
+              hint="El domingo sale «Cocinas hoy» y este día, de táper; sigue en la compra"
+              onClick={() => {
+                handlers.setBatch?.(0, true)
+                close()
+              }}
+            />
+          )}
+          {opts.done.includes("lote_no") && (
+            <SheetAction
+              icon={CookingPot}
+              label="Lo cocino su día"
+              action="lote_no"
+              hint="Deja de salir en el lote"
+              onClick={() => {
+                handlers.setBatch?.(0, false)
                 close()
               }}
             />

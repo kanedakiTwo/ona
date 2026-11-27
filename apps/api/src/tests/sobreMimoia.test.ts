@@ -42,6 +42,16 @@ describe('kb/sobre-mimoia.md', () => {
     expect(about()).not.toMatch(/16 de noviembre/)
   })
 
+  it('D-1028: says how we cook (30 min of your time, «Y si tienes más tiempo…»); «sana sin obsesión», never «saludable» or «dieta»', () => {
+    const section = about().split('## Cómo cocinamos')[1]?.split('\n## ')[0] ?? ''
+    expect(section).toContain('30 minutos de tu tiempo como mucho')
+    expect(section).toContain('«Y si tienes más tiempo…»')
+    expect(section).toContain('sin picante y con la salsa aparte')
+    expect(section).toContain('Sana sin obsesión')
+    expect(section.replace(/sana sin obsesión/gi, '')).not.toMatch(/\b(sano|sana|sanos|sanas|saludables?|dieta|adelgaz\w*)\b/i)
+    expect(section.trim().split('\n').length).toBeLessThanOrEqual(6)
+  })
+
   it('exists and states the intended purpose word for word', () => {
     expect(existsSync(ABOUT_PATH)).toBe(true)
     expect(about().startsWith('# Sobre Mimoia')).toBe(true)

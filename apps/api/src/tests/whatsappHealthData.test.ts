@@ -61,8 +61,11 @@ describe('WhatsApp never stores health data', () => {
     expect(writes(f.calls)).toEqual([{ method: 'PUT', path: '/user/u1', body: { restrictions: ['sin gluten'] } }])
   })
 
-  it('the WhatsApp prompt tells the model not to store them', () => {
-    expect(buildSystemPrompt('', 'whatsapp')).toMatch(/Por WhatsApp nunca guardas datos de salud/)
-    expect(buildSystemPrompt('', 'text')).not.toMatch(/Por WhatsApp nunca guardas datos de salud/)
+  it('the WhatsApp prompt: allergies follow the permission (PRO-1305), physical data still go to the web', () => {
+    const p = buildSystemPrompt('', 'whatsapp')
+    expect(p).toMatch(/Alergias e intolerancias dichas por WhatsApp: siguen la regla de alergias/)
+    expect(p).toMatch(/Por WhatsApp no guardas datos fisicos/)
+    expect(p).not.toMatch(/Por WhatsApp nunca guardas datos de salud/)
+    expect(buildSystemPrompt('', 'text')).not.toMatch(/Alergias e intolerancias dichas por WhatsApp/)
   })
 })

@@ -3,7 +3,9 @@
  * automático»): a Thursday end to end against the database — the household
  * that had a menu gets next week from the real generator, once; a household
  * that made next week by hand is left alone; the /menu card shows until the
- * person opens that week.
+ * person opens that week. PRO-1262: a household with favourites gets at
+ * least the share its own week carries, and a batch-cooking one gets the
+ * Sunday batch with its leftovers.
  *
  *   API_URL=… DATABASE_URL=… pnpm --filter @ona/api exec vitest run src/tests/weeklyAutoplan.smoke.ts
  */
@@ -11,9 +13,10 @@ import { describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { reachable, API_URL } from './smokeEnv.js'
 import { db } from '../db/connection.js'
-import { menus, notificationSchedule, users } from '../db/schema.js'
+import { menus, notificationSchedule, userFavorites, users } from '../db/schema.js'
 import { madridWeekStart } from '../services/madridTime.js'
 import { menuHasDishes } from '../services/menuWeek.js'
+import { favoriteShareOf } from '../services/menuFavoriteShare.js'
 import { resolveScope } from '../services/scopeResolver.js'
 import {
   autoplanKey,
@@ -23,7 +26,7 @@ import {
   runWeeklyAutoplanIfDue,
   type AutoplanDeps,
 } from '../services/weeklyAutoplan.js'
-import type { DayMenu } from '@ona/shared'
+import { addDaysIso, type DayMenu, type RecipeDish } from '@ona/shared'
 
 async function call(method: string, path: string, payload?: unknown, token?: string) {
   const r = await fetch(`${API_URL}${path}`, {
@@ -127,4 +130,38 @@ describe.skipIf(!reachable)('piloto automático del jueves (PRO-381)', () => {
     expect(r!.skipped.switched_off).toBe(1)
     expect(await weekRows(off.userId, nextMonday)).toHaveLength(0)
   }, 60_000)
+
+  it('PRO-1262: a household with favourites gets at least their share; a batch-cooking one, the Sunday batch and its leftovers', async () => {
+    const fav = await household('favoritos')
+    const batch = await household('lote')
+    const { now, nextMonday } = farThursday()
+    const [u] = await db.select({ h: users.primaryHouseholdId }).from(users).where(eq(users.id, fav.userId))
+
+    // Their week (the one they made): four of its weekday dinners are their favourites.
+    const [mine] = await db.select().from(menus).where(and(eq(menus.householdId, u.h!), eq(menus.weekStart, madridWeekStart(new Date()))))
+    const dinners = (mine.days as DayMenu[]).slice(0, 5).flatMap((d) => (d?.dinner?.dishes ?? []).filter((x): x is RecipeDish => x.kind === 'recipe').map((x) => x.recipeId))
+    const chosen = new Set(dinners.slice(0, 4))
+    expect(chosen.size).toBe(4)
+    await db.insert(userFavorites).values([...chosen].map((recipeId) => ({ userId: fav.userId, householdId: u.h!, recipeId })))
+    // Their week sits before the Thursday's (years ahead): it is one of the last four only when moved there.
+    await db.update(menus).set({ weekStart: addDaysIso(nextMonday, -7) }).where(eq(menus.id, mine.id))
+    const share = favoriteShareOf([mine.days as DayMenu[]], chosen)
+    expect(share).toBeGreaterThan(0)
+
+    expect((await call('PUT', '/household/cooking-style', { style: 'batch' }, batch.token)).status).toBe(200)
+
+    const r = await runWeeklyAutoplanIfDue(now, only([fav.userId, batch.userId]))
+    expect(r).toMatchObject({ generated: 2, failed: 0 })
+
+    const [favWeek] = await weekRows(fav.userId, nextMonday)
+    expect(favoriteShareOf([favWeek.days as DayMenu[]], chosen)).toBeGreaterThanOrEqual(share)
+
+    const [batchWeek] = await weekRows(batch.userId, nextMonday)
+    const days = batchWeek.days as DayMenu[]
+    const sunday = addDaysIso(nextMonday, -1)
+    const cooked = days.slice(0, 4).flatMap((d, day) => Object.entries(d ?? {}).flatMap(([meal, s]) => (s?.dishes ?? []).filter((x) => x.kind === 'recipe' && (x as RecipeDish).batchDate === sunday).map(() => ({ day, meal }))))
+    expect(cooked.length).toBeGreaterThan(0)
+    const leftovers = days.slice(0, 4).flatMap((d) => Object.values(d ?? {}).flatMap((s) => (s?.dishes ?? []).filter((x) => x.kind === 'recipe' && (x as RecipeDish).variant === 'leftover') as RecipeDish[]))
+    expect(leftovers.some((l) => cooked.some((c) => c.day === l.leftoverOf?.day && c.meal === l.leftoverOf?.meal))).toBe(true)
+  }, 120_000)
 })

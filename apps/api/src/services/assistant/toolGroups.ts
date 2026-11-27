@@ -55,20 +55,22 @@ const DAYS = 'lunes|martes|miercoles|jueves|viernes|sabado|domingo'
 
 export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
   menu: {
-    label: 'cambiar el menu: generar la semana, añadir, quitar, mover, vaciar o fijar comidas, comensales, notas, vetos, comido o cocinado, quien cocina, historial, la semana tipo (lo de cada semana)',
+    label: 'cambiar el menu: generar la semana, añadir, quitar, mover, vaciar o fijar comidas, comensales, notas, vetos, comido o cocinado, quien cocina, historial, la semana tipo (lo de cada semana), revisar la semana para un bebe',
     tools: [
       'generate_weekly_menu', 'add_dish', 'remove_dish', 'clear_meal', 'set_day_skipped', 'set_meal_note',
       'set_meal_servings', 'lock_meal', 'move_meal', 'ban_recipe_this_week', 'mark_meal_eaten', 'log_cooked',
       'set_cook_today', 'suggest_recipes', 'get_menu_history', 'update_weekly_template', 'get_week_type', 'set_week_type_slot',
+      // PRO-1035: a week for a baby under 1, dish by dish.
+      'check_menu_for_baby',
     ],
     words: new RegExp(
       `\\b(menus?|semana|hoy|manana|ayer|finde|${DAYS}|comidas?|cenas?|cenamos|comemos|desayun\\w*|meriend\\w*|almuerz\\w*|platos?|cambia\\w*|quita\\w*|pon|ponme|ponlo|ponla|pongas|mete\\w*|anade\\w*|anadir|mueve|mover|pasa|intercambia\\w*|fuera|invitad\\w*|comensales|raciones|somos|seremos|vienen|genera\\w*|haz|hazme|hazlo|planifica\\w*|repit\\w*|veta\\w*|harto|bloquea\\w*|deja\\w*|cocinad[oa]|cocina|cocino|cocinas|hice|hizo|hecho|hecha|historial|ultima vez|semana pasada|sugier\\w*|sugerencias?|ideas?|propon\\w*|apunta\\w*|nota)\\b`,
     ),
   },
   sobras: {
-    label: 'platos que ya estan hechos, sobras, taper y congelador en el menu',
-    tools: ['add_freezer_dish', 'set_leftovers', 'set_taper', 'plan_freezer_items'],
-    words: /\b(sobr\w*|resto\w*|taper\w*|tupper\w*|tuper\w*|congel\w*|hech[oa]s?|aprovech\w*|metelo|metelos)\b/,
+    label: 'platos que ya estan hechos, sobras, taper, congelador y dia de lote (batch) en el menu',
+    tools: ['add_freezer_dish', 'set_leftovers', 'set_taper', 'plan_freezer_items', 'set_batch_day'],
+    words: /\b(sobr\w*|resto\w*|taper\w*|tupper\w*|tuper\w*|congel\w*|hech[oa]s?|aprovech\w*|metelo|metelos|lotes?|batch\w*)\b/,
   },
   fijas: {
     label: 'comidas fijas (siempre lo mismo) y el menu del comedor escolar',
@@ -117,8 +119,9 @@ export const TOOL_GROUPS: Record<ToolGroupId, ToolGroup> = {
     tools: [
       'update_household', 'update_profile', 'update_memory', 'invite_to_household', 'share_invite_link',
       'set_whatsapp_notifications', 'get_alerts', 'set_alerts', 'set_alert_time', 'set_cooking_style', 'leave_feedback', 'answer_sean_ellis',
+      'forget_allergy', 'withdraw_health_permission',
     ],
-    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|decepcionad\w*|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas)\b|\bhora del? (?:aviso|menu|resumen|pregunta)|\bcambia\w* (?:la )?hora\b|\ba que hora (?:me |nos )?(?:mandas|escribes|avisas|preguntas|llega)/,
+    words: /\b(hogar|adult\w*|ninos?|ninas?|hij[oa]s?|bebes?|familia|invit\w*|compart\w*|pareja|perfil|restricci\w*|permiso|datos de salud|alergi\w*|alergic\w*|intoleran\w*|vegetarian\w*|vegan\w*|celiac\w*|gluten|lactosa|gusta|gustan|odio|odiamos|recuerda\w*|memoria|olvida\w*|avisos?|notificaci\w*|mensajes?|baja|alta|batch|tandas|opinion|sugerencia|queja|decepcionad\w*|falla\w*|error|funciona|presupuesto|horno|freidora|robot|thermomix|olla|microondas)\b|\bhora del? (?:aviso|menu|resumen|pregunta)|\bcambia\w* (?:la )?hora\b|\ba que hora (?:me |nos )?(?:mandas|escribes|avisas|preguntas|llega)/,
   },
   ficha: {
     label: 'la ficha del hogar (lo que Mimoia sabe y aprende de la casa) y las valoraciones de «Afina tu menu»',

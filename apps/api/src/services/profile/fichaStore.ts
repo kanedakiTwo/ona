@@ -589,7 +589,7 @@ const MEAL_LABELS: Record<string, string> = { breakfast: 'desayuno', lunch: 'com
 export async function writeProfileFact(
   userId: string,
   input: { type: string; value: unknown; about: FichaAbout; personId?: string | null; validUntil?: Date | null; channel: 'web' | 'whatsapp' },
-  opts: { db?: Db; now?: Date } = {},
+  opts: { db?: Db; now?: Date; chatAllergyPermit?: boolean } = {},
 ): Promise<{ factId: string; action: 'added' | 'updated' | 'unchanged'; sentence: string | null; weekType?: boolean }> {
   const db = opts.db ?? defaultDb
   const now = opts.now ?? new Date()
@@ -598,14 +598,16 @@ export async function writeProfileFact(
   if (reader.role === 'child') throw new FichaError(403, 'CHILD', 'La ficha la cambian los adultos de la casa')
   const schema = PROFILE_FACT_VALUE_SCHEMAS[input.type as keyof typeof PROFILE_FACT_VALUE_SCHEMAS]
   if (!schema) throw new FichaError(422, 'UNKNOWN_TYPE', `No conozco el tipo «${input.type}»`)
-  const allowed = canWriteProfileFact({ type: input.type, channel: input.channel, hasHealthConsent: await hasHealthConsent(userId) })
+  // PRO-1305: an allergy said in the chat, under the chat's permission (checked by `chatAllergies`).
+  const permit = opts.chatAllergyPermit === true && input.type === 'restrictions'
+  const allowed = permit ? ({ ok: true } as const) : canWriteProfileFact({ type: input.type, channel: input.channel, hasHealthConsent: await hasHealthConsent(userId) })
   if (!allowed.ok) {
     throw allowed.reason === 'health_from_whatsapp'
       ? new FichaError(403, 'HEALTH_FROM_WHATSAPP', 'Por WhatsApp no guardo datos de salud: se cambian en Tu ficha, en la web')
       : new FichaError(403, 'HEALTH_CONSENT_REQUIRED', 'Para guardar datos de salud necesitas dar tu consentimiento en Perfil')
   }
   // Over WhatsApp not even a note that talks about health (LEG-03): «apunta que soy celíaca» stays out.
-  if (input.channel === 'whatsapp' && mentionsHealth(JSON.stringify(input.value ?? ''))) {
+  if (!permit && input.channel === 'whatsapp' && mentionsHealth(JSON.stringify(input.value ?? ''))) {
     throw new FichaError(403, 'HEALTH_FROM_WHATSAPP', 'Por WhatsApp no guardo datos de salud: se cambian en Tu ficha, en la web')
   }
   if (input.type === 'restrictions' && religiousDietsIn(input.value).length > 0 && !(await healthConsentCoversReligion(userId))) {

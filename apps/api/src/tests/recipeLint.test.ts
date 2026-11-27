@@ -537,6 +537,21 @@ describe('lintRecipe — errors', () => {
     expect(result.errors.some(e => e.code === 'TIME_INCONSISTENT')).toBe(false)
   })
 
+  it('TIME_INCONSISTENT leaves out a soak of the day before (PRO-402)', () => {
+    // prep+cook = 30, steps = 720 of soaking + 30 → only the 30 count
+    const recipe = makeRecipe({
+      prepTime: 10,
+      cookTime: 20,
+      steps: [
+        { index: 0, text: 'Pon el arroz en remojo con agua fría.', durationMin: 720, ingredientRefs: ['row-2'] },
+        { index: 1, text: 'Trocea el pollo y la cebolla.', durationMin: 10, ingredientRefs: ['row-1', 'row-3'] },
+        { index: 2, text: 'Añade el arroz.', durationMin: 20, ingredientRefs: ['row-2'] },
+      ],
+    })
+    const result = lintRecipe(recipe, opts)
+    expect(result.errors.some(e => e.code === 'TIME_INCONSISTENT')).toBe(false)
+  })
+
   it('TIME_INCONSISTENT skips check when any step has no durationMin', () => {
     const recipe = makeRecipe({
       prepTime: 10,
@@ -697,5 +712,25 @@ describe('lintRecipe — performance', () => {
     // Don't assert on result.ok (we only care about timing here)
     expect(result).toBeDefined()
     expect(elapsed).toBeLessThan(50)
+  })
+})
+
+describe('LONG_WORK_NO_MORE_TIME (D-1028)', () => {
+  const has = (r: Partial<RecipeInput>, o: LintOptions = { ...opts, catalog: true }) =>
+    lintRecipe(makeRecipe(r), o).warnings.some((w) => w.code === 'LONG_WORK_NO_MORE_TIME')
+
+  it('a catalogue lunch or dinner of more than 30 min of work without «Y si tienes más tiempo…» gets the warning, never an error', () => {
+    expect(has({ activeTime: 45 })).toBe(true)
+    expect(has({ activeTime: null, prepTime: 40 })).toBe(true)
+    const result = lintRecipe(makeRecipe({ activeTime: 45 }), { ...opts, catalog: true })
+    expect(result.errors.some((e) => e.code === 'LONG_WORK_NO_MORE_TIME')).toBe(false)
+    expect(result.warnings.find((w) => w.code === 'LONG_WORK_NO_MORE_TIME')?.message).toMatch(/Pide 45 min de trabajo y no tiene «Y si tienes más tiempo…»/)
+  })
+  it('no warning: 30 min or less, with the section, a weekend dish, breakfast, or a household\'s own recipe', () => {
+    expect(has({ activeTime: 30, prepTime: 40 })).toBe(false)
+    expect(has({ activeTime: 45, moreTime: 'Con el sofrito a fuego lento 40 min.' })).toBe(false)
+    expect(has({ activeTime: 45, frequency: 'weekends_only' })).toBe(false)
+    expect(has({ activeTime: 45, meals: ['breakfast'] })).toBe(false)
+    expect(has({ activeTime: 45 }, opts)).toBe(false)
   })
 })

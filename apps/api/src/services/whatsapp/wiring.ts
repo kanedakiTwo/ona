@@ -1,4 +1,6 @@
 import { env } from '../../config/env.js'
+import { answerConsentButton, finishChatTurn, repeatAskButtons } from '../chatAllergies.js'
+import { answerDeps, noteSaidByCode } from '../chatAllergySave.js'
 import { claimOptInReoffer, markOptInDeclined } from './optInOffer.js'
 import { db } from '../../db/connection.js'
 import { and, desc, eq, inArray } from 'drizzle-orm'
@@ -10,14 +12,14 @@ import { madridParts } from '../madridTime.js'
 import { generatedWeeksOf } from '../menuWeek.js'
 import { SchoolMenuFileError, isHeicUpload, isSchoolMenuMimeType, readSchoolMenu, saveSchoolLunches } from '../schoolMenu.js'
 import { currentCostChannel, runWithCostUser } from '../costLedger.js'
-import { recordCapHit, type CapHitInput } from '../capHits.js'
+import { capHitThisMonth, recordCapHit } from '../capHits.js'
 import { madeWithMimoLine, type SchoolLunch } from '@ona/shared'
 import { ensureReferralCode } from '../accountReferrals.js'
 import { getMemoryForUser } from '../userMemoryStore.js'
 import { regionFromMemory } from '../menuHolidays.js'
 import { spendCapStatus } from '../spendCap.js'
 import { chat } from '../assistant/engine.js'
-import { menuCodeReply, recognizeCodeIntent } from '../assistant/codeReply.js'
+import { listCodeReply, menuCodeReply, recognizeCodeIntent } from '../assistant/codeReply.js'
 import { checkAdvisorBudget, recordAdvisorUsage } from '../advisorBudget.js'
 import { isSttConfigured, transcribeAudio } from '../stt.js'
 import { importRecipeFromImage, setRecipeSourceUrl } from '../recipeImport.js'
@@ -105,28 +107,34 @@ export function buildInboundDeps(): InboundDeps {
     chat: (userId, message, history, opts) => chat(userId, message, history, db, opts),
     // The chat's own € budget AND the monthly cap on all paid AI work
     // (spendCap.ts), both before any paid step. Admins are exempt from the cap.
-    // PRO-1090: the first hit of the month leaves a cap_hits row (WhatsApp
-    // only: Telegram shares these deps and isn't one of its channels).
+    // PRO-1302: `told` = this month's notice already went (its cap_hits row,
+    // PRO-1090), written by `noteCap` when the notice goes out. WhatsApp only:
+    // Telegram shares these deps, isn't one of its channels and keeps its
+    // notice on every message (`told` absent).
     checkBudget: async (userId) => {
       const telegram = currentCostChannel() === 'telegram'
-      const note = async (hit: Omit<CapHitInput, 'userId' | 'channel'>) =>
-        telegram ? false : recordCapHit({ ...hit, userId, channel: 'whatsapp' })
+      const told = async () => (telegram ? undefined : capHitThisMonth(userId))
       const advisor = await checkAdvisorBudget(userId, db)
-      if (advisor.exceeded) {
-        await note({ cap: 'asistente', spentEur: advisor.spentMicros / 1_000_000, capEur: advisor.budgetMicros / 1_000_000 })
-        return advisor
-      }
+      if (advisor.exceeded) return { ...advisor, cap: 'asistente' as const, told: await told() }
       const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1)
       if (row?.role === 'admin') return advisor
       const cap = await spendCapStatus(userId)
       if (!cap.exceeded) return advisor
-      await note({ cap: 'ia', spentEur: cap.spentEur, capEur: cap.capEur })
-      return { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000) }
+      return { exceeded: true, budgetMicros: Math.round(cap.capEur * 1_000_000), spentMicros: Math.round(cap.spentEur * 1_000_000), cap: 'ia' as const, told: await told() }
     },
+    noteCap: async (userId, hit) =>
+      currentCostChannel() === 'telegram'
+        ? false
+        : recordCapHit({ userId, cap: hit.cap, spentEur: hit.spentMicros / 1_000_000, capEur: hit.budgetMicros / 1_000_000, channel: 'whatsapp' }),
     recordUsage: (userId, usage, opts) => recordAdvisorUsage(userId, usage, db, undefined, opts),
-    // PRO-1292: the menu read by the code, with the same tools as Mimo.
+    // PRO-1292: the menu read by the code, with the same tools as Mimo;
+    // PRO-1302: and the shopping list.
     codeReply: async (userId, text) => {
       const intent = recognizeCodeIntent(text)
+      if (intent?.kind === 'ver_lista') {
+        const response = await listCodeReply({ userId, db, channel: 'whatsapp' })
+        return response ? { kind: intent.kind, response } : null
+      }
       if (intent?.kind !== 'ver_menu') return null
       const response = await menuCodeReply(intent, { userId, db, channel: 'whatsapp' })
       return response ? { kind: intent.kind, response } : null
@@ -134,6 +142,13 @@ export function buildInboundDeps(): InboundDeps {
     // 18-nov: a tapped «¿hiciste la cena?» button, recorded without the model.
     recordDinnerCheckin: (userId, answer, checkinAt) => recordDinnerCheckinAnswer(userId, answer, checkinAt),
     language: languageForPhone,
+    // PRO-1305: the allergies said in the chat (chatAllergies.ts).
+    chatAllergies: {
+      beforeTurn: (userId, text) => noteSaidByCode(userId, text),
+      answerButton: (userId, button, tap, send) => answerConsentButton(userId, button, { channel: 'whatsapp', ...tap }, answerDeps(userId, 'whatsapp', send)),
+      repeatButtons: (userId, lang) => repeatAskButtons(userId, lang),
+      finishTurn: (outbox, lang, send) => finishChatTurn(outbox, { lang, send }),
+    },
     setAvisoKind,
     saveOptOutReason,
     isPaused: (userId) => isOnFreePlan(userId),

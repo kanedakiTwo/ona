@@ -16,7 +16,7 @@ import { religiousDietsIn, stripHealthFromTemplate, stripHealthProfileFields, wi
 
 describe('health consent rules', () => {
   it('pins the consent text version', () => {
-    expect(HEALTH_CONSENT_VERSION).toBe('salud-v2-2026-10')
+    expect(HEALTH_CONSENT_VERSION).toBe('salud-v3-2026-11')
   })
 
   it('is active only when given and not withdrawn afterwards', () => {

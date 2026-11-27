@@ -5,11 +5,11 @@
  * technique, cuisine, active/total time, difficulty, allergen doubts).
  * Cost lands on Mimoia (no user), feature `catalog_import_rewrite`.
  */
-import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { cleanFridgeDays, type CatalogDraftInput, type CatalogRewrite, type RewriteOptions } from './catalogImport.js'
 import { CLAUDE_MODEL } from '../config/models.js'
+import { anthropicClient } from './anthropicClient.js'
 
 export const REWRITE_MODEL = CLAUDE_MODEL
 
@@ -100,7 +100,7 @@ export function parseRewrite(text: string): CatalogRewrite {
 
 export function createAnthropicRewriter(): (draft: CatalogDraftInput, opts: RewriteOptions) => Promise<CatalogRewrite> {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY no está configurada')
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  const client = anthropicClient()
   return async (draft, opts) => {
     const response = await client.messages.create({
       model: REWRITE_MODEL,

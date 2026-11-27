@@ -28,6 +28,7 @@ import { runWithCostUser } from './costLedger.js'
 import { applyHouseImage, type ApplyOutcome } from './recipeHouseImage.js'
 import { imageGenerationConfigured } from './recipeImageGenerator.js'
 import { DRAFT, PUBLISHED } from './recipeVisibility.js'
+import { aiJobsWithoutUserAllowed } from './anthropicClient.js'
 
 export interface PhotoCandidate {
   id: string
@@ -112,7 +113,8 @@ let again = false
 let timer: ReturnType<typeof setInterval> | null = null
 
 function enabled(): boolean {
-  return imageGenerationConfigured() && process.env.NODE_ENV !== 'test' && !process.env.VITEST
+  // PRO-1315: not in staging with «Mimo remoto».
+  return imageGenerationConfigured() && aiJobsWithoutUserAllowed() && process.env.NODE_ENV !== 'test' && !process.env.VITEST
 }
 
 /** Start a pass now (or one more right after the current one). Fire-and-forget. */

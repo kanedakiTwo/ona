@@ -18,6 +18,7 @@ import { env } from '../config/env.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { extractJson } from './shopOrders/quoteParser.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
+import { anthropicClient } from './anthropicClient.js'
 
 const DESCRIBE_MODEL = CLAUDE_MODEL
 const CHECK_MODEL = CLAUDE_MODEL
@@ -26,7 +27,7 @@ type CreateFn = (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<P
 
 function defaultCreate(): CreateFn | null {
   if (!env.ANTHROPIC_API_KEY) return null
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  const client = anthropicClient()
   return (p) => client.messages.create(p)
 }
 

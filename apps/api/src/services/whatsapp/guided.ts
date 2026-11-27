@@ -33,6 +33,7 @@ import { recordAnthropicCost, type AnthropicUsageLike } from '../costLedger.js'
 import { healthClaimWords, talksHealthEffects } from '../assistant/healthGuard.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 import { agreementMismatch } from './dishAgreement.js'
+import { anthropicClient } from '../anthropicClient.js'
 
 export const GUIDED_MODEL = CLAUDE_MODEL
 /** The scheduler tick and the chat can't wait long: past this, the fixed text. */
@@ -327,7 +328,7 @@ let client: Anthropic | null = null
 export function defaultGuidedWriter(): GuidedWriter | null {
   if (testWriter) return testWriter
   if (process.env.VITEST || !env.ANTHROPIC_API_KEY) return null
-  client ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  client ??= anthropicClient()
   return async (system, prompt) => {
     const res = await client!.messages.create({
       model: GUIDED_MODEL,

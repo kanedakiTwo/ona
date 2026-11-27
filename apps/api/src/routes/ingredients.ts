@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from '../services/costLedger.js'
 import { eq, count, asc, desc, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
@@ -33,6 +32,7 @@ import { inferAllergenTagsFromName } from '../services/nutrition/allergens.js'
 import { env } from '../config/env.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 import { requireSpendCapacity } from '../middleware/spendCap.js'
+import { anthropicClient } from '../services/anthropicClient.js'
 
 const router = Router()
 
@@ -318,7 +318,7 @@ async function estimateNutritionForName(
     e.status = 503
     throw e
   }
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  const client = anthropicClient()
   const prompt = `Eres un nutricionista. Dame los valores por 100g de "${promptName}". Si es producto compuesto (caldo, salsa, embutido), estima conservadoramente. Responde SOLO JSON: {"kcal": n, "proteinG": n, "carbsG": n, "fatG": n, "fiberG": n, "saltG": n}. Sin texto adicional.`
   const response = await client.messages.create({
     // These values land in the catalog and influence every recipe that

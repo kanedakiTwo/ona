@@ -10,6 +10,7 @@ import { recordAnthropicCost } from '../costLedger.js'
 import { detectFlags, replyFlags } from '../assistantFlags.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
 import { annotateFindings, formatMemory, MEMORY_DAYS, priorFindings, type ReviewChannel, type StructuredFields } from '../reviewFindings.js'
+import { aiJobsWithoutUserAllowed, anthropicClient } from '../anthropicClient.js'
 
 /**
  * Conversation reviewer agent. Once a day (01:00 Madrid, from the scheduler
@@ -296,7 +297,7 @@ Cada hallazgo tiene dos partes:
 }
 
 let client: Anthropic | null = null
-const getClient = () => (client ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }))
+const getClient = () => (client ??= anthropicClient())
 
 export type ReviewerLLM = (system: string, transcript: string) => Promise<{ summary: string; findings: ReviewFinding[] }>
 
@@ -517,7 +518,8 @@ async function notifyRecipients(day: string, stats: ReviewStats, summary: string
  * the findings reach HQ through the flags route (D-189).
  */
 export async function runDailyReviewIfDue(now: Date = new Date()): Promise<ReviewResult | null> {
-  if (!env.ANTHROPIC_API_KEY) return null
+  // PRO-1315: not in staging with «Mimo remoto».
+  if (!env.ANTHROPIC_API_KEY || !aiJobsWithoutUserAllowed()) return null
   const p = madridParts(now)
   if (p.hour < REVIEW_HOUR) return null
   const day = addDays(p.isoDate, -1)

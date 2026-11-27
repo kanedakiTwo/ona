@@ -26,6 +26,7 @@ import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { tokenSetMatch, type CatalogEntry } from './ingredientTokenMatch.js'
 import { normalizeText } from './dietaryRestrictions.js'
+import { anthropicClient } from './anthropicClient.js'
 
 export const FRIDGE_READER_MODEL = CLAUDE_MODEL
 
@@ -250,7 +251,7 @@ export async function readFridgeText(userId: string, text: string, deps: FridgeR
   let create = deps.create
   if (!create) {
     if (!env.ANTHROPIC_API_KEY) return fallback()
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+    const client = anthropicClient()
     create = (p) => client.messages.create(p)
   }
   const names = [...new Set(catalog.map((c) => c.name))].slice(0, 4000).join('\n')

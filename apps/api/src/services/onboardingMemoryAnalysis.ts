@@ -71,6 +71,7 @@ import {
   type SlotChange,
   type WeekTypeSlotRequest,
 } from './weekType.js'
+import { anthropicClient } from './anthropicClient.js'
 
 /** Same model as Mimo (ASSISTANT_MODEL in assistant/engine.ts). */
 export const ONBOARDING_ANALYSIS_MODEL = CLAUDE_MODEL
@@ -530,7 +531,7 @@ export async function analyzeOnboardingIntoMemory(
   let create = deps.create
   if (!create) {
     if (!env.ANTHROPIC_API_KEY) return none
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+    const client = anthropicClient()
     create = (p) => client.messages.create(p)
   }
   const store = deps.readMemory && deps.writeMemory ? null : await import('./userMemoryStore.js')

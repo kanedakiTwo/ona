@@ -10,6 +10,7 @@ import { env } from '../../config/env.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 import { isOnFreePlan } from '../accountAccess.js'
 import { anthropicUnits, recordCost } from '../costLedger.js'
+import { anthropicClient } from '../anthropicClient.js'
 
 export interface PhraseFactsInput {
   recipeName: string
@@ -50,7 +51,7 @@ export async function cookNowPhrase(
     let create = deps.create
     if (!create) {
       if (!env.ANTHROPIC_API_KEY) return null
-      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+      const client = anthropicClient()
       create = (p) => client.messages.create(p) as any
     }
     const call = create({

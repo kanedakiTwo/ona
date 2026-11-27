@@ -70,6 +70,7 @@ import { sameFactValue } from './writer.js'
 import { mentionsHealth } from './healthText.js'
 import { collectHouseholdDaySignals, type HouseholdDaySignals, type SignalMember } from './signals.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+import { aiJobsWithoutUserAllowed, anthropicClient } from '../anthropicClient.js'
 
 type Db = typeof defaultDb
 
@@ -609,7 +610,7 @@ export interface RefinerBatchClient {
 }
 
 let anthropic: Anthropic | null = null
-const client = () => (anthropic ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }))
+const client = () => (anthropic ??= anthropicClient())
 
 export const anthropicBatchClient: RefinerBatchClient = {
   async create(requests) {
@@ -1030,7 +1031,8 @@ export async function collectRefinerResults(now: Date, deps: Pick<RefinerDeps, '
  * day that just ended (once); on every tick, collect the batches that ended.
  */
 export async function runProfileRefinerIfDue(now: Date = new Date(), deps?: RefinerDeps): Promise<{ submit: SubmitResult | null; weekly: SubmitResult | null; collected: number } | null> {
-  if (!deps && !env.ANTHROPIC_API_KEY) return null
+  // PRO-1315: the nightly and weekly passes don't run in staging with «Mimo remoto».
+  if (!deps && (!env.ANTHROPIC_API_KEY || !aiJobsWithoutUserAllowed())) return null
   const d = deps ?? defaultRefinerDeps()
   const p = madridParts(now)
   const submit = p.hour >= REFINER_HOUR ? await submitNightlyRefinement(addDays(p.isoDate, -1), now, d) : null

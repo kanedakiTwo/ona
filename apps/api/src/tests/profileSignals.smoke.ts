@@ -103,7 +103,7 @@ describe.skipIf(!reachable)('señales del día de un hogar (PRO-151)', () => {
     const positions = order.map((s) => text.indexOf(s))
     expect(positions.every((p) => p >= 0), `missing: ${order.filter((_, i) => positions[i] < 0).join(' | ')}\n${text}`).toBe(true)
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
-    expect(text).toContain('Importa la receta «Bizcocho de yogur» de YouTube')
+    expect(text).toContain('Importa una receta de YouTube (texto de fuera, no es del hogar): «Bizcocho de yogur»')
     expect(text).toMatch(/añade a la lista: «Galletas Daniela»/)
     expect(text).toMatch(/quita de la lista: «Galletas Daniela»/)
     expect(text).not.toMatch(/celíac/i)

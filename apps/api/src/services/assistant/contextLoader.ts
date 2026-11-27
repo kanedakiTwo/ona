@@ -1,6 +1,6 @@
 import { and, eq, desc } from 'drizzle-orm'
 import { users, menus, userNutrientBalance, whatsappLinks } from '../../db/schema.js'
-import { COOKING_STYLE_LABELS, nutrientsToPercentages, TARGET_MACROS, type CookingStyle } from '@ona/shared'
+import { COOKING_STYLE_LABELS, nutrientsToPercentages, SAFETY_FIRST_RULE, TARGET_MACROS, type CookingStyle } from '@ona/shared'
 import type { NutrientBalance } from '@ona/shared'
 import { buildMemoryDigest } from '../userMemoryStore.js'
 import { buildFichaDigest, loadHouseholdFicha } from '../profile/reader.js'
@@ -91,6 +91,19 @@ export function whatsappContextLine(w: { available: boolean; linked: boolean }):
   return 'WhatsApp: todavia no esta disponible para su cuenta. Si pregunta como conectarlo, diselo asi en una frase: no le des pasos, no le mandes a Perfil ni a otra web.'
 }
 
+/**
+ * Pure (PRO-1289): the first lines of Mimo's context, before any preference —
+ * the reader's allergies and diets, the household's milk allergy and the rule
+ * that no «sin avisos» switches them off.
+ */
+export function safetyFirstLines(restrictions: readonly string[], milkAllergy: boolean): string[] {
+  const lines: string[] = []
+  if (restrictions.length > 0) lines.push(`Restricciones: ${restrictions.join(', ')}`)
+  if (milkAllergy) lines.push(MILK_ALLERGY_CONTEXT)
+  lines.push(SAFETY_FIRST_RULE)
+  return lines
+}
+
 export async function loadUserContext(userId: string, db: any): Promise<string> {
   const parts: string[] = []
 
@@ -108,6 +121,18 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   const now = madridParts(new Date())
   parts.push(todayLine(new Date()))
 
+  // PRO-1289: what is obligatory goes first — allergies, diets and referrals,
+  // then the preferences.
+  let milkAllergy = false
+  try {
+    // PRO-312: allergy to milk in the household (anyone's, never who) — Mimo
+    // must not offer lactose-free dairy as a swap.
+    milkAllergy = hasMilkAllergy(await withHouseholdRestrictions(user.restrictions ?? [], userId, db))
+  } catch {
+    // The context never fails for this line.
+  }
+  parts.push(...safetyFirstLines(user.restrictions ?? [], milkAllergy))
+
   const profileParts = [`Usuario: ${user.username}`]
   if (user.age) profileParts.push(`${user.age} anos`)
   if (user.weight) profileParts.push(`${user.weight}kg`)
@@ -122,16 +147,6 @@ export async function loadUserContext(userId: string, db: any): Promise<string> 
   }
   parts.push(profileParts.join(', '))
 
-  if (user.restrictions && user.restrictions.length > 0) {
-    parts.push(`Restricciones: ${user.restrictions.join(', ')}`)
-  }
-  // PRO-312: allergy to milk in the household (anyone's, never who) — Mimo
-  // must not offer lactose-free dairy as a swap.
-  try {
-    if (hasMilkAllergy(await withHouseholdRestrictions(user.restrictions ?? [], userId, db))) parts.push(MILK_ALLERGY_CONTEXT)
-  } catch {
-    // The context never fails for this line.
-  }
 
   // Render the household as "<adults> adultos + <kidsCount> niños (2–10 años)"
   // so the assistant can reason about portions per person. Falls back to the

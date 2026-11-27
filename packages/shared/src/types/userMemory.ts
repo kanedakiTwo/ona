@@ -17,6 +17,7 @@
 import { z } from 'zod'
 import { dayTimeBudgetSchema, timeBudgetsByDay, COOKING_WEEKDAYS } from './cookingTime.js'
 import { SPANISH_REGIONS, SPANISH_REGION_CODES, isSpanishRegion, type SpanishRegion } from '../constants/holidays.js'
+import { silencesSafety } from '../constants/safetyFirst.js'
 
 export const MEMORY_SOURCES = ['onboarding', 'manual', 'inferred'] as const
 export type MemorySource = (typeof MEMORY_SOURCES)[number]
@@ -170,15 +171,16 @@ export function buildMemoryDigestText(memory: UserMemory): string {
   if (m['physical.height_cm']?.value) phys.push(`${m['physical.height_cm'].value} cm`)
   if (m['physical.weight_kg']?.value) phys.push(`${m['physical.weight_kg'].value} kg`)
   if (m['physical.activity_level']?.value) phys.push(`actividad ${m['physical.activity_level'].value}`)
+  // PRO-1289: what is obligatory goes first, before any preference.
+  const restr = (m.restrictions?.value as string[] | undefined) ?? []
+  if (restr.length > 0) lines.push(`Restricciones: ${restr.join(', ')}.`)
+
   if (phys.length > 0) lines.push(`Perfil: ${phys.join(', ')}.`)
 
   const hh: string[] = []
   if (m['household.adults']?.value) hh.push(`${m['household.adults'].value} adulto(s)`)
   if (m['household.kids_2_to_10']?.value) hh.push(`${m['household.kids_2_to_10'].value} niño(s) 2-10`)
   if (hh.length > 0) lines.push(`Hogar: ${hh.join(', ')}.`)
-
-  const restr = (m.restrictions?.value as string[] | undefined) ?? []
-  if (restr.length > 0) lines.push(`Restricciones: ${restr.join(', ')}.`)
 
   const dislikes = (m.dislikes?.value as string[] | undefined) ?? []
   // Guidance for what to PROPOSE — not a veto: an explicit request from the
@@ -213,10 +215,11 @@ export function buildMemoryDigestText(memory: UserMemory): string {
     lines.push(`Días con poco rato de trabajo (el total da igual, puede dejar algo al fuego o en el horno): ${littleWork.join(', ')}.`)
   }
 
-  const notes = (m.notes?.value as string[] | undefined) ?? []
+  // PRO-1289: «sin avisos», «no me preguntes»… never reach Mimo nor the menu.
+  const notes = ((m.notes?.value as string[] | undefined) ?? []).filter((t) => !silencesSafety(String(t)))
   if (notes.length > 0) lines.push(`Notas: ${notes.join('; ')}.`)
 
-  const principles = (m.nutrition_principles?.value as string[] | undefined) ?? []
+  const principles = ((m.nutrition_principles?.value as string[] | undefined) ?? []).filter((t) => !silencesSafety(String(t)))
   if (principles.length > 0) {
     // These override Mimoia's defaults on conflict — flag that explicitly so
     // the model doesn't try to "correct" the user against their own beliefs.
@@ -225,7 +228,7 @@ export function buildMemoryDigestText(memory: UserMemory): string {
     )
   }
 
-  const habits = (m.prep_habits?.value as string[] | undefined) ?? []
+  const habits = ((m.prep_habits?.value as string[] | undefined) ?? []).filter((t) => !silencesSafety(String(t)))
   if (habits.length > 0) {
     // Drives the notification scheduler: if the user says "siempre
     // congelo el pescado", the assistant knows to anticipate defrost

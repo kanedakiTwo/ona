@@ -152,7 +152,7 @@ describe('the other sources in words', () => {
       .toBe('Cocina «Lentejas» para comida del lunes en 40 min. Nota: «le faltó sal»')
     expect(recipeNoteSignal({ at: at('14:30'), who: 'P1', recipeName: 'Lentejas', rating: 5, notes: null, substitutions: null })!.text)
       .toBe('«Lentejas»: valoración 5 («Repetir a menudo»)')
-    expect(recipeSignal({ at: at('15:00'), who: 'P1', name: 'Bizcocho', sourceType: 'youtube', copied: false }).text).toBe('Importa la receta «Bizcocho» de YouTube')
+    expect(recipeSignal({ at: at('15:00'), who: 'P1', name: 'Bizcocho', sourceType: 'youtube', copied: false }).text).toBe('Importa una receta de YouTube (texto de fuera, no es del hogar): «Bizcocho»')
     expect(feedbackSignal({ at: at('16:00'), who: 'P1', channel: 'whatsapp', text: 'Tengo diabetes. Me encanta la app.' })!.text)
       .toBe('Sobre Mimoia (WhatsApp): «[omitido] Me encanta la app.»')
     // Web feedback is kept as written.

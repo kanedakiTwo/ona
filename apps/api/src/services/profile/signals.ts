@@ -334,7 +334,8 @@ export interface RecipeInput {
 export function recipeSignal(r: RecipeInput): DaySignal {
   let text: string
   if (r.copied) text = `Guarda una copia de ${dish(r.name)} para editarla`
-  else if (r.sourceType && IMPORT_FROM[r.sourceType]) text = `Importa la receta ${dish(r.name)} ${IMPORT_FROM[r.sourceType]}`
+  // PRO-1289: the name comes from someone else's text; it says so, for the refiner.
+  else if (r.sourceType && IMPORT_FROM[r.sourceType]) text = `Importa una receta ${IMPORT_FROM[r.sourceType]} (texto de fuera, no es del hogar): ${dish(r.name)}`
   else text = `Crea la receta ${dish(r.name)}`
   return { at: r.at, source: 'recipe', who: r.who, text }
 }

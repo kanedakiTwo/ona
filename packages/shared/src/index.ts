@@ -316,6 +316,7 @@ export {
   RELIGION_CONSENT_NOTE,
 } from './constants/healthConsent.js'
 export type { HealthConsentState } from './constants/healthConsent.js'
+export { silencesSafety, stripSilencing, SAFETY_FIRST_RULE } from './constants/safetyFirst.js'
 export { RESTRICTION_PRESETS, saysNone, unionRestrictions } from './constants/restrictions.js'
 export type { RestrictionPreset } from './constants/restrictions.js'
 

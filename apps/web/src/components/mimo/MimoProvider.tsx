@@ -34,6 +34,8 @@ import { useFloatingButtonsHidden } from '@/hooks/useFloatingButtonsHidden'
 
 /** PRO-1302: the API's 429s for the month's cap; their text is Mimo's notice. */
 const CAP_CODES = new Set(['ADVISOR_BUDGET_EXCEEDED', 'SPEND_CAP_EXCEEDED'])
+/** PRO-1336: the mic recorded something but the transcript came back empty (same words as the API's voiceEmptyReply). */
+const VOICE_EMPTY_REPLY = 'No te he oído bien. ¿Me lo repites o me lo escribes?'
 
 export interface MimoMessage {
   id: string
@@ -387,6 +389,8 @@ export default function MimoProvider({ children }: { children: ReactNode }) {
       if (!text?.trim()) {
         setStatus('idle')
         if (handsFreeRef.current) listenRef.current()
+        // PRO-1336: something was recorded but no words came out: Mimo asks to repeat it.
+        else append({ role: 'assistant', content: VOICE_EMPTY_REPLY })
         return
       }
       await ask(text, true)

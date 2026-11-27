@@ -22,6 +22,8 @@ import { COALESCE_WINDOW_MS } from '../services/whatsapp/coalesce.js'
 import { checkinReplyIdOfEmoji } from '../services/whatsapp/checkinButtons.js'
 import { listCodeReply, menuCodeReply, recognizeCodeIntent, type RunSkill } from '../services/assistant/codeReply.js'
 import { capNoticeWhatsApp } from '../services/capNotice.js'
+import type { ToolTrace } from '../services/assistant/types.js'
+import { VOICE_NOTE_NOTE } from '../services/assistant/voiceNote.js'
 
 const NOW = new Date('2026-10-06T12:00:00Z')
 const PHONE = '34600111222'
@@ -61,7 +63,7 @@ function setup(overrides: {
   history?: HistoryRow[]
   recentLinkHint?: boolean
   allowed?: boolean
-  chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[]; survey?: string }
+  chatReply?: { message: string; uiHint?: string; data?: unknown; toolsUsed?: string[]; survey?: string; toolTrace?: ToolTrace[] }
   menuDigest?: InboundDeps['menuDigest']
   menuImage?: InboundDeps['menuImage']
   /** Only picture messages fail (e.g. the media upload). */
@@ -430,7 +432,8 @@ describe('processInbound — voice notes', () => {
     const t = setup({ transcribe })
     await processInbound(audio(), t.deps)
     expect(transcribe).toHaveBeenCalledWith(Buffer.from('bytes'), 'audio/ogg; codecs=opus')
-    expect(t.chat).toHaveBeenCalledWith('user-1', 'ponme lentejas el jueves', [], expect.objectContaining({ mode: 'whatsapp' }))
+    // PRO-1336: the model gets the words with the voice-note note above them.
+    expect(t.chat).toHaveBeenCalledWith('user-1', `${VOICE_NOTE_NOTE}\n\nponme lentejas el jueves`, [], expect.objectContaining({ mode: 'whatsapp' }))
     expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: 'ponme lentejas el jueves' })
   })
 
@@ -438,6 +441,69 @@ describe('processInbound — voice notes', () => {
     const t = setup({ transcribe: async () => '   ' })
     await processInbound(audio(), t.deps)
     expect(t.sent).toEqual([{ type: 'text', text: COPY.audioFailed }])
+    expect(t.chat).not.toHaveBeenCalled()
+  })
+
+  // PRO-1336: three transcribed audios — clear, doubtful and empty.
+  it('claro: actúa y la respuesta empieza por lo entendido (si Mimo no lo dijo, lo pone el código)', async () => {
+    const t = setup({
+      transcribe: async () => 'Quita el pescado del jueves y pon tortilla',
+      chatReply: {
+        message: 'Hecho:\n- Jueves 15, cena: Tortilla de patatas',
+        toolsUsed: ['swap_meal'],
+        toolTrace: [{ name: 'swap_meal', input: '{}', summary: 'Jueves 15, cena: Tortilla de patatas (antes: Merluza al horno)' }],
+      },
+    })
+    await processInbound(audio(), t.deps)
+    expect(t.chat).toHaveBeenCalledOnce()
+    expect(t.sent).toHaveLength(1)
+    expect(t.sent[0].text).toBe('Entendido: «Quita el pescado del jueves y pon tortilla».\nHecho:\n- Jueves 15, cena: Tortilla de patatas')
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: 'Quita el pescado del jueves y pon tortilla' })
+  })
+
+  it('claro: si Mimo ya dice lo entendido, no se repite; si solo lee, no hay línea', async () => {
+    const said = setup({
+      transcribe: async () => 'quita el pescado del jueves',
+      chatReply: {
+        message: 'Entendido: quitar el pescado del jueves.\nHecho:\n- Jueves 15, cena: quitada',
+        toolsUsed: ['clear_meal'],
+        toolTrace: [{ name: 'clear_meal', input: '{}', summary: 'Jueves 15, cena: quitada' }],
+      },
+    })
+    await processInbound(audio(), said.deps)
+    expect(said.sent[0].text).toBe('Entendido: quitar el pescado del jueves.\nHecho:\n- Jueves 15, cena: quitada')
+
+    const read = setup({ transcribe: async () => 'qué cenamos el jueves', chatReply: { message: 'El jueves cenáis merluza al horno.' } })
+    await processInbound(audio(), read.deps)
+    expect(read.sent[0].text).toBe('El jueves cenáis merluza al horno.')
+  })
+
+  it('dudoso: no llama al modelo ni cambia nada; dice lo que oyó y pregunta', async () => {
+    const t = setup({ transcribe: async () => 'Eh… pescado.' })
+    await processInbound(audio(), t.deps)
+    expect(t.chat).not.toHaveBeenCalled()
+    expect(t.sent).toEqual([{ type: 'text', text: 'He oído «Eh… pescado», pero no sé bien qué quieres que haga. ¿Me lo repites o me lo escribes?' }])
+    expect(t.inboundUpdates.at(-1)).toMatchObject({ status: 'processed', body: 'Eh… pescado.', meta: { tools: [], voiceNote: 'doubtful' } })
+  })
+
+  it('una palabra que contesta a la pregunta de Mimo sí va al modelo', async () => {
+    const asked: HistoryRow = {
+      direction: 'out',
+      kind: 'reply',
+      status: 'sent',
+      body: '¿Qué quieres quitar del jueves?',
+      createdAt: new Date(NOW.getTime() - 60_000),
+    } as HistoryRow
+    const t = setup({ transcribe: async () => 'Pescado.', history: [asked] })
+    await processInbound(audio(), t.deps)
+    expect(t.chat).toHaveBeenCalledOnce()
+  })
+
+  it('vacío: pide repetirlo (también un fantasma del reconocimiento de voz)', async () => {
+    const t = setup({ transcribe: async () => 'Subtítulos realizados por la comunidad de Amara.org' })
+    await processInbound(audio(), t.deps)
+    expect(t.sent).toEqual([{ type: 'text', text: COPY.audioFailed }])
+    expect(COPY.audioFailed).toMatch(/¿Me lo repites/)
     expect(t.chat).not.toHaveBeenCalled()
   })
 

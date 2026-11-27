@@ -37,6 +37,7 @@ import type { Lang } from './language.js'
 import { API_SALDO_REPLY, noteApiBalanceError } from '../apiSaldo.js'
 import { isTypedAnswer, parseConsentButton, withChatAllergyOutbox, type ChatAllergyOutbox, type ConsentButton, type FlushMessage } from '../chatAllergies.js'
 import { asksSomething, capNoticeWhatsApp, reachesCap } from '../capNotice.js'
+import { voiceDoubtfulReply, voiceNoteClarity, withUnderstoodLine, withVoiceNoteNote } from '../assistant/voiceNote.js'
 import {
   ASK_SOURCE_COPY,
   PHOTO_SOURCE_WINDOW_MS,
@@ -75,7 +76,7 @@ export interface InboundDeps {
         body?: string | null
         userId?: string | null
         errorMessage?: string | null
-        meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: ToolTrace[]; /** PRO-1292: answered by the code (its kind), no model. */ codeReply?: string } & PhotoSourceMeta
+        meta?: { tools?: string[]; corrections?: string[]; ms?: number; toolTrace?: ToolTrace[]; /** PRO-1292: answered by the code (its kind), no model. */ codeReply?: string; /** PRO-1336: a doubtful voice note, asked instead of acted on. */ voiceNote?: 'doubtful' } & PhotoSourceMeta
       },
     ) => Promise<void>
     insertOutbound: (row: {
@@ -1167,7 +1168,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
           console.error('[whatsapp] transcription failed:', err?.message ?? err)
           text = null
         }
-        if (!text) {
+        // PRO-1336: an STT ghost («Subtítulos… Amara.org») is no words either.
+        if (!text || voiceNoteClarity(text) === 'empty') {
           await store.updateInbound(msg.wamid, { status: 'failed', userId, errorMessage: 'transcription-empty-or-failed' })
           await outText('system', COPY.audioFailed)
           return
@@ -1212,9 +1214,17 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
     // 19-nov: far enough back for last night's check-in (the late-answer note, until 13:00).
     const rows = await store.loadHistoryRows(msg.from, new Date(now.getTime() - Math.max(HISTORY_WINDOW_MS, LATE_CHECKIN_LOOKBACK_MS)), userId)
     const history = buildChatHistory(rows, now)
+    // PRO-1336: a voice note that is only fillers or one loose word gets what
+    // was heard and a question, before Mimo changes anything (no model).
+    const voiceNote = msg.kind === 'audio'
+    if (voiceNote && voiceNoteClarity(text, awaitsAnswer(rows, now)) === 'doubtful') {
+      await store.updateInbound(msg.wamid, { status: 'processed', userId, body: text, meta: { tools: [], voiceNote: 'doubtful' } })
+      await outText('reply', voiceDoubtfulReply(text, await languageOf()))
+      return
+    }
     // PRO-250: a reply after midnight to last night's «¿hiciste la cena?» is about that day.
     const lateCheckin = lateDinnerCheckinNote(rows, now)
-    const chatText = [lateCheckin, answer.note, text].filter(Boolean).join('\n\n')
+    const chatText = [lateCheckin, answer.note, voiceNote ? withVoiceNoteNote(text) : text].filter(Boolean).join('\n\n')
     const runChat = () => deps.chat(userId, chatText, history, {
       mode: 'whatsapp',
       ...(images ? { images } : {}),
@@ -1253,6 +1263,8 @@ export async function processInbound(msg: InboundMessage, deps: InboundDeps): Pr
         })()
       : runChat()
     const { usage, ...response } = await turn
+    // PRO-1336: a voice note that changed something says first what was understood.
+    if (voiceNote) response.message = withUnderstoodLine(response.message, text, response.toolTrace, await languageOf())
     // 18-nov: the WhatsApp sign-up (and the first menu it ends with) doesn't
     // count toward Mimo's monthly cap; the cost ledger still sees it.
     let added = 0

@@ -23,6 +23,7 @@ import { listCodeReply, menuCodeReply, recognizeCodeIntent, stepCodeReply, type 
 import { channelOfMode, trackEvent } from '../services/usageEvents.js'
 import type { AssistantResponse } from '../services/assistant/types.js'
 import { randomUUID } from 'node:crypto'
+import { voiceDoubtfulReply, voiceEmptyReply, voiceNoteClarity, withUnderstoodLine, withVoiceNoteNote } from '../services/assistant/voiceNote.js'
 import { answerConsentButton, finishChatTurn, parseConsentButton, withChatAllergyOutbox } from '../services/chatAllergies.js'
 import { answerDeps, noteSaidByCode } from '../services/chatAllergySave.js'
 import { runWithCostUser } from '../services/costLedger.js'
@@ -159,6 +160,24 @@ async function chatTurn(req: AuthRequest, res: import('express').Response): Prom
 
     const chatHistory: ChatMessage[] = Array.isArray(history) ? history : []
 
+    // PRO-1336: the mic's words that are nothing (an STT ghost), only fillers or
+    // one loose word: what was heard and a question, before any change (no model).
+    const voiceNote = mode === 'voice' && !attachment
+    if (voiceNote) {
+      const lastWords = [...chatHistory].reverse().find((m) => m?.role === 'assistant')?.content
+      const clarity = voiceNoteClarity(message, asksSomething(lastWords) || /\[\[opciones:/.test(lastWords ?? ''))
+      if (clarity !== 'clear') {
+        const response = { message: clarity === 'empty' ? voiceEmptyReply() : voiceDoubtfulReply(message), actionTaken: false }
+        try {
+          await recordWebChatTurn({ userId, userMessage: message, response, mode, path, ms: 0 }, db)
+        } catch (e) {
+          console.warn('[assistant] recordWebChatTurn failed (continuing):', e)
+        }
+        res.json(response)
+        return
+      }
+    }
+
     // Monthly caps, before spending any tokens: the one on all paid AI
     // (spendCap.ts, admins exempt) and Mimo's own € budget. Reset next month.
     const budget = await checkAdvisorBudget(userId, db)
@@ -191,7 +210,8 @@ async function chatTurn(req: AuthRequest, res: import('express').Response): Prom
       // Only recipes this user may see: someone else's private recipe stays unnamed.
       recipeName = r && (await canViewRecipe(userId, r.authorId)) ? r.name : null
     }
-    const modelMessage = mode === 'onboarding' ? message : withPageContext(message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
+    const modelMessage =
+      mode === 'onboarding' ? message : withPageContext(voiceNote ? withVoiceNoteNote(message) : message, pageContextNote(page, recipeName, page.kind === 'cooking' ? cookStep : null))
 
     const chatOpts = { mode, page: page.kind, ...(attachment ? { images: [attachment] } : {}) }
     // Growth gate (2026-11-26): the nutritionist's diet reached Mimo.
@@ -212,6 +232,8 @@ async function chatTurn(req: AuthRequest, res: import('express').Response): Prom
     const { usage, ...response }: Awaited<ReturnType<typeof chat>> & { healthMessages?: WebHealthMessage[] } = turn
       ? await turn.run
       : await chat(userId, modelMessage, chatHistory, db, chatOpts)
+    // PRO-1336: a voice turn that changed something says first what was understood.
+    if (voiceNote) response.message = withUnderstoodLine(response.message, message, response.toolTrace)
     if (turn) {
       const healthMessages: WebHealthMessage[] = []
       try {

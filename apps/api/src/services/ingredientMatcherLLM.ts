@@ -30,10 +30,10 @@
  * never block an import on the LLM step.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from './costLedger.js'
 import { env } from '../config/env.js'
 import { CLAUDE_MODEL } from '../config/models.js'
+import { anthropicClient } from './anthropicClient.js'
 
 export interface LlmCandidate {
   /** The raw extracted name (e.g. "pechuga de pollo"). */
@@ -100,7 +100,7 @@ export async function disambiguateIngredients(
   if (input.unmatched.length === 0) return out
   if (!env.ANTHROPIC_API_KEY) return out
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  const client = anthropicClient()
 
   const userMsg = JSON.stringify({
     recipe_name: input.recipeName ?? null,

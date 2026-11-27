@@ -25,6 +25,7 @@ import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { tokenSetMatch, type CatalogEntry } from './ingredientTokenMatch.js'
 import { compileRestrictions, normalizeText, restrictionKey } from './dietaryRestrictions.js'
+import { anthropicClient } from './anthropicClient.js'
 
 export const RESTRICTION_READER_MODEL = CLAUDE_MODEL
 
@@ -267,7 +268,7 @@ export async function readRestrictionText(userId: string, text: string, deps: Re
   let create = deps.create
   if (!create) {
     if (!env.ANTHROPIC_API_KEY) return readByRules(t, catalog)
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+    const client = anthropicClient()
     create = (p) => client.messages.create(p)
   }
   let response

@@ -11,6 +11,7 @@ import { PROFILE_FACT_VALUE_SCHEMAS } from '@ona/shared'
 import { env } from '../../config/env.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 import { recordAnthropicCost } from '../costLedger.js'
+import { anthropicClient } from '../anthropicClient.js'
 
 /** The value format of each type, with an example, for the model. */
 const FORMAT: Record<string, string> = {
@@ -88,7 +89,7 @@ export async function interpretCorrection(
   let create = deps.create
   if (!create) {
     if (!env.ANTHROPIC_API_KEY) return { kind: 'note', note: input.text.trim().slice(0, 280) }
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+    const client = anthropicClient()
     create = (p) => client.messages.create(p)
   }
   const user = [

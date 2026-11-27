@@ -21,6 +21,7 @@ import { recordAnthropicCost } from './costLedger.js'
 import { normalizeText } from './dietaryRestrictions.js'
 import { dishType, proteinKind, type TasteRecipe } from './tasteDeck.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
+import { anthropicClient } from './anthropicClient.js'
 
 export const TASTE_MODEL = CLAUDE_MODEL
 /** Past this the batch falls back to the variety order (the client asked at card 5, so there is margin). */
@@ -38,7 +39,7 @@ function modelCreate(explicit?: CreateFn): CreateFn | null {
   if (explicit) return explicit
   if (testCreate) return testCreate
   if (!env.ANTHROPIC_API_KEY) return null
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  const client = anthropicClient()
   return (p) => client.messages.create(p)
 }
 

@@ -28,6 +28,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from '../costLedger.js'
 import { env } from '../../config/env.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
+import { anthropicClient } from '../anthropicClient.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -83,7 +84,7 @@ async function writeDiskCache(
 let cachedClient: Anthropic | null = null
 function getClient(): Anthropic | null {
   if (!env.ANTHROPIC_API_KEY) return null
-  if (!cachedClient) cachedClient = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  if (!cachedClient) cachedClient = anthropicClient()
   return cachedClient
 }
 

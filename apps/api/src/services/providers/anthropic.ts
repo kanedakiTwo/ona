@@ -9,6 +9,7 @@ import type {
   VisionProvider,
 } from '../recipeExtractor.js'
 import { CLAUDE_MODEL } from '../../config/models.js'
+import { anthropicClient } from '../anthropicClient.js'
 
 const EXTRACTION_PROMPT = `Eres un asistente especializado en extraer recetas de fotografias.
 Analiza la imagen proporcionada que contiene una receta escrita o impresa.
@@ -166,7 +167,7 @@ export class AnthropicProvider implements VisionProvider, TextExtractionProvider
     if (!env.ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY is not configured')
     }
-    this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+    this.client = anthropicClient()
   }
 
   async extractRecipe(imageBase64: string, mimeType: string): Promise<RawExtractedRecipe> {

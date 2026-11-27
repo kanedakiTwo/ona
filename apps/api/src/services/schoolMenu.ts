@@ -7,7 +7,6 @@
  * Wording rule (constitution §6): «para no repetir», never «para equilibrar».
  */
 import { CLAUDE_MODEL } from '../config/models.js'
-import Anthropic from '@anthropic-ai/sdk'
 import { and, between, eq, gt, inArray, or } from 'drizzle-orm'
 import {
   SCHOOL_DISH_MAX,
@@ -24,6 +23,7 @@ import { db as defaultDb } from '../db/connection.js'
 import { householdMembers, householdPersons, profileFacts, schoolLunches, users } from '../db/schema.js'
 import { recordAnthropicCost } from './costLedger.js'
 import { fitImageForClaude } from './visionImage.js'
+import { anthropicClient } from './anthropicClient.js'
 
 type Db = typeof defaultDb
 
@@ -90,7 +90,7 @@ export type SchoolMenuReader = (file: { data: Buffer; mimeType: SchoolMenuMimeTy
 /** The real reader: one Claude call with the image or the PDF. */
 export const anthropicSchoolMenuReader: SchoolMenuReader = async (file, today, userId) => {
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not configured')
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  const client = anthropicClient()
   const data = file.data.toString('base64')
   const source =
     file.mimeType === 'application/pdf'

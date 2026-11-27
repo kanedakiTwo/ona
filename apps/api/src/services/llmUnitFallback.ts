@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicCost } from './costLedger.js'
 import { env } from '../config/env.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../config/models.js'
+import { anthropicClient } from './anthropicClient.js'
 
 export interface LlmUnitInput {
   displayQuantity: number
@@ -53,7 +54,7 @@ class AnthropicLlmUnitClient implements LlmUnitClient {
     if (!env.ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY is not configured')
     }
-    this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+    this.client = anthropicClient()
   }
 
   async call(input: LlmUnitInput): Promise<LlmUnitResult> {

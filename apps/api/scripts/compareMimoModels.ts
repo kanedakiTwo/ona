@@ -30,6 +30,8 @@ import { buildTurnMessages, runToolLoop } from '../src/services/assistant/engine
 import { buildChatHistory } from '../src/services/whatsapp/history.js'
 import { computeCostMicros } from '../src/config/pricing.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
+import { flushCostEvents } from '../src/services/costLedger.js'
+import { scriptAnthropic } from '../src/services/scriptCost.js'
 
 const READ_SKILLS = new Set([
   'get_todays_menu', 'get_recipe_details', 'search_recipes', 'suggest_recipes', 'get_my_recipes',
@@ -51,7 +53,7 @@ pool.on('error', (e) => console.log(`pool: ${String(e).slice(0, 120)}`))
 const ro = await pool.query('show default_transaction_read_only')
 if (ro.rows[0].default_transaction_read_only !== 'on') throw new Error('The database session is not read-only — refusing to run.')
 
-const anthropic = new Anthropic()
+const anthropic = scriptAnthropic('compareMimoModels', new Anthropic())
 const { rows: turns } = await pool.query(
   `select id, user_id, phone, body, created_at from whatsapp_messages
     where direction = 'in' and status = 'processed' and user_id is not null
@@ -184,4 +186,5 @@ await Promise.all(Array.from({ length: concurrency }, async () => {
 out.sort((a, b) => a.n - b.n)
 await writeFile(outPath, JSON.stringify(out, null, 1))
 console.log(`→ ${outPath}`)
+await flushCostEvents()
 await pool.end()

@@ -76,7 +76,7 @@ Cocina's reviewer scores every catalogue recipe against the kitchen manifesto (`
 
 ## LLM Regeneration Pipeline
 
-The script `apps/api/scripts/regenerateRecipes.ts` is run manually by a curator:
+The script `apps/api/scripts/regenerateRecipes.ts` was run manually by a curator to regenerate the catalogue once; it was removed in PRO-1316 (done, and it called the API without recording its cost). What it did:
 
 1. Loads each existing recipe (from the old seed or current DB)
 2. Sends a structured prompt to Claude with: the original name, the original ingredient list, the original step strings, the new schema definition, and the lint rules
@@ -115,8 +115,7 @@ Minimums are a **base or dressing** amount, not a main's, for what goes into a s
 - [apps/api/src/services/stepDietMentions.ts](../apps/api/src/services/stepDietMentions.ts) — rule 2b (diet and allergen words in the steps); [apps/api/src/services/stepDietMentionsAudit.ts](../apps/api/src/services/stepDietMentionsAudit.ts) + [apps/api/scripts/auditStepDietMentions.ts](../apps/api/scripts/auditStepDietMentions.ts) — the catalogue pass for Cocina
 - [apps/api/src/services/recipeLint.ranges.ts](../apps/api/src/services/recipeLint.ranges.ts) — per-ingredient sanity ranges
 - [apps/api/src/services/recipePersistence.ts](../apps/api/src/services/recipePersistence.ts) — orchestrator: lint → nutrition aggregate → allergen union → DB write (single canonical save path used by the API route, the photo extractor and the apply script)
-- [apps/api/src/services/regenSchema.ts](../apps/api/src/services/regenSchema.ts) — Zod schema describing the LLM regen JSON output, used by both `regenerateRecipes.ts` to validate the model response and by the apply script to type the JSONL rows
-- [apps/api/scripts/regenerateRecipes.ts](../apps/api/scripts/regenerateRecipes.ts) — LLM regeneration entry point
+- [apps/api/src/services/regenSchema.ts](../apps/api/src/services/regenSchema.ts) — Zod schema describing the LLM regen JSON output, used by the apply script to type the JSONL rows
 - [apps/api/scripts/applyRegeneratedRecipes.ts](../apps/api/scripts/applyRegeneratedRecipes.ts) — write reviewed JSONL into DB; supports `--auto-create-missing` (see [Ingredient Auto-Create](./ingredient-auto-create.md))
 - [apps/api/src/services/recipeExtractor.ts](../apps/api/src/services/recipeExtractor.ts) — photo extractor; feeds output through `recipePersistence`
 - [apps/api/src/seed/recipes.ts](../apps/api/src/seed/recipes.ts) — final lint-validated catalog

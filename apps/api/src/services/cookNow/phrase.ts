@@ -1,8 +1,9 @@
 /**
  * Mimo's line on the preferred «Cocinar ahora» recipe (specs/cook-now.md):
  * one short sentence written only from the facts given. The only live AI
- * call of the feature; billed as `cook_now_phrase`, outside Mimo's monthly
- * cap; a paused account gets none. Never throws: null on any failure or
+ * call of the feature; billed as `cook_now_phrase` to the user and household
+ * that asked for it (PRO-1316), outside Mimo's monthly cap
+ * (OUTSIDE_MONTHLY_CAP_FEATURES); a paused account gets none. Never throws: null on any failure or
  * after 5 s.
  */
 import Anthropic from '@anthropic-ai/sdk'
@@ -10,6 +11,7 @@ import { env } from '../../config/env.js'
 import { CLAUDE_MODEL, LOW_EFFORT, withThinkingRoom } from '../../config/models.js'
 import { isOnFreePlan } from '../accountAccess.js'
 import { anthropicUnits, recordCost } from '../costLedger.js'
+import { anthropicClient } from '../anthropicClient.js'
 
 export interface PhraseFactsInput {
   recipeName: string
@@ -50,7 +52,7 @@ export async function cookNowPhrase(
     let create = deps.create
     if (!create) {
       if (!env.ANTHROPIC_API_KEY) return null
-      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+      const client = anthropicClient()
       create = (p) => client.messages.create(p) as any
     }
     const call = create({
@@ -63,10 +65,10 @@ export async function cookNowPhrase(
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), deps.timeoutMs ?? 5000))
     const response = await Promise.race([call, timeout])
     if (!response) return null
-    // Outside Mimo's monthly cap: billed to the household, not to the user's
-    // monthly sum (getUserMonthlySpendEur reads cost_events by user_id).
+    // Household spend, not system (PRO-1316); getUserMonthlySpendEur leaves it
+    // out of Mimo's monthly cap.
     if (response.usage) {
-      recordCost({ feature: 'cook_now_phrase', provider: 'anthropic', model: CLAUDE_MODEL, units: anthropicUnits(response.usage as any), userId: null, householdId: deps.householdId ?? null })
+      recordCost({ feature: 'cook_now_phrase', provider: 'anthropic', model: CLAUDE_MODEL, units: anthropicUnits(response.usage as any), userId, householdId: deps.householdId ?? null })
     }
     const text = response.content.find((b) => b.type === 'text')?.text ?? ''
     return cleanPhrase(text)

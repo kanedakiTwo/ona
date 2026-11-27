@@ -17,7 +17,7 @@
  * required fields) stays identical.
  *
  * Used by:
- *   - apps/api/scripts/regenerateRecipes.ts  (Task 8 — emits regen JSONL)
+ *   - apps/api/scripts/regenerateRecipes.ts  (Task 8 — emitted regen JSONL; removed in PRO-1316)
  *   - apps/api/scripts/applyRegeneratedRecipes.ts  (Task 9 — applies it)
  */
 

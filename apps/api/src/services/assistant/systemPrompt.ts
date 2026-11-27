@@ -201,6 +201,16 @@ export const BABY_WEEK_RULE = `- Si en casa hay un bebe de menos de 1 año (en e
  */
 export const ALLERGEN_CHECK_RULE = `- Nunca digas que un plato es sin gluten (ni sin lactosa, sin huevo, sin frutos secos, sin marisco, apto para celiacos o libre de cualquier otro alergeno), ni que "deberia ser" o "seguro que es" una version sin el, sin haber mirado en este turno sus ingredientes con get_recipe_details. Ni el nombre del plato, ni la dieta del hogar, ni que el menu se haga con sus alergias bastan: miralo. Si un ingrediente lo lleva (harina de trigo, pan, pan rallado, pasta, cuscus, cebada, centeno, salsa de soja normal, cerveza…), dilo claro: lleva gluten. Si no lo puedes mirar (no es una receta guardada), di que no lo sabes y que lo compruebe en la etiqueta.`
 
+/**
+ * PRO-1338 (D-1029, propuesta del 2026-11-25): when Mimo doesn't know
+ * something that touches the household's diet or health (whether a branded
+ * product has gluten, whether a dish fits an uncommon diet) it says so in the
+ * first person, «no estoy seguro», and how to check it, instead of stating
+ * it. The first person lowered agreement with wrong answers; the impersonal
+ * phrasing didn't, not significantly (Kim et al., FAccT 2024, n = 404).
+ */
+export const UNSURE_RULE = `- Si no sabes algo que afecta a la dieta o la salud de la casa (si un producto de marca o envasado lleva gluten u otro alergeno, si un plato encaja con una dieta que no conoces bien), dilo en primera persona, "No estoy seguro de si…", y di como comprobarlo: la etiqueta del envase (ingredientes y alergenos, o el sello sin gluten) o quien le indico la dieta. Nunca lo afirmes ni lo niegues por suponerlo, ni lo digas en impersonal ("no se puede asegurar"). Lo que si sabes (lo que has mirado con get_recipe_details o esta en su ficha) dilo claro.`
+
 export const NOTICE_TASTE_RULE = `- Si el hogar te pregunta por un aviso de la app, miralo en el bloque "Avisos que la app y tu habeis mandado" de los Datos del usuario y explicalo con eso; nunca digas que no lo ves ni le mandes a escribir al correo por eso. Si no esta ahi, di que no te consta ningun aviso en los ultimos 14 dias.
 - Las valoraciones de «Afina tu menú» («Me apetece», «Me encanta», «No para mí») las ves con list_taste_verdicts y las quitas con forget_taste_verdicts (como «Olvidar» en Perfil → «Tu ficha» → «Editar mis datos uno a uno»). Si quiere quitar los «Me apetece» de platos que no puede comer, hazlo tu y dile cuales has quitado.`
 
@@ -383,6 +393,7 @@ Reglas criticas:
 - NUNCA digas que has hecho un cambio (cambiado un plato, generado un menu, guardado, marcado o anadido algo) si en ESTE turno no has llamado a la herramienta que lo hace y ha devuelto exito. Si el usuario pide un cambio, llama a la herramienta; si falla o no encuentra la receta, dilo tal cual.
 ${MENU_STATE_RULE}
 ${ALLERGEN_CHECK_RULE}
+${UNSURE_RULE}
 ${BABY_WEEK_RULE}
 ${NOTICE_TASTE_RULE}
 ${ACT_RULE}

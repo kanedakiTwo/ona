@@ -1,6 +1,7 @@
 /**
  * PRO-1304 · El examen fijo de Mimo: pasa los 75 casos del histórico
- * (`MIMO_EXAM_CASES`, src/services/assistant/mimoExamCases.ts) por el motor de
+ * (`MIMO_EXAM_CASES`, src/services/assistant/mimoExamCases.ts) y los añadidos
+ * después (`MIMO_EXAM_ADDED_CASES`, mimoExamAddedCases.ts) por el motor de
  * ahora (prompt, herramientas y modelo del canal; las herramientas simuladas,
  * nada se lee ni se escribe), pone a cada respuesta su nota de 0 a 2 en los
  * seis criterios (corrector de src/services/assistant/mimoExam.ts: código y
@@ -24,7 +25,7 @@ import { join } from 'node:path'
 import { env } from '../src/config/env.js'
 import { CLAUDE_MODEL } from '../src/config/models.js'
 import { knowledgeBaseReady } from '../src/services/assistant/systemPrompt.js'
-import { MIMO_EXAM_CASES } from '../src/services/assistant/mimoExamCases.js'
+import { MIMO_EXAM_ALL_CASES } from '../src/services/assistant/mimoExamAddedCases.js'
 import { EXAM_CRITERIA, compareExams } from '../src/services/assistant/mimoExam.js'
 import { runExam, type MessagesLike } from '../src/services/assistant/mimoExamRun.js'
 import { flushCostEvents } from '../src/services/costLedger.js'
@@ -56,7 +57,7 @@ const client: MessagesLike = remote
   : scriptAnthropic('mimoExam', new Anthropic())
 
 const { resumen, casos } = await runExam(
-  MIMO_EXAM_CASES.filter((c) => !only || only.includes(c.id)),
+  MIMO_EXAM_ALL_CASES.filter((c) => !only || only.includes(c.id)),
   {
     client,
     remote,

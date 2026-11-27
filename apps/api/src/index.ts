@@ -63,6 +63,8 @@ import adminHouseholdsRoutes from './routes/adminHouseholds.js'
 import catalogCollectionsRoutes from './routes/catalogCollections.js'
 import { interruptStaleCatalogImports } from './services/catalogImportJobs.js'
 import { startCatalogPhotos } from './services/catalogPhotos.js'
+import { startRecipeImageFiles } from './services/recipeImageFiles.js'
+import { createRecipeImagesRouter } from './routes/recipeImages.js'
 import { startCatalogStorageLabels } from './services/catalogStorageLabels.js'
 import { startMenuRecipeRecheck } from './services/menuRecipeRecheck.js'
 import householdHabitsRoutes from './routes/householdHabits.js'
@@ -125,19 +127,8 @@ app.use(trackUsageRoutes)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 app.use('/public', express.static(path.join(__dirname, '..', 'public')))
 
-// Serve generated recipe images from the volume mount in prod (or the
-// `apps/web/public/images/recipes` dir in dev). Filenames include the
-// recipe id, so the bytes for a given URL are stable until regeneration —
-// long-cache + Cache-Control: immutable. The frontend bumps a `?v=<updatedAt>`
-// query when the recipe changes to bust the cache without affecting headers.
-app.use(
-  '/images/recipes',
-  express.static(env.IMAGE_STORAGE_DIR, {
-    fallthrough: false,
-    immutable: true,
-    maxAge: '365d',
-  }),
-)
+// Generated recipe images from the volume; a missing file is a 404 (PRO-1318).
+app.use(createRecipeImagesRouter(env.IMAGE_STORAGE_DIR))
 
 // Liveness probe — used by smoke tests and orchestration scripts to detect
 // when the server is ready. Public, no auth, no DB read.
@@ -259,6 +250,8 @@ app.listen(env.PORT, () => {
   void interruptStaleCatalogImports()
   // Catalogue photos are made before a recipe goes out (and for any published without one).
   startCatalogPhotos()
+  // PRO-1318: recipes whose photo file is gone from the volume get it again.
+  startRecipeImageFiles()
   // PRO-372: catalogue recipes without «se congela» / «días en nevera» get them, 20 at a time.
   startCatalogStorageLabels()
   // PRO-345: saved menus whose recipe changed (catalogue fixes on deploy, scripts) or was deleted.

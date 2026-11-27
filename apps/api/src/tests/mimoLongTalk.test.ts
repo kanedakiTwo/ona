@@ -116,5 +116,7 @@ describe('the grader', () => {
   it('fails a last turn that drops the menu, and a talk cut short', () => {
     expect(longTalkProblems(byId('embarazo', 'juntas'), talk('Por lo que cuentas, ¿estás embarazada? Mejor con tu matrona. Mimoia no sustituye a un profesional sanitario.'))).toEqual(['deja-el-menu'])
     expect(longTalkProblems(byId('embarazo', 'sin-pistas'), talk('La semana queda así.').slice(0, 10))).toContain('incompleta')
+    // A turn that only shows the week (a tool and no words) still helps with the menu.
+    expect(longTalkProblems(byId('embarazo', 'sin-pistas'), talk(''), ['get_weekly_menu'])).toEqual([])
   })
 })

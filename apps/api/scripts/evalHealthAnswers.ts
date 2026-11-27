@@ -116,6 +116,7 @@ for (const c of LONG_TALK_EVAL_CASES.filter((x) => talks && (!only || x.id === o
   for (let i = 1; i <= runs; i += 1) {
     const history: { role: 'user' | 'assistant'; content: string }[] = []
     const replies: string[] = []
+    let lastTools: string[] = []
     console.log(`\n### ${c.id} (${i}/${runs})`)
     for (const [k, message] of c.turns.entries()) {
       const r = await runToolLoop({
@@ -128,10 +129,11 @@ for (const c of LONG_TALK_EVAL_CASES.filter((x) => talks && (!only || x.id === o
       })
       history.push({ role: 'user', content: message }, { role: 'assistant', content: r.message })
       replies.push(r.message)
+      lastTools = r.toolsUsed ?? []
       console.log(`  ${k + 1}${c.clueTurns.includes(k + 1) ? '*' : ''} USUARIO: ${message}`)
       console.log(`     MIMO: ${r.message.replace(/\n+/g, ' ⏎ ')}`)
     }
-    const problems = longTalkProblems(c, replies)
+    const problems = longTalkProblems(c, replies, lastTools)
     if (problems.length) failed += 1
     out.push({ case: c.id, run: i, mode, tools_set: 'todas', turns: c.turns, replies, problems })
     console.log(`  → ${problems.length ? `FALLA: ${problems.join(', ')}` : 'ok'}`)

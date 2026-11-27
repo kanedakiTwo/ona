@@ -67,13 +67,7 @@ Both the photo extractor (`POST /recipes/extract-from-image`) and the URL extrac
 
 Each `ingredients` row carries an optional `prep_requirements` JSONB column with the shape `{ method: PrepMethod, notes?: string }` where `PrepMethod` is a closed enum: `thaw_24h | thaw_48h | soak_overnight | soak_30min | temper_30min | marinate_2h | marinate_overnight | dough_rise_overnight`. The values encode the typical lead time so the scheduler doesn't need separate config — `PREP_METHOD_HOURS_BEFORE` in `@ona/shared` maps each value to a fixed number of hours.
 
-Population is offline via the LLM script:
-
-  1. `pnpm --filter @ona/api prep-requirements:populate` — loads every ingredient, asks Claude in batches of 50 (one ~$0.02 call per batch), writes JSONL to `apps/api/scripts/output/prep-requirements.jsonl`. Defaults to `null` whenever the LLM is unsure so the catalogue never gets noisy.
-  2. Human review of the JSONL.
-  3. `pnpm --filter @ona/api prep-requirements:apply` — re-reads the same file and `UPDATE`s the matching rows.
-
-Idempotent: re-running populate overwrites the JSONL; re-running apply overwrites the DB. The scheduler ([Notifications](./notifications.md) / PR-D) reads this column together with `user_memories.prep_habits` to decide which alerts fire for which user when a recipe lands in their menu.
+Populated once, offline, by an LLM script over the catalogue (Claude in batches of 50 → JSONL → human review → `UPDATE`; `null` whenever the LLM was unsure). The script was removed in PRO-1316 (one-off fill already done, and it called the API without recording its cost). The scheduler ([Notifications](./notifications.md) / PR-D) reads this column together with `user_memories.prep_habits` to decide which alerts fire for which user when a recipe lands in their menu.
 
 ## API Endpoints
 

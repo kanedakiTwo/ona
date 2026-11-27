@@ -1,8 +1,9 @@
 /**
  * Mimo's line on the preferred «Cocinar ahora» recipe (specs/cook-now.md):
  * one short sentence written only from the facts given. The only live AI
- * call of the feature; billed as `cook_now_phrase`, outside Mimo's monthly
- * cap; a paused account gets none. Never throws: null on any failure or
+ * call of the feature; billed as `cook_now_phrase` to the user and household
+ * that asked for it (PRO-1316), outside Mimo's monthly cap
+ * (OUTSIDE_MONTHLY_CAP_FEATURES); a paused account gets none. Never throws: null on any failure or
  * after 5 s.
  */
 import Anthropic from '@anthropic-ai/sdk'
@@ -64,10 +65,10 @@ export async function cookNowPhrase(
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), deps.timeoutMs ?? 5000))
     const response = await Promise.race([call, timeout])
     if (!response) return null
-    // Outside Mimo's monthly cap: billed to the household, not to the user's
-    // monthly sum (getUserMonthlySpendEur reads cost_events by user_id).
+    // Household spend, not system (PRO-1316); getUserMonthlySpendEur leaves it
+    // out of Mimo's monthly cap.
     if (response.usage) {
-      recordCost({ feature: 'cook_now_phrase', provider: 'anthropic', model: CLAUDE_MODEL, units: anthropicUnits(response.usage as any), userId: null, householdId: deps.householdId ?? null })
+      recordCost({ feature: 'cook_now_phrase', provider: 'anthropic', model: CLAUDE_MODEL, units: anthropicUnits(response.usage as any), userId, householdId: deps.householdId ?? null })
     }
     const text = response.content.find((b) => b.type === 'text')?.text ?? ''
     return cleanPhrase(text)

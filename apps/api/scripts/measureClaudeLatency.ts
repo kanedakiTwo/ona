@@ -6,21 +6,23 @@
  *
  *   ANTHROPIC_API_KEY=… pnpm --filter @ona/api exec tsx scripts/measureClaudeLatency.ts [--runs=5]
  *
- * Needs no database and sends nothing to anyone; synthetic inputs only.
- * Costs a few cents (low effort, short answers). Prints p50 / max seconds per
- * call and fails (exit 1) if any run went past its limit. The guided
- * WhatsApp texts are measured by `scripts/replayGuidedBrief.ts`, and Mimo's
- * seconds per turn by `scripts/replayWhatsAppTurns.ts` (`secs` per turn).
+ * Sends nothing to anyone; synthetic inputs only. Costs a few cents (low
+ * effort, short answers), recorded by tasteAI in `cost_events` as
+ * `script_measureClaudeLatency` (PRO-1316; without a database the row is lost
+ * with a warning and the run goes on). Prints p50 / max seconds per call
+ * and fails (exit 1) if any run went past its limit. The guided WhatsApp texts
+ * are measured by `scripts/replayGuidedBrief.ts`, and Mimo's seconds per
+ * turn by `scripts/replayWhatsAppTurns.ts` (`secs` per turn).
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { CLAUDE_MODEL } from '../src/config/models.js'
-import { setCostSinkForTests } from '../src/services/costLedger.js'
+import { billCostsToScript, flushCostEvents } from '../src/services/costLedger.js'
 import { analyseTasteReason, pickNextWithClaude, TASTE_AI_TIMEOUT_MS } from '../src/services/tasteAI.js'
 import type { TasteRecipe } from '../src/services/tasteDeck.js'
 
 if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is required')
 const runs = Math.max(1, Number(process.argv.find((a) => a.startsWith('--runs='))?.slice(7) ?? 5))
-setCostSinkForTests(async () => {}) // no DB: the cost row is not stored
+billCostsToScript('measureClaudeLatency')
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 let last = 0
@@ -73,4 +75,5 @@ for (const c of cases) {
   over ||= bad
   console.log(`${bad ? '✗' : '✓'} ${c.name}: p50 ${p50.toFixed(1)} s · máx ${max.toFixed(1)} s · límite ${(c.limitMs / 1000).toFixed(0)} s`)
 }
+await flushCostEvents()
 process.exit(over ? 1 : 0)

@@ -166,7 +166,7 @@ Optional enum tagging the recipe's role in a multi-dish meal: `'starter' | 'main
 `null` means "versatile" — the menu generator treats null-tagged recipes as valid stand-alone dishes for single-dish slots. The matcher uses this field when a slot is configured with 2 or 3 dishes (see [`menus.md`](./menus.md) "Multi-dish slots").
 
 Population:
-- Seed catalogue + existing user recipes: one-shot LLM script `pnpm --filter @ona/api course:populate` (→ JSONL → optional manual review → `course:apply`). Same two-step pattern as `prep-requirements:populate`. Source: `apps/api/scripts/populateRecipeCourses.ts`.
+- Seed catalogue + existing user recipes: filled once by an LLM script (→ JSONL → optional manual review → apply), removed in PRO-1316 once done.
 - New recipes: optional dropdown in `/recipes/new` and `/recipes/[id]/edit` (defaults to "Sin clasificar (auto)" = `null`).
 
 ## API Endpoints

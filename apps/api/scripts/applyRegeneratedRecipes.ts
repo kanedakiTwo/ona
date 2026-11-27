@@ -1,7 +1,8 @@
 /**
  * Apply regenerated recipes to the DB.
  *
- * Reads JSONL produced by `scripts/regenerateRecipes.ts` (Task 8) — one
+ * Reads JSONL produced by the old `scripts/regenerateRecipes.ts` (Task 8,
+ * removed in PRO-1316 once the catalogue was regenerated) — one
  * curator-approved recipe per line, in the loose `regenRecipeSchema` shape
  * (with temporary `"ing_<INDEX>"` ingredientRefs). For each line:
  *

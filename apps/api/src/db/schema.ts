@@ -260,8 +260,8 @@ export const ingredients = pgTable('ingredients', {
   fatAcids: jsonb('fat_acids').default({}),
   carbTypes: jsonb('carb_types').default({}),
   /**
-   * Prep-time requirements that need anticipating in advance. Populated by
-   * the LLM script `pnpm prep-requirements:populate` over the catalogue; the
+   * Prep-time requirements that need anticipating in advance. Populated once
+   * by an LLM script over the catalogue (removed in PRO-1316); the
    * notification scheduler (PR-D) reads it to enqueue "saca el pescado del
    * congelador" alerts. Shape:
    *   { method: 'thaw_24h' | 'thaw_48h' | 'soak_overnight' | ..., notes?: string }

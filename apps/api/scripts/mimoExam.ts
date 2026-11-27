@@ -27,6 +27,8 @@ import { knowledgeBaseReady } from '../src/services/assistant/systemPrompt.js'
 import { MIMO_EXAM_CASES } from '../src/services/assistant/mimoExamCases.js'
 import { EXAM_CRITERIA, compareExams } from '../src/services/assistant/mimoExam.js'
 import { runExam, type MessagesLike } from '../src/services/assistant/mimoExamRun.js'
+import { flushCostEvents } from '../src/services/costLedger.js'
+import { scriptAnthropic } from '../src/services/scriptCost.js'
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3)
 
@@ -51,7 +53,7 @@ const client: MessagesLike = remote
       const { dbTurnStore, remoteMessagesClient } = await import('../src/services/assistant/mimoRemoto.js')
       return remoteMessagesClient(dbTurnStore(db))
     })()
-  : new Anthropic()
+  : scriptAnthropic('mimoExam', new Anthropic())
 
 const { resumen, casos } = await runExam(
   MIMO_EXAM_CASES.filter((c) => !only || only.includes(c.id)),
@@ -96,4 +98,5 @@ if (outPath) {
   await writeFile(outPath, `${JSON.stringify(report, null, 1)}\n`)
   console.log(`Informe: ${outPath}`)
 }
+await flushCostEvents()
 process.exit(resumen.conError ? 1 : 0)

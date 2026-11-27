@@ -14,7 +14,11 @@
  *     context; `checkAdvisorBudget` (called before any paid work of the turn)
  *     attributes it to the user once the phone has resolved to one;
  *   - schedulers / scripts have no context → recorded as system (userId null),
- *     unless the call site passes `userId` explicitly.
+ *     unless the call site passes `userId` explicitly;
+ *   - a hand-run script calls `billCostsToScript(name)` (or wraps its own
+ *     client with `scriptAnthropic`, scriptCost.ts): everything it spends is
+ *     `script_<name>`, system, and it awaits `flushCostEvents()` before it
+ *     exits (PRO-1316).
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { sql } from 'drizzle-orm'
@@ -103,6 +107,23 @@ const dbSink: CostSink = async (row) => {
 
 let sink: CostSink = dbSink
 
+/** Set by a hand-run script (PRO-1316): every cost of the process is `script_<name>`, system. */
+let scriptName: string | null = null
+
+/**
+ * From now on this process is the script `name`: whatever it spends, through
+ * its own client or through a service (extraction, matcher…), is recorded as
+ * `script_<name>` with no user nor household (internal spend, never a
+ * household's, even when the script replays a real user's turns). `null`
+ * goes back to normal attribution (tests).
+ */
+export function billCostsToScript(name: string | null): void {
+  scriptName = name
+}
+
+/** Inserts still running, so a script can wait for them before `process.exit`. */
+const pending = new Set<Promise<void>>()
+
 /** Test seam: capture rows instead of inserting. `null` restores the DB sink. */
 export function setCostSinkForTests(fake: CostSink | null): void {
   sink = fake ?? dbSink
@@ -114,21 +135,29 @@ export function recordCost(event: CostEvent): void {
     const listMicros = computeCostMicros(event.provider, event.model, event.units)
     const factor = event.priceFactor !== undefined && Number.isFinite(event.priceFactor) && event.priceFactor >= 0 ? event.priceFactor : 1
     const row: CostRow = {
-      userId: event.userId === undefined ? currentCostUserId() : event.userId,
-      feature: event.feature,
+      userId: scriptName ? null : event.userId === undefined ? currentCostUserId() : event.userId,
+      feature: scriptName ? `script_${scriptName}` : event.feature,
       provider: event.provider,
       model: event.model,
       units: event.units,
       costMicros: listMicros === null ? null : Math.round(listMicros * factor),
-      ...(event.householdId ? { householdId: event.householdId } : {}),
+      ...(event.householdId && !scriptName ? { householdId: event.householdId } : {}),
     }
     if (row.costMicros === null) {
       console.warn(`[costLedger] no price for ${event.provider}/${event.model} — recorded as unpriced`)
     }
-    sink(row).catch((err) => console.warn('[costLedger] record failed (ignored):', err?.message ?? err))
+    const write: Promise<void> = sink(row)
+      .catch((err) => console.warn('[costLedger] record failed (ignored):', err?.message ?? err))
+      .finally(() => pending.delete(write))
+    pending.add(write)
   } catch (err: any) {
     console.warn('[costLedger] record failed (ignored):', err?.message ?? err)
   }
+}
+
+/** Wait for every recorded cost to reach the sink (scripts call it before exiting). Never throws. */
+export async function flushCostEvents(): Promise<void> {
+  await Promise.all([...pending])
 }
 
 /** Anthropic SDK `message.usage` (snake_case; cache fields optional/nullable). */
@@ -165,16 +194,25 @@ export function madridMonthStartUtc(now: Date = new Date()): Date {
 }
 
 /**
+ * Features billed to the user that don't count towards their monthly cap
+ * (PRO-1316): the «Cocinar ahora» line goes to the household that asked for
+ * it, but never uses up Mimo's allowance (specs/cook-now.md).
+ */
+export const OUTSIDE_MONTHLY_CAP_FEATURES = ['cook_now_phrase'] as const
+
+/**
  * A user's estimated spend so far this calendar month (Europe/Madrid), in EUR,
  * across every paid feature billed to them in the ledger (chat, WhatsApp,
- * voice, transcription, recipe import/extraction, images, templates).
- * Unpriced events count as 0. Indexed by (user_id, created_at).
+ * voice, transcription, recipe import/extraction, images, templates), except
+ * OUTSIDE_MONTHLY_CAP_FEATURES. Unpriced events count as 0. Indexed by
+ * (user_id, created_at).
  */
 export async function getUserMonthlySpendEur(userId: string, now: Date = new Date(), db: Db = defaultDb): Promise<number> {
   const res = await db.execute(sql`
     SELECT COALESCE(SUM(cost_micros), 0)::bigint AS micros
       FROM cost_events
      WHERE user_id = ${userId}::uuid AND created_at >= ${madridMonthStartUtc(now)}
+       AND feature NOT IN (${sql.join(OUTSIDE_MONTHLY_CAP_FEATURES.map((f) => sql`${f}`), sql`, `)})
   `)
   const micros = Number((res.rows[0] as { micros?: string | number } | undefined)?.micros ?? 0)
   return micros / 1_000_000

@@ -11,6 +11,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import { env } from '../src/config/env.js'
 import { buildSystemPrompt } from '../src/services/assistant/systemPrompt.js'
 import { getToolDefinitions } from '../src/services/assistant/skills.js'
+import { flushCostEvents } from '../src/services/costLedger.js'
+import { scriptAnthropic } from '../src/services/scriptCost.js'
 
 const PROMPTS = [
   'Hola',
@@ -106,7 +108,7 @@ async function main() {
     console.error('Set ANTHROPIC_API_KEY in .env first.')
     process.exit(1)
   }
-  const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
+  const anthropic = scriptAnthropic('measure-tokens', new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }))
   const systemPrompt = buildSystemPrompt(USER_CONTEXT)
   const tools = getToolDefinitions()
 
@@ -133,7 +135,9 @@ async function main() {
   console.log('───────────────────────────────────────────────────────────────')
 }
 
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+main()
+  .catch((e) => {
+    console.error(e)
+    process.exitCode = 1
+  })
+  .finally(() => flushCostEvents())

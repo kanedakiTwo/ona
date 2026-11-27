@@ -4,7 +4,7 @@
  * Used by:
  *   - the recipe save endpoint (POST/PUT /recipes)
  *   - the photo-extraction pipeline (POST /recipes/extract-from-image)
- *   - the LLM seed regeneration script (apps/api/scripts/regenerateRecipes.ts)
+ *   - the apply step of the seed regeneration (apps/api/scripts/applyRegeneratedRecipes.ts)
  *
  * The validator is **pure**: it does not touch the DB. The caller is expected
  * to query the ingredient catalog and pass it in via {@link LintOptions}.

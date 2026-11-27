@@ -33,6 +33,8 @@ import { getToolDefinitions, toolsFor } from '../src/services/assistant/skills.j
 import { buildTurnMessages, runToolLoop } from '../src/services/assistant/engine.js'
 import { buildChatHistory } from '../src/services/whatsapp/history.js'
 import type { SkillDefinition } from '../src/services/assistant/types.js'
+import { flushCostEvents } from '../src/services/costLedger.js'
+import { scriptAnthropic } from '../src/services/scriptCost.js'
 
 const READ_SKILLS = new Set([
   'get_todays_menu', 'get_weekly_menu', 'get_recipe_details', 'search_recipes', 'suggest_recipes', 'get_my_recipes',
@@ -46,7 +48,7 @@ if (!turnsPath && !arg('fit-cases')) throw new Error('--turns=<file.json> or --f
 const ro = await pool.query('show default_transaction_read_only')
 if (ro.rows[0].default_transaction_read_only !== 'on') throw new Error('The database session is not read-only — refusing to replay.')
 
-const anthropic = new Anthropic()
+const anthropic = scriptAnthropic('replayWhatsAppTurns', new Anthropic())
 const out: unknown[] = []
 
 const fitCasesPath = arg('fit-cases')
@@ -120,4 +122,5 @@ for (const [label, ts] of Object.entries(turns)) {
 
 const outPath = arg('out')
 if (outPath) await writeFile(outPath, JSON.stringify(out, null, 1))
+await flushCostEvents()
 await pool.end()

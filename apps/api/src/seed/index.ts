@@ -8,8 +8,8 @@
  * no rich step metadata). It is NOT lint-perfect — many recipes mention
  * ingredients in their step text that aren't in the ingredient list, and
  * many gramajes are calibrated for ~5–6 diners while we now mark them as
- * `servings: 4`. The real seed path going forward is the LLM regen
- * pipeline (`pnpm regen:recipes` + `pnpm apply:recipes`); this seed exists
+ * `servings: 4`. The catalogue was regenerated once with the LLM regen
+ * pipeline (generator removed in PRO-1316; `pnpm apply:recipes`); this seed exists
  * so a fresh dev DB can compile + boot the app end-to-end.
  *
  * Compromises:

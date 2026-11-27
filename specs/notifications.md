@@ -121,6 +121,19 @@ D-080 (PRO-234, `services/notifications/channels.ts`, tests in `notificationChan
 - A kind switched off (Perfil → Avisos, `users.alert_prefs`, or `whatsapp_links.prefs`) goes out by no channel.
 - The local meal-time notification «Es hora de comer» (browser `setTimeout`, profile times) was **removed**: it repeated the morning menu with other hours and only rang with the app open.
 
+## Lo que dicen los avisos: el plato y una acción (PRO-1337, D-1029)
+
+The four avisos Mimo sends by itself that ask for something name the household's concrete thing — a dish or a day, never «tu menú» — and end in **one single action of one tap**, with «es un momento» where it fits (a study found reminders naming the concrete goal worked and generic ones didn't; expected effect small, 1–2 points on `week2MenuReady`). How many and when doesn't change (weekly cap and hours as before).
+
+| Aviso | Names | The one action |
+|---|---|---|
+| The Thursday week (card on `/menu`) | «El lunes cenáis Lentejas estofadas.» (`autoplanHighlightOf`) | «Ver la semana, es un momento» (or, on that week, «Ver la lista») |
+| ¿Toca compra? | The shopping day by name and the fresh things missing | The list link, no question |
+| ¿Hiciste la cena? | Tonight's dish | Its one question, answered by the buttons (👍 / 👎 / No la hice) |
+| Domingo de planificar | The week by its Monday («La semana del lunes 30 de noviembre») | «¿Te la preparo? Es un momento.» (Sí, prepáralo / Ahora no); meals out, guests and the fridge as an invitation, not more questions |
+
+The written versions (guided writer) are checked in code: the day or the dish is a required string, the Sunday and the check-in allow one «?» (`oneQuestion`), the shopping reminder none (`noQuestion`); otherwise the fixed text goes. Texts in [WhatsApp](./whatsapp.md) and [Menus](./menus.md). Tests: `avisosConcretos.test.ts`.
+
 ## Avisos (Perfil → Avisos)
 
 PRO-237 (D-080). `/profile/avisos`, linked from Perfil → Recordatorios → «Avisos». Users can:

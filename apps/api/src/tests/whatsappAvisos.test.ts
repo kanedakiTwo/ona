@@ -142,7 +142,7 @@ describe('idioma (point 6)', () => {
     })
     expect(r).toHaveLength(1)
     const m = r[0].messages[0]
-    expect(m.text).toBe("How did tonight's dinner go (*Merluza en salsa*)? I'll note it down.")
+    expect(m.text).toBe("One tap and I'll note it down: how did tonight's dinner go (*Merluza en salsa*)?")
     expect(m.type === 'buttons' && m.buttons.map((b) => b.title)).toEqual(['👍', '👎', "Didn't make it"])
     expect(r[0].guide?.language).toBe('en')
     expect(guidedSystemPrompt('dinner_checkin', 'en')).toContain('en inglés')

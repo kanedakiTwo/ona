@@ -7,7 +7,7 @@
  *   coméis». Nunca «Generar mi menú» ni destellos.
  * - «Añadir plato»: «Elegir del catálogo», «Escribir un plato» y, al final,
  *   «Que elija Mimoia».
- * - El piloto: «Cambiar algo» abre la semana, no Mimo.
+ * - El piloto: su botón (PRO-1337: «Ver la semana, es un momento») abre la semana, no Mimo.
  *
  * El recorrido en el navegador está en apps/web/e2e/configure-first.spec.ts.
  */
@@ -102,7 +102,7 @@ describe('la pantalla', () => {
     expect(page).not.toContain('Sparkles')
   })
 
-  it('«Cambiar algo» del piloto abre su semana, no Mimo', () => {
+  it('el botón del piloto abre su semana, no Mimo', () => {
     const card = source('components/menu/AutoplanCard.tsx')
     expect(card).toContain('onOpenWeek(kept.weekStart)')
     expect(card).not.toContain('useMimo')

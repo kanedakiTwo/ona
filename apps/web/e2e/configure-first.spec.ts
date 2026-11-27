@@ -8,7 +8,8 @@
  *     cómo coméis»; con ella, su resumen, «Editar» y «Llenar con mi semana
  *     tipo», que genera la semana;
  *   - en «Añadir plato», «Que elija Mimoia» es la última opción;
- *   - «Cambiar algo» del piloto abre `/menu?week=` de esa semana.
+ *   - el botón del piloto (PRO-1337: «Ver la semana, es un momento», el único)
+ *     abre `/menu?week=` de esa semana.
  *
  * Las líneas y el orden, en apps/api/src/tests/blankWeekCopy.test.ts.
  */
@@ -92,6 +93,9 @@ async function autoplanChange(page: Page) {
   await expect(card).toBeVisible({ timeout: 20_000 })
   // Sin semana tipo no dice que la haya usado.
   await expect(card.getByTestId('autoplan-week-type')).toHaveCount(0)
+  // PRO-1337: one action only.
+  await expect(card.getByRole('button')).toHaveCount(1)
+  await expect(card.getByTestId('autoplan-change')).toHaveText('Ver la semana, es un momento')
   await card.getByTestId('autoplan-change').click()
   await expect(page).toHaveURL(new RegExp(`/menu\\?week=${weekStart}`))
   await expect(page.getByTestId('menu-week-range').first()).toBeVisible()
@@ -105,7 +109,7 @@ test.describe('móvil', () => {
     await blankWeekAndAddDish(page)
   })
 
-  test('«Cambiar algo» del piloto abre esa semana', async ({ page }) => {
+  test('el botón del piloto abre esa semana', async ({ page }) => {
     test.setTimeout(90_000)
     await autoplanChange(page)
   })
@@ -119,7 +123,7 @@ test.describe('escritorio', () => {
     await blankWeekAndAddDish(page)
   })
 
-  test('«Cambiar algo» del piloto abre esa semana', async ({ page }) => {
+  test('el botón del piloto abre esa semana', async ({ page }) => {
     test.setTimeout(90_000)
     await autoplanChange(page)
   })

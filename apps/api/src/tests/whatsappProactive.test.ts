@@ -13,7 +13,7 @@ import {
   templateParamFrom,
   formatDailyBrief,
   planProactive,
-  WEEKLY_NUDGE_TEXT,
+  weeklyNudgeText,
   type MadridParts,
 } from '../services/whatsapp/proactive.js'
 import { mealLinesForDay } from '../services/menuText.js'
@@ -181,7 +181,7 @@ describe('planProactive', () => {
         messages: [
           {
             type: 'buttons',
-            text: '¿Qué tal ha salido hoy la cena (*Carrilleras de ternera*)? Así lo apunto.',
+            text: 'Un toque y lo apunto: ¿qué tal ha salido hoy la cena (*Carrilleras de ternera*)?',
             buttons: [{ id: 'checkin:up', title: '👍' }, { id: 'checkin:down', title: '👎' }, { id: 'checkin:no', title: 'No la hice' }],
           },
         ],
@@ -197,7 +197,7 @@ describe('planProactive', () => {
     const r = await planProactive({ ...base, parts: sat })
     expect(kinds(r)).toEqual(['shopping_reminder'])
     // 19-nov: no count and no list — the link and the fresh things only.
-    expect(r[0].messages[0].text).toBe(`¿Hoy toca compra? De lo fresco te falta: huevos, tomates.\n\nTu lista: ${WEB}/shopping`)
+    expect(r[0].messages[0].text).toBe(`Hoy, sábado, toca compra. De lo fresco te falta: huevos, tomates.\n\nAbre tu lista, es un momento: ${WEB}/shopping`)
     expect(await planProactive({ ...base, pendingShopping: async () => [{ name: 'leche', aisle: 'lacteos' }], parts: sat })).toEqual([])
   })
 
@@ -212,7 +212,7 @@ describe('planProactive', () => {
     expect(r).toEqual([
       {
         kind: 'weekly_nudge',
-        messages: [{ type: 'buttons', text: WEEKLY_NUDGE_TEXT, buttons: [{ id: 'nudge:yes', title: 'Sí, prepáralo' }, { id: 'nudge:no', title: 'Ahora no' }] }],
+        messages: [{ type: 'buttons', text: weeklyNudgeText('2026-10-12'), buttons: [{ id: 'nudge:yes', title: 'Sí, prepáralo' }, { id: 'nudge:no', title: 'Ahora no' }] }],
         guide: expect.objectContaining({ kind: 'weekly_nudge' }),
       },
     ])

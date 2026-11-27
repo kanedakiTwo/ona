@@ -22,10 +22,10 @@
  * household).
  */
 import { and, eq, sql } from 'drizzle-orm'
-import { alertKindOn, type AutoplanNotice } from '@ona/shared'
+import { alertKindOn, autoplanHighlightOf, type AutoplanHighlight, type AutoplanNotice } from '@ona/shared'
 import { env } from '../config/env.js'
 import { db } from '../db/connection.js'
-import { menus, notificationSchedule } from '../db/schema.js'
+import { menus, notificationSchedule, recipes } from '../db/schema.js'
 import { isOnFreePlan } from './accountAccess.js'
 import { addDays, madridMidnightUtc, madridParts, mondayOf } from './madridTime.js'
 import { resolveScope } from './scopeResolver.js'
@@ -322,6 +322,15 @@ async function newestMenuId(userId: string, weekStart: string): Promise<string |
   return row?.id ?? null
 }
 
+/** PRO-1337: the dish the card names (with its name from the catalogue when the menu lacks it). */
+async function highlightOf(menuId: string): Promise<AutoplanHighlight | null> {
+  const [m] = await db.select({ days: menus.days, skippedDays: menus.skippedDays }).from(menus).where(eq(menus.id, menuId)).limit(1)
+  const h = m ? autoplanHighlightOf((m.days ?? []) as any[], m.skippedDays ?? []) : null
+  if (!h || h.name) return h
+  const [r] = await db.select({ name: recipes.name }).from(recipes).where(eq(recipes.id, h.recipeId)).limit(1)
+  return r?.name ? { ...h, name: r.name } : null
+}
+
 /** Pure: the card is shown until the week starts its Tuesday (Madrid) — «tras el lunes», gone. */
 export function autoplanCardLive(weekStart: string, now: Date): boolean {
   return now.getTime() < madridMidnightUtc(addDays(weekStart, 1)).getTime()
@@ -348,7 +357,8 @@ export async function autoplanNoticeFor(userId: string, now: Date = new Date()):
     if (!row?.payload.menuId) continue
     if ((row.payload.viewedBy ?? []).includes(userId)) continue
     if ((await newestMenuId(userId, weekStart)) !== row.payload.menuId) continue
-    return { weekStart, weekEnd: addDays(weekStart, 6) }
+    const highlight = await highlightOf(row.payload.menuId).catch(() => null)
+    return { weekStart, weekEnd: addDays(weekStart, 6), ...(highlight ? { highlight } : {}) }
   }
   return null
 }

@@ -142,6 +142,46 @@ export interface AutoplanNotice {
   weekStart: string
   /** Its Sunday (YYYY-MM-DD). */
   weekEnd: string
+  /** PRO-1337 (D-1029): one real dish of that week, so the card names it. */
+  highlight?: AutoplanHighlight | null
+}
+
+/** PRO-1337: the dish the Thursday card names (`autoplanHighlightOf`). */
+export interface AutoplanHighlight {
+  /** 0 = Monday. */
+  day: number
+  meal: 'lunch' | 'dinner'
+  recipeId: string
+  name?: string
+}
+
+const AUTOPLAN_DAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+
+/**
+ * Pure (PRO-1337, D-1029): the first dish of the week Mimo made — the first
+ * day not skipped, its dinner before its lunch, a planned recipe (no táper,
+ * no leftover, no dessert). Null when the week has none.
+ */
+export function autoplanHighlightOf(
+  days: ReadonlyArray<Record<string, { dishes?: ReadonlyArray<Record<string, unknown>> } | undefined> | null | undefined>,
+  skippedDays: readonly number[] = [],
+): AutoplanHighlight | null {
+  for (let day = 0; day < Math.min(days.length, 7); day++) {
+    if (skippedDays.includes(day)) continue
+    for (const meal of ['dinner', 'lunch'] as const) {
+      const dish = (days[day]?.[meal]?.dishes ?? []).find(
+        (d) => d.kind === 'recipe' && typeof d.recipeId === 'string' && (d.variant ?? 'planned') === 'planned' && d.course !== 'dessert',
+      )
+      if (dish) return { day, meal, recipeId: dish.recipeId as string, ...(typeof dish.recipeName === 'string' && dish.recipeName ? { name: dish.recipeName } : {}) }
+    }
+  }
+  return null
+}
+
+/** Pure: «El lunes cenáis Lentejas estofadas.» / «El martes coméis …». Null without a name. */
+export function autoplanHighlightLine(h: AutoplanHighlight | null | undefined): string | null {
+  if (!h?.name) return null
+  return `El ${AUTOPLAN_DAY_NAMES[h.day] ?? 'lunes'} ${h.meal === 'dinner' ? 'cenáis' : 'coméis'} ${h.name}.`
 }
 
 export function isAlertKind(k: unknown): k is AlertKind {

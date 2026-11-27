@@ -53,7 +53,7 @@ const pool: RecipeWithCourse[] = (catalog as any[]).map((r, i) => ({
 import { applyWeekPlan, describeWeekPlan } from '../services/weekPlan.js'
 import { defaultTemplate } from '../services/menuGenerator.js'
 import { skills } from '../services/assistant/skills.js'
-import { WEEKLY_NUDGE_GUIDE, WEEKLY_NUDGE_TEXT, WEEK_PLAN_QUESTIONS } from '../services/whatsapp/proactive.js'
+import { WEEK_PLAN_HINT, weeklyNudgeGuide, weeklyNudgeText } from '../services/whatsapp/proactive.js'
 
 const ANSWER = 'el jueves cenamos fuera y el sábado somos 6'
 
@@ -71,12 +71,12 @@ describe('parseWeekPlanAnswer (free text from WhatsApp)', () => {
 })
 
 describe('the Sunday planning message (WhatsApp)', () => {
-  it('asks both questions in the same message, not in another one', () => {
-    expect(WEEKLY_NUDGE_TEXT).toContain('¿te preparo el menú de la semana que viene?')
-    for (const q of WEEK_PLAN_QUESTIONS) {
-      expect(WEEKLY_NUDGE_TEXT).toContain(q)
-      expect(WEEKLY_NUDGE_GUIDE.required).toContain(q)
-    }
+  it('carries meals out and guests in the same message, not in another one (PRO-1337: as an invitation)', () => {
+    const text = weeklyNudgeText('2026-11-30')
+    expect(text).toContain(WEEK_PLAN_HINT)
+    expect(WEEK_PLAN_HINT).toMatch(/coméis fuera/)
+    expect(WEEK_PLAN_HINT).toMatch(/viene alguien/)
+    expect(weeklyNudgeGuide('2026-11-30').required).toContain(WEEK_PLAN_HINT)
   })
 })
 

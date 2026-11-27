@@ -27,7 +27,7 @@ import { buildRandomMenu, defaultTemplate } from '../services/menuGenerator.js'
 import { findForCourse } from '../services/courseAwareMatcher.js'
 import type { RecipeWithCourse } from '../services/matchableRecipes.js'
 import { askedForFridge } from '../services/whatsapp/inbound.js'
-import { FRIDGE_QUESTION, WEEKLY_NUDGE_GUIDE, WEEKLY_NUDGE_TEXT } from '../services/whatsapp/proactive.js'
+import { WEEK_PLAN_HINT, weeklyNudgeGuide, weeklyNudgeText } from '../services/whatsapp/proactive.js'
 import { weekPlanFromParams } from '../services/assistant/skills.js'
 
 const pool: RecipeWithCourse[] = (catalog as any[]).map((r, i) => ({
@@ -148,8 +148,9 @@ describe('the next menu uses the fridge', () => {
 
 describe('asked once a week, in the Sunday message (WhatsApp)', () => {
   it('the Sunday planning message carries the question', () => {
-    expect(WEEKLY_NUDGE_TEXT).toContain(FRIDGE_QUESTION)
-    expect(WEEKLY_NUDGE_GUIDE.required).toContain(FRIDGE_QUESTION)
+    expect(WEEK_PLAN_HINT).toMatch(/nevera/)
+    expect(weeklyNudgeText('2026-11-30')).toContain(WEEK_PLAN_HINT)
+    expect(weeklyNudgeGuide('2026-11-30').required).toContain(WEEK_PLAN_HINT)
   })
 
   it('a bare photo right after it is the fridge (Mimo reads it), otherwise not', () => {

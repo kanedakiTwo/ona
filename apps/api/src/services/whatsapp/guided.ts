@@ -60,6 +60,8 @@ export interface MessageGuide {
   asks?: boolean
   /** At most one «?» (18-nov: the check-in asked two or three things at once). */
   oneQuestion?: boolean
+  /** PRO-1337: its one action is a link, so no «?» at all. */
+  noQuestion?: boolean
 }
 
 export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
@@ -86,18 +88,23 @@ export const MESSAGE_GUIDES: Record<GuidedKind, MessageGuide> = {
   },
   shopping_reminder: {
     purpose: 'Recordar, el día que este hogar suele comprar, que tiene la lista de la compra a mano.',
-    mustCarry: 'Lo fresco que falta, si te lo paso, con sus nombres tal cual, y el enlace a la lista tal cual al final. Nunca cuántas cosas quedan ni el resto de la lista.',
+    // PRO-1337 (D-1029): the day and the fresh things by name; one action (the link), no question.
+    mustCarry:
+      'El día de hoy por su nombre, lo fresco que falta, si te lo paso, con sus nombres tal cual, y al final una sola acción: abrir la lista con su enlace tal cual («es un momento» si cabe). Sin preguntas. Nunca cuántas cosas quedan ni el resto de la lista.',
     tone: 'Práctico y amable; nada de urgencias.',
     maxChars: 500,
+    noQuestion: true,
   },
   weekly_nudge: {
     purpose: 'El domingo, ofrecer preparar el menú de la semana que viene (los botones responden Sí / Ahora no).',
-    // PRO-225: the questions before planning go in this same message.
+    // PRO-225 / PRO-229: what to know before planning goes in this same message;
+    // PRO-1337 (D-1029): as an invitation, and one single question at the end.
     mustCarry:
-      'La pregunta de si le preparas el menú de la semana que viene y, tal cual, las preguntas de antes de planificar («¿Alguna comida fuera de casa esta semana?», «¿Viene alguien?» y «¿Qué te queda en la nevera?»), diciendo que puede contestarlas con sus palabras (o con una foto de la nevera) y que solo cambian esa semana.',
+      'La semana por su lunes (te paso la fecha), la invitación tal cual a contar si comen fuera, si viene alguien o qué queda en la nevera (con sus palabras o una foto; solo cambia esa semana) y, al final, UNA sola pregunta, con un único «?»: si le preparas el menú de esa semana.',
     tone: 'Dos o tres frases, de domingo tranquilo, sin presionar.',
     maxChars: 520,
     asks: true,
+    oneQuestion: true,
   },
   freezer_review: {
     purpose: 'Una vez al mes: contar qué lleva un mes o más en el congelador y ofrecer meterlo en el menú de las dos próximas semanas (los botones responden Sí / Ahora no).',
@@ -263,6 +270,7 @@ export function validateGuided(
   for (const u of t.match(URL_RE) ?? []) if (!allowed.has(trimUrl(u))) return { ok: false, reason: 'unknown_link' }
   if (guide.asks && !t.includes('?')) return { ok: false, reason: 'no_question' }
   if (guide.oneQuestion && (t.match(/\?/g) ?? []).length > 1) return { ok: false, reason: 'too_many_questions' }
+  if (guide.noQuestion && t.includes('?')) return { ok: false, reason: 'question' }
   if (spec.allowedTimes && clockTimesOf(t).some((h) => !spec.allowedTimes!.includes(h))) return { ok: false, reason: 'wrong_time' }
   if (spec.allowedMinutes && minuteCountsOf(t).some((m) => !spec.allowedMinutes!.includes(m))) return { ok: false, reason: 'wrong_minutes' }
   if (/^["«“]|["»”]$/.test(t)) return { ok: false, reason: 'quoted' }

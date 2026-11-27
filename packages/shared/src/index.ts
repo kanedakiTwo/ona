@@ -737,6 +737,9 @@ export {
   type AlertRow,
   type AlertsOverview,
   type AutoplanNotice,
+  type AutoplanHighlight,
+  autoplanHighlightOf,
+  autoplanHighlightLine,
 } from './types/alerts.js'
 export type {
   FichaTopic,

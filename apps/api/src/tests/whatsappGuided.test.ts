@@ -179,9 +179,9 @@ describe('validateGuided — legal and other rules', () => {
     const fresh = ['tomates', 'merluza']
     const g = shoppingReminderGuide(fresh, WEB)
     const fixed = formatShoppingReminder(fresh, WEB)
-    expect(validateGuided(`¿Vas a la compra? De lo fresco te faltan tomates y merluza.\n\nLa lista: ${WEB}/shopping`, g, fixed)).toEqual({ ok: true })
-    expect(validateGuided('¿Vas a la compra? De lo fresco te faltan tomates y merluza.', g, fixed)).toMatchObject({ ok: false, reason: 'missing_required' })
-    expect(validateGuided(`Te quedan 139 cosas: tomates, merluza…\n\nLa lista: ${WEB}/shopping`, g, fixed)).toEqual({ ok: false, reason: 'count' })
+    expect(validateGuided(`Hoy, sábado, toca compra: de lo fresco te faltan tomates y merluza.\n\nLa lista, en un toque: ${WEB}/shopping`, g, fixed)).toEqual({ ok: true })
+    expect(validateGuided('Hoy, sábado, toca compra: de lo fresco te faltan tomates y merluza.', g, fixed)).toMatchObject({ ok: false, reason: 'missing_required' })
+    expect(validateGuided(`Hoy, sábado, toca compra. Te quedan 139 cosas: tomates, merluza…\n\nLa lista: ${WEB}/shopping`, g, fixed)).toEqual({ ok: false, reason: 'count' })
   })
 })
 

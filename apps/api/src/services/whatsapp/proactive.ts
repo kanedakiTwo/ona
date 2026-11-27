@@ -21,7 +21,7 @@ import { localizeButtons, type Lang } from './language.js'
  */
 
 export { MADRID_TZ, madridParts, mondayOf, type MadridParts } from '../madridTime.js'
-import type { MadridParts } from '../madridTime.js'
+import { mondayOf, type MadridParts } from '../madridTime.js'
 
 export const PROACTIVE_KINDS = [
   'daily_brief',
@@ -198,16 +198,26 @@ export const FRESH_MAX = 5
 export function freshPending(items: ReadonlyArray<{ name: string; aisle?: string | null }>): string[] {
   return [...new Set(items.filter((i) => i.aisle && FRESH_AISLES.has(i.aisle)).map((i) => i.name))].slice(0, FRESH_MAX)
 }
-export function formatShoppingReminder(fresh: readonly string[], webUrl: string, lang: Lang = 'es'): string {
+/** Madrid weekday names (0 = Monday). */
+export const WEEKDAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'] as const
+const WEEKDAY_NAMES_EN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
+
+/**
+ * PRO-1337 (D-1029): the day and the fresh things by name, and one action —
+ * open the list («es un momento») — with no question before it.
+ */
+export function formatShoppingReminder(fresh: readonly string[], webUrl: string, lang: Lang = 'es', weekday = 5): string {
   const link = `${webUrl}/shopping`
   if (lang === 'en') {
+    const day = WEEKDAY_NAMES_EN[weekday] ?? 'Saturday'
     return fresh.length
-      ? `Shopping today? Fresh things still on your list: ${fresh.join(', ')}.\n\nYour list: ${link}`
-      : `Shopping today? Your list is ready: ${link}`
+      ? `${day}, shopping day. Fresh things still on your list: ${fresh.join(', ')}.\n\nOpen your list, it only takes a moment: ${link}`
+      : `${day}, shopping day. Open your list, it only takes a moment: ${link}`
   }
+  const day = WEEKDAY_NAMES[weekday] ?? 'sábado'
   return fresh.length
-    ? `¿Hoy toca compra? De lo fresco te falta: ${fresh.join(', ')}.\n\nTu lista: ${link}`
-    : `¿Hoy toca compra? Aquí tienes tu lista: ${link}`
+    ? `Hoy, ${day}, toca compra. De lo fresco te falta: ${fresh.join(', ')}.\n\nAbre tu lista, es un momento: ${link}`
+    : `Hoy, ${day}, toca compra. Abre tu lista, es un momento: ${link}`
 }
 
 /** Sunday 18:00–21:59 Madrid. */
@@ -225,21 +235,6 @@ export function isDailyBriefWindow(p: MadridParts, breakfastTime: string | null 
 
 export const DAILY_BRIEF_COOLDOWN_MS = 20 * 60 * 60 * 1000
 export const WEEKLY_NUDGE_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000
-
-/**
- * PRO-225: the questions asked before planning go in the same Sunday message
- * (not another one). Answered in free text («el jueves cenamos fuera, el
- * sábado somos 6»), they shape only next week's menu (`generate_weekly_menu`
- * `mealsOut` / `guests`); «Sí, prepáralo» generates it as usual.
- */
-export const WEEK_PLAN_QUESTIONS = ['¿Alguna comida fuera de casa esta semana?', '¿Viene alguien?'] as const
-/** PRO-229: once a week, in this same Sunday message (not another one); text or a photo. */
-export const FRIDGE_QUESTION = '¿Qué te queda en la nevera?'
-
-export const WEEKLY_NUDGE_TEXT =
-  'Domingo de planificar: ¿te preparo el menú de la semana que viene?\n\n' +
-  `Antes, por si acaso: ${WEEK_PLAN_QUESTIONS.join(' ')} ${FRIDGE_QUESTION} ` +
-  'Dímelo con tus palabras o mándame una foto de la nevera (p. ej. «el jueves cenamos fuera, el sábado somos 6, queda medio calabacín») y lo tengo en cuenta solo esa semana.'
 
 export function formatDailyBrief(day: DayMenu | null | undefined, webUrl: string): string | null {
   const entries = mealEntriesForDay(day).filter((e) => e.meal !== 'breakfast')
@@ -339,6 +334,8 @@ export function dinnerCheckinGuide(name: string): GuideSpec {
       ...agreementFacts([name]),
       'Una sola pregunta, con un único «?»: qué tal salió hoy esa cena. Los botones de debajo dicen si gustó, si no, o si no la hicieron: no preguntes nada más.',
       'Habla de «la cena» (el botón dice «No la hice»), con el nombre del plato al lado.',
+      // PRO-1337 (D-1029): the dish by its name, and it ends in that one question (a tap answers it).
+      'Termina con esa pregunta; si cabe, di que basta un toque.',
       `Botones debajo: «${CHECKIN_BUTTONS[0].title}» / «${CHECKIN_BUTTONS[1].title}» / «${CHECKIN_BUTTONS[2].title}»`,
     ],
     required: [name],
@@ -349,7 +346,8 @@ export function dinnerCheckinGuide(name: string): GuideSpec {
 export function formatDinnerCheckin(name: string, lang: Lang = 'es'): OutboundMessage {
   return {
     type: 'buttons',
-    text: lang === 'en' ? `How did tonight's dinner go (*${name}*)? I'll note it down.` : `¿Qué tal ha salido hoy la cena (*${name}*)? Así lo apunto.`,
+    // PRO-1337 (D-1029): the dish, and it ends in the one question the buttons answer.
+    text: lang === 'en' ? `One tap and I'll note it down: how did tonight's dinner go (*${name}*)?` : `Un toque y lo apunto: ¿qué tal ha salido hoy la cena (*${name}*)?`,
     buttons: CHECKIN_BUTTONS.map((b) => ({ ...b })),
   }
 }
@@ -400,31 +398,59 @@ export function sawTodaysMenu(turns: ReadonlyArray<{ tools?: readonly string[] |
   return turns.some((t) => (t.tools ?? []).some((name) => MENU_VIEW_TOOLS.has(name)))
 }
 
-export function shoppingReminderGuide(fresh: readonly string[], webUrl: string): GuideSpec {
+export function shoppingReminderGuide(fresh: readonly string[], webUrl: string, weekday = 5): GuideSpec {
+  const day = WEEKDAY_NAMES[weekday] ?? 'sábado'
   return {
     kind: 'shopping_reminder',
     facts: [
+      `Hoy es ${day}, el día que este hogar suele hacer la compra: nómbralo en minúscula, dentro de la frase («hoy, ${day}, …»).`,
       fresh.length ? `Lo fresco que aún falta (frutas, verduras, carne, pescado), tal cual: ${fresh.join(', ')}` : 'No falta nada fresco: solo recuerda la lista.',
       'No digas cuántas cosas quedan ni enumeres el resto de la lista.',
+      // PRO-1337 (D-1029): one action, one tap, no question.
+      'Una sola acción al final: abrir la lista con el enlace («es un momento» si cabe). Sin preguntas.',
       `Enlace a la lista: ${webUrl}/shopping`,
     ],
-    required: [...fresh, `${webUrl}/shopping`],
+    required: [day, ...fresh, `${webUrl}/shopping`],
   }
 }
 
-export const WEEKLY_NUDGE_GUIDE: GuideSpec = {
-  kind: 'weekly_nudge',
-  facts: [
-    'Es domingo y la semana que viene aún no tiene menú.',
-    'Botones debajo: «Sí, prepáralo» / «Ahora no»',
-    // PRO-225: both questions, in this same message, to answer in free text.
-    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[0]}»`,
-    `Pregunta antes de planificar, tal cual: «${WEEK_PLAN_QUESTIONS[1]}»`,
-    'Se contestan con texto libre (p. ej. «el jueves cenamos fuera, el sábado somos 6») y solo cambian esa semana.',
-    // PRO-229: the fridge question goes in the same message; a photo of the fridge also works.
-    `Pregunta, tal cual: «${FRIDGE_QUESTION}» (vale contestar con texto o con una foto de la nevera)`,
-  ],
-  required: [...WEEK_PLAN_QUESTIONS, FRIDGE_QUESTION],
+/** «lunes 30 de noviembre» from YYYY-MM-DD (a Monday). */
+const MONTH_NAMES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+export function nextMondayLabel(weekStart: string): string {
+  const [, m, d] = weekStart.split('-').map(Number)
+  return `lunes ${d} de ${MONTH_NAMES[(m ?? 1) - 1]}`
+}
+
+/**
+ * PRO-225 / PRO-229: what is asked before planning (meals out, guests, the
+ * fridge) goes in the same Sunday message, answered in free text or a photo.
+ * PRO-1337 (D-1029): as an invitation, not three more questions — the
+ * message asks one thing, «¿Te la preparo?», which the buttons answer.
+ */
+export const WEEK_PLAN_HINT =
+  'Si coméis fuera algún día, viene alguien o te queda algo en la nevera, dímelo con tus palabras o con una foto de la nevera y lo tengo en cuenta solo esa semana.'
+export const WEEKLY_NUDGE_QUESTION = '¿Te la preparo? Es un momento.'
+
+export function weeklyNudgeText(weekStart: string): string {
+  return `La semana del ${nextMondayLabel(weekStart)} aún no tiene menú. ${WEEK_PLAN_HINT}\n\n${WEEKLY_NUDGE_QUESTION}`
+}
+
+export function weeklyNudgeGuide(weekStart: string): GuideSpec {
+  const label = nextMondayLabel(weekStart)
+  return {
+    kind: 'weekly_nudge',
+    facts: [
+      `Es domingo y la semana del ${label} aún no tiene menú: nómbrala así.`,
+      'Botones debajo: «Sí, prepáralo» / «Ahora no»',
+      // PRO-225 / PRO-229: in this same message, as an invitation (no questions).
+      `Invitación, tal cual: «${WEEK_PLAN_HINT}»`,
+      'Ejemplo de respuesta: «el jueves cenamos fuera, el sábado somos 6, queda medio calabacín». Solo cambian esa semana.',
+      // PRO-1337 (D-1029): one question only, at the end.
+      'Una sola pregunta, con un único «?», al final: si le preparas el menú de esa semana («es un momento» si cabe).',
+    ],
+    // The day number, not the whole label: in English the date is written in English (`guideInLanguage` keeps data with digits).
+    required: [String(Number(weekStart.slice(8, 10))), WEEK_PLAN_HINT],
+  }
 }
 
 function capitalize(s: string): string {
@@ -531,8 +557,8 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
       const fresh = freshPending(pending)
       out.push({
         kind: 'shopping_reminder',
-        messages: [{ type: 'text', text: formatShoppingReminder(fresh, input.webUrl, await lang()) }],
-        guide: shoppingReminderGuide(fresh, input.webUrl),
+        messages: [{ type: 'text', text: formatShoppingReminder(fresh, input.webUrl, await lang(), p.weekday) }],
+        guide: shoppingReminderGuide(fresh, input.webUrl, p.weekday),
       })
     }
   }
@@ -569,19 +595,20 @@ export async function planProactive(input: ProactiveInput): Promise<PlannedMessa
 
   // PRO-381 (D-158): with the Thursday autopilot on, the Sunday question doesn't go.
   if (can('weekly_nudge') && !alertKindOn('weekly_autoplan', input.prefs) && isWeeklyNudgeWindow(p) && !(await input.hasNextWeekMenu())) {
+    const nextMonday = mondayOf(p.isoDate, p.weekday, 1)
     out.push({
       kind: 'weekly_nudge',
       messages: [
         {
           type: 'buttons',
-          text: WEEKLY_NUDGE_TEXT,
+          text: weeklyNudgeText(nextMonday),
           buttons: [
             { id: 'nudge:yes', title: 'Sí, prepáralo' },
             { id: 'nudge:no', title: 'Ahora no' },
           ],
         },
       ],
-      guide: WEEKLY_NUDGE_GUIDE,
+      guide: weeklyNudgeGuide(nextMonday),
     })
   }
 
